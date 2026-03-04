@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Molecule Builder — Quantum Simulation</title>
+  <style>
+    body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; overflow: hidden; flex-direction: column; }
+    canvas { border: none; }
+    #config { color: #fff; font-family: monospace; font-size: 14px; text-align: center; }
+    .atom-btn { padding: 8px 16px; margin: 4px; font-size: 16px; cursor: pointer; border: 2px solid #555; background: #222; color: #fff; border-radius: 4px; }
+    .atom-btn.selected { border-color: #0f0; background: #040; }
+    .atom-btn:hover { background: #333; }
+    #placement { border: 1px solid #555; cursor: crosshair; display: block; margin: 8px auto; }
+    #info { color: #aaa; margin: 4px; }
+    #atomList { color: #ff0; min-height: 20px; }
+    .action-btn { background: #060; color: #fff; border: none; padding: 8px 24px; font-size: 16px; cursor: pointer; margin: 4px; border-radius: 4px; }
+    .action-btn:hover { background: #080; }
+    .action-btn:disabled { background: #333; color: #666; cursor: default; }
+    #screenInput { width: 50px; background: #222; color: #fff; border: 1px solid #555; padding: 4px; font-size: 14px; }
+    #stepsInput { width: 60px; background: #222; color: #fff; border: 1px solid #555; padding: 4px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div id="config">
+    <p>Select atom type, then click to place (max 5):</p>
+    <div>
+      <button class="atom-btn" data-z="1" data-el="H">H (Z=1)</button>
+      <button class="atom-btn" data-z="4" data-el="C">C (Z=4)</button>
+      <button class="atom-btn" data-z="3" data-el="N">N (Z=3)</button>
+      <button class="atom-btn" data-z="2" data-el="O">O (Z=2)</button>
+    </div>
+    <canvas id="placement" width="400" height="400"></canvas>
+    <div id="atomList">No atoms placed</div>
+    <div id="info">Right-click to remove last atom</div>
+    <div>
+      Screen: <input id="screenInput" type="number" value="10" min="2" max="40" step="1"> au
+      Steps: <input id="stepsInput" type="number" value="20000" min="1000" max="100000" step="1000">
+    </div>
+    <div style="margin-top:8px">
+      <button class="action-btn" id="clearBtn">Clear</button>
+      <button class="action-btn" id="launch" disabled>Launch</button>
+    </div>
+  </div>
+  <script>
+    window.onerror = function(msg, url, line) {
+      document.body.style.color = 'red';
+      document.body.innerHTML = '<pre>ERROR: ' + msg + '\nLine: ' + line + '\nFile: ' + url + '</pre>';
+    };
+
+    var selectedEl = null;
+    var placedAtoms = [];
+    var atomColors = ['#f44', '#4f4', '#48f', '#ff0', '#f0f'];
+    var colorNames = ['Red', 'Green', 'Blue', 'Yellow', 'Magenta'];
+    var GRID_N = 200;
+    var cvs = document.getElementById('placement');
+    var ctx = cvs.getContext('2d');
+
+    function rcForZ(z) {
+      if (z === 0) return 0;
+      if (z <= 1) return 0.1;
+      if (z === 2) return 0.5;
+      if (z === 3) return 0.3;
+      return 0.4;
+    }
+
+    function drawPlacement() {
+      var screenAu = parseFloat(document.getElementById('screenInput').value) || 10;
+      ctx.fillStyle = '#111';
+      ctx.fillRect(0, 0, 400, 400);
+      // Grid lines every 1 au
+      ctx.strokeStyle = '#222';
+      var pxPerAu = 400 / screenAu;
+      for (var a = 0; a <= screenAu; a++) {
+        var p = Math.round(a * pxPerAu);
+        ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, 400); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(400, p); ctx.stroke();
+      }
+      ctx.strokeStyle = '#555';
+      ctx.strokeRect(0, 0, 400, 400);
+      // Draw placed atoms
+      for (var i = 0; i < placedAtoms.length; i++) {
+        var at = placedAtoms[i];
+        ctx.fillStyle = atomColors[i];
+        ctx.beginPath();
+        ctx.arc(at.px, at.py, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 14px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(at.el, at.px, at.py - 14);
+        ctx.fillText('Z=' + at.Z, at.px, at.py + 24);
+      }
+      // Draw lines between atoms
+      if (placedAtoms.length >= 2) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctx.lineWidth = 1;
+        for (var a = 0; a < placedAtoms.length; a++) {
+          for (var b = a + 1; b < placedAtoms.length; b++) {
+            ctx.beginPath();
+            ctx.moveTo(placedAtoms[a].px, placedAtoms[a].py);
+            ctx.lineTo(placedAtoms[b].px, placedAtoms[b].py);
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    function updateList() {
+      if (placedAtoms.length === 0) {
+        document.getElementById('atomList').textContent = 'No atoms placed';
+      } else {
+        var parts = placedAtoms.map(function(a, i) {
+          var screenAu = parseFloat(document.getElementById('screenInput').value) || 10;
+          var au_x = (a.px * screenAu / 400).toFixed(1);
+          var au_y = (a.py * screenAu / 400).toFixed(1);
+          return colorNames[i] + ': ' + a.el + '(Z=' + a.Z + ') at (' + au_x + ',' + au_y + ') au';
+        });
+        document.getElementById('atomList').textContent = parts.join('  |  ');
+      }
+      document.getElementById('launch').disabled = placedAtoms.length < 2;
+    }
+
+    // Atom type buttons
+    document.querySelectorAll('.atom-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.atom-btn').forEach(function(b) { b.classList.remove('selected'); });
+        this.classList.add('selected');
+        selectedEl = { Z: parseInt(this.dataset.z), el: this.dataset.el };
+      });
+    });
+
+    // Click to place
+    cvs.addEventListener('click', function(e) {
+      if (!selectedEl || placedAtoms.length >= 5) return;
+      var rect = cvs.getBoundingClientRect();
+      var px = e.clientX - rect.left;
+      var py = e.clientY - rect.top;
+      placedAtoms.push({ px: px, py: py, Z: selectedEl.Z, el: selectedEl.el });
+      drawPlacement();
+      updateList();
+    });
+
+    // Right-click to remove last
+    cvs.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+      if (placedAtoms.length > 0) {
+        placedAtoms.pop();
+        drawPlacement();
+        updateList();
+      }
+    });
+
+    // Screen size change redraws
+    document.getElementById('screenInput').addEventListener('change', function() {
+      drawPlacement();
+      updateList();
+    });
+
+    document.getElementById('clearBtn').addEventListener('click', function() {
+      placedAtoms = [];
+      drawPlacement();
+      updateList();
+    });
+
+    document.getElementById('launch').addEventListener('click', function() {
+      var screenAu = parseFloat(document.getElementById('screenInput').value) || 10;
+      var steps = parseInt(document.getElementById('stepsInput').value) || 20000;
+      // Convert pixel positions to grid coordinates
+      var atoms = placedAtoms.map(function(a) {
+        return {
+          i: Math.round(a.px * GRID_N / 400),
+          j: Math.round(a.py * GRID_N / 400),
+          Z: a.Z,
+          el: a.el
+        };
+      });
+      // Pad to 5 if fewer placed
+      while (atoms.length < 5) {
+        atoms.push({ i: Math.round(GRID_N / 2), j: Math.round(GRID_N / 2), Z: 0, el: '' });
+      }
+      window.USER_ATOMS = atoms;
+      window.USER_SCREEN = screenAu;
+      window.USER_STEPS = steps;
+      window.USER_Z = atoms.map(function(a) { return a.Z; });
+      window.USER_RC = atoms.map(function(a) { return rcForZ(a.Z); });
+
+      document.getElementById('config').style.display = 'none';
+      var s = document.createElement('script');
+      s.src = 'molecule.js?t=' + Date.now();
+      s.onerror = function(e) {
+        document.body.style.color = 'red';
+        document.body.innerHTML = '<pre>Failed to load molecule.js</pre>';
+      };
+      s.onload = function() {
+        var p5s = document.createElement('script');
+        p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+        document.body.appendChild(p5s);
+      };
+      document.body.appendChild(s);
+    });
+
+    drawPlacement();
+  </script>
+</body>
+</html>
