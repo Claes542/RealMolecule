@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>H2O Water Quantum Simulation</title>
+  <style>
+    body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; overflow: hidden; flex-direction: column; }
+    canvas { border: none; }
+    #config { color: #fff; font-family: monospace; font-size: 14px; text-align: center; }
+    #config label { margin: 0 8px; }
+    #config select { background: #222; color: #fff; border: 1px solid #555; padding: 4px; font-size: 14px; }
+    #config button { background: #060; color: #fff; border: none; padding: 8px 24px; font-size: 16px; cursor: pointer; margin-top: 12px; }
+    #config button:hover { background: #080; }
+  </style>
+</head>
+<body>
+  <div id="config">
+    <p>Kernel charges:</p>
+    <label>Red: <select id="z0"><option>0</option><option selected>1</option><option>2</option><option>3</option><option>4</option></select></label>
+    <label>Green: <select id="z1"><option>0</option><option>1</option><option selected>2</option><option>3</option><option>4</option></select></label>
+    <label>Blue: <select id="z2"><option>0</option><option selected>1</option><option>2</option><option>3</option><option>4</option></select></label>
+    <p>Bond angle (Red-Green-Blue):</p>
+    <label><input id="angle" type="number" value="90" min="10" max="180" step="5" style="width:60px;background:#222;color:#fff;border:1px solid #555;padding:4px;font-size:14px;"> degrees</label>
+    <p>Inner cutoff r_cut (au):</p>
+    <label>Red: <input id="rc0" type="number" value="0.1" min="0" max="2" step="0.05" style="width:60px;background:#222;color:#fff;border:1px solid #555;padding:4px;font-size:14px;"></label>
+    <label>Green: <input id="rc1" type="number" value="0.6" min="0" max="2" step="0.05" style="width:60px;background:#222;color:#fff;border:1px solid #555;padding:4px;font-size:14px;"></label>
+    <label>Blue: <input id="rc2" type="number" value="0.1" min="0" max="2" step="0.05" style="width:60px;background:#222;color:#fff;border:1px solid #555;padding:4px;font-size:14px;"></label>
+    <br>
+    <button id="launch">Launch</button>
+  </div>
+  <script>
+    window.onerror = function(msg, url, line) {
+      document.body.style.color = 'red';
+      document.body.innerHTML = '<pre>ERROR: ' + msg + '\nLine: ' + line + '\nFile: ' + url + '</pre>';
+    };
+    document.getElementById('launch').addEventListener('click', function() {
+      window.USER_Z = [
+        parseInt(document.getElementById('z0').value),
+        parseInt(document.getElementById('z1').value),
+        parseInt(document.getElementById('z2').value)
+      ];
+      window.USER_RC = [
+        parseFloat(document.getElementById('rc0').value),
+        parseFloat(document.getElementById('rc1').value),
+        parseFloat(document.getElementById('rc2').value)
+      ];
+      window.USER_ANGLE = parseFloat(document.getElementById('angle').value);
+      document.getElementById('config').style.display = 'none';
+      // Load h2o.js first (defines setup/draw), then p5.js (finds them)
+      var s = document.createElement('script');
+      s.src = 'h2o.js?t=' + Date.now();
+      s.onload = function() {
+        var p5s = document.createElement('script');
+        p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+        document.body.appendChild(p5s);
+      };
+      document.body.appendChild(s);
+    });
+  </script>
+</body>
+</html>
