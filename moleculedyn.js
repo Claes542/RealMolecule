@@ -42,6 +42,17 @@ const INTERIOR = (NN - 1) * (NN - 1) * (NN - 1);
 const STEPS_PER_FRAME = 500;
 const NORM_INTERVAL = 20;
 
+// === Nuclear dynamics state ===
+const N_MOVE = 500;
+const DT_NUC = 5.0;
+const DAMPING = 0.95;
+const MAX_VEL = 0.005;
+let nucVel = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
+let nucForce = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
+let nucForceOld = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
+let nucStepCount = 0, dynamicsEnabled = false;
+function nucMass(z) { return ({1:1, 2:16, 3:14, 4:12}[z] || 1) * 1836; }
+
 // Multigrid coarse grid
 if (NN % 2 !== 0) throw new Error("NN must be even for multigrid");
 const NC = Math.floor(NN / 2);
@@ -58,9 +69,9 @@ struct P {
   N2: u32, voronoi: f32, R_out: f32, TWO_PI: f32,
   h: f32, h2: f32, inv_h: f32, inv_h2: f32,
   dt: f32, half_d: f32, h3: f32, _pad0: f32,
-  ${Array.from({length: MAX_ATOMS}, (_, i) => 'h' + i + 'I: u32').join(', ')},
-  ${Array.from({length: MAX_ATOMS}, (_, i) => 'h' + i + 'J: u32').join(', ')},
-  ${Array.from({length: MAX_ATOMS}, (_, i) => 'h' + i + 'K: u32').join(', ')},
+  ${Array.from({length: MAX_ATOMS}, (_, i) => 'h' + i + 'I: f32').join(', ')},
+  ${Array.from({length: MAX_ATOMS}, (_, i) => 'h' + i + 'J: f32').join(', ')},
+  ${Array.from({length: MAX_ATOMS}, (_, i) => 'h' + i + 'K: f32').join(', ')},
   ${Array.from({length: MAX_ATOMS}, (_, i) => 'Z' + i + ': f32').join(', ')},
   ${Array.from({length: MAX_ATOMS}, (_, i) => 'rc' + i + ': f32').join(', ')},
   _pad1: f32, _pad2: f32
@@ -108,7 +119,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   var nw = wc + 0.25 * p.dt * abs(cm) * lw + 5.0 * p.dt * cm * sqrt(gx * gx + gy * gy + gz * gz);
   nw = clamp(nw, 0.0, 1.0);
 
-${Array.from({length: NELEC}, (_, n) => `  let d${n}i = f32(i) - f32(p.h${n}I); let d${n}j = f32(j) - f32(p.h${n}J); let d${n}k = f32(k) - f32(p.h${n}K);
+${Array.from({length: NELEC}, (_, n) => `  let d${n}i = f32(i) - p.h${n}I; let d${n}j = f32(j) - p.h${n}J; let d${n}k = f32(k) - p.h${n}K;
   let r${n} = sqrt(d${n}i*d${n}i + d${n}j*d${n}j + d${n}k*d${n}k) * p.h;
   if (r${n} < p.rc${n}) {
     let edge${n} = p.rc${n} - 3.0 * p.h;
@@ -506,15 +517,176 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
 }
 `;
 
+// ===== FORCE REDUCTION SHADER =====
+const reduceForceWGSL = `
+${paramStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> U: array<f32>;
+@group(0) @binding(2) var<storage, read> W: array<f32>;
+@group(0) @binding(3) var<storage, read_write> forcePartials: array<f32>;
+
+var<workgroup> sf: array<f32, ${3 * 32}>;
+
+@compute @workgroup_size(32)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>,
+        @builtin(local_invocation_index) lid: u32,
+        @builtin(workgroup_id) wgid: vec3<u32>) {
+  let NM = p.NN - 1u;
+  let tot = NM * NM * NM;
+  let atom = gid.y;
+
+  sf[lid * 3u] = 0.0;
+  sf[lid * 3u + 1u] = 0.0;
+  sf[lid * 3u + 2u] = 0.0;
+
+  if (gid.x < tot) {
+    let k = (gid.x % NM) + 1u;
+    let j = ((gid.x / NM) % NM) + 1u;
+    let i = (gid.x / (NM * NM)) + 1u;
+    let id = i * p.S2 + j * p.S + k;
+
+    var RA_I: f32; var RA_J: f32; var RA_K: f32; var ZA: f32;
+    ${Array.from({length: NELEC}, (_, a) =>
+      `${a === 0 ? 'if' : 'else if'} (atom == ${a}u) { RA_I = p.h${a}I; RA_J = p.h${a}J; RA_K = p.h${a}K; ZA = p.Z${a}; }`
+    ).join(' ')} else { ZA = 0.0; RA_I = 0.0; RA_J = 0.0; RA_K = 0.0; }
+
+    if (ZA > 0.0) {
+      let di = f32(i) - RA_I;
+      let dj = f32(j) - RA_J;
+      let dk = f32(k) - RA_K;
+      let r2 = (di * di + dj * dj + dk * dk) * p.h2;
+      let soft = 0.04 * p.h2;
+      let r = sqrt(r2 + soft);
+      let inv_r3 = 1.0 / (r * r * r);
+
+      var rho_w: f32 = 0.0;
+      for (var m: u32 = 0u; m < ${NELEC}u; m++) {
+        let o = m * p.S3;
+        let v = U[o + id];
+        let w = W[o + id];
+        var Zm: f32;
+        ${Array.from({length: NELEC}, (_, i) =>
+          `${i === 0 ? 'if' : 'else if'} (m == ${i}u) { Zm = p.Z${i}; }`
+        ).join(' ')} else { Zm = 0.0; }
+        rho_w += Zm * v * v;
+      }
+
+      let fscale = ZA * rho_w * inv_r3 * p.h3;
+      sf[lid * 3u]      += fscale * di * p.h;
+      sf[lid * 3u + 1u] += fscale * dj * p.h;
+      sf[lid * 3u + 2u] += fscale * dk * p.h;
+    }
+  }
+
+  workgroupBarrier();
+
+  for (var s: u32 = 16u; s > 0u; s >>= 1u) {
+    if (lid < s) {
+      sf[lid * 3u]      += sf[(lid + s) * 3u];
+      sf[lid * 3u + 1u] += sf[(lid + s) * 3u + 1u];
+      sf[lid * 3u + 2u] += sf[(lid + s) * 3u + 2u];
+    }
+    workgroupBarrier();
+  }
+
+  if (lid == 0u) {
+    let nwg = ${Math.ceil(INTERIOR / 32)}u;
+    let base = (atom * nwg + wgid.x) * 3u;
+    forcePartials[base]      = sf[0u];
+    forcePartials[base + 1u] = sf[1u];
+    forcePartials[base + 2u] = sf[2u];
+  }
+}
+`;
+
+// ===== FORCE FINALIZE SHADER =====
+const finalizeForceWGSL = `
+struct NWG { count: u32 }
+@group(0) @binding(0) var<storage, read> forcePartials: array<f32>;
+@group(0) @binding(1) var<storage, read_write> forceSums: array<f32>;
+@group(0) @binding(2) var<uniform> nwg: NWG;
+
+var<workgroup> wf: array<f32, ${3 * 32}>;
+
+@compute @workgroup_size(32)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>,
+        @builtin(local_invocation_index) lid: u32) {
+  let atom = gid.y;
+  wf[lid * 3u] = 0.0;
+  wf[lid * 3u + 1u] = 0.0;
+  wf[lid * 3u + 2u] = 0.0;
+
+  let offset = atom * nwg.count * 3u;
+  for (var i: u32 = lid; i < nwg.count; i += 32u) {
+    wf[lid * 3u]      += forcePartials[offset + i * 3u];
+    wf[lid * 3u + 1u] += forcePartials[offset + i * 3u + 1u];
+    wf[lid * 3u + 2u] += forcePartials[offset + i * 3u + 2u];
+  }
+
+  workgroupBarrier();
+
+  for (var s: u32 = 16u; s > 0u; s >>= 1u) {
+    if (lid < s) {
+      wf[lid * 3u]      += wf[(lid + s) * 3u];
+      wf[lid * 3u + 1u] += wf[(lid + s) * 3u + 1u];
+      wf[lid * 3u + 2u] += wf[(lid + s) * 3u + 2u];
+    }
+    workgroupBarrier();
+  }
+
+  if (lid == 0u) {
+    forceSums[atom * 3u]      = wf[0u];
+    forceSums[atom * 3u + 1u] = wf[1u];
+    forceSums[atom * 3u + 2u] = wf[2u];
+  }
+}
+`;
+
+// ===== RECOMPUTE K SHADER =====
+const recomputeK_WGSL = `
+${paramStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read_write> K: array<f32>;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let id = gid.x;
+  if (id >= p.S3) { return; }
+
+  let k = id % p.S;
+  let j = (id / p.S) % p.S;
+  let i = id / p.S2;
+
+  let soft = 0.04 * p.h2;
+  var Kval: f32 = 0.0;
+
+${Array.from({length: NELEC}, (_, n) => `
+  {
+    let di = (f32(i) - p.h${n}I) * p.h;
+    let dj = (f32(j) - p.h${n}J) * p.h;
+    let dk = (f32(k) - p.h${n}K) * p.h;
+    let r = sqrt(di*di + dj*dj + dk*dk + soft);
+    Kval += p.Z${n} / r;
+  }`).join('')}
+
+  K[id] = Kval;
+}
+`;
+
+const WG_RECOMPUTE_K = Math.ceil(S3 / 256);
+
 // ===== GPU STATE =====
 let device, paramsBuf, K_buf, sumsBuf, sumsReadBuf, sliceBuf, sliceReadBuf, partialsBuf, numWGBuf;
 let U_buf = [], W_buf = [], P_buf = [];
 let rhoTotalBuf, Pc_buf = [], coarseRhsBuf;
+let forcePartialsBuf, forceSumsBuf, forceSumsReadBuf;
 let updateUWPL, reducePL, finalizePL, normalizePL, extractPL;
 let computeRhoPL, jacobiSmoothPL, computeResidualPL, restrictPL, coarseSmoothPL, prolongCorrectPL;
+let reduceForcePL, finalizeForcePL, recomputeK_PL;
 let updateUW_BG = [], reduceBG = [], finalizeBG, normalizeBG = [], extractBG = [];
 let computeRhoBG = [], jacobiFineBG = [[], []], residualBG = [];
 let restrictBG, coarseSmoothBG = [], prolongCorrectBG;
+let reduceForceBG = [], finalizeForceBG, recomputeK_BG;
 let cur = 0, gpuReady = false, computing = false;
 let tStep = 0, E = 0, lastMs = 0;
 let E_T = 0, E_eK = 0, E_ee = 0, E_KK = 0;
@@ -522,7 +694,7 @@ let gpuError = null;
 
 // Single phase run
 let phase = 0, phaseSteps = 0;
-const TOTAL_STEPS = window.USER_STEPS || 10000;
+const TOTAL_STEPS = window.USER_STEPS || 100000;
 let addNucRepulsion = true;
 
 const SLICE_SIZE = (NELEC * S * S + (3 * NELEC + 1) * S) * 4;
@@ -549,9 +721,9 @@ function fillParamsBuf(pb) {
   pu[4] = N2; pf[5] = 1.0; pf[6] = R_out; pf[7] = 2 * Math.PI;
   pf[8] = hv; pf[9] = h2v; pf[10] = 1 / hv; pf[11] = 1 / h2v;
   pf[12] = dtv; pf[13] = half_dv; pf[14] = h3v; pf[15] = 0;
-  for (let n = 0; n < MAX_ATOMS; n++) pu[16 + n] = nucPos[n][0];
-  for (let n = 0; n < MAX_ATOMS; n++) pu[116 + n] = nucPos[n][1];
-  for (let n = 0; n < MAX_ATOMS; n++) pu[216 + n] = nucPos[n][2];
+  for (let n = 0; n < MAX_ATOMS; n++) pf[16 + n] = nucPos[n][0];
+  for (let n = 0; n < MAX_ATOMS; n++) pf[116 + n] = nucPos[n][1];
+  for (let n = 0; n < MAX_ATOMS; n++) pf[216 + n] = nucPos[n][2];
   for (let n = 0; n < MAX_ATOMS; n++) pf[316 + n] = Z[n];
   for (let n = 0; n < MAX_ATOMS; n++) pf[416 + n] = r_cut[n];
 }
@@ -694,6 +866,14 @@ async function initGPU() {
     coarseRhsBuf = device.createBuffer({ size: cBufSize, usage: GPUBufferUsage.STORAGE });
     console.log("Multigrid: fine=" + NN + " coarse=" + NC + " cBuf=" + (cBufSize/1e6).toFixed(1) + "MB");
 
+    // Force buffers
+    const forcePartialSize = NELEC * WG_REDUCE * 3 * 4;
+    const forceSumsSize = NELEC * 3 * 4;
+    forcePartialsBuf = device.createBuffer({ size: forcePartialSize, usage: GPUBufferUsage.STORAGE });
+    forceSumsBuf = device.createBuffer({ size: forceSumsSize, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+    forceSumsReadBuf = device.createBuffer({ size: forceSumsSize, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+    console.log("Force buffers: partials=" + (forcePartialSize/1024).toFixed(0) + "KB sums=" + forceSumsSize + "B");
+
     const partialSize = WG_REDUCE * NRED * 4;
     partialsBuf = device.createBuffer({ size: partialSize, usage: GPUBufferUsage.STORAGE });
     sumsBuf = device.createBuffer({ size: SUMS_BYTES, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
@@ -740,6 +920,9 @@ async function initGPU() {
     const finalizeMod = await compileShader('finalize', finalizeWGSL);
     const normalizeMod = await compileShader('normalize', normalizeWGSL);
     const extractMod = await compileShader('extract', extractWGSL);
+    const reduceForceMod = await compileShader('reduceForce', reduceForceWGSL);
+    const finalizeForceMod = await compileShader('finalizeForce', finalizeForceWGSL);
+    const recomputeK_Mod = await compileShader('recomputeK', recomputeK_WGSL);
 
     updateUWPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: updateUWMod, entryPoint: 'main' } });
     computeRhoPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: computeRhoMod, entryPoint: 'main' } });
@@ -752,6 +935,9 @@ async function initGPU() {
     finalizePL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: finalizeMod, entryPoint: 'main' } });
     normalizePL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: normalizeMod, entryPoint: 'main' } });
     extractPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: extractMod, entryPoint: 'main' } });
+    reduceForcePL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: reduceForceMod, entryPoint: 'main' } });
+    finalizeForcePL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: finalizeForceMod, entryPoint: 'main' } });
+    recomputeK_PL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: recomputeK_Mod, entryPoint: 'main' } });
 
     // --- Bind groups ---
     for (let c = 0; c < 2; c++) {
@@ -840,7 +1026,26 @@ async function initGPU() {
       { binding: 2, resource: { buffer: numWGBuf } },
     ]});
 
-    console.log("Ready! dispatch(" + WG_UPDATE + "," + NELEC + ",1)");
+    // Force bind groups
+    for (let c = 0; c < 2; c++) {
+      reduceForceBG[c] = device.createBindGroup({ layout: reduceForcePL.getBindGroupLayout(0), entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: U_buf[c] } },
+        { binding: 2, resource: { buffer: W_buf[c] } },
+        { binding: 3, resource: { buffer: forcePartialsBuf } },
+      ]});
+    }
+    finalizeForceBG = device.createBindGroup({ layout: finalizeForcePL.getBindGroupLayout(0), entries: [
+      { binding: 0, resource: { buffer: forcePartialsBuf } },
+      { binding: 1, resource: { buffer: forceSumsBuf } },
+      { binding: 2, resource: { buffer: numWGBuf } },
+    ]});
+    recomputeK_BG = device.createBindGroup({ layout: recomputeK_PL.getBindGroupLayout(0), entries: [
+      { binding: 0, resource: { buffer: paramsBuf } },
+      { binding: 1, resource: { buffer: K_buf } },
+    ]});
+
+    console.log("Ready! dispatch(" + WG_UPDATE + "," + NELEC + ",1) dynamics=enabled");
     gpuReady = true;
     startMolPhase();
 
@@ -850,9 +1055,92 @@ async function initGPU() {
   }
 }
 
+let E_prev_nuc = Infinity;
+
+function moveNuclei(gpuForces) {
+  const soft_nuc = 0.04 * h2v;
+
+  // Compute HF forces (for direction) + nuclear repulsion
+  for (let a = 0; a < NELEC; a++) {
+    if (Z[a] === 0) continue;
+    nucForce[a][0] = gpuForces[a * 3];
+    nucForce[a][1] = gpuForces[a * 3 + 1];
+    nucForce[a][2] = gpuForces[a * 3 + 2];
+    for (let b = 0; b < NELEC; b++) {
+      if (b === a || Z[b] === 0) continue;
+      const di = (nucPos[a][0] - nucPos[b][0]) * hv;
+      const dj = (nucPos[a][1] - nucPos[b][1]) * hv;
+      const dk = (nucPos[a][2] - nucPos[b][2]) * hv;
+      const r = Math.sqrt(di*di + dj*dj + dk*dk + soft_nuc);
+      const f = Z[a] * Z[b] / (r * r * r);
+      nucForce[a][0] += f * di;
+      nucForce[a][1] += f * dj;
+      nucForce[a][2] += f * dk;
+    }
+  }
+
+  // Energy-based velocity control (FIRE-like)
+  // If energy went up, reverse velocities and damp hard
+  if (nucStepCount > 0 && E > E_prev_nuc + 0.001) {
+    console.log("E increased " + E_prev_nuc.toFixed(6) + " -> " + E.toFixed(6) + ", reversing");
+    for (let a = 0; a < NELEC; a++) {
+      for (let d = 0; d < 3; d++) nucVel[a][d] *= -0.3;
+    }
+  }
+  E_prev_nuc = E;
+
+  // Compute per-atom numerical gradient from energy
+  // Use negative gradient of E_KK for nuclear repulsion (exact)
+  // Use HF force for electron-nuclear (approximate direction)
+  // Project velocity onto force direction (FIRE algorithm)
+  let vDotF = 0, fDotF = 0;
+  for (let a = 0; a < NELEC; a++) {
+    if (Z[a] === 0) continue;
+    for (let d = 0; d < 3; d++) {
+      vDotF += nucVel[a][d] * nucForce[a][d];
+      fDotF += nucForce[a][d] * nucForce[a][d];
+    }
+  }
+
+  // FIRE mixing: bias velocity toward force direction
+  if (fDotF > 1e-20) {
+    const alpha = 0.25;
+    const fScale = Math.sqrt(vDotF > 0 ? vDotF / fDotF : 0);
+    for (let a = 0; a < NELEC; a++) {
+      if (Z[a] === 0) continue;
+      const inv_m = 1.0 / nucMass(Z[a]);
+      for (let d = 0; d < 3; d++) {
+        // Accelerate along force
+        nucVel[a][d] += DT_NUC * nucForce[a][d] * inv_m;
+        // FIRE: mix velocity with force direction
+        nucVel[a][d] = (1 - alpha) * nucVel[a][d] + alpha * fScale * nucForce[a][d];
+        // Clamp and damp
+        nucVel[a][d] = Math.max(-MAX_VEL, Math.min(MAX_VEL, nucVel[a][d]));
+        nucVel[a][d] *= DAMPING;
+        // Move
+        nucPos[a][d] += nucVel[a][d] * DT_NUC / hv;
+        nucPos[a][d] = Math.max(5, Math.min(NN - 5, nucPos[a][d]));
+      }
+    }
+  }
+  nucStepCount++;
+  console.log("Nuc step " + nucStepCount + ": " +
+    nucPos.filter((_, i) => Z[i] > 0).map(p => "(" + p.map(x => x.toFixed(2)).join(",") + ")").join(" "));
+  // Update param buffer and recompute K on GPU
+  updateParamsBuf();
+  const kEnc = device.createCommandEncoder();
+  const kp = kEnc.beginComputePass();
+  kp.setPipeline(recomputeK_PL);
+  kp.setBindGroup(0, recomputeK_BG);
+  kp.dispatchWorkgroups(WG_RECOMPUTE_K);
+  kp.end();
+  device.queue.submit([kEnc.finish()]);
+}
+
 async function doSteps(n) {
   const t0 = performance.now();
   const enc = device.createCommandEncoder();
+  let needForceReadback = false;
 
   for (let s = 0; s < n; s++) {
     const next = 1 - cur;
@@ -955,6 +1243,23 @@ async function doSteps(n) {
       cp.end();
     }
 
+    // ---- Nuclear dynamics: compute forces at N_MOVE intervals ----
+    if (dynamicsEnabled && (tStep + s + 1) % N_MOVE === 0) {
+      cp = enc.beginComputePass();
+      cp.setPipeline(reduceForcePL);
+      cp.setBindGroup(0, reduceForceBG[next]);
+      cp.dispatchWorkgroups(WG_REDUCE, NELEC, 1);
+      cp.end();
+
+      cp = enc.beginComputePass();
+      cp.setPipeline(finalizeForcePL);
+      cp.setBindGroup(0, finalizeForceBG);
+      cp.dispatchWorkgroups(1, NELEC, 1);
+      cp.end();
+
+      needForceReadback = true;
+    }
+
     cur = next;
   }
 
@@ -966,6 +1271,9 @@ async function doSteps(n) {
 
   enc.copyBufferToBuffer(sumsBuf, 0, sumsReadBuf, 0, SUMS_BYTES);
   enc.copyBufferToBuffer(sliceBuf, 0, sliceReadBuf, 0, SLICE_SIZE);
+  if (needForceReadback) {
+    enc.copyBufferToBuffer(forceSumsBuf, 0, forceSumsReadBuf, 0, NELEC * 3 * 4);
+  }
   device.queue.submit([enc.finish()]);
 
   await sumsReadBuf.mapAsync(GPUMapMode.READ);
@@ -978,6 +1286,13 @@ async function doSteps(n) {
   await sliceReadBuf.mapAsync(GPUMapMode.READ);
   sliceData = new Float32Array(sliceReadBuf.getMappedRange().slice(0));
   sliceReadBuf.unmap();
+
+  if (needForceReadback) {
+    await forceSumsReadBuf.mapAsync(GPUMapMode.READ);
+    const forceData = new Float32Array(forceSumsReadBuf.getMappedRange().slice(0));
+    forceSumsReadBuf.unmap();
+    moveNuclei(forceData);
+  }
 
   tStep += n;
   lastMs = performance.now() - t0;
@@ -1035,13 +1350,12 @@ function draw() {
       phaseSteps += STEPS_PER_FRAME;
       if (phaseSteps >= 5000) {
         device.queue.writeBuffer(paramsBuf, 5 * 4, new Float32Array([0.0]));
+        if (!dynamicsEnabled) {
+          dynamicsEnabled = true;
+          console.log("=== Dynamics enabled at step " + phaseSteps + " ===");
+        }
       }
       if (isFinite(E) && E < E_min) E_min = E;
-
-      if (phaseSteps >= TOTAL_STEPS) {
-        console.log("=== DONE: E=" + E.toFixed(6) + " ===");
-        phase = 1;  // done
-      }
     }).catch((e) => {
       gpuError = e.message || String(e);
       console.error("GPU step failed:", e);
@@ -1111,6 +1425,24 @@ function draw() {
   for (let n = 0; n < NELEC; n++) {
     if (Z[n] > 0) circle(nucPos[n][0] * PX, nucPos[n][1] * PX, 6);
   }
+  // Draw force arrows
+  if (dynamicsEnabled && nucStepCount > 0) {
+    stroke(255, 255, 0); strokeWeight(2);
+    for (let n = 0; n < NELEC; n++) {
+      if (Z[n] === 0) continue;
+      const px = nucPos[n][0] * PX, py = nucPos[n][1] * PX;
+      const fx = nucForce[n][0], fy = nucForce[n][1];
+      const fmag = Math.sqrt(fx*fx + fy*fy);
+      if (fmag > 0.001) {
+        const sc = 200;
+        const ex = px + fx * sc, ey = py + fy * sc;
+        line(px, py, ex, ey);
+        const ang = Math.atan2(fy, fx);
+        line(ex, ey, ex - 6*Math.cos(ang-0.4), ey - 6*Math.sin(ang-0.4));
+        line(ex, ey, ex - 6*Math.cos(ang+0.4), ey - 6*Math.sin(ang+0.4));
+      }
+    }
+  }
   // Screen boundary
   noFill(); stroke(100); strokeWeight(1);
   rect(0, 0, 400, 400);
@@ -1118,11 +1450,30 @@ function draw() {
 
   fill(255);
   const labels = atomLabels.map((el, i) => [el, Z_orig[i]]).filter(x => x[1] > 0).map(x => x[0] + "(Z=" + x[1] + ")").join(" ");
-  const pLabel = phase === 0 ? "running" : "DONE";
-  text("Molecule: " + labels + " | " + screenAu + " au | " + pLabel + " | " + NN + "^3", 5, 20);
-  text("step " + tStep + " (" + phaseSteps + "/" + TOTAL_STEPS + ")  E=" + E.toFixed(6) + "  E_min=" + E_min.toFixed(6), 5, 35);
+  const dynLabel = dynamicsEnabled ? ("dyn#" + nucStepCount) : "converging";
+  text("Molecule: " + labels + " | " + screenAu + " au | " + dynLabel + " | " + NN + "^3", 5, 20);
+  text("step " + tStep + "  E=" + E.toFixed(6) + "  E_min=" + E_min.toFixed(6), 5, 35);
   if (lastMs > 0) text((lastMs / STEPS_PER_FRAME).toFixed(1) + "ms/step", 300, 35);
 
   fill(200);
   text("T=" + E_T.toFixed(4) + " V_eK=" + E_eK.toFixed(4) + " V_ee=" + E_ee.toFixed(4) + " V_KK=" + E_KK.toFixed(4), 5, 50);
+
+  // Bond lengths
+  if (dynamicsEnabled) {
+    fill(255, 200, 0);
+    let blY = 65;
+    for (let a = 0; a < NELEC && blY < 200; a++) {
+      for (let b = a + 1; b < NELEC && blY < 200; b++) {
+        if (Z[a] === 0 || Z[b] === 0) continue;
+        const d = Math.sqrt(
+          ((nucPos[a][0]-nucPos[b][0])*hv)**2 +
+          ((nucPos[a][1]-nucPos[b][1])*hv)**2 +
+          ((nucPos[a][2]-nucPos[b][2])*hv)**2);
+        if (d < 6.0) {
+          text(atomLabels[a]+"-"+atomLabels[b]+": "+(d*0.529).toFixed(3)+" A ("+d.toFixed(2)+" au)", 5, blY);
+          blY += 13;
+        }
+      }
+    }
+  }
 }

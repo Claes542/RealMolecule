@@ -1,5 +1,5 @@
-// HNO (Nitroxyl) Quantum Simulation — WebGPU Compute Shaders
-// H(blue,Z=1) N(green,Z=7→3) O(red,Z=8→2) triangular molecule
+// H2O (Water) Quantum Simulation — WebGPU Compute Shaders
+// H(red,Z=1) O(green,Z=8→2) H(blue,Z=1) triangular molecule
 
 const NN = 200;
 const S = NN + 1;
@@ -7,11 +7,11 @@ const S2 = S * S;
 const S3 = S * S * S;
 const N2 = Math.round(NN / 2);
 const D_bond = 40;   // 4 au between adjacent atoms (at 20 au screen)
-const r_cut = window.USER_RC || [0.5, 0.3, 0.1];   // au, inner w cutoff per nucleus
+const r_cut = window.USER_RC || [0.1, 0.5, 0.1];   // au, inner w cutoff per nucleus
 let R_out = 2.0;   // au, outer w cutoff
 const NELEC = 3;
 const NRED = 6;  // 3 norms + T + V_eK + V_ee
-const _uz = window.USER_Z || [2, 3, 1];
+const _uz = window.USER_Z || [1, 2, 1];
 let Z = [..._uz];
 let Ne = [..._uz];    // electron occupation = charge
 const Z_orig = [..._uz];
@@ -336,8 +336,8 @@ let E_T = 0, E_eK = 0, E_ee = 0, E_KK = 0;
 let gpuError = null;
 
 // Phase system: sweep over distances
-const D_SWEEP = [1.4, 4];  // au
-const D_SCREEN = [8, 16];  // au, per-phase screen size
+const D_SWEEP = [2, 4];  // au
+const D_SCREEN = [10, 16];  // au, per-phase screen size
 let phase = 0, phaseSteps = 0;
 const PHASE_STEPS = [20000, 10000];
 let E_sweep = [];
@@ -811,7 +811,7 @@ function draw() {
 
   fill(255);
   const pLabel = phase < D_SWEEP.length ? "D=" + D_SWEEP[phase] + " au (" + screenAu + " au)" : "DONE";
-  text("HNO Nitroxyl | " + pLabel + " | O(red)=" + Z_orig[0] + " N(green)=" + Z_orig[1] + " H(blue)=" + Z_orig[2] + " | " + NN + "^3", 5, 20);
+  text("H2O Water | " + pLabel + " | H(red)=" + Z_orig[0] + " O(green)=" + Z_orig[1] + " H(blue)=" + Z_orig[2] + " | " + NN + "^3", 5, 20);
   text("step " + tStep + " (" + phaseSteps + "/" + (PHASE_STEPS[phase] || "done") + ")  E=" + E.toFixed(6), 5, 35);
   if (lastMs > 0) text((lastMs / STEPS_PER_FRAME).toFixed(1) + "ms/step", 300, 35);
 
