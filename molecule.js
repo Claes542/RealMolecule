@@ -39,8 +39,15 @@ const dv = 0.12;
 let dtv = dv * h2v, half_dv = 0.5 * dv;
 const PX = 400 / NN;
 const INTERIOR = (NN - 1) * (NN - 1) * (NN - 1);
-const STEPS_PER_FRAME = 500;
+const STEPS_PER_FRAME = 100;
 const NORM_INTERVAL = 20;
+const POISSON_INTERVAL = 50;
+
+// Multigrid coarse grid
+if (NN % 2 !== 0) throw new Error("NN must be even for multigrid");
+const NC = Math.floor(NN / 2);
+const SC = NC + 1, SC2 = SC * SC, SC3 = SC * SC * SC;
+const INTERIOR_C = (NC - 1) * (NC - 1) * (NC - 1);
 
 // ===== WGSL SHADERS =====
 
@@ -60,7 +67,8 @@ struct P {
   _pad1: f32, _pad2: f32
 }`;
 
-const updateWGSL = `
+// U/W update only — P solved separately by multigrid Poisson solver
+const updateUW_WGSL = `
 ${paramStructWGSL}
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read> K: array<f32>;
@@ -69,7 +77,6 @@ ${paramStructWGSL}
 @group(0) @binding(4) var<storage, read> Pi: array<f32>;
 @group(0) @binding(5) var<storage, read_write> Uo: array<f32>;
 @group(0) @binding(6) var<storage, read_write> Wo: array<f32>;
-@group(0) @binding(7) var<storage, read_write> Po: array<f32>;
 
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -129,19 +136,208 @@ ${Array.from({length: NELEC}, (_, n) => `  let d${n}i = f32(i) - f32(p.h${n}I); 
     + p.half_d * ((ujp - uc) * (wjp + nw) * 0.5 - (uc - ujm) * (nw + wjm) * 0.5)
     + p.half_d * ((ukp - uc) * (wkp + nw) * 0.5 - (uc - ukm) * (nw + wkm) * 0.5)
     + p.dt * (K[id] - 2.0 * Pi[o + id]) * uc * wc;
+}
+`;
 
-  let Pc = Pi[o + id];
-${Array.from({length: NELEC}, (_, i) => `  let u${i} = Ui[${i}u * p.S3 + id];`).join('\n')}
-  var rho: f32 = ${Array.from({length: NELEC}, (_, i) => `p.Z${i} * u${i}*u${i}`).join(' + ')};
-  let self_u = Ui[o + id];
-  rho -= self_u * self_u;
+// Jacobi smoother for Poisson on fine grid: solves Lap(P_m) = -2*pi*rho_other_m
+// P_buf[0] ↔ P_buf[1] ping-pong
+const jacobiSmoothWGSL = `
+${paramStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> Pin: array<f32>;
+@group(0) @binding(2) var<storage, read_write> Pout: array<f32>;
+@group(0) @binding(3) var<storage, read> rhoTotal: array<f32>;
+@group(0) @binding(4) var<storage, read> U: array<f32>;
 
-  Po[o + id] = Pc
-    + p.dt * (Pi[o + id + p.S2] + Pi[o + id - p.S2]
-            + Pi[o + id + p.S]  + Pi[o + id - p.S]
-            + Pi[o + id + 1u]   + Pi[o + id - 1u]
-            - 6.0 * Pc) * p.inv_h2
-    + p.TWO_PI * p.dt * rho;
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let NM = p.NN - 1u;
+  let tot = NM * NM * NM;
+  if (gid.x >= tot) { return; }
+  let m = gid.y;
+  let o = m * p.S3;
+  let k = (gid.x % NM) + 1u;
+  let j = ((gid.x / NM) % NM) + 1u;
+  let i = (gid.x / (NM * NM)) + 1u;
+  let id = i * p.S2 + j * p.S + k;
+
+  let Pc = Pin[o + id];
+  let sum_nbr = Pin[o + id + p.S2] + Pin[o + id - p.S2]
+              + Pin[o + id + p.S]  + Pin[o + id - p.S]
+              + Pin[o + id + 1u]   + Pin[o + id - 1u];
+  let u_m = U[o + id];
+  let rho_m = rhoTotal[id] - u_m * u_m;
+  let rhs = p.h2 * p.TWO_PI * rho_m;
+  Pout[o + id] = 0.3333 * Pc + (sum_nbr + rhs) / 9.0;
+}
+`;
+
+// === Multigrid V-cycle shaders ===
+
+// Compute rho_total = sum(Z_n * u_n^2) at each grid point
+const computeRhoWGSL = `
+${paramStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> U: array<f32>;
+@group(0) @binding(2) var<storage, read_write> rhoTotal: array<f32>;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let NM = p.NN - 1u;
+  let tot = NM * NM * NM;
+  if (gid.x >= tot) { return; }
+  let k = (gid.x % NM) + 1u;
+  let j = ((gid.x / NM) % NM) + 1u;
+  let i = (gid.x / (NM * NM)) + 1u;
+  let id = i * p.S2 + j * p.S + k;
+  var rho: f32 = 0.0;
+${Array.from({length: NELEC}, (_, n) =>
+  `  rho += p.Z${n} * U[${n}u * p.S3 + id] * U[${n}u * p.S3 + id];`
+).join('\n')}
+  rhoTotal[id] = rho;
+}
+`;
+
+// Compute residual: r = b - A*u = -2*pi*rho_other - lap(P)
+const computeResidualWGSL = `
+${paramStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> Pin: array<f32>;
+@group(0) @binding(2) var<storage, read_write> Rout: array<f32>;
+@group(0) @binding(3) var<storage, read> rhoTotal: array<f32>;
+@group(0) @binding(4) var<storage, read> U: array<f32>;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let NM = p.NN - 1u;
+  let tot = NM * NM * NM;
+  if (gid.x >= tot) { return; }
+  let m = gid.y;
+  let o = m * p.S3;
+  let k = (gid.x % NM) + 1u;
+  let j = ((gid.x / NM) % NM) + 1u;
+  let i = (gid.x / (NM * NM)) + 1u;
+  let id = i * p.S2 + j * p.S + k;
+
+  let Pc = Pin[o + id];
+  let lap = (Pin[o + id + p.S2] + Pin[o + id - p.S2]
+           + Pin[o + id + p.S]  + Pin[o + id - p.S]
+           + Pin[o + id + 1u]   + Pin[o + id - 1u]
+           - 6.0 * Pc) * p.inv_h2;
+  let u_m = U[o + id];
+  let rho_m = rhoTotal[id] - u_m * u_m;
+  Rout[o + id] = -p.TWO_PI * rho_m - lap;
+}
+`;
+
+// Full-weighting 3D restriction (27-point stencil)
+const restrictWGSL = `
+${paramStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> fine: array<f32>;
+@group(0) @binding(2) var<storage, read_write> coarse: array<f32>;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let NCM = ${NC - 1}u;
+  let tot = NCM * NCM * NCM;
+  if (gid.x >= tot) { return; }
+  let m = gid.y;
+  let fo = m * p.S3;
+  let K2 = (gid.x % NCM) + 1u;
+  let J = ((gid.x / NCM) % NCM) + 1u;
+  let I = (gid.x / (NCM * NCM)) + 1u;
+  let fi = 2u * I; let fj = 2u * J; let fk = 2u * K2;
+
+  var val: f32 = 8.0 * fine[fo + fi*p.S2 + fj*p.S + fk];
+  val += 4.0 * (fine[fo + (fi+1u)*p.S2 + fj*p.S + fk] + fine[fo + (fi-1u)*p.S2 + fj*p.S + fk]
+              + fine[fo + fi*p.S2 + (fj+1u)*p.S + fk] + fine[fo + fi*p.S2 + (fj-1u)*p.S + fk]
+              + fine[fo + fi*p.S2 + fj*p.S + (fk+1u)] + fine[fo + fi*p.S2 + fj*p.S + (fk-1u)]);
+  val += 2.0 * (fine[fo + (fi+1u)*p.S2 + (fj+1u)*p.S + fk] + fine[fo + (fi+1u)*p.S2 + (fj-1u)*p.S + fk]
+              + fine[fo + (fi-1u)*p.S2 + (fj+1u)*p.S + fk] + fine[fo + (fi-1u)*p.S2 + (fj-1u)*p.S + fk]
+              + fine[fo + (fi+1u)*p.S2 + fj*p.S + (fk+1u)] + fine[fo + (fi+1u)*p.S2 + fj*p.S + (fk-1u)]
+              + fine[fo + (fi-1u)*p.S2 + fj*p.S + (fk+1u)] + fine[fo + (fi-1u)*p.S2 + fj*p.S + (fk-1u)]
+              + fine[fo + fi*p.S2 + (fj+1u)*p.S + (fk+1u)] + fine[fo + fi*p.S2 + (fj+1u)*p.S + (fk-1u)]
+              + fine[fo + fi*p.S2 + (fj-1u)*p.S + (fk+1u)] + fine[fo + fi*p.S2 + (fj-1u)*p.S + (fk-1u)]);
+  val += fine[fo + (fi+1u)*p.S2 + (fj+1u)*p.S + (fk+1u)] + fine[fo + (fi+1u)*p.S2 + (fj+1u)*p.S + (fk-1u)]
+       + fine[fo + (fi+1u)*p.S2 + (fj-1u)*p.S + (fk+1u)] + fine[fo + (fi+1u)*p.S2 + (fj-1u)*p.S + (fk-1u)]
+       + fine[fo + (fi-1u)*p.S2 + (fj+1u)*p.S + (fk+1u)] + fine[fo + (fi-1u)*p.S2 + (fj+1u)*p.S + (fk-1u)]
+       + fine[fo + (fi-1u)*p.S2 + (fj-1u)*p.S + (fk+1u)] + fine[fo + (fi-1u)*p.S2 + (fj-1u)*p.S + (fk-1u)];
+
+  coarse[m * ${SC3}u + I * ${SC2}u + J * ${SC}u + K2] = val * 0.015625;
+}
+`;
+
+// Weighted Jacobi on coarse grid: solves Lap(e) = f
+const coarseSmoothWGSL = `
+${paramStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> Ein: array<f32>;
+@group(0) @binding(2) var<storage, read_write> Eout: array<f32>;
+@group(0) @binding(3) var<storage, read> coarseRhs: array<f32>;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let NCM = ${NC - 1}u;
+  let tot = NCM * NCM * NCM;
+  if (gid.x >= tot) { return; }
+  let m = gid.y;
+  let K2 = (gid.x % NCM) + 1u;
+  let J = ((gid.x / NCM) % NCM) + 1u;
+  let I = (gid.x / (NCM * NCM)) + 1u;
+  let co = m * ${SC3}u;
+  let cid = I * ${SC2}u + J * ${SC}u + K2;
+
+  let ec = Ein[co + cid];
+  let sum_nbr = Ein[co + cid + ${SC2}u] + Ein[co + cid - ${SC2}u]
+              + Ein[co + cid + ${SC}u]  + Ein[co + cid - ${SC}u]
+              + Ein[co + cid + 1u]      + Ein[co + cid - 1u];
+  let hc2 = 4.0 * p.h2;
+  let f = coarseRhs[co + cid];
+  Eout[co + cid] = 0.3333 * ec + (sum_nbr + hc2 * f) / 9.0;
+}
+`;
+
+// Trilinear prolongation + additive correction to P
+const prolongCorrectWGSL = `
+${paramStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> Ec: array<f32>;
+@group(0) @binding(2) var<storage, read_write> Pf: array<f32>;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let NM = p.NN - 1u;
+  let tot = NM * NM * NM;
+  if (gid.x >= tot) { return; }
+  let m = gid.y;
+  let fo = m * p.S3;
+  let k = (gid.x % NM) + 1u;
+  let j = ((gid.x / NM) % NM) + 1u;
+  let i = (gid.x / (NM * NM)) + 1u;
+
+  let ci = i / 2u; let cj = j / 2u; let ck = k / 2u;
+  let ci1 = min(ci + (i & 1u), ${NC}u);
+  let cj1 = min(cj + (j & 1u), ${NC}u);
+  let ck1 = min(ck + (k & 1u), ${NC}u);
+  let wi = select(1.0, 0.5, (i & 1u) == 1u);
+  let wj = select(1.0, 0.5, (j & 1u) == 1u);
+  let wk = select(1.0, 0.5, (k & 1u) == 1u);
+  let wi1 = 1.0 - wi; let wj1 = 1.0 - wj; let wk1 = 1.0 - wk;
+  let co = m * ${SC3}u;
+
+  var corr: f32 = 0.0;
+  corr += wi  * wj  * wk  * Ec[co + ci  * ${SC2}u + cj  * ${SC}u + ck];
+  corr += wi  * wj  * wk1 * Ec[co + ci  * ${SC2}u + cj  * ${SC}u + ck1];
+  corr += wi  * wj1 * wk  * Ec[co + ci  * ${SC2}u + cj1 * ${SC}u + ck];
+  corr += wi  * wj1 * wk1 * Ec[co + ci  * ${SC2}u + cj1 * ${SC}u + ck1];
+  corr += wi1 * wj  * wk  * Ec[co + ci1 * ${SC2}u + cj  * ${SC}u + ck];
+  corr += wi1 * wj  * wk1 * Ec[co + ci1 * ${SC2}u + cj  * ${SC}u + ck1];
+  corr += wi1 * wj1 * wk  * Ec[co + ci1 * ${SC2}u + cj1 * ${SC}u + ck];
+  corr += wi1 * wj1 * wk1 * Ec[co + ci1 * ${SC2}u + cj1 * ${SC}u + ck1];
+
+  let fid = i * p.S2 + j * p.S + k;
+  Pf[fo + fid] += 0.5 * corr;
 }
 `;
 
@@ -312,8 +508,12 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
 // ===== GPU STATE =====
 let device, paramsBuf, K_buf, sumsBuf, sumsReadBuf, sliceBuf, sliceReadBuf, partialsBuf, numWGBuf;
 let U_buf = [], W_buf = [], P_buf = [];
-let updatePL, reducePL, finalizePL, normalizePL, extractPL;
-let updateBG = [], reduceBG = [], finalizeBG, normalizeBG = [], extractBG = [];
+let rhoTotalBuf, residualBuf, Pc_buf = [], coarseRhsBuf;
+let updatePL, jacobiSmoothPL, reducePL, finalizePL, normalizePL, extractPL;
+let computeRhoPL, computeResidualPL, restrictPL, coarseSmoothPL, prolongCorrectPL;
+let updateBG = [], jacobiFineBG = [], reduceBG = [], finalizeBG, normalizeBG = [], extractBG = [];
+let computeRhoBG = [], residualBG = [], prolongCorrectBG;
+let restrictBG, coarseSmoothBG = [];
 let cur = 0, gpuReady = false, computing = false;
 let tStep = 0, E = 0, lastMs = 0;
 let E_T = 0, E_eK = 0, E_ee = 0, E_KK = 0;
@@ -329,6 +529,7 @@ const WG_UPDATE = Math.ceil(INTERIOR / 256);
 const WG_REDUCE = Math.ceil(INTERIOR / 128);
 const WG_NORM = Math.ceil(INTERIOR / 256);
 const WG_EXTRACT = Math.ceil(S / 16);
+const WG_COARSE = Math.ceil(INTERIOR_C / 256);
 const SUMS_BYTES = NRED * 4;
 
 let sliceData = null;
@@ -483,6 +684,16 @@ async function initGPU() {
       P_buf[i] = device.createBuffer({ size: bN, usage: usage | GPUBufferUsage.COPY_SRC });
     }
 
+    // Multigrid buffers
+    const cBufSize = NELEC * SC3 * 4;
+    rhoTotalBuf = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    residualBuf = device.createBuffer({ size: bN, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    for (let i = 0; i < 2; i++) {
+      Pc_buf[i] = device.createBuffer({ size: cBufSize, usage: usage });
+    }
+    coarseRhsBuf = device.createBuffer({ size: cBufSize, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    console.log("Multigrid: fine=" + NN + " coarse=" + NC);
+
     const partialSize = WG_REDUCE * NRED * 4;
     partialsBuf = device.createBuffer({ size: partialSize, usage: GPUBufferUsage.STORAGE });
     sumsBuf = device.createBuffer({ size: SUMS_BYTES, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
@@ -518,13 +729,25 @@ async function initGPU() {
       return module;
     }
 
-    const updateMod = await compileShader('update', updateWGSL);
+    const updateMod = await compileShader('updateUW', updateUW_WGSL);
+    const jacobiSmoothMod = await compileShader('jacobiSmooth', jacobiSmoothWGSL);
+    const computeRhoMod = await compileShader('computeRho', computeRhoWGSL);
+    const computeResidualMod = await compileShader('computeResidual', computeResidualWGSL);
+    const restrictMod = await compileShader('restrict', restrictWGSL);
+    const coarseSmoothMod = await compileShader('coarseSmooth', coarseSmoothWGSL);
+    const prolongCorrectMod = await compileShader('prolongCorrect', prolongCorrectWGSL);
     const reduceMod = await compileShader('reduce', reduceWGSL);
     const finalizeMod = await compileShader('finalize', finalizeWGSL);
     const normalizeMod = await compileShader('normalize', normalizeWGSL);
     const extractMod = await compileShader('extract', extractWGSL);
 
     updatePL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: updateMod, entryPoint: 'main' } });
+    jacobiSmoothPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: jacobiSmoothMod, entryPoint: 'main' } });
+    computeRhoPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: computeRhoMod, entryPoint: 'main' } });
+    computeResidualPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: computeResidualMod, entryPoint: 'main' } });
+    restrictPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: restrictMod, entryPoint: 'main' } });
+    coarseSmoothPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: coarseSmoothMod, entryPoint: 'main' } });
+    prolongCorrectPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: prolongCorrectMod, entryPoint: 'main' } });
     reducePL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: reduceMod, entryPoint: 'main' } });
     finalizePL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: finalizeMod, entryPoint: 'main' } });
     normalizePL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: normalizeMod, entryPoint: 'main' } });
@@ -532,21 +755,21 @@ async function initGPU() {
 
     for (let c = 0; c < 2; c++) {
       const n = 1 - c;
+      // U/W update: 7 bindings, always reads P_buf[0]
       updateBG[c] = device.createBindGroup({ layout: updatePL.getBindGroupLayout(0), entries: [
         { binding: 0, resource: { buffer: paramsBuf } },
         { binding: 1, resource: { buffer: K_buf } },
         { binding: 2, resource: { buffer: U_buf[c] } },
         { binding: 3, resource: { buffer: W_buf[c] } },
-        { binding: 4, resource: { buffer: P_buf[c] } },
+        { binding: 4, resource: { buffer: P_buf[0] } },
         { binding: 5, resource: { buffer: U_buf[n] } },
         { binding: 6, resource: { buffer: W_buf[n] } },
-        { binding: 7, resource: { buffer: P_buf[n] } },
       ]});
       reduceBG[c] = device.createBindGroup({ layout: reducePL.getBindGroupLayout(0), entries: [
         { binding: 0, resource: { buffer: paramsBuf } },
         { binding: 1, resource: { buffer: U_buf[c] } },
         { binding: 2, resource: { buffer: W_buf[c] } },
-        { binding: 3, resource: { buffer: P_buf[c] } },
+        { binding: 3, resource: { buffer: P_buf[0] } },
         { binding: 4, resource: { buffer: K_buf } },
         { binding: 5, resource: { buffer: partialsBuf } },
       ]});
@@ -559,9 +782,59 @@ async function initGPU() {
         { binding: 0, resource: { buffer: paramsBuf } },
         { binding: 1, resource: { buffer: U_buf[c] } },
         { binding: 2, resource: { buffer: W_buf[c] } },
-        { binding: 3, resource: { buffer: P_buf[c] } },
+        { binding: 3, resource: { buffer: P_buf[0] } },
         { binding: 4, resource: { buffer: K_buf } },
         { binding: 5, resource: { buffer: sliceBuf } },
+      ]});
+      // Multigrid bind groups (per cur for U dependency)
+      computeRhoBG[c] = device.createBindGroup({ layout: computeRhoPL.getBindGroupLayout(0), entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: U_buf[c] } },
+        { binding: 2, resource: { buffer: rhoTotalBuf } },
+      ]});
+      residualBG[c] = device.createBindGroup({ layout: computeResidualPL.getBindGroupLayout(0), entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: P_buf[0] } },
+        { binding: 2, resource: { buffer: residualBuf } },
+        { binding: 3, resource: { buffer: rhoTotalBuf } },
+        { binding: 4, resource: { buffer: U_buf[c] } },
+      ]});
+      // Jacobi fine-grid smoother: 2 directions × 2 U sources = 4 bind groups
+      // jacobiFineBG[c*2 + 0]: P_buf[0] → P_buf[1], U_buf[c]
+      // jacobiFineBG[c*2 + 1]: P_buf[1] → P_buf[0], U_buf[c]
+      jacobiFineBG[c * 2] = device.createBindGroup({ layout: jacobiSmoothPL.getBindGroupLayout(0), entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: P_buf[0] } },
+        { binding: 2, resource: { buffer: P_buf[1] } },
+        { binding: 3, resource: { buffer: rhoTotalBuf } },
+        { binding: 4, resource: { buffer: U_buf[c] } },
+      ]});
+      jacobiFineBG[c * 2 + 1] = device.createBindGroup({ layout: jacobiSmoothPL.getBindGroupLayout(0), entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: P_buf[1] } },
+        { binding: 2, resource: { buffer: P_buf[0] } },
+        { binding: 3, resource: { buffer: rhoTotalBuf } },
+        { binding: 4, resource: { buffer: U_buf[c] } },
+      ]});
+    }
+    // Prolongation always corrects P_buf[0]
+    prolongCorrectBG = device.createBindGroup({ layout: prolongCorrectPL.getBindGroupLayout(0), entries: [
+      { binding: 0, resource: { buffer: paramsBuf } },
+      { binding: 1, resource: { buffer: Pc_buf[0] } },
+      { binding: 2, resource: { buffer: P_buf[0] } },
+    ]});
+    // Restriction and coarse solve (cur-independent)
+    restrictBG = device.createBindGroup({ layout: restrictPL.getBindGroupLayout(0), entries: [
+      { binding: 0, resource: { buffer: paramsBuf } },
+      { binding: 1, resource: { buffer: residualBuf } },
+      { binding: 2, resource: { buffer: coarseRhsBuf } },
+    ]});
+    for (let dir = 0; dir < 2; dir++) {
+      coarseSmoothBG[dir] = device.createBindGroup({ layout: coarseSmoothPL.getBindGroupLayout(0), entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: Pc_buf[dir] } },
+        { binding: 2, resource: { buffer: Pc_buf[1 - dir] } },
+        { binding: 3, resource: { buffer: coarseRhsBuf } },
       ]});
     }
 
@@ -571,7 +844,7 @@ async function initGPU() {
       { binding: 2, resource: { buffer: numWGBuf } },
     ]});
 
-    console.log("Ready! dispatch(" + WG_UPDATE + "," + NELEC + ",1)");
+    console.log("Ready! dispatch(" + WG_UPDATE + "," + NELEC + ",1) + multigrid V-cycle");
     gpuReady = true;
     startMolPhase();
 
@@ -587,7 +860,56 @@ async function doSteps(n) {
 
   for (let s = 0; s < n; s++) {
     const next = 1 - cur;
+    const jBase = cur * 2;  // index into jacobiFineBG
 
+    // --- Compute rho_total from U[cur] ---
+    let vp = enc.beginComputePass();
+    vp.setPipeline(computeRhoPL);
+    vp.setBindGroup(0, computeRhoBG[cur]);
+    vp.dispatchWorkgroups(WG_UPDATE);
+    vp.end();
+
+    // --- Jacobi smooth P every step (2 sweeps: P[0]→P[1]→P[0]) ---
+    for (let js = 0; js < 2; js++) {
+      vp = enc.beginComputePass();
+      vp.setPipeline(jacobiSmoothPL);
+      vp.setBindGroup(0, jacobiFineBG[jBase + js]);
+      vp.dispatchWorkgroups(WG_UPDATE, NELEC, 1);
+      vp.end();
+    }
+
+    // --- V-cycle coarse correction every POISSON_INTERVAL steps ---
+    if (s > 0 && s % POISSON_INTERVAL === 0) {
+      // Residual from P[0], U[cur]
+      vp = enc.beginComputePass();
+      vp.setPipeline(computeResidualPL);
+      vp.setBindGroup(0, residualBG[cur]);
+      vp.dispatchWorkgroups(WG_UPDATE, NELEC, 1);
+      vp.end();
+      // Restrict to coarse
+      vp = enc.beginComputePass();
+      vp.setPipeline(restrictPL);
+      vp.setBindGroup(0, restrictBG);
+      vp.dispatchWorkgroups(WG_COARSE, NELEC, 1);
+      vp.end();
+      // Zero coarse error + 10 coarse Jacobi sweeps
+      enc.clearBuffer(Pc_buf[0]);
+      for (let cs = 0; cs < 10; cs++) {
+        vp = enc.beginComputePass();
+        vp.setPipeline(coarseSmoothPL);
+        vp.setBindGroup(0, coarseSmoothBG[cs % 2]);
+        vp.dispatchWorkgroups(WG_COARSE, NELEC, 1);
+        vp.end();
+      }
+      // Prolongate correction with damping
+      vp = enc.beginComputePass();
+      vp.setPipeline(prolongCorrectPL);
+      vp.setBindGroup(0, prolongCorrectBG);
+      vp.dispatchWorkgroups(WG_UPDATE, NELEC, 1);
+      vp.end();
+    }
+
+    // --- U/W update (reads P[0], dt determined by U/W stability only) ---
     let cp = enc.beginComputePass();
     cp.setPipeline(updatePL);
     cp.setBindGroup(0, updateBG[cur]);
