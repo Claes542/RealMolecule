@@ -13,7 +13,7 @@ const NELEC = _uz.filter(z => z > 0).length || 3;
 const NRED = NELEC + 3;  // N norms + T + V_eK + V_ee
 const r_cut = window.USER_RC || [0.5, 0.3, 0.1, 0, 0];
 while (r_cut.length < MAX_ATOMS) r_cut.push(0);
-let R_out = 2.0;   // au, outer w cutoff
+let R_out = 1.0;   // au, outer w cutoff
 let Z = [..._uz];
 let Ne = [..._uz];
 const Z_orig = [..._uz];
@@ -73,15 +73,18 @@ struct Atom {
   rc: f32, _p0: f32, _p1: f32, _p2: f32,
 }`;
 
-// U update — single density field, smooth W for weak Neumann BC
+// U update — single density field, W derived from label map
 const updateU_WGSL = `
 ${paramStructWGSL}
+${atomStructWGSL}
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read> K: array<f32>;
 @group(0) @binding(2) var<storage, read> Ui: array<f32>;
 @group(0) @binding(3) var<storage, read> W: array<f32>;
 @group(0) @binding(4) var<storage, read> Pi: array<f32>;
 @group(0) @binding(5) var<storage, read_write> Uo: array<f32>;
+@group(0) @binding(6) var<storage, read> atoms: array<Atom>;
+@group(0) @binding(7) var<storage, read> label: array<u32>;
 
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -94,35 +97,59 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = (gid.x / (NM * NM)) + 1u;
   let id = i * p.S2 + j * p.S + k;
 
+  // Check if inside r_c of assigned nucleus — enforce U=0
+  let myLabel = label[id];
+  let a = atoms[myLabel];
+  let di = f32(i) - f32(a.posI);
+  let dj = f32(j) - f32(a.posJ);
+  let dk = f32(k) - f32(a.posK);
+  let dist = sqrt((di*di + dj*dj + dk*dk) * p.h * p.h);
+  if (dist < a.rc) {
+    Uo[id] = 0.0;
+    return;
+  }
+
+  // U buffer stores phi = w*u. Extract u = phi/w, update u, store w*u_new.
   let wc = W[id];
-  // Smooth face weights: geometric mean, scaled to [0.5, 1.0] for weak Neumann
-  let wip = (sqrt(wc * W[id + p.S2]) + 1.0) * 0.5;
-  let wim = (sqrt(wc * W[id - p.S2]) + 1.0) * 0.5;
-  let wjp = (sqrt(wc * W[id + p.S])  + 1.0) * 0.5;
-  let wjm = (sqrt(wc * W[id - p.S])  + 1.0) * 0.5;
-  let wkp = (sqrt(wc * W[id + 1u])   + 1.0) * 0.5;
-  let wkm = (sqrt(wc * W[id - 1u])   + 1.0) * 0.5;
+  if (wc < 1e-6) { Uo[id] = 0.0; return; }
 
-  let uc  = Ui[id];
-  let uip = Ui[id + p.S2]; let uim = Ui[id - p.S2];
-  let ujp = Ui[id + p.S];  let ujm = Ui[id - p.S];
-  let ukp = Ui[id + 1u];   let ukm = Ui[id - 1u];
+  let uc = Ui[id] / wc;
 
-  Uo[id] = uc
-    + p.half_d * ((uip - uc) * wip - (uc - uim) * wim)
-    + p.half_d * ((ujp - uc) * wjp - (uc - ujm) * wjm)
-    + p.half_d * ((ukp - uc) * wkp - (uc - ukm) * wkm)
-    + p.dt * (K[id] - 2.0 * Pi[id]) * uc;
+  // W-weighted Laplacian: face weight from geometric mean of W values
+  // Allows density to diffuse where W is nonzero; W controls boundary permeability
+  let w_ip = W[id + p.S2]; let w_im = W[id - p.S2];
+  let w_jp = W[id + p.S];  let w_jm = W[id - p.S];
+  let w_kp = W[id + 1u];   let w_km = W[id - 1u];
+
+  let u_ip = select(0.0, Ui[id + p.S2] / w_ip, w_ip > 1e-6);
+  let u_im = select(0.0, Ui[id - p.S2] / w_im, w_im > 1e-6);
+  let u_jp = select(0.0, Ui[id + p.S]  / w_jp, w_jp > 1e-6);
+  let u_jm = select(0.0, Ui[id - p.S]  / w_jm, w_jm > 1e-6);
+  let u_kp = select(0.0, Ui[id + 1u]   / w_kp, w_kp > 1e-6);
+  let u_km = select(0.0, Ui[id - 1u]   / w_km, w_km > 1e-6);
+
+  // Face weights: sqrt(wc * w_nbr) — 0 at boundary, 1 deep inside
+  let f_ip = sqrt(wc * w_ip); let f_im = sqrt(wc * w_im);
+  let f_jp = sqrt(wc * w_jp); let f_jm = sqrt(wc * w_jm);
+  let f_kp = sqrt(wc * w_kp); let f_km = sqrt(wc * w_km);
+
+  let lap = f_ip * (u_ip - uc) + f_im * (u_im - uc)
+          + f_jp * (u_jp - uc) + f_jm * (u_jm - uc)
+          + f_kp * (u_kp - uc) + f_km * (u_km - uc);
+
+  let u_new = uc + p.half_d * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;
+  Uo[id] = wc * u_new;
 }
 `;
 
-// W update — diffuse W only at boundary cells, interior pinned to 1.0
+// W update — diffuse W at boundary cells, density-driven: expand where phi exists
 const updateW_WGSL = `
 ${paramStructWGSL}
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read> Wi: array<f32>;
 @group(0) @binding(2) var<storage, read_write> Wo: array<f32>;
 @group(0) @binding(3) var<storage, read> label: array<u32>;
+@group(0) @binding(4) var<storage, read> Ui: array<f32>;
 
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -143,18 +170,29 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
               * f32(label[id + 1u]   == myLabel)
               * f32(label[id - 1u]   == myLabel);
 
-  // Interior cells (all neighbors same label): pin to 1.0
   if (sameAll > 0.5) {
     Wo[id] = 1.0;
     return;
   }
 
-  // Boundary cells: diffuse with clamping
   let wc = Wi[id];
   let lap = Wi[id + p.S2] + Wi[id - p.S2]
           + Wi[id + p.S]  + Wi[id - p.S]
           + Wi[id + 1u]   + Wi[id - 1u] - 6.0 * wc;
-  Wo[id] = clamp(wc + 0.1 * lap, 0.0, 1.0);
+
+  // Density-driven: check max phi^2 among same-label neighbors (not just local)
+  // Boundary cells have small phi, but their interior neighbors may have large phi
+  var maxPhi2: f32 = Ui[id] * Ui[id];
+  if (label[id + p.S2] == myLabel) { let p2 = Ui[id + p.S2]; maxPhi2 = max(maxPhi2, p2 * p2); }
+  if (label[id - p.S2] == myLabel) { let p2 = Ui[id - p.S2]; maxPhi2 = max(maxPhi2, p2 * p2); }
+  if (label[id + p.S]  == myLabel) { let p2 = Ui[id + p.S];  maxPhi2 = max(maxPhi2, p2 * p2); }
+  if (label[id - p.S]  == myLabel) { let p2 = Ui[id - p.S];  maxPhi2 = max(maxPhi2, p2 * p2); }
+  if (label[id + 1u]   == myLabel) { let p2 = Ui[id + 1u];   maxPhi2 = max(maxPhi2, p2 * p2); }
+  if (label[id - 1u]   == myLabel) { let p2 = Ui[id - 1u];   maxPhi2 = max(maxPhi2, p2 * p2); }
+
+  let drive = select(-0.02, 0.02, maxPhi2 > 1e-6);
+
+  Wo[id] = clamp(wc + 0.1 * lap + drive, 0.0, 1.0);
 }
 `;
 
@@ -196,6 +234,7 @@ ${atomStructWGSL}
 @group(0) @binding(2) var<storage, read_write> rhoTotal: array<f32>;
 @group(0) @binding(3) var<storage, read> atoms: array<Atom>;
 @group(0) @binding(4) var<storage, read> label: array<u32>;
+@group(0) @binding(5) var<storage, read> W: array<f32>;
 
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -206,7 +245,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let j = ((gid.x / NM) % NM) + 1u;
   let i = (gid.x / (NM * NM)) + 1u;
   let id = i * p.S2 + j * p.S + k;
-  let u = U[id];
+  let w = W[id];
+  let u = select(0.0, U[id] / w, w > 1e-6);
   rhoTotal[id] = atoms[label[id]].Z * u * u;
 }
 `;
@@ -352,6 +392,7 @@ ${atomStructWGSL}
 @group(0) @binding(4) var<storage, read> K: array<f32>;
 @group(0) @binding(5) var<storage, read_write> partials: array<f32>;
 @group(0) @binding(6) var<storage, read> atoms: array<Atom>;
+@group(0) @binding(7) var<storage, read> W: array<f32>;
 
 var<workgroup> sn: array<f32, ${NRED * REDUCE_WG}>;
 
@@ -370,17 +411,22 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
     let i = (gid.x / (NM * NM)) + 1u;
     let id = i * p.S2 + j * p.S + k;
 
-    let v = U[id];
+    let w = W[id];
+    let v = select(0.0, U[id] / w, w > 1e-6);  // u = phi/w
     let m = label[id];
     let Zm = atoms[m].Z;
 
-    // Per-electron norm
+    // Per-electron norm (of u, not phi)
     sn[lid * ${NRED}u + m] = v * v * p.h3;
 
-    // Kinetic energy
-    let a = U[id + p.S2] - v;
-    let b = U[id + p.S] - v;
-    let c = U[id + 1u] - v;
+    // Kinetic energy (gradient of u)
+    let w_ip = W[id + p.S2]; let w_jp = W[id + p.S]; let w_kp = W[id + 1u];
+    let v_ip = select(0.0, U[id + p.S2] / w_ip, w_ip > 1e-6);
+    let v_jp = select(0.0, U[id + p.S]  / w_jp, w_jp > 1e-6);
+    let v_kp = select(0.0, U[id + 1u]   / w_kp, w_kp > 1e-6);
+    let a = v_ip - v;
+    let b = v_jp - v;
+    let c = v_kp - v;
     sn[lid * ${NRED}u + ${NELEC}u] = Zm * 0.5 * (a * a + b * b + c * c) * p.h;
 
     // Electron-nuclear potential
@@ -478,6 +524,7 @@ ${paramStructWGSL}
 @group(0) @binding(3) var<storage, read> Pv: array<f32>;
 @group(0) @binding(4) var<storage, read> K: array<f32>;
 @group(0) @binding(5) var<storage, read_write> out: array<f32>;
+@group(0) @binding(6) var<storage, read> W: array<f32>;
 
 @compute @workgroup_size(16, 16)
 fn main(@builtin(global_invocation_id) g: vec3<u32>) {
@@ -487,11 +534,41 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
   if (i > p.NN || j > p.NN) { return; }
 
   let idx = i * p.S2 + j * p.S + p.N2;
-  let u = U[idx];
+  // Skip grid boundary cells to avoid artifacts
+  if (i < 1u || i >= p.NN || j < 1u || j >= p.NN) {
+    for (var m: u32 = 0u; m < ${NELEC}u; m++) {
+      out[m * SS * SS + i * SS + j] = 0.0;
+    }
+    out[${NELEC}u * SS * SS + i * SS + j] = 0.0;
+    return;
+  }
+  let phi = U[idx];
+  let w = W[idx];
+  let u = select(0.0, phi / w, w > 1e-6);  // extract u from phi=w*u
   let lbl = label[idx];
   for (var m: u32 = 0u; m < ${NELEC}u; m++) {
     out[m * SS * SS + i * SS + j] = select(0.0, u * u, lbl == m);
   }
+  // Moving density edge: skip grid edges to avoid boundary artifacts
+  let thr = 1e-6;
+  let phi2 = phi * phi;
+  let here = phi2 > thr;
+  var bnd = 0.0;
+  if (i > 1u && i < p.NN - 1u) {
+    let phiR = U[idx + p.S2];
+    let phiR2 = phiR * phiR;
+    let lblR = label[idx + p.S2];
+    if (here != (phiR2 > thr)) { bnd = 1.0; }
+    if (lbl != lblR && phi2 > thr && phiR2 > thr) { bnd = 1.0; }
+  }
+  if (j > 1u && j < p.NN - 1u) {
+    let phiD = U[idx + p.S];
+    let phiD2 = phiD * phiD;
+    let lblD = label[idx + p.S];
+    if (here != (phiD2 > thr)) { bnd = 1.0; }
+    if (lbl != lblD && phi2 > thr && phiD2 > thr) { bnd = 1.0; }
+  }
+  out[${NELEC}u * SS * SS + i * SS + j] = bnd;
 
   if (j == 0u) {
     let b = ${NELEC}u * SS * SS;
@@ -511,11 +588,9 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
 let device, paramsBuf, atomBuf, K_buf, sumsBuf, sumsReadBuf, sliceBuf, sliceReadBuf, partialsBuf, numWGBuf;
 let U_buf = [], P_buf = [], labelBuf, W_buf = [];
 let rhoTotalBuf, residualBuf, Pc_buf = [], coarseRhsBuf;
-let updatePL, jacobiSmoothPL, reducePL, finalizePL, normalizePL, extractPL;
-let updateWPL;
+let updatePL, updateWPL, jacobiSmoothPL, reducePL, finalizePL, normalizePL, extractPL;
 let computeRhoPL, computeResidualPL, restrictPL, coarseSmoothPL, prolongCorrectPL;
-let updateBG = [], jacobiFineBG = [], reduceBG = [], finalizeBG, normalizeBG = [], extractBG = [];
-let updateWBG = [];
+let updateBG = [], updateWBG = [], jacobiFineBG = [], reduceBG = [], finalizeBG, normalizeBG = [], extractBG = [];
 let computeRhoBG = [], residualBG = [], prolongCorrectBG;
 let restrictBG, coarseSmoothBG = [];
 let cur = 0, gpuReady = false, computing = false;
@@ -530,7 +605,7 @@ let addNucRepulsion = true;
 let vcycleEnabled = true;
 let vcycleCount = 0;
 
-const SLICE_SIZE = (NELEC * S * S + (3 * NELEC + 1) * S) * 4;
+const SLICE_SIZE = ((NELEC + 1) * S * S + (3 * NELEC + 1) * S) * 4;
 const WG_UPDATE = Math.ceil(INTERIOR / 256);
 const WG_REDUCE = Math.ceil(INTERIOR / REDUCE_WG);
 const WG_NORM = Math.ceil(INTERIOR / 256);
@@ -581,7 +656,7 @@ function uploadInitialData() {
   const Pd = new Float32Array(S3);
   const soft = 0.04 * h2v;
   const NA = NELEC;
-  const SMOOTH_WIDTH = 3.0 * hv; // smoothing width in au
+  const SMOOTH_WIDTH = 3.0 * hv;
 
   for (let i = 0; i <= NN; i++) {
     const dx = [];
@@ -598,28 +673,24 @@ function uploadInitialData() {
         for (let n = 0; n < NA; n++) {
           r[n] = Math.sqrt(dx[n]*dx[n] + dy[n]*dy[n] + dz[n]*dz[n] + soft);
           ir[n] = 1 / r[n];
-          u[n] = Math.exp(-Z[n] * r[n]);
+          u[n] = (r[n] > r_cut[n] && r[n] < R_out) ? Math.exp(-r[n]) : 0.0;
         }
 
         let Kval = 0;
-        for (let n = 0; n < NA; n++) Kval += Z[n] * ir[n];
+        for (let n = 0; n < NA; n++) Kval += Z[n] * ir[n] * smoothCut(r[n], r_cut[n]);
         Kd[id] = Kval;
 
-        // Assign to nearest atom (simple distance, non-overlapping spheres)
-        let best = -1, bestD = Infinity, secondD = Infinity;
+        // Assign to nearest atom (simple distance)
+        let best = -1, bestD = Infinity;
         for (let n = 0; n < NA; n++) {
-          if (Z[n] > 0) {
-            if (r[n] < bestD) { secondD = bestD; bestD = r[n]; best = n; }
-            else if (r[n] < secondD) { secondD = r[n]; }
-          }
+          if (Z[n] > 0 && r[n] < bestD) { bestD = r[n]; best = n; }
         }
         if (best >= 0) {
           Ld[id] = best;
-          Ud[id] = u[best]; // exp(-Z*r) sphere for assigned atom
-          // Smooth W: 1 deep inside cell, 0 at boundary
-          const margin = secondD - bestD;
-          const t = Math.min(1, margin / SMOOTH_WIDTH);
-          Wd[id] = t * t * (3 - 2 * t); // smoothstep
+          // Shell W: 1 inside R_out of assigned atom, 0 outside
+          const rb = r[best];
+          Wd[id] = (rb > r_cut[best] && rb < R_out) ? 1.0 : 0.0;
+          Ud[id] = Wd[id] * u[best];  // store phi = w * u
         }
 
         // Initial potential estimate
@@ -652,7 +723,7 @@ function updateParamsBuf() {
 function startMolPhase() {
   nucPos = molNucPos.map(p => [...p]);
   Z = [...Z_orig]; Ne = [...Ne_orig];
-  R_out = 2.0;
+  R_out = 1.0;
   addNucRepulsion = true;
   updateParamsBuf();
   uploadInitialData();
@@ -686,10 +757,14 @@ async function initGPU() {
     } catch (e) {}
 
     const maxBuf = S3 * 4;
+    if (maxBuf > adapter.limits.maxStorageBufferBindingSize || maxBuf > adapter.limits.maxBufferSize) {
+      gpuError = "Grid " + NN + "^3 too large for GPU (" + (maxBuf/1e6).toFixed(0) + "MB needed). Use a smaller grid.";
+      return;
+    }
     device = await adapter.requestDevice({
       requiredLimits: {
-        maxStorageBufferBindingSize: Math.max(maxBuf, adapter.limits.maxStorageBufferBindingSize),
-        maxBufferSize: Math.max(maxBuf, adapter.limits.maxBufferSize)
+        maxStorageBufferBindingSize: maxBuf,
+        maxBufferSize: maxBuf
       }
     });
     console.log("WebGPU device ready, maxStorage=" + device.limits.maxStorageBufferBindingSize);
@@ -786,7 +861,7 @@ async function initGPU() {
 
     for (let c = 0; c < 2; c++) {
       const n = 1 - c;
-      // U update: reads smooth W[0], P_buf[0]
+      // U update: reads label map, P_buf[0]
       updateBG[c] = device.createBindGroup({ layout: updatePL.getBindGroupLayout(0), entries: [
         { binding: 0, resource: { buffer: paramsBuf } },
         { binding: 1, resource: { buffer: K_buf } },
@@ -794,6 +869,8 @@ async function initGPU() {
         { binding: 3, resource: { buffer: W_buf[0] } },
         { binding: 4, resource: { buffer: P_buf[0] } },
         { binding: 5, resource: { buffer: U_buf[n] } },
+        { binding: 6, resource: { buffer: atomBuf } },
+        { binding: 7, resource: { buffer: labelBuf } },
       ]});
       reduceBG[c] = device.createBindGroup({ layout: reducePL.getBindGroupLayout(0), entries: [
         { binding: 0, resource: { buffer: paramsBuf } },
@@ -803,6 +880,7 @@ async function initGPU() {
         { binding: 4, resource: { buffer: K_buf } },
         { binding: 5, resource: { buffer: partialsBuf } },
         { binding: 6, resource: { buffer: atomBuf } },
+        { binding: 7, resource: { buffer: W_buf[0] } },
       ]});
       normalizeBG[c] = device.createBindGroup({ layout: normalizePL.getBindGroupLayout(0), entries: [
         { binding: 0, resource: { buffer: paramsBuf } },
@@ -817,6 +895,7 @@ async function initGPU() {
         { binding: 3, resource: { buffer: P_buf[0] } },
         { binding: 4, resource: { buffer: K_buf } },
         { binding: 5, resource: { buffer: sliceBuf } },
+        { binding: 6, resource: { buffer: W_buf[0] } },
       ]});
       // Multigrid bind groups (per cur for U dependency)
       computeRhoBG[c] = device.createBindGroup({ layout: computeRhoPL.getBindGroupLayout(0), entries: [
@@ -825,16 +904,20 @@ async function initGPU() {
         { binding: 2, resource: { buffer: rhoTotalBuf } },
         { binding: 3, resource: { buffer: atomBuf } },
         { binding: 4, resource: { buffer: labelBuf } },
+        { binding: 5, resource: { buffer: W_buf[0] } },
       ]});
     }
-    // W update: ping-pong diffusion at boundaries
+    // W update: ping-pong diffusion at boundaries, indexed [wSrc * 2 + uCur]
     for (let d = 0; d < 2; d++) {
-      updateWBG[d] = device.createBindGroup({ layout: updateWPL.getBindGroupLayout(0), entries: [
-        { binding: 0, resource: { buffer: paramsBuf } },
-        { binding: 1, resource: { buffer: W_buf[d] } },
-        { binding: 2, resource: { buffer: W_buf[1 - d] } },
-        { binding: 3, resource: { buffer: labelBuf } },
-      ]});
+      for (let u = 0; u < 2; u++) {
+        updateWBG[d * 2 + u] = device.createBindGroup({ layout: updateWPL.getBindGroupLayout(0), entries: [
+          { binding: 0, resource: { buffer: paramsBuf } },
+          { binding: 1, resource: { buffer: W_buf[d] } },
+          { binding: 2, resource: { buffer: W_buf[1 - d] } },
+          { binding: 3, resource: { buffer: labelBuf } },
+          { binding: 4, resource: { buffer: U_buf[u] } },
+        ]});
+      }
     }
     // Residual (cur-independent now — single field P)
     residualBG[0] = device.createBindGroup({ layout: computeResidualPL.getBindGroupLayout(0), entries: [
@@ -897,15 +980,16 @@ async function doSteps(n) {
   const t0 = performance.now();
   const enc = device.createCommandEncoder();
 
-  // --- Phase 1: U evolution for n steps ---
   for (let s = 0; s < n; s++) {
     const next = 1 - cur;
+    // --- Compute rho_total from U[cur] + labels ---
     let vp = enc.beginComputePass();
     vp.setPipeline(computeRhoPL);
     vp.setBindGroup(0, computeRhoBG[cur]);
     vp.dispatchWorkgroups(WG_UPDATE);
     vp.end();
 
+    // --- Jacobi smooth P every step (2 sweeps: P[0]→P[1]→P[0]) ---
     for (let js = 0; js < 2; js++) {
       vp = enc.beginComputePass();
       vp.setPipeline(jacobiSmoothPL);
@@ -914,18 +998,22 @@ async function doSteps(n) {
       vp.end();
     }
 
+    // --- V-cycle coarse correction every POISSON_INTERVAL steps ---
     if (vcycleEnabled && s > 0 && s % POISSON_INTERVAL === 0) {
       vcycleCount++;
+      // Residual from P[0]
       vp = enc.beginComputePass();
       vp.setPipeline(computeResidualPL);
       vp.setBindGroup(0, residualBG[0]);
       vp.dispatchWorkgroups(WG_UPDATE);
       vp.end();
+      // Restrict to coarse
       vp = enc.beginComputePass();
       vp.setPipeline(restrictPL);
       vp.setBindGroup(0, restrictBG);
       vp.dispatchWorkgroups(WG_COARSE);
       vp.end();
+      // Zero coarse error + 10 coarse Jacobi sweeps
       enc.clearBuffer(Pc_buf[0]);
       for (let cs = 0; cs < 10; cs++) {
         vp = enc.beginComputePass();
@@ -934,6 +1022,7 @@ async function doSteps(n) {
         vp.dispatchWorkgroups(WG_COARSE);
         vp.end();
       }
+      // Prolongate correction with damping
       vp = enc.beginComputePass();
       vp.setPipeline(prolongCorrectPL);
       vp.setBindGroup(0, prolongCorrectBG);
@@ -941,6 +1030,7 @@ async function doSteps(n) {
       vp.end();
     }
 
+    // --- U update (single field, boundary from labels) ---
     let cp = enc.beginComputePass();
     cp.setPipeline(updatePL);
     cp.setBindGroup(0, updateBG[cur]);
@@ -975,7 +1065,7 @@ async function doSteps(n) {
   for (let s = 0; s < wSteps; s++) {
     let wp = enc.beginComputePass();
     wp.setPipeline(updateWPL);
-    wp.setBindGroup(0, updateWBG[s % 2]);
+    wp.setBindGroup(0, updateWBG[(s % 2) * 2 + cur]);
     wp.dispatchWorkgroups(WG_UPDATE);
     wp.end();
   }
@@ -1057,7 +1147,7 @@ function draw() {
       phaseSteps += STEPS_PER_FRAME;
       if (isFinite(E) && E < E_min) E_min = E;
 
-      if (phaseSteps >= TOTAL_STEPS && TOTAL_STEPS > 0) {
+      if (phaseSteps >= TOTAL_STEPS) {
         console.log("=== DONE: E=" + E.toFixed(6) + " ===");
         phase = 1;  // done
       }
@@ -1076,10 +1166,10 @@ function draw() {
     for (let p = 0; p < W * H * 4; p += 4) {
       pixels[p] = 0; pixels[p+1] = 0; pixels[p+2] = 0; pixels[p+3] = 255;
     }
-    // Element colors: H=white, O=red, N=blue, C=green
-    const zRGB = {1:[1,1,0], 2:[1,0,0], 3:[0,0.5,1], 4:[0,1,1]};
+    // Element colors: H=yellow, O=red, N=blue, C=green
+    const zRGB = {1:[1,1,0], 2:[1,0,0], 3:[0,0.5,1], 4:[0,1,0]};
     const eRGB = Z.slice(0, NELEC).map(z => zRGB[z] || [0.5,0.5,0.5]);
-    // Per-atom auto-scale: find max density per electron
+    // Per-atom auto-scale
     const maxPerAtom = new Float32Array(NELEC);
     for (let i = 1; i < NN; i++) {
       for (let j = 1; j < NN; j++) {
@@ -1090,7 +1180,6 @@ function draw() {
         }
       }
     }
-
     for (let i = 1; i < NN; i++) {
       const px0 = Math.floor(PX * i * d);
       const px1 = Math.floor(PX * (i + 1) * d);
@@ -1106,9 +1195,14 @@ function draw() {
           gi += ev * eRGB[m][1];
           bi += ev * eRGB[m][2];
         }
-        ri = Math.min(255, Math.floor(ri));
-        gi = Math.min(255, Math.floor(gi));
-        bi = Math.min(255, Math.floor(bi));
+        // Overlay label boundary
+        if (sliceData[NELEC * SS * SS + b] > 0.5) {
+          ri = 255; gi = 255; bi = 255;
+        } else {
+          ri = Math.min(255, Math.floor(ri));
+          gi = Math.min(255, Math.floor(gi));
+          bi = Math.min(255, Math.floor(bi));
+        }
         for (let py = py0; py < py1 && py < H; py++) {
           for (let px = px0; px < px1 && px < W; px++) {
             const idx = (py * W + px) * 4;
@@ -1122,19 +1216,48 @@ function draw() {
     }
     updatePixels();
 
-    // Line plots
-    const lb = NELEC * SS * SS;
-    const zCol = {1:[255,255,255], 2:[255,0,0], 3:[0,100,255], 4:[0,255,0]};
-    const colors = Z.slice(0, NELEC).map(z => zCol[z] || [128,128,128]);
-    for (let i = 1; i < NN - 10; i++) {
+    // Line density plots: all densities along lines through selected nuclei
+    const zCol = {1:[255,255,0], 2:[255,0,0], 3:[0,100,255], 4:[0,255,0]};
+    const plotY0 = 390, plotH = 80;
+    // Pick up to 4 lines (one per element type)
+    const lineAtoms = [];
+    const seenZ = {};
+    for (let m = 0; m < NELEC && lineAtoms.length < 4; m++) {
+      if (Z[m] === 0) continue;
+      if (!seenZ[Z[m]]) { seenZ[Z[m]] = true; lineAtoms.push(m); }
+    }
+    for (let li = 0; li < lineAtoms.length; li++) {
+      const row = nucPos[lineAtoms[li]][1];  // j of this nucleus
+      const yBase = plotY0 - li * (plotH + 10);
+      // Find global max across all electrons on this line
+      let maxV = 0;
+      for (let i = 1; i < NN; i++) {
+        for (let m = 0; m < NELEC; m++) {
+          if (Z[m] === 0) continue;
+          const v = sliceData[m * SS * SS + i * SS + row];
+          if (v > maxV) maxV = v;
+        }
+      }
+      const sc = maxV > 0 ? plotH / maxV : 1;
+      // Draw baseline
+      stroke(60); strokeWeight(1);
+      line(0, yBase, 400, yBase);
+      // Plot each electron's density on this line
       for (let m = 0; m < NELEC; m++) {
         if (Z[m] === 0) continue;
-        fill(255); ellipse(PX * i, 300 - 100 * sliceData[lb + m * SS + i], 2);
-        fill(colors[m][0], colors[m][1], colors[m][2]);
-        ellipse(PX * i, 300 - 100 * sliceData[lb + NELEC * SS + m * SS + i], 3);
-        fill(0, 255, 255, 200); ellipse(PX * i, 300 - 30 * sliceData[lb + 2 * NELEC * SS + m * SS + i], 2);
+        const col = zCol[Z[m]] || [128,128,128];
+        stroke(col[0], col[1], col[2], 180); noFill();
+        beginShape();
+        for (let i = 1; i < NN; i++) {
+          const v = sliceData[m * SS * SS + i * SS + row];
+          vertex(PX * i, yBase - v * sc);
+        }
+        endShape();
       }
-      fill(0, 0, 255, 200); ellipse(PX * i, 300 - 30 * sliceData[lb + 3 * NELEC * SS + i], 2);
+      // Label the line
+      noStroke();
+      fill(255);
+      text("line thru " + atomLabels[lineAtoms[li]] + "[" + lineAtoms[li] + "] j=" + row, 5, yBase - plotH - 2);
     }
   }
 
