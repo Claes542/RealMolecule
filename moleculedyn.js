@@ -12,7 +12,7 @@ const NELEC = _uz.filter(z => z > 0).length || 3;
 const NRED_E = 3;  // Energy reduce: T + V_eK + V_ee (norms via atomic accumulation)
 const r_cut = window.USER_RC || [0, 0, 0, 0, 0];
 while (r_cut.length < MAX_ATOMS) r_cut.push(0);
-let R_out = 1.0;   // au, outer w cutoff
+let R_out = 0.5;   // au, outer w cutoff
 let Z = [..._uz];
 let Ne = [..._uz];
 const Z_orig = [..._uz];
@@ -36,7 +36,7 @@ let screenAu = window.USER_SCREEN || 10;
 let hGrid = screenAu / NN, h2v = hGrid * hGrid, h3v = hGrid * hGrid * hGrid;
 const dv = NELEC > 100 ? 0.03 : 0.12;  // smaller timestep for large systems (high total K)
 let dtv = dv * h2v, half_dv = 0.5 * dv;
-const PX = 400 / NN;
+const PX = 700 / NN;
 const INTERIOR = (NN - 1) * (NN - 1) * (NN - 1);
 
 // 2D dispatch to handle >65535 workgroups (300^3 grid needs ~104K)
@@ -51,7 +51,7 @@ function dispatchLinear(pass, totalCells) {
   }
 }
 
-const STEPS_PER_FRAME = NELEC <= 5 ? 500 : NELEC <= 15 ? 100 : NELEC <= 30 ? 50 : NELEC <= 100 ? 5 : NELEC <= 500 ? 2 : 1;
+const STEPS_PER_FRAME = NELEC <= 5 ? 500 : NELEC <= 15 ? 100 : NELEC <= 30 ? 50 : NELEC <= 100 ? 5 : 2;
 const W_STEPS_PER_FRAME = 1;
 const BOUNDARY_INTERVAL = 10;
 const NORM_INTERVAL = 20;
@@ -96,7 +96,7 @@ struct P {
   NN: u32, S: u32, S2: u32, S3: u32,
   N2: u32, voronoi: f32, R_out: f32, TWO_PI: f32,
   h: f32, h2: f32, inv_h: f32, inv_h2: f32,
-  dt: f32, half_d: f32, h3: f32, _pad0: f32,
+  dt: f32, half_d: f32, h3: f32, sliceK: u32,
 }`;
 
 const ATOM_STRIDE = 8; // 8 f32s per atom (posI, posJ, posK, Z, rc, pad, pad, pad)
@@ -208,15 +208,16 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     return;
   }
 
-  // Boundary cell: evolve W continuously based on density difference
-  // velocity = myRho - bestOtherRho (positive = I'm stronger, negative = neighbor stronger)
-  let velocity = myRho - bestOtherRho;
-  let dt_w: f32 = 0.1;
+  // Boundary cell: evolve W based on relative density difference
+  // Normalized velocity in [-1,+1] so boundary speed is independent of system size
+  let denom = myRho + bestOtherRho;
+  let velocity = select((myRho - bestOtherRho) / denom, 0.0, denom < 1e-20);
+  let dt_w: f32 = 2.0;
   w += dt_w * velocity;
 
-  // Curvature regularization: penalize low same-domain count (convex protrusions)
+  // Curvature regularization: smooth jagged boundaries
   let curv = (myCnt - 3.0) / 3.0;  // [-1, +1], negative = surrounded by others
-  w += 0.01 * curv;
+  w += 0.5 * curv;
 
   var newL = myL;
   if (w < 0.0) {
@@ -693,9 +694,11 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
   let SS = p.NN + 1u;
   if (i > p.NN || j > p.NN) { return; }
 
-  // K line data along j=N2 axis
+  let sk = p.sliceK;
+
+  // K line data along j=sliceK axis
   if (j == 0u) {
-    out[3u * SS * SS + i] = K[i * p.S2 + p.N2 * p.S + p.N2];
+    out[3u * SS * SS + i] = K[i * p.S2 + sk * p.S + sk];
   }
 
   if (i < 1u || i >= p.NN || j < 1u || j >= p.NN) {
@@ -705,30 +708,23 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
     return;
   }
 
-  // Max-projection through all k: find k with highest density
-  var maxDens: f32 = 0.0;
-  var bestK: u32 = p.N2;
-  for (var k: u32 = 1u; k < p.NN; k++) {
-    let idx2 = i * p.S2 + j * p.S + k;
-    let u2 = U[idx2];
-    let d = u2 * u2;
-    if (d > maxDens) { maxDens = d; bestK = k; }
-  }
-
-  let bestIdx = i * p.S2 + j * p.S + bestK;
-  let u = U[bestIdx];
-  let lbl = label[bestIdx];
+  let idx = i * p.S2 + j * p.S + sk;
+  let u = U[idx];
+  let lbl = label[idx];
   let Zlbl = atoms[lbl].Z;
   out[i * SS + j] = Zlbl * u * u;
   out[SS * SS + i * SS + j] = Zlbl;
 
-  // Boundary: domain boundaries at the best-k slice
+  // Boundary: only where density exists (skip empty Voronoi regions)
+  let dens = Zlbl * u * u;
   var bnd = 0.0;
-  if (i > 1u && i < p.NN - 1u) {
-    if (lbl != label[bestIdx + p.S2]) { bnd = 1.0; }
-  }
-  if (j > 1u && j < p.NN - 1u) {
-    if (lbl != label[bestIdx + p.S]) { bnd = 1.0; }
+  if (dens > 1e-6) {
+    if (i > 1u && i < p.NN - 1u) {
+      if (lbl != label[idx + p.S2]) { bnd = 1.0; }
+    }
+    if (j > 1u && j < p.NN - 1u) {
+      if (lbl != label[idx + p.S]) { bnd = 1.0; }
+    }
   }
   out[2u * SS * SS + i * SS + j] = bnd;
 }
@@ -858,7 +854,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
-// Phase 2: set U from bestR2 (P initialized to 0, will be built by Poisson solver)
+// Phase 2: set U from bestR2 (full Voronoi labels from phase 1)
 const gpuInitFinalWGSL = `
 ${paramStructWGSL}
 @group(0) @binding(0) var<uniform> p: P;
@@ -918,6 +914,7 @@ const WG_COARSE = Math.ceil(INTERIOR_C / 256);
 const SUMS_BYTES = NRED_E * 4;  // 12 bytes: T, V_eK, V_ee
 
 let sliceData = null;
+let sliceK = N2;  // z-slice index for visualization (scrollable with arrow keys)
 
 function fillParamsBuf(pb) {
   const pu = new Uint32Array(pb);
@@ -925,7 +922,7 @@ function fillParamsBuf(pb) {
   pu[0] = NN; pu[1] = S; pu[2] = S2; pu[3] = S3;
   pu[4] = N2; pf[5] = 1.0; pf[6] = R_out; pf[7] = 2 * Math.PI;
   pf[8] = hGrid; pf[9] = h2v; pf[10] = 1 / hGrid; pf[11] = 1 / h2v;
-  pf[12] = dtv; pf[13] = half_dv; pf[14] = h3v; pf[15] = 0;
+  pf[12] = dtv; pf[13] = half_dv; pf[14] = h3v; pu[15] = sliceK;
 }
 
 function fillAtomBuf() {
@@ -1057,7 +1054,7 @@ window.restartWithPositions = async function(newPositions) {
 
 function setup() {
   console.log("setup: NELEC=" + NELEC + " NRED_E=" + NRED_E + " REDUCE_WG=" + REDUCE_WG);
-  createCanvas(400, 400);
+  createCanvas(700, 700);
   textSize(9);
   initGPU();
 }
@@ -1759,7 +1756,7 @@ function draw() {
     }
     loadPixels();
     const d = pixelDensity();
-    const W = 400 * d, H = 400 * d;
+    const W = 700 * d, H = 700 * d;
     for (let p = 0; p < W * H * 4; p += 4) {
       pixels[p] = 0; pixels[p+1] = 0; pixels[p+2] = 0; pixels[p+3] = 255;
     }
@@ -1811,47 +1808,67 @@ function draw() {
     }
     updatePixels();
 
-    // Line density plot: total density along center row + K potential
-    const row = N2;
-    const plotH = 60;
-    const yBase = 390;
-    let maxV = 0;
-    for (let i = 1; i < NN; i++) {
-      const v = sliceData[i * SS + row];
-      if (v > maxV) maxV = v;
-    }
-    if (maxV > 0) {
-      const sc = plotH / maxV;
-      stroke(60); strokeWeight(1);
-      line(0, yBase, 400, yBase);
-      stroke(0, 255, 255, 180); noFill();
-      beginShape();
+    // Density line plots at multiple j-heights
+    const nLines = 5;
+    const plotH = 50;
+    const yBase = 520;
+    const lineColors = [
+      [0, 255, 255],   // cyan
+      [255, 255, 0],   // yellow
+      [0, 255, 100],   // green
+      [255, 100, 255], // magenta
+      [255, 160, 0],   // orange
+    ];
+    // Space lines across atom region (±40% of grid around center)
+    let globalMax = 0;
+    const lineRows = [];
+    const jMin = Math.max(1, Math.round(N2 - NN * 0.4));
+    const jMax = Math.min(NN - 1, Math.round(N2 + NN * 0.4));
+    for (let li = 0; li < nLines; li++) {
+      const row = Math.round(jMin + (jMax - jMin) * li / (nLines - 1));
+      lineRows.push(row);
       for (let i = 1; i < NN; i++) {
-        vertex(PX * i, yBase - sliceData[i * SS + row] * sc);
+        const v = sliceData[i * SS + row];
+        if (v > globalMax) globalMax = v;
       }
-      endShape();
-      noStroke(); fill(255);
-      text("density j=" + row, 5, yBase - plotH - 2);
     }
-    // K potential line
-    let maxK = 0;
-    for (let i = 1; i < NN; i++) {
-      const v = sliceData[3 * SS2 + i];
-      if (v > maxK) maxK = v;
-    }
-    if (maxK > 0) {
-      const yBase2 = yBase - plotH - 20;
-      const sc2 = 40 / maxK;
-      stroke(60); strokeWeight(1);
-      line(0, yBase2, 400, yBase2);
-      stroke(255, 128, 0, 180); noFill();
-      beginShape();
-      for (let i = 1; i < NN; i++) {
-        vertex(PX * i, yBase2 - sliceData[3 * SS2 + i] * sc2);
+    if (globalMax > 0) {
+      // Log scale so small peaks are visible alongside large ones
+      let logMax = 0;
+      for (let li = 0; li < nLines; li++) {
+        for (let i = 1; i < NN; i++) {
+          const v = sliceData[i * SS + lineRows[li]];
+          if (v > 1e-10) {
+            const lv = Math.log10(v) + 10;  // shift so 1e-10 → 0
+            if (lv > logMax) logMax = lv;
+          }
+        }
       }
-      endShape();
-      noStroke(); fill(255);
-      text("K potential", 5, yBase2 - 42);
+      // Element colors: H=yellow, O=red, N=blue, C=green
+      const zRGBplot = {1:[255,255,0], 2:[255,60,60], 3:[60,130,255], 4:[60,255,60]};
+      // Plot each line at its actual j-position on the image, growing upward
+      const lineH = 30;  // max height of each line plot in pixels
+      const sc = logMax > 0 ? lineH / logMax : 1;
+      for (let li = 0; li < nLines; li++) {
+        const row = lineRows[li];
+        const rowY = PX * row;  // actual y-position on image
+        // Baseline
+        stroke(255, 255, 255, 40); strokeWeight(1);
+        line(0, rowY, 700, rowY);
+        // Density curve growing upward from baseline
+        strokeWeight(2); noFill();
+        for (let i = 1; i < NN - 1; i++) {
+          const v1 = sliceData[i * SS + row];
+          const v2 = sliceData[(i+1) * SS + row];
+          const lv1 = v1 > 1e-10 ? Math.log10(v1) + 10 : 0;
+          const lv2 = v2 > 1e-10 ? Math.log10(v2) + 10 : 0;
+          if (lv1 < 0.01 && lv2 < 0.01) continue;
+          const z = Math.round(sliceData[SS2 + i * SS + row]);
+          const c = zRGBplot[z] || [180,180,180];
+          stroke(c[0], c[1], c[2], 220);
+          line(PX * i, rowY - lv1 * sc, PX * (i+1), rowY - lv2 * sc);
+        }
+      }
     }
   }
 
@@ -1894,7 +1911,7 @@ function draw() {
 
   // Screen boundary
   noFill(); stroke(100); strokeWeight(1);
-  rect(0, 0, 400, 400);
+  rect(0, 0, 700, 700);
   noStroke();
 
   fill(255);
@@ -1913,6 +1930,9 @@ function draw() {
   fill(dynamicsEnabled ? [0,255,255] : [150,150,150]);
   text("Dynamics: " + (dynamicsEnabled ? "ON" : "OFF") + " (nucStep=" + nucStepCount + ")  [press D to toggle]", 5, 80);
 
+  // Slice position
+  fill(180, 180, 255);
+  text("Slice k=" + sliceK + "/" + NN + "  [Up/Down to scroll]", 5, 95);
 }
 
 function keyPressed() {
@@ -1924,5 +1944,14 @@ function keyPressed() {
   if (key === 'd' || key === 'D') {
     dynamicsEnabled = !dynamicsEnabled;
     console.log("Dynamics " + (dynamicsEnabled ? "ENABLED" : "DISABLED"));
+  }
+  const scrollStep = Math.max(1, Math.round(NN / 60));
+  if (keyCode === UP_ARROW) {
+    sliceK = Math.min(NN - 1, sliceK + scrollStep);
+    updateParamsBuf();
+  }
+  if (keyCode === DOWN_ARROW) {
+    sliceK = Math.max(1, sliceK - scrollStep);
+    updateParamsBuf();
   }
 }
