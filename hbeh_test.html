@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>HBeH Debug</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+  <style>
+    body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #111; }
+    canvas { border: none; }
+    #errors { position: fixed; top: 10px; left: 10px; color: red; font: 14px monospace; z-index: 9999; background: black; padding: 10px; }
+  </style>
+</head>
+<body>
+  <div id="errors">Loading...</div>
+  <script>
+    window.onerror = function(msg, url, line, col, err) {
+      document.getElementById('errors').innerHTML += '<br>ERROR line ' + line + ': ' + msg;
+      return false;
+    };
+    window.addEventListener('unhandledrejection', function(e) {
+      document.getElementById('errors').innerHTML += '<br>REJECT: ' + e.reason;
+    });
+  </script>
+  <script src="hbeh.js?t=debug999"></script>
+  <script>
+    document.getElementById('errors').innerHTML = 'Script loaded OK. setup=' + (typeof setup) + ' draw=' + (typeof draw);
+  </script>
+</body>
+</html>

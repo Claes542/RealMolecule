@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Caffeine C8H10N4O2 — Quantum Dynamics (24 atoms)</title>
+  <style>
+    body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; overflow: hidden; }
+    canvas { border: none; }
+  </style>
+</head>
+<body>
+  <script>
+    window.onerror = function(msg, url, line) {
+      document.body.style.color = 'red';
+      document.body.innerHTML = '<pre>ERROR: ' + msg + '\nLine: ' + line + '\nFile: ' + url + '</pre>';
+    };
+
+    // Caffeine C8H10N4O2 — 24 atoms, purine-like bicyclic ring
+    // 100^3 grid, 20 au screen
+    var atoms = [
+      // 6-membered ring (pyrimidinedione)
+      { i: 38, j: 40, Z: 3, el: 'N1' },
+      { i: 50, j: 33, Z: 4, el: 'C2' },
+      { i: 62, j: 40, Z: 3, el: 'N3' },
+      { i: 62, j: 54, Z: 4, el: 'C4' },
+      { i: 50, j: 61, Z: 4, el: 'C5' },
+      { i: 38, j: 54, Z: 4, el: 'C6' },
+      // 5-membered ring (imidazole, fused at C4-C5)
+      { i: 50, j: 73, Z: 3, el: 'N7' },
+      { i: 64, j: 73, Z: 4, el: 'C8' },
+      { i: 70, j: 60, Z: 3, el: 'N9' },
+      // Carbonyl oxygens
+      { i: 50, j: 23, Z: 2, el: 'O' },
+      { i: 30, j: 61, Z: 2, el: 'O' },
+      // N-CH3 on N1
+      { i: 28, j: 35, Z: 4, el: 'C' },
+      { i: 20, j: 30, Z: 1, el: 'H' },
+      { i: 22, j: 42, Z: 1, el: 'H' },
+      { i: 33, j: 28, Z: 1, el: 'H' },
+      // N-CH3 on N3
+      { i: 72, j: 33, Z: 4, el: 'C' },
+      { i: 80, j: 28, Z: 1, el: 'H' },
+      { i: 78, j: 40, Z: 1, el: 'H' },
+      { i: 66, j: 26, Z: 1, el: 'H' },
+      // N-CH3 on N9
+      { i: 80, j: 65, Z: 4, el: 'C' },
+      { i: 88, j: 60, Z: 1, el: 'H' },
+      { i: 85, j: 72, Z: 1, el: 'H' },
+      { i: 75, j: 72, Z: 1, el: 'H' },
+      // H on C8
+      { i: 68, j: 80, Z: 1, el: 'H' }
+    ];
+
+    function rcForZ(z) {
+      if (z === 0) return 0;
+      if (z <= 1) return 0.1;
+      if (z === 2) return 0.5;
+      if (z === 3) return 0.3;
+      return 0.4;
+    }
+
+    console.log('Caffeine: ' + atoms.length + ' atoms');
+
+    window.USER_NN = 100;
+    window.USER_ATOMS = atoms;
+    window.USER_SCREEN = 20;
+    window.USER_STEPS = 100000;
+    window.USER_Z = atoms.map(function(a) { return a.Z; });
+    window.USER_RC = atoms.map(function(a) { return rcForZ(a.Z); });
+
+    var s = document.createElement('script');
+    s.src = 'moleculedyn.js?t=' + Date.now();
+    s.onerror = function() { document.body.innerHTML = '<pre style="color:red">Failed to load moleculedyn.js</pre>'; };
+    s.onload = function() {
+      var p5s = document.createElement('script');
+      p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+      document.body.appendChild(p5s);
+    };
+    document.body.appendChild(s);
+  </script>
+</body>
+</html>

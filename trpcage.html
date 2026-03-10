@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Trp-cage Miniprotein (~300 atoms) — Quantum Simulation</title>
+  <style>
+    body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; overflow: hidden; flex-direction: column; }
+    canvas { border: none; }
+  </style>
+</head>
+<body>
+  <script>
+    window.onerror = function(msg, url, line) {
+      document.body.style.color = 'red';
+      document.body.innerHTML = '<pre>ERROR: ' + msg + '\nLine: ' + line + '\nFile: ' + url + '</pre>';
+    };
+
+    // Trp-cage miniprotein approximation: 30 Ala residues in alpha-helix
+    // Each residue: N, H, Ca, Ha, Cb, 3Hb, C, O = 10 atoms → 300 total
+    // Alpha helix: rise 1.5 A/res, radius 2.3 A, 100 deg/res
+    // Z: H=1, O=2, N=3, C=4
+
+    var NN = 60;
+    var screen = 40;  // au
+    var h = screen / NN;
+    var N2 = Math.round(NN / 2);
+    var nRes = 30;
+
+    // Alpha helix parameters (in au)
+    var rise = 2.835;      // 1.5 A per residue along axis
+    var rHelix = 4.347;    // 2.3 A Ca radius
+    var turnDeg = 100;     // degrees per residue
+    var turnRad = turnDeg * Math.PI / 180;
+
+    // Bond lengths in au
+    var bCC = 2.91, bCN = 2.51, bCO = 2.32, bCH = 2.06, bNH = 1.91;
+
+    // Build helix along z-axis, centered on grid
+    // Fold into U-shape: first 15 residues go +z, last 15 go -z offset in x
+    var atoms = [];
+    var cx = 0, cy = 0, cz = 0;  // for centering
+
+    // First pass: compute all backbone Ca positions
+    var caPos = [];
+    for (var r = 0; r < nRes; r++) {
+      var angle = r * turnRad;
+      var x, y, z;
+      if (r < 15) {
+        // First arm: helix along +z
+        x = rHelix * Math.cos(angle);
+        y = rHelix * Math.sin(angle);
+        z = r * rise;
+      } else {
+        // Second arm: helix along -z, offset in x
+        var r2 = r - 15;
+        x = rHelix * Math.cos(angle) + 10.0;  // offset 10 au in x
+        y = rHelix * Math.sin(angle);
+        z = (14 - r2) * rise;  // reverse direction
+      }
+      caPos.push([x, y, z]);
+    }
+
+    // Center of mass
+    for (var r = 0; r < nRes; r++) {
+      cx += caPos[r][0]; cy += caPos[r][1]; cz += caPos[r][2];
+    }
+    cx /= nRes; cy /= nRes; cz /= nRes;
+
+    // Convert to grid coordinates and build full residues
+    function toGrid(pos) {
+      return [
+        Math.round(N2 + (pos[0] - cx) / h),
+        Math.round(N2 + (pos[1] - cy) / h),
+        Math.round(N2 + (pos[2] - cz) / h)
+      ];
+    }
+
+    for (var r = 0; r < nRes; r++) {
+      var ca = caPos[r];
+      var angle = r * turnRad;
+
+      // Backbone direction (Ca -> next Ca or along helix axis)
+      var axZ = (r < 15) ? 1 : -1;
+
+      // Local coordinate frame
+      // radial direction (outward from helix axis)
+      var radX = Math.cos(angle), radY = Math.sin(angle);
+      // tangent (perpendicular to radial in xy plane)
+      var tanX = -Math.sin(angle), tanY = Math.cos(angle);
+
+      // N: ~2.5 au before Ca along backbone
+      var nPos = [ca[0] - 1.5 * axZ * 0.3 - 1.5 * radX, ca[1] - 1.5 * radY, ca[2] - 1.5 * axZ];
+      var gN = toGrid(nPos);
+      atoms.push({ i: gN[0], j: gN[1], k: gN[2], Z: 3, el: 'N' });
+
+      // H on N: perpendicular to backbone
+      var hNPos = [nPos[0] + bNH * tanX, nPos[1] + bNH * tanY, nPos[2]];
+      var gHN = toGrid(hNPos);
+      atoms.push({ i: gHN[0], j: gHN[1], k: gHN[2], Z: 1, el: 'H' });
+
+      // Ca
+      var gCa = toGrid(ca);
+      atoms.push({ i: gCa[0], j: gCa[1], k: gCa[2], Z: 4, el: 'C' });
+
+      // Ha: opposite to Cb direction
+      var haPos = [ca[0] - bCH * radX * 0.7, ca[1] - bCH * radY * 0.7, ca[2] + bCH * 0.7 * axZ];
+      var gHa = toGrid(haPos);
+      atoms.push({ i: gHa[0], j: gHa[1], k: gHa[2], Z: 1, el: 'H' });
+
+      // Cb: outward from helix axis
+      var cbPos = [ca[0] + bCC * radX * 0.8, ca[1] + bCC * radY * 0.8, ca[2] + bCC * 0.6 * axZ];
+      var gCb = toGrid(cbPos);
+      atoms.push({ i: gCb[0], j: gCb[1], k: gCb[2], Z: 4, el: 'C' });
+
+      // 3 Hb on methyl: triangle around Cb
+      for (var hh = 0; hh < 3; hh++) {
+        var phi = hh * 2.094 + angle;  // 120 deg apart, rotated
+        var hbPos = [
+          cbPos[0] + bCH * 0.8 * Math.cos(phi),
+          cbPos[1] + bCH * 0.8 * Math.sin(phi),
+          cbPos[2] + bCH * 0.6 * (hh === 0 ? 1 : -0.5) * axZ
+        ];
+        var gHb = toGrid(hbPos);
+        atoms.push({ i: gHb[0], j: gHb[1], k: gHb[2], Z: 1, el: 'H' });
+      }
+
+      // C: ~2.5 au after Ca along backbone
+      var cPos = [ca[0] + 1.5 * axZ * 0.3 + 1.5 * radX * 0.3, ca[1] + 1.5 * radY * 0.3, ca[2] + 1.5 * axZ];
+      var gC = toGrid(cPos);
+      atoms.push({ i: gC[0], j: gC[1], k: gC[2], Z: 4, el: 'C' });
+
+      // O: carbonyl oxygen, perpendicular
+      var oPos = [cPos[0] + bCO * tanX, cPos[1] + bCO * tanY, cPos[2]];
+      var gO = toGrid(oPos);
+      atoms.push({ i: gO[0], j: gO[1], k: gO[2], Z: 2, el: 'O' });
+    }
+
+    // Clamp all positions to valid grid range
+    for (var a = 0; a < atoms.length; a++) {
+      atoms[a].i = Math.max(2, Math.min(NN - 2, atoms[a].i));
+      atoms[a].j = Math.max(2, Math.min(NN - 2, atoms[a].j));
+      atoms[a].k = Math.max(2, Math.min(NN - 2, atoms[a].k));
+    }
+
+    function rcForZ(z) {
+      if (z === 0) return 0;
+      if (z <= 1) return 0.05;
+      if (z === 2) return 0.3;
+      if (z === 3) return 0.2;
+      return 0.3;
+    }
+
+    console.log('Trp-cage approx: ' + atoms.length + ' atoms');
+
+    window.USER_NN = NN;
+    window.USER_MAX_ATOMS = 300;
+    window.USER_ATOMS = atoms;
+    window.USER_SCREEN = screen;
+    window.USER_STEPS = 20000;
+    window.USER_Z = atoms.map(function(a) { return a.Z; });
+    window.USER_RC = atoms.map(function(a) { return rcForZ(a.Z); });
+
+    var s = document.createElement('script');
+    s.src = 'molecule.js?t=' + Date.now();
+    s.onerror = function() { document.body.innerHTML = '<pre style="color:red">Failed to load molecule.js</pre>'; };
+    s.onload = function() {
+      var p5s = document.createElement('script');
+      p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+      document.body.appendChild(p5s);
+    };
+    document.body.appendChild(s);
+  </script>
+</body>
+</html>

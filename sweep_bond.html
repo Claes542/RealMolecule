@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>H2O Bond Length Sweep</title>
+  <style>
+    body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; overflow: hidden; flex-direction: column; }
+    canvas { border: none; }
+  </style>
+</head>
+<body>
+  <script>
+    window.onerror = function(msg, url, line) {
+      document.body.style.color = 'red';
+      document.body.innerHTML = '<pre>ERROR: ' + msg + '\nLine: ' + line + '\nFile: ' + url + '</pre>';
+    };
+
+    // Sweep config
+    var bondLengths = [];
+    for (var b = 1.0; b <= 4.0; b += 0.3) bondLengths.push(Math.round(b * 100) / 100);
+    var sweepIdx = 0;
+    var sweepResults = [];
+
+    var N = 200, scr = 12;
+    var hGrid = scr / N;
+    var angle = 104.5 * Math.PI / 180;
+
+    function makeAtoms(bondOH) {
+      var bCells = Math.round(bondOH / hGrid);
+      var oi = Math.round(6.0 / hGrid);
+      var oj = Math.round(6.0 / hGrid);
+      var ok = Math.round(6.0 / hGrid);
+      var h1i = oi + Math.round(bCells * Math.cos(angle / 2));
+      var h1j = oj + Math.round(bCells * Math.sin(angle / 2));
+      var h2i = oi + Math.round(bCells * Math.cos(angle / 2));
+      var h2j = oj - Math.round(bCells * Math.sin(angle / 2));
+      return [
+        { i: oi, j: oj, k: ok, Z: 2, el: 'O' },
+        { i: h1i, j: h1j, k: ok, Z: 1, el: 'H' },
+        { i: h2i, j: h2j, k: ok, Z: 1, el: 'H' }
+      ];
+    }
+
+    // Initial setup
+    window.USER_NN = N;
+    window.USER_ATOMS = makeAtoms(bondLengths[0]);
+    window.USER_SCREEN = scr;
+    window.USER_STEPS = 5000;
+    window.USER_Z = [2, 1, 1];
+    window.USER_RC = [0.2, 0.2, 0.2];
+
+    // Called when each run finishes
+    window.onSweepDone = function(Emin) {
+      var bond = bondLengths[sweepIdx];
+      sweepResults.push({ bond: bond, E: Emin });
+      console.log('SWEEP [' + (sweepIdx+1) + '/' + bondLengths.length + '] bond=' + bond.toFixed(2) + ' au  E_min=' + Emin.toFixed(6));
+
+      sweepIdx++;
+      if (sweepIdx < bondLengths.length) {
+        var atoms = makeAtoms(bondLengths[sweepIdx]);
+        var positions = atoms.map(function(a) { return [a.i, a.j, a.k]; });
+        window.restartWithPositions(positions);
+      } else {
+        console.log('=== SWEEP COMPLETE ===');
+        var bestE = Infinity, bestIdx = 0;
+        for (var i = 0; i < sweepResults.length; i++) {
+          console.log('  bond=' + sweepResults[i].bond.toFixed(2) + '  E=' + sweepResults[i].E.toFixed(6));
+          if (sweepResults[i].E < bestE) { bestE = sweepResults[i].E; bestIdx = i; }
+        }
+        console.log('BEST: bond=' + sweepResults[bestIdx].bond.toFixed(2) + ' au  E=' + bestE.toFixed(6));
+        // Store for display in draw()
+        window.SWEEP_RESULTS = sweepResults;
+        window.SWEEP_BEST = bestIdx;
+      }
+    };
+
+    var s = document.createElement('script');
+    s.src = 'molecule.js?t=' + Date.now();
+    s.onerror = function() { document.body.innerHTML = '<pre style="color:red">Failed to load molecule.js</pre>'; };
+    s.onload = function() {
+      var p5s = document.createElement('script');
+      p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+      document.body.appendChild(p5s);
+    };
+    document.body.appendChild(s);
+  </script>
+</body>
+</html>

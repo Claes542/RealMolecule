@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>HBeH Inline</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+  <style>
+    body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #111; }
+  </style>
+</head>
+<body>
+<script>
+// HBeH Quantum Simulation — WebGPU Compute Shaders
+// Be atom (Z=4) + 2 H atoms (Z=1), 6 electrons: 2 Be inner + 2 Be outer (2s) + 2 H
+// Linear geometry: H-Be-H
+
+const NN = 128;
+const S = NN + 1;
+const S2 = S * S;
+const S3 = S * S * S;
+const N2 = Math.round(NN / 2);
+
+// Geometry: Be at center, H atoms symmetric
+const Be_pos = N2;
+let H_left_pos = 0, H_right_pos = 0, D_grid = 0, d_au = 0, nucRepulsion = 0;
+const nucPos = {
+  Be: [Be_pos, N2, N2],
+  Hl: [0, N2, N2],
+  Hr: [0, N2, N2]
+};
+const R1 = 10;
+const R_inner = 2.5;  // Be inner shell radius (au)
+const hv = 20 / NN, h2v = hv * hv, h3v = hv * hv * hv;
+const dv = 0.12;
+const dtv = dv * h2v, half_dv = 0.5 * dv;
+const PX = 400 / NN;
+const INTERIOR = (NN - 1) * (NN - 1) * (NN - 1);
+const STEPS_PER_FRAME = 50;
+const NORM_INTERVAL = 20;
+const NELEC = 6;
+const NRED = NELEC + 1;  // 7: 6 norms + 1 energy
+
+// Sweep
+const sweepDistances = [4.0];  // Be-H distance in au
+const STEPS_PER_POINT = 20000;
+let sweepIdx = 0;
+let sweepResults = [];
+let E_min = Infinity;
+
+// Reference energies
+const E_Be_ref = -14.0;
+const E_H_ref = -0.5;
+
+function setDistance(dist_au) {
+  d_au = dist_au;
+  D_grid = Math.round(dist_au / hv);
+  H_left_pos = Be_pos - D_grid;
+  H_right_pos = Be_pos + D_grid;
+  nucPos.Hl[0] = H_left_pos;
+  nucPos.Hr[0] = H_right_pos;
+  nucRepulsion = 4.0 / dist_au + 4.0 / dist_au + 1.0 / (2.0 * dist_au);
+  console.log("d=" + dist_au + " au, D=" + D_grid + ", Hl=" + H_left_pos + " Be=" + Be_pos + " Hr=" + H_right_pos + " nuc=" + nucRepulsion.toFixed(4));
+}
+
+// ===== WGSL SHADERS =====
+
+const paramStructWGSL = `
+struct P {
+  NN: u32, S: u32, S2: u32, S3: u32,
+  N2: u32, beI: u32,
+  h: f32, h2: f32, inv_h: f32, inv_h2: f32,
+  dt: f32, half_d: f32, _pad1: f32, TWO_PI: f32, h3: f32,
+  _pad2: u32
+}`;
+
+const updateWGSL = `
+${paramStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> K: array<f32>;
+@group(0) @binding(2) var<storage, read> Ui: array<f32>;
+@group(0) @binding(3) var<storage, read> Wi: array<f32>;
+@group(0) @binding(4) var<storage, read> Pi: array<f32>;
+@group(0) @binding(5) var<storage, read_write> Uo: array<f32>;
+@group(0) @binding(6) var<storage, read_write> Wo: array<f32>;
+@group(0) @binding(7) var<storage, read_write> Po: array<f32>;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let NM = p.NN - 1u;
+  let tot = NM * NM * NM;
+  if (gid.x >= tot) { return; }
+
+  let m = gid.y;
+  let o = m * p.S3;
+
+  let k = (gid.x % NM) + 1u;
+  let j = ((gid.x / NM) % NM) + 1u;
+  let i = (gid.x / (NM * NM)) + 1u;
+  let id = i * p.S2 + j * p.S + k;
+
+  var cm: f32 = 0.0;
+  cm -= Ui[0u * p.S3 + id] + Ui[1u * p.S3 + id] + Ui[2u * p.S3 + id]
+      + Ui[3u * p.S3 + id] + Ui[4u * p.S3 + id] + Ui[5u * p.S3 + id];
+  cm += Ui[o + id];
+  cm = 0.5 * (cm + Ui[o + id]);
+
+  let wc  = Wi[o + id];
+  let wip = Wi[o + id + p.S2]; let wim = Wi[o + id - p.S2];
+  let wjp = Wi[o + id + p.S];  let wjm = Wi[o + id - p.S];
+  let wkp = Wi[o + id + 1u];   let wkm = Wi[o + id - 1u];
+
+  let lw = (wip + wim + wjp + wjm + wkp + wkm - 6.0 * wc) * p.inv_h2;
+  let gx = (wip - wim) * p.inv_h;
+  let gy = (wjp - wjm) * p.inv_h;
+  let gz = (wkp - wkm) * p.inv_h;
+  let dw = 0.5 * p.dt * abs(cm) * lw + 5.0 * p.dt * cm * sqrt(gx * gx + gy * gy + gz * gz);
+
+  var nw = wc;
+  let beI = p.beI;
+  let di = abs(i32(i) - i32(beI));
+  if (m >= 4u || (m < 4u && di > 3)) {
+    nw = clamp(wc + dw, 0.0, 1.0);
+  }
+  Wo[o + id] = nw;
+
+  let uc  = Ui[o + id];
+  let uip = Ui[o + id + p.S2]; let uim = Ui[o + id - p.S2];
+  let ujp = Ui[o + id + p.S];  let ujm = Ui[o + id - p.S];
+  let ukp = Ui[o + id + 1u];   let ukm = Ui[o + id - 1u];
+
+  Uo[o + id] = uc
+    + p.half_d * ((uip - uc) * (wip + nw) * 0.5 - (uc - uim) * (nw + wim) * 0.5)
+    + p.half_d * ((ujp - uc) * (wjp + nw) * 0.5 - (uc - ujm) * (nw + wjm) * 0.5)
+    + p.half_d * ((ukp - uc) * (wkp + nw) * 0.5 - (uc - ukm) * (nw + wkm) * 0.5)
+    + p.dt * (K[id] - 2.0 * Pi[o + id]) * uc * wc;
+
+  let Pc = Pi[o + id];
+  var rho: f32 = 0.0;
+  let u0 = Ui[0u * p.S3 + id]; let u1 = Ui[1u * p.S3 + id];
+  let u2 = Ui[2u * p.S3 + id]; let u3 = Ui[3u * p.S3 + id];
+  let u4 = Ui[4u * p.S3 + id]; let u5 = Ui[5u * p.S3 + id];
+  rho = u0*u0 + u1*u1 + u2*u2 + u3*u3 + u4*u4 + u5*u5;
+  let self_u = Ui[o + id];
+  rho -= self_u * self_u;
+
+  Po[o + id] = Pc
+    + p.dt * (Pi[o + id + p.S2] + Pi[o + id - p.S2]
+            + Pi[o + id + p.S]  + Pi[o + id - p.S]
+            + Pi[o + id + 1u]   + Pi[o + id - 1u]
+            - 6.0 * Pc) * p.inv_h2
+    + p.TWO_PI * p.dt * rho;
+}
+`;
+
+const reduceWGSL = `
+${paramStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> U: array<f32>;
+@group(0) @binding(2) var<storage, read> W: array<f32>;
+@group(0) @binding(3) var<storage, read> Pv: array<f32>;
+@group(0) @binding(4) var<storage, read> K: array<f32>;
+@group(0) @binding(5) var<storage, read_write> partials: array<f32>;
+
+var<workgroup> sn: array<f32, 1792>;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>,
+        @builtin(local_invocation_index) lid: u32,
+        @builtin(workgroup_id) wgid: vec3<u32>) {
+  let NM = p.NN - 1u;
+  let tot = NM * NM * NM;
+
+  for (var x: u32 = 0u; x < 7u; x++) { sn[lid * 7u + x] = 0.0; }
+
+  if (gid.x < tot) {
+    let k = (gid.x % NM) + 1u;
+    let j = ((gid.x / NM) % NM) + 1u;
+    let i = (gid.x / (NM * NM)) + 1u;
+    let id = i * p.S2 + j * p.S + k;
+
+    var en: f32 = 0.0;
+    for (var m: u32 = 0u; m < 6u; m++) {
+      let o = m * p.S3;
+      let v = U[o + id];
+      sn[lid * 7u + m] = v * v * p.h3;
+      if (W[o + id] > 0.7) {
+        let a = U[o + id + p.S2] - v;
+        let b = U[o + id + p.S] - v;
+        let c = U[o + id + 1u] - v;
+        en += 0.5 * (a * a + b * b + c * c) * p.h;
+      }
+      en += (Pv[o + id] - K[id]) * v * v * p.h3;
+    }
+    sn[lid * 7u + 6u] = en;
+  }
+
+  workgroupBarrier();
+
+  for (var s: u32 = 128u; s > 0u; s >>= 1u) {
+    if (lid < s) {
+      for (var x: u32 = 0u; x < 7u; x++) {
+        sn[lid * 7u + x] += sn[(lid + s) * 7u + x];
+      }
+    }
+    workgroupBarrier();
+  }
+
+  if (lid == 0u) {
+    let base = wgid.x * 7u;
+    for (var x: u32 = 0u; x < 7u; x++) {
+      partials[base + x] = sn[x];
+    }
+  }
+}
+`;
+
+const finalizeWGSL = `
+struct NWG { count: u32 }
+@group(0) @binding(0) var<storage, read> partials: array<f32>;
+@group(0) @binding(1) var<storage, read_write> sums: array<f32>;
+@group(0) @binding(2) var<uniform> nwg: NWG;
+
+var<workgroup> wg: array<f32, 1792>;
+
+@compute @workgroup_size(256)
+fn main(@builtin(local_invocation_index) lid: u32) {
+  for (var x: u32 = 0u; x < 7u; x++) { wg[lid * 7u + x] = 0.0; }
+
+  for (var i: u32 = lid; i < nwg.count; i += 256u) {
+    for (var x: u32 = 0u; x < 7u; x++) {
+      wg[lid * 7u + x] += partials[i * 7u + x];
+    }
+  }
+
+  workgroupBarrier();
+
+  for (var s: u32 = 128u; s > 0u; s >>= 1u) {
+    if (lid < s) {
+      for (var x: u32 = 0u; x < 7u; x++) {
+        wg[lid * 7u + x] += wg[(lid + s) * 7u + x];
+      }
+    }
+    workgroupBarrier();
+  }
+
+  if (lid == 0u) {
+    for (var x: u32 = 0u; x < 7u; x++) {
+      sums[x] = wg[x];
+    }
+  }
+}
+`;
+
+const normalizeWGSL = `
+${paramStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read_write> U: array<f32>;
+@group(0) @binding(2) var<storage, read> sums: array<f32>;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) g: vec3<u32>) {
+  let NM = p.NN - 1u;
+  let tot = NM * NM * NM;
+  if (g.x >= tot) { return; }
+
+  let k = (g.x % NM) + 1u;
+  let j = ((g.x / NM) % NM) + 1u;
+  let i = (g.x / (NM * NM)) + 1u;
+  let id = i * p.S2 + j * p.S + k;
+
+  for (var m: u32 = 0u; m < 6u; m++) {
+    let n = sums[m];
+    if (n > 0.0) { U[m * p.S3 + id] *= inverseSqrt(n); }
+  }
+}
+`;
+
+const extractWGSL = `
+${paramStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> U: array<f32>;
+@group(0) @binding(2) var<storage, read> W: array<f32>;
+@group(0) @binding(3) var<storage, read> Pv: array<f32>;
+@group(0) @binding(4) var<storage, read> K: array<f32>;
+@group(0) @binding(5) var<storage, read_write> out: array<f32>;
+
+@compute @workgroup_size(16, 16)
+fn main(@builtin(global_invocation_id) g: vec3<u32>) {
+  let i = g.x;
+  let j = g.y;
+  let SS = p.NN + 1u;
+  if (i > p.NN || j > p.NN) { return; }
+
+  for (var m: u32 = 0u; m < 6u; m++) {
+    out[m * SS * SS + i * SS + j] = U[m * p.S3 + i * p.S2 + j * p.S + p.N2] * W[m * p.S3 + i * p.S2 + j * p.S + p.N2];
+  }
+
+  if (j == 0u) {
+    let b = 6u * SS * SS;
+    out[b + i] = K[i * p.S2 + p.N2 * p.S + p.N2];
+  }
+}
+`;
+
+// ===== GPU STATE =====
+let device, paramsBuf, K_buf, sumsBuf, sumsReadBuf, sliceBuf, sliceReadBuf, partialsBuf, numWGBuf;
+let U_buf = [], W_buf = [], P_buf = [];
+let updatePL, reducePL, finalizePL, normalizePL, extractPL;
+let updateBG = [], reduceBG = [], finalizeBG, normalizeBG = [], extractBG = [];
+let cur = 0, gpuReady = false, computing = false;
+let tStep = 0, E = 0, lastMs = 0;
+let gpuError = null;
+let sweepDone = false;
+
+const SLICE_SIZE = (6 * S * S + S) * 4;
+const WG_UPDATE = Math.ceil(INTERIOR / 256);
+const WG_REDUCE = Math.ceil(INTERIOR / 256);
+const WG_NORM = Math.ceil(INTERIOR / 256);
+const WG_EXTRACT = Math.ceil(S / 16);
+const SUMS_BYTES = NRED * 4;  // 28 bytes
+
+let sliceData = null;
+
+function uploadInitialData() {
+  const [beI, beJ, beK] = nucPos.Be;
+  const [hlI, hlJ, hlK] = nucPos.Hl;
+  const [hrI, hrJ, hrK] = nucPos.Hr;
+  console.log("Init: Hl=(" + hlI + ") Be=(" + beI + ") Hr=(" + hrI + ")");
+
+  const Kd = new Float32Array(S3);
+  const Ud = new Float32Array(NELEC * S3);
+  const Wd = new Float32Array(NELEC * S3);
+  const Pd = new Float32Array(NELEC * S3);
+  const soft = h2v;
+
+  const midL = Math.round((hlI + beI) / 2);
+  const midR = Math.round((beI + hrI) / 2);
+
+  for (let i = 0; i <= NN; i++) {
+    const dxBe = (i - beI) * hv;
+    const dxHl = (i - hlI) * hv;
+    const dxHr = (i - hrI) * hv;
+    for (let j = 0; j <= NN; j++) {
+      const dyBe = (j - beJ) * hv;
+      const dyHl = (j - hlJ) * hv;
+      const dyHr = (j - hrJ) * hv;
+      for (let k = 0; k <= NN; k++) {
+        const dzBe = (k - beK) * hv;
+        const dzHl = (k - hlK) * hv;
+        const dzHr = (k - hrK) * hv;
+        const id = i * S2 + j * S + k;
+
+        const rBe = Math.sqrt(dxBe*dxBe + dyBe*dyBe + dzBe*dzBe + soft);
+        const rHl = Math.sqrt(dxHl*dxHl + dyHl*dyHl + dzHl*dzHl + soft);
+        const rHr = Math.sqrt(dxHr*dxHr + dyHr*dyHr + dzHr*dzHr + soft);
+
+        // Nuclear potential: Z_Be=4, Z_H=1 each
+        Kd[id] = 4.0 / rBe + 1.0 / rHl + 1.0 / rHr;
+
+        // m=0: Be inner, left hemisphere
+        if (rBe < R_inner && i < beI) {
+          Ud[0*S3+id] = Math.exp(-4*rBe); Wd[0*S3+id] = 1;
+        }
+        // m=1: Be inner, right hemisphere
+        if (rBe < R_inner && i > beI) {
+          Ud[1*S3+id] = Math.exp(-4*rBe); Wd[1*S3+id] = 1;
+        }
+        // m=2: Be outer, left half (between midL and beI)
+        if (rBe > R_inner && i >= midL && i < beI) {
+          Ud[2*S3+id] = Math.exp(-rBe); Wd[2*S3+id] = 1;
+        }
+        // m=3: Be outer, right half (between beI and midR)
+        if (rBe > R_inner && i > beI && i <= midR) {
+          Ud[3*S3+id] = Math.exp(-rBe); Wd[3*S3+id] = 1;
+        }
+        // m=4: H left electron
+        if (rHl < R1 && i < midL) {
+          Ud[4*S3+id] = Math.exp(-rHl); Wd[4*S3+id] = 1;
+        }
+        // m=5: H right electron
+        if (rHr < R1 && i > midR) {
+          Ud[5*S3+id] = Math.exp(-rHr); Wd[5*S3+id] = 1;
+        }
+
+        for (let m = 0; m < NELEC; m++) {
+          Pd[m*S3+id] = 2.0 / rBe + 0.5 / rHl + 0.5 / rHr;
+        }
+      }
+    }
+  }
+
+  console.log("Uploading to GPU...");
+  device.queue.writeBuffer(K_buf, 0, Kd);
+  for (let i = 0; i < 2; i++) {
+    device.queue.writeBuffer(U_buf[i], 0, Ud);
+    device.queue.writeBuffer(W_buf[i], 0, Wd);
+    device.queue.writeBuffer(P_buf[i], 0, Pd);
+  }
+  cur = 0;
+}
+
+function uploadParams() {
+  const pb = new ArrayBuffer(64);
+  const pu = new Uint32Array(pb);
+  const pf = new Float32Array(pb);
+  pu[0] = NN; pu[1] = S; pu[2] = S2; pu[3] = S3; pu[4] = N2; pu[5] = Be_pos;
+  pf[6] = hv; pf[7] = h2v; pf[8] = 1 / hv; pf[9] = 1 / h2v;
+  pf[10] = dtv; pf[11] = half_dv; pf[12] = 0; pf[13] = 2 * Math.PI;
+  pf[14] = h3v;
+  pu[15] = 0;
+  device.queue.writeBuffer(paramsBuf, 0, pb);
+}
+
+function startSweepPoint(idx) {
+  sweepIdx = idx;
+  setDistance(sweepDistances[idx]);
+  uploadParams();
+  uploadInitialData();
+  tStep = 0;
+  E = 0;
+  E_min = Infinity;
+  console.log("=== Sweep " + (idx+1) + "/" + sweepDistances.length + ": d=" + d_au + " au ===");
+}
+
+function setup() {
+  createCanvas(400, 400);
+  textSize(9);
+  initGPU();
+}
+
+async function initGPU() {
+  try {
+    if (!navigator.gpu) {
+      gpuError = "WebGPU not supported. Use Chrome 113+ or Safari 17+.";
+      console.error(gpuError);
+      return;
+    }
+
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) {
+      gpuError = "No GPU adapter found.";
+      console.error(gpuError);
+      return;
+    }
+
+    try {
+      const info = await adapter.requestAdapterInfo();
+      console.log("GPU:", info.vendor, info.architecture, info.description);
+    } catch (e) { console.log("Could not get adapter info"); }
+
+    const needSize = NELEC * S3 * 4;
+    const needed = Math.max(needSize, 256 * 1024 * 1024);
+    device = await adapter.requestDevice({
+      requiredLimits: {
+        maxStorageBufferBindingSize: needed,
+        maxBufferSize: needed,
+      }
+    });
+    console.log("WebGPU device ready, maxStorageBufferBindingSize=" + device.limits.maxStorageBufferBindingSize);
+
+    device.lost.then((info) => {
+      gpuError = "GPU device lost: " + info.message;
+      console.error(gpuError);
+      gpuReady = false;
+    });
+
+    const bs = S3 * 4, bN = NELEC * S3 * 4;
+    const usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST;
+
+    K_buf = device.createBuffer({ size: bs, usage });
+    for (let i = 0; i < 2; i++) {
+      U_buf[i] = device.createBuffer({ size: bN, usage: usage | GPUBufferUsage.COPY_SRC });
+      W_buf[i] = device.createBuffer({ size: bN, usage: usage | GPUBufferUsage.COPY_SRC });
+      P_buf[i] = device.createBuffer({ size: bN, usage: usage | GPUBufferUsage.COPY_SRC });
+    }
+
+    const partialSize = WG_REDUCE * NRED * 4;
+    partialsBuf = device.createBuffer({ size: partialSize, usage: GPUBufferUsage.STORAGE });
+    sumsBuf = device.createBuffer({ size: SUMS_BYTES, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+    sumsReadBuf = device.createBuffer({ size: SUMS_BYTES, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+    sliceBuf = device.createBuffer({ size: SLICE_SIZE, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+    sliceReadBuf = device.createBuffer({ size: SLICE_SIZE, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+    numWGBuf = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    device.queue.writeBuffer(numWGBuf, 0, new Uint32Array([WG_REDUCE, 0, 0, 0]));
+
+    paramsBuf = device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+
+    setDistance(sweepDistances[0]);
+    uploadParams();
+    uploadInitialData();
+
+    async function compileShader(name, code) {
+      const module = device.createShaderModule({ code });
+      try {
+        const getInfo = module.getCompilationInfo || module.compilationInfo;
+        if (getInfo) {
+          const info = await getInfo.call(module);
+          for (const msg of info.messages) {
+            if (msg.type === 'error') {
+              throw new Error("Shader '" + name + "': " + msg.message + " (line " + msg.lineNum + ")");
+            }
+          }
+        }
+      } catch (e) {
+        if (e.message.startsWith("Shader '")) throw e;
+      }
+      console.log("Shader '" + name + "' OK");
+      return module;
+    }
+
+    const updateMod = await compileShader('update', updateWGSL);
+    const reduceMod = await compileShader('reduce', reduceWGSL);
+    const finalizeMod = await compileShader('finalize', finalizeWGSL);
+    const normalizeMod = await compileShader('normalize', normalizeWGSL);
+    const extractMod = await compileShader('extract', extractWGSL);
+
+    updatePL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: updateMod, entryPoint: 'main' } });
+    reducePL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: reduceMod, entryPoint: 'main' } });
+    finalizePL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: finalizeMod, entryPoint: 'main' } });
+    normalizePL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: normalizeMod, entryPoint: 'main' } });
+    extractPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: extractMod, entryPoint: 'main' } });
+
+    for (let c = 0; c < 2; c++) {
+      const n = 1 - c;
+      updateBG[c] = device.createBindGroup({ layout: updatePL.getBindGroupLayout(0), entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: K_buf } },
+        { binding: 2, resource: { buffer: U_buf[c] } },
+        { binding: 3, resource: { buffer: W_buf[c] } },
+        { binding: 4, resource: { buffer: P_buf[c] } },
+        { binding: 5, resource: { buffer: U_buf[n] } },
+        { binding: 6, resource: { buffer: W_buf[n] } },
+        { binding: 7, resource: { buffer: P_buf[n] } },
+      ]});
+      reduceBG[c] = device.createBindGroup({ layout: reducePL.getBindGroupLayout(0), entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: U_buf[c] } },
+        { binding: 2, resource: { buffer: W_buf[c] } },
+        { binding: 3, resource: { buffer: P_buf[c] } },
+        { binding: 4, resource: { buffer: K_buf } },
+        { binding: 5, resource: { buffer: partialsBuf } },
+      ]});
+      normalizeBG[c] = device.createBindGroup({ layout: normalizePL.getBindGroupLayout(0), entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: U_buf[c] } },
+        { binding: 2, resource: { buffer: sumsBuf } },
+      ]});
+      extractBG[c] = device.createBindGroup({ layout: extractPL.getBindGroupLayout(0), entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: U_buf[c] } },
+        { binding: 2, resource: { buffer: W_buf[c] } },
+        { binding: 3, resource: { buffer: P_buf[c] } },
+        { binding: 4, resource: { buffer: K_buf } },
+        { binding: 5, resource: { buffer: sliceBuf } },
+      ]});
+    }
+
+    finalizeBG = device.createBindGroup({ layout: finalizePL.getBindGroupLayout(0), entries: [
+      { binding: 0, resource: { buffer: partialsBuf } },
+      { binding: 1, resource: { buffer: sumsBuf } },
+      { binding: 2, resource: { buffer: numWGBuf } },
+    ]});
+
+    console.log("Ready! dispatch(" + WG_UPDATE + ",6,1)");
+    gpuReady = true;
+
+  } catch (e) {
+    gpuError = e.message || String(e);
+    console.error("GPU init failed:", e);
+  }
+}
+
+async function doSteps(n) {
+  const t0 = performance.now();
+  const enc = device.createCommandEncoder();
+
+  for (let s = 0; s < n; s++) {
+    const next = 1 - cur;
+
+    let cp = enc.beginComputePass();
+    cp.setPipeline(updatePL);
+    cp.setBindGroup(0, updateBG[cur]);
+    cp.dispatchWorkgroups(WG_UPDATE, NELEC, 1);
+    cp.end();
+
+    if ((s + 1) % NORM_INTERVAL === 0 || s === n - 1) {
+      cp = enc.beginComputePass();
+      cp.setPipeline(reducePL);
+      cp.setBindGroup(0, reduceBG[next]);
+      cp.dispatchWorkgroups(WG_REDUCE);
+      cp.end();
+
+      cp = enc.beginComputePass();
+      cp.setPipeline(finalizePL);
+      cp.setBindGroup(0, finalizeBG);
+      cp.dispatchWorkgroups(1);
+      cp.end();
+
+      cp = enc.beginComputePass();
+      cp.setPipeline(normalizePL);
+      cp.setBindGroup(0, normalizeBG[next]);
+      cp.dispatchWorkgroups(WG_NORM);
+      cp.end();
+    }
+
+    cur = next;
+  }
+
+  let cp = enc.beginComputePass();
+  cp.setPipeline(extractPL);
+  cp.setBindGroup(0, extractBG[cur]);
+  cp.dispatchWorkgroups(WG_EXTRACT, WG_EXTRACT);
+  cp.end();
+
+  enc.copyBufferToBuffer(sumsBuf, 0, sumsReadBuf, 0, SUMS_BYTES);
+  enc.copyBufferToBuffer(sliceBuf, 0, sliceReadBuf, 0, SLICE_SIZE);
+  device.queue.submit([enc.finish()]);
+
+  await sumsReadBuf.mapAsync(GPUMapMode.READ);
+  const sumsData = new Float32Array(sumsReadBuf.getMappedRange().slice(0));
+  sumsReadBuf.unmap();
+  E = sumsData[6] + nucRepulsion;  // energy at index 6 (after 6 norms)
+
+  await sliceReadBuf.mapAsync(GPUMapMode.READ);
+  sliceData = new Float32Array(sliceReadBuf.getMappedRange().slice(0));
+  sliceReadBuf.unmap();
+
+  tStep += n;
+  lastMs = performance.now() - t0;
+
+  if (!isFinite(E)) {
+    gpuError = "Numerical instability at step " + tStep;
+    return;
+  }
+
+  if (isFinite(E) && E < E_min) E_min = E;
+
+  console.log("Step " + tStep + ": E=" + E.toFixed(6) + " min=" + E_min.toFixed(6) + " (" + lastMs.toFixed(0) + "ms/" + n + "steps)");
+}
+
+function draw() {
+  background(0);
+  noStroke();
+
+  // Debug
+  fill(255, 255, 0); textSize(12);
+  text("gpu=" + gpuReady + " step=" + tStep + " slice=" + (sliceData ? "y" : "n") + " err=" + (gpuError || "none"), 5, 380);
+
+  if (gpuError) {
+    fill(200, 0, 0); textSize(11);
+    text("GPU Error: " + gpuError, 10, 200);
+    return;
+  }
+
+  if (!gpuReady) {
+    fill(255); textSize(14);
+    text("Initializing WebGPU...", 10, 200);
+    return;
+  }
+
+  // Debug
+  fill(255, 255, 0); textSize(9);
+  text("gpu=" + gpuReady + " comp=" + computing + " slice=" + (sliceData ? "yes" : "no") + " step=" + tStep, 5, 395);
+
+  if (!computing && !sweepDone) {
+    computing = true;
+    doSteps(STEPS_PER_FRAME).then(() => {
+      computing = false;
+      if (tStep >= STEPS_PER_POINT) {
+        const bind = E_min - E_Be_ref - 2 * E_H_ref;
+        sweepResults.push({ d: d_au, E_min: E_min, bind: bind });
+        console.log("Sweep " + (sweepIdx+1) + ": d=" + d_au.toFixed(2) + " E_min=" + E_min.toFixed(6) + " bind=" + bind.toFixed(4));
+        if (sweepIdx + 1 < sweepDistances.length) {
+          startSweepPoint(sweepIdx + 1);
+        } else {
+          sweepDone = true;
+          console.log("=== Sweep complete ===");
+        }
+      }
+    }).catch((e) => {
+      gpuError = e.message || String(e);
+      console.error("GPU step failed:", e);
+      computing = false;
+    });
+  }
+
+  if (sliceData) {
+    const SS = S;
+    loadPixels();
+    const d = pixelDensity();
+    const W = 400 * d, H = 400 * d;
+    for (let p = 0; p < W * H * 4; p += 4) {
+      pixels[p] = 0; pixels[p+1] = 0; pixels[p+2] = 0; pixels[p+3] = 255;
+    }
+    for (let i = 1; i < NN; i++) {
+      const px0 = Math.floor(PX * i * d);
+      const px1 = Math.floor(PX * (i + 1) * d);
+      for (let j = 1; j < NN; j++) {
+        const py0 = Math.floor(PX * j * d);
+        const py1 = Math.floor(PX * (j + 1) * d);
+        const b = i * SS + j;
+        // 6 electrons: red(Be 1s L), green(Be 1s R), blue(Be 2s), yellow(H)
+        const v0 = sliceData[0 * SS * SS + b];
+        const v1 = sliceData[1 * SS * SS + b];
+        const v2 = sliceData[2 * SS * SS + b];
+        const v3 = sliceData[3 * SS * SS + b];
+        const v4 = sliceData[4 * SS * SS + b];
+        const v5 = sliceData[5 * SS * SS + b];
+        const u0 = 500 * v0 * v0;
+        const u1 = 500 * v1 * v1;
+        const u2 = 5000 * v2 * v2;
+        const u3 = 5000 * v3 * v3;
+        const u4 = 5000 * v4 * v4;
+        const u5 = 5000 * v5 * v5;
+        const ri = Math.min(255, Math.floor(u0 + u4 + u5));
+        const gi = Math.min(255, Math.floor(u1 + u4 + u5));
+        const bi = Math.min(255, Math.floor(u2 + u3));
+        for (let py = py0; py < py1 && py < H; py++) {
+          for (let px = px0; px < px1 && px < W; px++) {
+            const idx = (py * W + px) * 4;
+            pixels[idx] = ri;
+            pixels[idx + 1] = gi;
+            pixels[idx + 2] = bi;
+            pixels[idx + 3] = 255;
+          }
+        }
+      }
+    }
+    updatePixels();
+
+    // Ridge plot: density on parallel lines above bond axis
+    const nLines = 10;
+    const jStep = 4;
+    const baseY = 380;
+    const lineSpacing = 18;
+    const scale = 3000;
+    for (let L = 0; L < nLines; L++) {
+      const jOff = N2 - L * jStep;
+      if (jOff < 1) break;
+      const yBase = baseY - L * lineSpacing;
+      const alpha = Math.max(60, 255 - L * 20);
+      noStroke(); fill(0);
+      beginShape();
+      vertex(PX, yBase);
+      for (let i = 1; i < NN; i++) {
+        let tot = 0;
+        for (let m = 0; m < 6; m++) {
+          const v = sliceData[m * SS * SS + i * SS + jOff];
+          tot += v * v;
+        }
+        vertex(PX * i, yBase - scale * tot);
+      }
+      vertex(PX * (NN - 1), yBase);
+      endShape(CLOSE);
+      stroke(100, 180, 255, alpha); strokeWeight(1); noFill();
+      beginShape();
+      for (let i = 1; i < NN; i++) {
+        let tot = 0;
+        for (let m = 0; m < 6; m++) {
+          const v = sliceData[m * SS * SS + i * SS + jOff];
+          tot += v * v;
+        }
+        vertex(PX * i, yBase - scale * tot);
+      }
+      endShape();
+    }
+    noStroke();
+  }
+
+  // Draw nuclear positions
+  stroke(255); strokeWeight(1);
+  fill(200, 200, 255);
+  circle(nucPos.Be[0] * PX, nucPos.Be[1] * PX, 10);  // Be
+  fill(200, 255, 200);
+  circle(nucPos.Hl[0] * PX, nucPos.Hl[1] * PX, 6);   // H left
+  circle(nucPos.Hr[0] * PX, nucPos.Hr[1] * PX, 6);   // H right
+  noStroke();
+
+  fill(255); textSize(9);
+  text("HBeH 6e | " + NN + "^3, d=" + d_au.toFixed(2) + " au, nuc=" + nucRepulsion.toFixed(3), 5, 20);
+  text("step " + tStep + "/" + STEPS_PER_POINT + "  E=" + E.toFixed(6) + "  min=" + (isFinite(E_min) ? E_min.toFixed(6) : "---"), 5, 35);
+  if (lastMs > 0) text((lastMs / STEPS_PER_FRAME).toFixed(1) + "ms/step", 300, 35);
+
+  if (sweepResults.length > 0) {
+    fill(200, 180, 100); textSize(10);
+    text("d(au)   E_min      bind(Ha)", 10, 55);
+    textSize(9);
+    for (let r = 0; r < sweepResults.length; r++) {
+      const sr = sweepResults[r];
+      fill(sr.bind < 0 ? [100, 255, 100] : [255, 100, 100]);
+      text(sr.d.toFixed(2) + "    " + sr.E_min.toFixed(6) + "   " + sr.bind.toFixed(4), 10, 70 + r * 14);
+    }
+  }
+}
+
+</script>
+</body>
+</html>

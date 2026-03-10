@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<pre id="log">Building villin headpiece...</pre>
+<script>
+var log = document.getElementById('log');
+window.onerror = function(msg, url, line) {
+  log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
+};
+
+// Villin headpiece HP35-like three-helix bundle + hydration shell
+// ~1000 atoms on 300^3 grid, screen=30 au
+// 3 compact helices (8 res each) = 24 residues × 10 atoms = 240 protein atoms
+// + ~253 water molecules = 759 atoms → ~999 total
+
+(function() {
+  var gridN = 300, scr = 30;
+  var h = scr / gridN;  // 0.1 au/cell
+  var N2 = Math.round(gridN / 2);
+  var A = 1.8897;  // angstrom to au
+  var atoms = [];
+
+  function addAtom(au_x, au_y, au_z, Z, el) {
+    var gi = Math.round(N2 + au_x / h);
+    var gj = Math.round(N2 + au_y / h);
+    var gk = Math.round(N2 + au_z / h);
+    gi = Math.max(3, Math.min(gridN - 3, gi));
+    gj = Math.max(3, Math.min(gridN - 3, gj));
+    gk = Math.max(3, Math.min(gridN - 3, gk));
+    atoms.push({ i: gi, j: gj, k: gk, Z: Z, el: el });
+  }
+
+  // Alpha helix: rise=1.5A/res, radius=2.3A, 100 deg/res
+  var rise = 1.5 * A;
+  var rHelix = 2.3 * A;
+  var turnRad = 100 * Math.PI / 180;
+
+  // Bond lengths (au)
+  var bNH = 1.01 * A;
+  var bCH = 1.09 * A;
+  var bCO = 1.23 * A;
+  var bCaCb = 1.52 * A;
+
+  // Three compact helices in triangular arrangement (tighter packing)
+  // Helix separation ~6A to fit in 30 au box
+  //     H3 (0, +4A)
+  //    /  \
+  //  H1    H2
+  // (-3.5A,-2A)  (+3.5A,-2A)
+  var helixDefs = [
+    { nRes: 8, cx: -3.5*A, cy: -2*A, dir: +1 },
+    { nRes: 8, cx: +3.5*A, cy: -2*A, dir: -1 },
+    { nRes: 8, cx:  0,     cy: +4*A, dir: +1 },
+  ];
+
+  var allCa = [];
+
+  for (var hi = 0; hi < helixDefs.length; hi++) {
+    var hd = helixDefs[hi];
+    var nRes = hd.nRes;
+    var zStart = -nRes * rise / 2;
+
+    for (var r = 0; r < nRes; r++) {
+      var angle = r * turnRad + hi * 2.094;
+      var zr = zStart + r * rise;
+
+      var radX = Math.cos(angle), radY = Math.sin(angle);
+      var tanX = -Math.sin(angle), tanY = Math.cos(angle);
+
+      var caX = hd.cx + rHelix * radX;
+      var caY = hd.cy + rHelix * radY;
+      var caZ = hd.dir * zr;
+      allCa.push([caX, caY, caZ]);
+
+      var axZ = hd.dir;
+
+      // N
+      addAtom(caX - 0.7*radX - 0.3*tanX, caY - 0.7*radY - 0.3*tanY, caZ - 1.2*axZ, 3, 'N');
+      // H on N
+      var nhS = (hi < 2) ? 1 : -1;
+      addAtom(caX - 0.7*radX - 0.3*tanX + nhS*bNH*tanX,
+              caY - 0.7*radY - 0.3*tanY + nhS*bNH*tanY,
+              caZ - 1.2*axZ, 1, 'H');
+      // Ca
+      addAtom(caX, caY, caZ, 4, 'C');
+      // Ha
+      var tcx = -hd.cx, tcy = -hd.cy;
+      var tcl = Math.sqrt(tcx*tcx + tcy*tcy) || 1;
+      addAtom(caX + bCH*tcx/tcl*0.7, caY + bCH*tcy/tcl*0.7, caZ + bCH*0.7*axZ, 1, 'H');
+      // Cb
+      var cbX = caX + bCaCb*radX*0.8;
+      var cbY = caY + bCaCb*radY*0.8;
+      var cbZ = caZ + bCaCb*0.6*axZ;
+      addAtom(cbX, cbY, cbZ, 4, 'C');
+      // 3 Hb
+      for (var hh = 0; hh < 3; hh++) {
+        var phi = hh * 2.094 + angle;
+        addAtom(cbX + bCH*0.8*Math.cos(phi),
+                cbY + bCH*0.8*Math.sin(phi),
+                cbZ + bCH*0.6*(hh===0 ? 1 : -0.5)*axZ, 1, 'H');
+      }
+      // Carbonyl C
+      var cX = caX + 0.7*radX*0.3 + 0.3*tanX;
+      var cY = caY + 0.7*radY*0.3 + 0.3*tanY;
+      var cZ = caZ + 1.2*axZ;
+      addAtom(cX, cY, cZ, 4, 'C');
+      // Carbonyl O
+      var oS = (r % 2 === 0) ? 1 : -1;
+      addAtom(cX + oS*bCO*tanX, cY + oS*bCO*tanY, cZ, 2, 'O');
+    }
+  }
+
+  var nProtein = atoms.length;
+  log.textContent = 'Protein: ' + nProtein + ' atoms (24 residues, 3 helices)';
+
+  // Hydration shell
+  var nWaterTarget = Math.floor((999 - nProtein) / 3);
+  var nWater = 0;
+
+  // Protein bounding box
+  var minX = Infinity, maxX = -Infinity;
+  var minY = Infinity, maxY = -Infinity;
+  var minZ = Infinity, maxZ = -Infinity;
+  for (var c = 0; c < allCa.length; c++) {
+    if (allCa[c][0] < minX) minX = allCa[c][0];
+    if (allCa[c][0] > maxX) maxX = allCa[c][0];
+    if (allCa[c][1] < minY) minY = allCa[c][1];
+    if (allCa[c][1] > maxY) maxY = allCa[c][1];
+    if (allCa[c][2] < minZ) minZ = allCa[c][2];
+    if (allCa[c][2] > maxZ) maxZ = allCa[c][2];
+  }
+
+  // Water on grid with jitter, in shell around protein
+  var waterSpacing = 2.8 * A;  // ~5.3 au spacing
+  var shellInner = 2.5 * A;    // min distance from Ca
+  var shellOuter = 6.0 * A;    // max distance from Ca
+  var pad = shellOuter;
+  var halfScr = scr / 2 - 2 * h;  // stay inside grid
+
+  var seed = 42;
+  function rand() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+
+  for (var wx = minX - pad; wx <= maxX + pad && nWater < nWaterTarget; wx += waterSpacing) {
+    for (var wy = minY - pad; wy <= maxY + pad && nWater < nWaterTarget; wy += waterSpacing) {
+      for (var wz = minZ - pad; wz <= maxZ + pad && nWater < nWaterTarget; wz += waterSpacing) {
+        var ox = wx + (rand()-0.5)*waterSpacing*0.4;
+        var oy = wy + (rand()-0.5)*waterSpacing*0.4;
+        var oz = wz + (rand()-0.5)*waterSpacing*0.4;
+
+        // Must fit inside grid
+        if (Math.abs(ox) > halfScr || Math.abs(oy) > halfScr || Math.abs(oz) > halfScr) continue;
+
+        // Distance to nearest Ca
+        var minDist2 = Infinity;
+        for (var c = 0; c < allCa.length; c++) {
+          var ddx = ox-allCa[c][0], ddy = oy-allCa[c][1], ddz = oz-allCa[c][2];
+          var d2 = ddx*ddx + ddy*ddy + ddz*ddz;
+          if (d2 < minDist2) minDist2 = d2;
+        }
+        var minDist = Math.sqrt(minDist2);
+
+        if (minDist >= shellInner && minDist <= shellOuter) {
+          addAtom(ox, oy, oz, 2, 'O');
+          addAtom(ox - 0.76*A, oy - 0.59*A, oz, 1, 'H');
+          addAtom(ox + 0.76*A, oy - 0.59*A, oz, 1, 'H');
+          nWater++;
+        }
+      }
+    }
+  }
+
+  log.textContent += '\nWater: ' + nWater + ' molecules (' + (nWater*3) + ' atoms)';
+  log.textContent += '\nTotal: ' + atoms.length + ' atoms on ' + gridN + '^3 grid (screen=' + scr + ' au)';
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) { return 0; });
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onerror = function() { log.textContent += '\nFailed to load molecule.js!'; };
+s.onload = function() {
+  log.textContent += '\nmolecule.js loaded, loading p5...';
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p5s.crossOrigin = 'anonymous';
+  p5s.onerror = function() { log.textContent += '\nFailed to load p5.js!'; };
+  p5s.onload = function() { log.textContent += '\np5.js loaded'; };
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

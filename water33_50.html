@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>33 Water Molecules (99 atoms) on 50^3 — Quantum Simulation</title>
+  <style>
+    body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; overflow: hidden; flex-direction: column; }
+    canvas { border: none; }
+  </style>
+</head>
+<body>
+  <script>
+    window.onerror = function(msg, url, line) {
+      document.body.style.color = 'red';
+      document.body.innerHTML = '<pre>ERROR: ' + msg + '\nLine: ' + line + '\nFile: ' + url + '</pre>';
+    };
+
+    // 33 water molecules (99 atoms) on 50^3 grid, 30 au screen
+    // 0.6 au/cell. O-H ~1.8au = 3 cells. Spacing ~5au = 8 cells.
+    var atoms = [];
+    var spacing = 8;
+    var startI = 3, startJ = 3;
+    var ohBond = 2;
+    var count = 0;
+    var rows = [6, 6, 6, 5, 5, 5]; // 6+6+6+5+5+5 = 33
+
+    for (var row = 0; row < rows.length && count < 33; row++) {
+      var cols = rows[row];
+      var offsetI = (row % 2 === 1) ? 4 : 0;
+      for (var col = 0; col < cols && count < 33; col++) {
+        var ci = startI + offsetI + col * spacing;
+        var cj = startJ + row * spacing;
+        atoms.push({ i: ci, j: cj, Z: 2, el: 'O' });
+        atoms.push({ i: ci - ohBond, j: cj - ohBond, Z: 1, el: 'H' });
+        atoms.push({ i: ci + ohBond, j: cj - ohBond, Z: 1, el: 'H' });
+        count++;
+      }
+    }
+
+    function rcForZ(z) {
+      if (z === 0) return 0;
+      if (z <= 1) return 0.1;
+      if (z === 2) return 0.5;
+      if (z === 3) return 0.3;
+      return 0.4;
+    }
+
+    window.USER_NN = 50;
+    window.USER_ATOMS = atoms;
+    window.USER_SCREEN = 30;
+    window.USER_STEPS = 20000;
+    window.USER_Z = atoms.map(function(a) { return a.Z; });
+    window.USER_RC = atoms.map(function(a) { return rcForZ(a.Z); });
+
+    document.body.innerHTML += '<pre style="color:#0f0">Loading 33 H2O (' + atoms.length + ' atoms) on 50^3 grid...</pre>';
+
+    var s = document.createElement('script');
+    s.src = 'molecule.js?t=' + Date.now();
+    s.onerror = function() { document.body.innerHTML = '<pre style="color:red">Failed to load molecule.js</pre>'; };
+    s.onload = function() {
+      var p5s = document.createElement('script');
+      p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+      document.body.appendChild(p5s);
+    };
+    document.body.appendChild(s);
+  </script>
+</body>
+</html>

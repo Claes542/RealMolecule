@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>50 Water Molecules — 150 Domains</title>
+  <style>
+    body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; overflow: hidden; flex-direction: column; }
+    canvas { border: none; }
+  </style>
+</head>
+<body>
+  <script>
+    window.onerror = function(msg, url, line) {
+      document.body.style.color = 'red';
+      document.body.innerHTML = '<pre>ERROR: ' + msg + '\nLine: ' + line + '\nFile: ' + url + '</pre>';
+    };
+
+    (function() {
+      var N = 200, scr = N; // 1 au per cell, fill entire 200^3 grid
+      var hGrid = scr / N;     // hGrid = 1.0
+      var bondOH = 1.8;
+      var angle = 104.5 * Math.PI / 180;
+
+      // 50 molecules in ~4x4x3 grid + 2 extra = 50
+      var nx = 4, ny = 4, nz = 4; // 64 slots, use first 50
+      var sx = scr / (nx + 1);
+      var sy = scr / (ny + 1);
+      var sz = scr / (nz + 1); // not used in 2D slice but sets k
+
+      var atoms = [], Zs = [], RCs = [];
+      var count = 0;
+
+      for (var iz = 0; iz < nz && count < 50; iz++) {
+        for (var iy = 0; iy < ny && count < 50; iy++) {
+          for (var ix = 0; ix < nx && count < 50; ix++) {
+            var ox = sx * (ix + 1);
+            var oy = sy * (iy + 1);
+            var ok = Math.round(sz * (iz + 1) / hGrid);
+
+            var rot = count * 0.618 * 2 * Math.PI;
+            var oi = Math.round(ox / hGrid);
+            var oj = Math.round(oy / hGrid);
+            var bCells = Math.round(bondOH / hGrid);
+
+            var h1i = oi + Math.round(bCells * Math.cos(rot + angle / 2));
+            var h1j = oj + Math.round(bCells * Math.sin(rot + angle / 2));
+            var h2i = oi + Math.round(bCells * Math.cos(rot - angle / 2));
+            var h2j = oj + Math.round(bCells * Math.sin(rot - angle / 2));
+
+            atoms.push({ i: oi, j: oj, k: ok, Z: 2, el: 'O' });
+            Zs.push(2); RCs.push(0.2);
+            atoms.push({ i: h1i, j: h1j, k: ok, Z: 1, el: 'H' });
+            Zs.push(1); RCs.push(0.2);
+            atoms.push({ i: h2i, j: h2j, k: ok, Z: 1, el: 'H' });
+            Zs.push(1); RCs.push(0.2);
+            count++;
+          }
+        }
+      }
+
+      console.log('50 H2O: ' + atoms.length + ' atoms, filling 200^3, scr=' + scr + ' au');
+
+      window.USER_NN = N;
+      window.USER_ATOMS = atoms;
+      window.USER_SCREEN = scr;
+      window.USER_STEPS = 100000;
+      window.USER_Z = Zs;
+      window.USER_RC = RCs;
+    })();
+
+    var s = document.createElement('script');
+    s.src = 'molecule.js?t=' + Date.now();
+    s.onerror = function() { document.body.innerHTML = '<pre style="color:red">Failed to load molecule.js</pre>'; };
+    s.onload = function() {
+      var p5s = document.createElement('script');
+      p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+      document.body.appendChild(p5s);
+    };
+    document.body.appendChild(s);
+  </script>
+</body>
+</html>

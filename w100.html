@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<pre id="log">Loading molecule.js...</pre>
+<script>
+var log = document.getElementById('log');
+window.onerror = function(msg, url, line) {
+  log.textContent += '\nERROR: ' + msg + '\nLine: ' + line + '\nFile: ' + url;
+};
+
+// 100 atoms: 33 water molecules (99 atoms) + 1 lone H in 3D
+var atoms = [];
+var gridN = 200, margin = 25;
+var nx = 3, ny = 4, nz = 3;
+var dx = (gridN - 2 * margin) / (nx - 1);
+var dy = (gridN - 2 * margin) / (ny - 1);
+var dz = (gridN - 2 * margin) / (nz - 1);
+var count = 0;
+for (var iz = 0; iz < nz && count < 33; iz++) {
+  for (var iy = 0; iy < ny && count < 33; iy++) {
+    for (var ix = 0; ix < nx && count < 33; ix++) {
+      var cx = Math.round(margin + ix * dx);
+      var cy = Math.round(margin + iy * dy);
+      var ck = Math.round(margin + iz * dz);
+      atoms.push({ i: cx, j: cy, k: ck, Z: 2, el: 'O' });
+      atoms.push({ i: cx - 6, j: cy - 5, k: ck, Z: 1, el: 'H' });
+      atoms.push({ i: cx + 6, j: cy - 5, k: ck, Z: 1, el: 'H' });
+      count++;
+    }
+  }
+}
+atoms.push({ i: 100, j: 100, k: 100, Z: 1, el: 'H' });
+log.textContent += '\n' + atoms.length + ' atoms created';
+
+window.USER_NN = gridN;
+window.USER_ATOMS = atoms;
+window.USER_SCREEN = 20;
+window.USER_STEPS = 1000000;
+window.USER_Z = atoms.map(function(a) { return a.Z; });
+window.USER_RC = atoms.map(function(a) { return 0; });
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onerror = function() { log.textContent += '\nFailed to load molecule.js!'; };
+s.onload = function() {
+  log.textContent += '\nmolecule.js loaded, loading p5...';
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p5s.crossOrigin = 'anonymous';
+  p5s.onerror = function() { log.textContent += '\nFailed to load p5.js!'; };
+  p5s.onload = function() { log.textContent += '\np5.js loaded'; };
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

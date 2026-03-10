@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Glycine NH2-CH2-COOH — Quantum Simulation</title>
+  <title>Glycine NH2-CH2-COOH — Nuclear Dynamics</title>
   <style>
     body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; overflow: hidden; }
     canvas { border: none; }
@@ -17,29 +17,20 @@
 
     // Glycine: simplest amino acid NH2-CH2-COOH
     // 10 atoms: N, Ca(C), C(carboxyl), O=, O-H, H(N1), H(N2), H(Ca1), H(Ca2), H(OH)
-    // Bond lengths: C-C 1.52A=2.872au, C-N 1.47A=2.778au, C=O 1.20A=2.268au,
-    //   C-OH 1.34A=2.532au, N-H 1.01A=1.908au, C-H 1.09A=2.060au, O-H 0.97A=1.833au
     (function() {
       var N = 200, scr = 14, N2 = Math.round(N / 2);
-      var hGrid = scr / N;  // 0.14 au/point
+      var hGrid = scr / N;
 
       // Geometry in au, centered on molecule centroid
-      // Backbone: N-Ca-C(=O)(-OH)
-      // Ca at origin, C along +x, N at 110.5 deg
       var Ca = [0, 0];
       var C  = [2.872, 0];
       var Npos = [2.778 * Math.cos(110.5 * Math.PI/180), 2.778 * Math.sin(110.5 * Math.PI/180)];
-      // O= from C at -55 deg (O=C-Ca = 125 deg)
       var Odb = [C[0] + 2.268 * Math.cos(-55 * Math.PI/180), 2.268 * Math.sin(-55 * Math.PI/180)];
-      // O-H from C at +65 deg
       var Ooh = [C[0] + 2.532 * Math.cos(65 * Math.PI/180), 2.532 * Math.sin(65 * Math.PI/180)];
-      // H on O-H, extending along C->OH direction
       var Hoh = [Ooh[0] + 1.833 * Math.cos(65 * Math.PI/180), Ooh[1] + 1.833 * Math.sin(65 * Math.PI/180)];
-      // H on N: two H atoms at ~120 deg from N-Ca bond
-      var nca_ang = Math.atan2(-Npos[1], -Npos[0]);  // N->Ca direction
+      var nca_ang = Math.atan2(-Npos[1], -Npos[0]);
       var Hn1 = [Npos[0] + 1.908 * Math.cos(nca_ang + 2.094), Npos[1] + 1.908 * Math.sin(nca_ang + 2.094)];
       var Hn2 = [Npos[0] + 1.908 * Math.cos(nca_ang - 2.094), Npos[1] + 1.908 * Math.sin(nca_ang - 2.094)];
-      // H on Ca: two H atoms roughly opposite to C-N bisector (sp3)
       var Hca1 = [2.060 * Math.cos(215 * Math.PI/180), 2.060 * Math.sin(215 * Math.PI/180)];
       var Hca2 = [2.060 * Math.cos(255 * Math.PI/180), 2.060 * Math.sin(255 * Math.PI/180)];
 
@@ -58,23 +49,22 @@
 
       window.USER_NN = N;
       window.USER_ATOMS = [
-        { i: gN[0],    j: gN[1],    Z: 3, el: 'N'  },   // nitrogen
-        { i: gCa[0],   j: gCa[1],   Z: 4, el: 'Ca' },   // alpha carbon
-        { i: gC[0],    j: gC[1],    Z: 4, el: 'C'  },   // carboxyl carbon
-        { i: gOdb[0],  j: gOdb[1],  Z: 2, el: 'O=' },   // carbonyl oxygen
-        { i: gOoh[0],  j: gOoh[1],  Z: 2, el: 'OH' },   // hydroxyl oxygen
-        { i: gHn1[0],  j: gHn1[1],  Z: 1, el: 'H'  },   // H on N
-        { i: gHn2[0],  j: gHn2[1],  Z: 1, el: 'H'  },   // H on N
-        { i: gHca1[0], j: gHca1[1], Z: 1, el: 'H'  },   // H on Ca
-        { i: gHca2[0], j: gHca2[1], Z: 1, el: 'H'  },   // H on Ca
-        { i: gHoh[0],  j: gHoh[1],  Z: 1, el: 'H'  }    // H on OH
+        { i: gN[0],    j: gN[1],    Z: 3, el: 'N'  },
+        { i: gCa[0],   j: gCa[1],   Z: 4, el: 'Ca' },
+        { i: gC[0],    j: gC[1],    Z: 4, el: 'C'  },
+        { i: gOdb[0],  j: gOdb[1],  Z: 2, el: 'O=' },
+        { i: gOoh[0],  j: gOoh[1],  Z: 2, el: 'OH' },
+        { i: gHn1[0],  j: gHn1[1],  Z: 1, el: 'H'  },
+        { i: gHn2[0],  j: gHn2[1],  Z: 1, el: 'H'  },
+        { i: gHca1[0], j: gHca1[1], Z: 1, el: 'H'  },
+        { i: gHca2[0], j: gHca2[1], Z: 1, el: 'H'  },
+        { i: gHoh[0],  j: gHoh[1],  Z: 1, el: 'H'  }
       ];
       window.USER_Z  = [3, 4, 4, 2, 2, 1, 1, 1, 1, 1];
       window.USER_RC = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
       window.USER_SCREEN = scr;
-      window.USER_STEPS = 20000;
+      window.USER_STEPS = 100000;
 
-      // Log geometry
       var atoms = window.USER_ATOMS;
       for (var a = 0; a < atoms.length; a++) {
         console.log(atoms[a].el + ': i=' + atoms[a].i + ' j=' + atoms[a].j +
@@ -83,9 +73,9 @@
     })();
 
     var s = document.createElement('script');
-    s.src = 'molecule.js?t=' + Date.now();
+    s.src = 'moleculedyn.js?t=' + Date.now();
     s.onerror = function() {
-      document.body.innerHTML = '<pre style="color:red">Failed to load molecule.js</pre>';
+      document.body.innerHTML = '<pre style="color:red">Failed to load moleculedyn.js</pre>';
     };
     s.onload = function() {
       var p5s = document.createElement('script');

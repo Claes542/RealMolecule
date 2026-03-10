@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>5 Water Molecules (15 atoms) on 50^3 — Test</title>
+  <style>
+    body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; overflow: hidden; flex-direction: column; }
+    canvas { border: none; }
+  </style>
+</head>
+<body>
+  <script>
+    window.onerror = function(msg, url, line) {
+      document.body.style.color = 'red';
+      document.body.innerHTML = '<pre>ERROR: ' + msg + '\nLine: ' + line + '\nFile: ' + url + '</pre>';
+    };
+
+    var atoms = [];
+    var positions = [[12,12],[36,12],[12,36],[36,36],[24,24]];
+    var ohBond = 3;
+    for (var w = 0; w < 5; w++) {
+      var ci = positions[w][0], cj = positions[w][1];
+      atoms.push({ i: ci, j: cj, Z: 2, el: 'O' });
+      atoms.push({ i: ci - ohBond, j: cj - ohBond, Z: 1, el: 'H' });
+      atoms.push({ i: ci + ohBond, j: cj - ohBond, Z: 1, el: 'H' });
+    }
+
+    function rcForZ(z) {
+      if (z === 0) return 0;
+      if (z <= 1) return 0.1;
+      if (z === 2) return 0.5;
+      return 0.4;
+    }
+
+    window.USER_NN = 50;
+    window.USER_ATOMS = atoms;
+    window.USER_SCREEN = 14;
+    window.USER_STEPS = 20000;
+    window.USER_Z = atoms.map(function(a) { return a.Z; });
+    window.USER_RC = atoms.map(function(a) { return rcForZ(a.Z); });
+
+    var s = document.createElement('script');
+    s.src = 'molecule.js?t=' + Date.now();
+    s.onerror = function() { document.body.innerHTML = '<pre style="color:red">Failed to load molecule.js</pre>'; };
+    s.onload = function() {
+      var p5s = document.createElement('script');
+      p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+      document.body.appendChild(p5s);
+    };
+    document.body.appendChild(s);
+  </script>
+</body>
+</html>

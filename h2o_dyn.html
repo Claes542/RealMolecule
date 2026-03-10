@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>H2O Water — Quantum Dynamics (3 atoms)</title>
+  <style>
+    body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; overflow: hidden; }
+    canvas { border: none; }
+  </style>
+</head>
+<body>
+  <script>
+    window.onerror = function(msg, url, line) {
+      document.body.style.color = 'red';
+      document.body.innerHTML = '<pre>ERROR: ' + msg + '\nLine: ' + line + '\nFile: ' + url + '</pre>';
+    };
+
+    // H2O — 3 atoms: O at center, 2 H at 104.5° angle
+    // 200^3 grid, 10 au screen, O-H bond = 1.81 au
+    (function() {
+      var N = 200, scr = 10, N2 = 100;
+      var hv = scr / N;  // 0.05 au/cell
+      var OH = 1.81;     // O-H bond in au
+      var angle = 104.5 * Math.PI / 180;
+
+      // O at center
+      var Oi = N2, Oj = N2;
+      // H1 upper-left
+      var H1i = Math.round(N2 + OH * Math.cos(Math.PI/2 + angle/2) / hv);
+      var H1j = Math.round(N2 - OH * Math.sin(Math.PI/2 + angle/2) / hv);
+      // H2 upper-right
+      var H2i = Math.round(N2 + OH * Math.cos(Math.PI/2 - angle/2) / hv);
+      var H2j = Math.round(N2 - OH * Math.sin(Math.PI/2 - angle/2) / hv);
+
+      window.USER_NN = N;
+      window.USER_SCREEN = scr;
+      window.USER_STEPS = 100000;
+      window.USER_ATOMS = [
+        { i: H1i, j: H1j, Z: 1, el: 'H' },
+        { i: Oi,  j: Oj,  Z: 2, el: 'O' },
+        { i: H2i, j: H2j, Z: 1, el: 'H' }
+      ];
+      window.USER_Z  = [1, 2, 1];
+      window.USER_RC = [0.1, 0.5, 0.1];
+
+      console.log("H2O: O at (" + Oi + "," + Oj + "), H1 at (" + H1i + "," + H1j + "), H2 at (" + H2i + "," + H2j + ")");
+    })();
+
+    var s = document.createElement('script');
+    s.src = 'molecule.js?t=' + Date.now();
+    s.onerror = function() { document.body.innerHTML = '<pre style="color:red">Failed to load molecule.js</pre>'; };
+    s.onload = function() {
+      var p5s = document.createElement('script');
+      p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+      document.body.appendChild(p5s);
+    };
+    document.body.appendChild(s);
+  </script>
+</body>
+</html>

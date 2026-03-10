@@ -32,16 +32,17 @@
     </div>
     <canvas id="placement" width="400" height="400"></canvas>
     <div id="atomList">No atoms placed</div>
-    <div id="info">Right-click to remove last atom</div>
+    <div id="info">Right-click to remove last atom | Press D to toggle dynamics after launch</div>
     <div>
       Grid:
       <select id="gridSelect" class="cfg-input">
-        <option value="200" data-max="5" data-screen="10">200^3 (5 atoms, hi-res)</option>
+        <option value="200" data-max="10" data-screen="10">200^3 (10 atoms, hi-res)</option>
+        <option value="300" data-max="10" data-screen="10">300^3 (10 atoms, ultra)</option>
         <option value="100" data-max="50" data-screen="14">100^3 (50 atoms)</option>
-        <option value="50" data-max="100" data-screen="14">50^3 (100 atoms)</option>
+        <option value="50" data-max="30" data-screen="14">50^3 (30 atoms, fast)</option>
       </select>
       Screen: <input id="screenInput" class="cfg-input" type="number" value="10" min="2" max="40" step="1"> au
-      Steps: <input id="stepsInput" class="cfg-input" type="number" value="10000" min="1000" max="100000" step="1000">
+      Steps: <input id="stepsInput" class="cfg-input" type="number" value="100000" min="1000" max="1000000" step="1000">
     </div>
     <div style="margin-top:8px">
       <button class="action-btn" id="clearBtn">Clear</button>
@@ -57,17 +58,13 @@
     var selectedEl = null;
     var placedAtoms = [];
     var GRID_N = 200;
-    var MAX_PLACE = 5;
+    var MAX_PLACE = 10;
     var cvs = document.getElementById('placement');
     var ctx = cvs.getContext('2d');
     var zColors = {1: '#fff', 2: '#f44', 3: '#48f', 4: '#4f4'};
 
     function rcForZ(z) {
-      if (z === 0) return 0;
-      if (z <= 1) return 0.1;
-      if (z === 2) return 0.5;
-      if (z === 3) return 0.3;
-      return 0.4;
+      return 0;
     }
 
     function updateHeader() {
@@ -139,7 +136,7 @@
         });
         document.getElementById('atomList').textContent = placedAtoms.length + '/' + MAX_PLACE + ': ' + parts.join(' | ');
       }
-      document.getElementById('launch').disabled = placedAtoms.length < 2;
+      document.getElementById('launch').disabled = placedAtoms.length < 1;
     }
 
     document.querySelectorAll('.atom-btn').forEach(function(btn) {

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Solvated Caffeine (99 atoms) — Quantum Simulation</title>
+  <style>
+    body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; overflow: hidden; flex-direction: column; }
+    canvas { border: none; }
+  </style>
+</head>
+<body>
+  <script>
+    window.onerror = function(msg, url, line) {
+      document.body.style.color = 'red';
+      document.body.innerHTML = '<pre>ERROR: ' + msg + '\nLine: ' + line + '\nFile: ' + url + '</pre>';
+    };
+
+    // Caffeine C8H10N4O2 (24 atoms) + 25 H2O (75 atoms) = 99 atoms
+    // 100^3 grid, 20 au screen. 1 au = 5 cells.
+
+    var atoms = [
+      // === Caffeine ring system (24 atoms) ===
+      // 6-membered ring (pyrimidinedione)
+      { i: 38, j: 40, Z: 3, el: 'N' },  // N1
+      { i: 50, j: 33, Z: 4, el: 'C' },  // C2 (=O)
+      { i: 62, j: 40, Z: 3, el: 'N' },  // N3
+      { i: 62, j: 54, Z: 4, el: 'C' },  // C4
+      { i: 50, j: 61, Z: 4, el: 'C' },  // C5 (=O)
+      { i: 38, j: 54, Z: 4, el: 'C' },  // C6
+      // 5-membered ring (imidazole, fused at C4-C5)
+      { i: 50, j: 73, Z: 3, el: 'N' },  // N7
+      { i: 64, j: 73, Z: 4, el: 'C' },  // C8
+      { i: 70, j: 60, Z: 3, el: 'N' },  // N9
+
+      // Carbonyl oxygens
+      { i: 50, j: 23, Z: 2, el: 'O' },  // O on C2
+      { i: 30, j: 61, Z: 2, el: 'O' },  // O on C6
+
+      // N-CH3 on N1
+      { i: 28, j: 35, Z: 4, el: 'C' },
+      { i: 20, j: 30, Z: 1, el: 'H' },
+      { i: 22, j: 42, Z: 1, el: 'H' },
+      { i: 33, j: 28, Z: 1, el: 'H' },
+
+      // N-CH3 on N3
+      { i: 72, j: 33, Z: 4, el: 'C' },
+      { i: 80, j: 28, Z: 1, el: 'H' },
+      { i: 78, j: 40, Z: 1, el: 'H' },
+      { i: 66, j: 26, Z: 1, el: 'H' },
+
+      // N-CH3 on N9
+      { i: 80, j: 65, Z: 4, el: 'C' },
+      { i: 88, j: 60, Z: 1, el: 'H' },
+      { i: 85, j: 72, Z: 1, el: 'H' },
+      { i: 75, j: 72, Z: 1, el: 'H' },
+
+      // H on C8
+      { i: 68, j: 80, Z: 1, el: 'H' },
+
+      // === 25 water molecules (75 atoms) ===
+      // Ring 1: 9 waters (original solvation shell)
+      { i: 15, j: 18, Z: 2, el: 'O' }, { i: 10, j: 14, Z: 1, el: 'H' }, { i: 20, j: 14, Z: 1, el: 'H' },
+      { i: 50, j: 10, Z: 2, el: 'O' }, { i: 45, j:  6, Z: 1, el: 'H' }, { i: 55, j:  6, Z: 1, el: 'H' },
+      { i: 88, j: 18, Z: 2, el: 'O' }, { i: 83, j: 14, Z: 1, el: 'H' }, { i: 93, j: 14, Z: 1, el: 'H' },
+      { i: 10, j: 55, Z: 2, el: 'O' }, { i:  5, j: 51, Z: 1, el: 'H' }, { i: 15, j: 51, Z: 1, el: 'H' },
+      { i: 92, j: 45, Z: 2, el: 'O' }, { i: 87, j: 41, Z: 1, el: 'H' }, { i: 97, j: 41, Z: 1, el: 'H' },
+      { i: 10, j: 80, Z: 2, el: 'O' }, { i:  5, j: 76, Z: 1, el: 'H' }, { i: 15, j: 76, Z: 1, el: 'H' },
+      { i: 35, j: 90, Z: 2, el: 'O' }, { i: 30, j: 86, Z: 1, el: 'H' }, { i: 40, j: 86, Z: 1, el: 'H' },
+      { i: 65, j: 92, Z: 2, el: 'O' }, { i: 60, j: 88, Z: 1, el: 'H' }, { i: 70, j: 88, Z: 1, el: 'H' },
+      { i: 90, j: 80, Z: 2, el: 'O' }, { i: 85, j: 76, Z: 1, el: 'H' }, { i: 95, j: 76, Z: 1, el: 'H' },
+
+      // Ring 2: 8 waters (outer shell, filling gaps)
+      { i: 30, j: 10, Z: 2, el: 'O' }, { i: 25, j:  6, Z: 1, el: 'H' }, { i: 35, j:  6, Z: 1, el: 'H' },
+      { i: 72, j: 10, Z: 2, el: 'O' }, { i: 67, j:  6, Z: 1, el: 'H' }, { i: 77, j:  6, Z: 1, el: 'H' },
+      { i:  6, j: 35, Z: 2, el: 'O' }, { i:  3, j: 30, Z: 1, el: 'H' }, { i: 11, j: 30, Z: 1, el: 'H' },
+      { i: 95, j: 62, Z: 2, el: 'O' }, { i: 92, j: 57, Z: 1, el: 'H' }, { i: 98, j: 57, Z: 1, el: 'H' },
+      { i:  6, j: 68, Z: 2, el: 'O' }, { i:  3, j: 63, Z: 1, el: 'H' }, { i: 11, j: 63, Z: 1, el: 'H' },
+      { i: 50, j: 95, Z: 2, el: 'O' }, { i: 45, j: 91, Z: 1, el: 'H' }, { i: 55, j: 91, Z: 1, el: 'H' },
+      { i: 80, j: 90, Z: 2, el: 'O' }, { i: 75, j: 86, Z: 1, el: 'H' }, { i: 85, j: 86, Z: 1, el: 'H' },
+      { i: 95, j: 30, Z: 2, el: 'O' }, { i: 92, j: 25, Z: 1, el: 'H' }, { i: 98, j: 25, Z: 1, el: 'H' },
+
+      // Ring 3: 8 waters (corners and remaining gaps)
+      { i:  8, j:  8, Z: 2, el: 'O' }, { i:  4, j:  5, Z: 1, el: 'H' }, { i: 12, j:  5, Z: 1, el: 'H' },
+      { i: 92, j:  8, Z: 2, el: 'O' }, { i: 88, j:  5, Z: 1, el: 'H' }, { i: 96, j:  5, Z: 1, el: 'H' },
+      { i:  8, j: 92, Z: 2, el: 'O' }, { i:  4, j: 88, Z: 1, el: 'H' }, { i: 12, j: 88, Z: 1, el: 'H' },
+      { i: 92, j: 92, Z: 2, el: 'O' }, { i: 88, j: 88, Z: 1, el: 'H' }, { i: 96, j: 88, Z: 1, el: 'H' },
+      { i: 20, j: 68, Z: 2, el: 'O' }, { i: 15, j: 64, Z: 1, el: 'H' }, { i: 25, j: 64, Z: 1, el: 'H' },
+      { i: 20, j: 90, Z: 2, el: 'O' }, { i: 15, j: 86, Z: 1, el: 'H' }, { i: 25, j: 86, Z: 1, el: 'H' },
+      { i: 40, j:  5, Z: 2, el: 'O' }, { i: 36, j:  2, Z: 1, el: 'H' }, { i: 44, j:  2, Z: 1, el: 'H' },
+      { i: 60, j:  5, Z: 2, el: 'O' }, { i: 56, j:  2, Z: 1, el: 'H' }, { i: 64, j:  2, Z: 1, el: 'H' },
+    ];
+
+    function rcForZ(z) {
+      if (z === 0) return 0;
+      if (z <= 1) return 0.1;
+      if (z === 2) return 0.5;
+      if (z === 3) return 0.3;
+      return 0.4;
+    }
+
+    console.log('Caffeine + 25 H2O: ' + atoms.length + ' atoms');
+
+    window.USER_NN = 100;
+    window.USER_ATOMS = atoms;
+    window.USER_SCREEN = 20;
+    window.USER_STEPS = 20000;
+    window.USER_Z = atoms.map(function(a) { return a.Z; });
+    window.USER_RC = atoms.map(function(a) { return rcForZ(a.Z); });
+
+    var s = document.createElement('script');
+    s.src = 'molecule.js?t=' + Date.now();
+    s.onerror = function() { document.body.innerHTML = '<pre style="color:red">Failed to load molecule.js</pre>'; };
+    s.onload = function() {
+      var p5s = document.createElement('script');
+      p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+      document.body.appendChild(p5s);
+    };
+    document.body.appendChild(s);
+  </script>
+</body>
+</html>
