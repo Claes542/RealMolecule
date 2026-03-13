@@ -1,4 +1,4 @@
-# H2O — Real-Time Quantum Molecular Simulation in the Browser
+# RealQM — Molecular Dynamics in the Browser
 
 A WebGPU-powered quantum chemistry simulator that computes electron densities on 3D grids using DFT-like methods, entirely in the browser. Watch molecules form, fold, and interact — from single atoms to 1000-atom proteins with hydration shells.
 
