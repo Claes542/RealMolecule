@@ -53,7 +53,7 @@ function dispatchLinear(pass, totalCells) {
 }
 
 const STEPS_PER_FRAME = NELEC <= 5 ? 500 : NELEC <= 15 ? 100 : NELEC <= 30 ? 50 : NELEC <= 100 ? 5 : 2;
-const W_STEPS_PER_FRAME = 500;
+const W_STEPS_PER_FRAME = Math.max(1, STEPS_PER_FRAME);  // match U steps per frame
 const BOUNDARY_INTERVAL = 20;
 const NORM_INTERVAL = 20;
 const POISSON_INTERVAL = 50;
@@ -953,7 +953,7 @@ let forceSumsBuf, forceSumsReadBuf;
 let gradPtotalPL, recomputeK_PL;
 let gradPtotalBG = [], recomputeK_BG;
 
-let cur = 0, gpuReady = false, computing = false, initProgress = 0;
+let cur = 0, gpuReady = false, computing = false, initProgress = 0, computePromise = null;
 let tStep = 0, E = 0, lastMs = 0;
 let E_T = 0, E_eK = 0, E_ee = 0, E_KK = 0;
 let gpuError = null;
@@ -1133,6 +1133,48 @@ window.restartWithPositions = async function(newPositions) {
   computing = false;
   gpuError = null;
 };
+
+// External API: activate first `count` atoms, reinitialize simulation
+let _activating = false, _pendingCount = null;
+window.activateAtoms = async function(count) {
+  if (!gpuReady) { console.warn("activateAtoms: GPU not ready"); return; }
+  count = Math.max(1, Math.min(count, NELEC));
+  if (_activating) { _pendingCount = count; return; }  // queue latest request
+  _activating = true;
+  // Wait for any in-flight compute to fully complete (including mapAsync)
+  phase = 1;  // prevent new doSteps from starting
+  if (computePromise) { await computePromise; }
+  computing = false;
+  await device.queue.onSubmittedWorkDone();
+  for (let n = 0; n < MAX_ATOMS; n++) {
+    Z[n] = (n < count) ? Z_orig[n] : 0;
+    Ne[n] = (n < count) ? Ne_orig[n] : 0;
+  }
+  nucVel = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
+  nucForce = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
+  nucPos = molNucPos.map(p => [...p]);
+  updateParamsBuf();
+  await uploadInitialData();
+  tStep = 0;
+  phaseSteps = 0;
+  frameCount = 0;
+  E_min = Infinity;
+  cur = 0;
+  phase = 0;
+  computing = false;
+  gpuError = null;
+  nucStepCount = 0;
+  // Preserve dynamicsEnabled — don't reset it so user's D-key toggle persists
+  window._activeCount = count;
+  _activating = false;
+  // If another request came in while we were busy, process it
+  if (_pendingCount !== null) {
+    const next = _pendingCount;
+    _pendingCount = null;
+    window.activateAtoms(next);
+  }
+};
+window.isGpuReady = function() { return gpuReady; };
 
 function setup() {
   console.log("setup: NELEC=" + NELEC + " NRED_E=" + NRED_E + " REDUCE_WG=" + REDUCE_WG);
@@ -1817,7 +1859,7 @@ function draw() {
 
   if (!computing && phase === 0) {
     computing = true;
-    doSteps(STEPS_PER_FRAME).then(() => {
+    computePromise = doSteps(STEPS_PER_FRAME).then(() => {
       computing = false;
       phaseSteps += STEPS_PER_FRAME;
       if (isFinite(E) && E < E_min) E_min = E;
@@ -1837,7 +1879,7 @@ function draw() {
       gpuError = e.message || String(e);
       console.error("GPU step failed:", e);
       computing = false;
-    });
+    }).finally(() => { computePromise = null; });
   }
 
   if (sliceData) {

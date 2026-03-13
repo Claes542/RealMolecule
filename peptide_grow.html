@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="controls" style="position:fixed;top:10px;left:10px;z-index:100;background:rgba(0,0,0,0.7);padding:8px 12px;border-radius:6px">
+  <button id="addBtn" style="font-size:14px;padding:4px 12px">Add next atom</button>
+  <button id="autoBtn" style="font-size:14px;padding:4px 12px;margin-left:6px">Auto-grow</button>
+  <span id="status" style="margin-left:10px"></span>
+</div>
+<pre id="log" style="margin-top:50px">Building peptide backbone...</pre>
+<script>
+var log = document.getElementById('log');
+window.onerror = function(msg, url, line) {
+  log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
+};
+
+(function() {
+  var A = 1.8897;
+  var gridN = 300;
+
+  // 3-residue glycine peptide: NH2-Gly-Gly-Gly-COOH + 1 water
+  // Atoms ordered for sequential build: backbone first, then hydrogens, then water
+  // Raw coords in Angstroms (will be centered below)
+  var rawCoords = [
+    // --- Residue 1: N-terminal glycine ---
+    { ax: 0.0, ay: 0.0, az: 0.0, Z: 3, el: 'N' },    // 0: N1
+    { ax: 1.47, ay: 0.0, az: 0.0, Z: 4, el: 'C' },   // 1: Ca1
+    { ax: 2.1, ay: 1.23, az: 0.0, Z: 4, el: 'C' },   // 2: C1
+    { ax: 1.6, ay: 2.3, az: 0.0, Z: 2, el: 'O' },    // 3: O1
+    // --- Residue 2: middle glycine ---
+    { ax: 3.4, ay: 1.2, az: 0.0, Z: 3, el: 'N' },    // 4: N2
+    { ax: 4.1, ay: 2.4, az: 0.0, Z: 4, el: 'C' },    // 5: Ca2
+    { ax: 5.6, ay: 2.3, az: 0.0, Z: 4, el: 'C' },    // 6: C2
+    { ax: 6.2, ay: 1.2, az: 0.0, Z: 2, el: 'O' },    // 7: O2
+    // --- Residue 3: C-terminal glycine ---
+    { ax: 6.3, ay: 3.4, az: 0.0, Z: 3, el: 'N' },    // 8: N3
+    { ax: 7.7, ay: 3.5, az: 0.0, Z: 4, el: 'C' },    // 9: Ca3
+    { ax: 8.4, ay: 4.7, az: 0.0, Z: 4, el: 'C' },    // 10: C3
+    { ax: 7.9, ay: 5.8, az: 0.0, Z: 2, el: 'O' },    // 11: O3
+    // C-terminal OH
+    { ax: 9.6, ay: 4.6, az: 0.0, Z: 2, el: 'O' },    // 12: OXT
+    { ax: 10.2, ay: 5.3, az: 0.0, Z: 1, el: 'H' },   // 13: HXT
+    // --- Hydrogens on backbone ---
+    { ax: -0.4, ay: 0.8, az: 0.0, Z: 1, el: 'H' },   // 14: H on N1
+    { ax: -0.4, ay: -0.8, az: 0.0, Z: 1, el: 'H' },  // 15: H on N1
+    { ax: 1.5, ay: -0.5, az: 0.9, Z: 1, el: 'H' },   // 16: Ha1a
+    { ax: 1.5, ay: -0.5, az: -0.9, Z: 1, el: 'H' },  // 17: Ha1b
+    { ax: 3.8, ay: 0.3, az: 0.0, Z: 1, el: 'H' },    // 18: H on N2
+    { ax: 3.8, ay: 3.0, az: 0.9, Z: 1, el: 'H' },    // 19: Ha2a
+    { ax: 3.8, ay: 3.0, az: -0.9, Z: 1, el: 'H' },   // 20: Ha2b
+    { ax: 5.8, ay: 4.1, az: 0.0, Z: 1, el: 'H' },    // 21: H on N3
+    { ax: 8.0, ay: 2.6, az: 0.9, Z: 1, el: 'H' },    // 22: Ha3a
+    { ax: 8.0, ay: 2.6, az: -0.9, Z: 1, el: 'H' },   // 23: Ha3b
+    // --- Water molecule near peptide bond 1 ---
+    { ax: 2.5, ay: -1.5, az: 0.0, Z: 2, el: 'O' },   // 24: O water
+    { ax: 1.8, ay: -1.9, az: 0.0, Z: 1, el: 'H' },   // 25: H water
+    { ax: 3.1, ay: -2.0, az: 0.0, Z: 1, el: 'H' },   // 26: H water
+  ];
+
+  // Center molecule coordinates
+  var cx = 0, cy = 0, cz = 0;
+  for (var i = 0; i < rawCoords.length; i++) {
+    cx += rawCoords[i].ax; cy += rawCoords[i].ay; cz += rawCoords[i].az;
+  }
+  cx /= rawCoords.length; cy /= rawCoords.length; cz /= rawCoords.length;
+
+  // Find extent after centering
+  var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (var i = 0; i < rawCoords.length; i++) {
+    var x = (rawCoords[i].ax - cx) * A, y = (rawCoords[i].ay - cy) * A, z = (rawCoords[i].az - cz) * A;
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+  }
+  var extent = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
+  var scr = extent + 15 * A;  // 15 A padding
+  scr = Math.max(35, Math.min(90, scr));
+
+  var h = scr / gridN;
+  var N2 = Math.round(gridN / 2);
+
+  // Convert centered coords to grid positions
+  var atoms = [];
+  for (var i = 0; i < rawCoords.length; i++) {
+    var rc = rawCoords[i];
+    var x = (rc.ax - cx) * A, y = (rc.ay - cy) * A, z = (rc.az - cz) * A;
+    var gi = Math.round(N2 + x / h);
+    var gj = Math.round(N2 + y / h);
+    var gk = Math.round(N2 + z / h);
+    gi = Math.max(3, Math.min(gridN - 3, gi));
+    gj = Math.max(3, Math.min(gridN - 3, gj));
+    gk = Math.max(3, Math.min(gridN - 3, gk));
+    atoms.push({ i: gi, j: gj, k: gk, Z: rc.Z, el: rc.el });
+  }
+
+  log.textContent = 'Tri-glycine peptide: ' + atoms.length + ' atoms';
+  log.textContent += '\nSequence: NH2-Gly-Gly-Gly-COOH + 1 water';
+  log.textContent += '\nAtoms will be added one at a time';
+  log.textContent += '\n' + gridN + '^3 grid, screen=' + scr.toFixed(1) + ' au';
+
+  // Build atom labels for display
+  window._atomNames = atoms.map(function(a, idx) {
+    return idx + ': ' + a.el + ' (Z=' + a.Z + ')';
+  });
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  // All Z values must be set so NELEC is correct; activateAtoms(1) will zero-out the rest after init
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'C') return 0.3;
+    if (a.el === 'N') return 0.3;
+    if (a.el === 'O') return 0.4;
+    return 0;
+  });
+})();
+
+// --- Sequential atom addition control ---
+var activeCount = 1;
+var autoGrowing = false;
+var autoTimer = null;
+var statusEl = document.getElementById('status');
+var totalAtoms = window.USER_Z.filter(function(z) { return z > 0; }).length;
+
+function updateStatus() {
+  statusEl.textContent = activeCount + '/' + totalAtoms + ' atoms active';
+  if (activeCount < totalAtoms) {
+    statusEl.textContent += ' — next: ' + window._atomNames[activeCount];
+  } else {
+    statusEl.textContent += ' — complete!';
+  }
+}
+
+document.getElementById('addBtn').onclick = function() {
+  if (activeCount >= totalAtoms) return;
+  activeCount++;
+  updateStatus();
+  if (window.activateAtoms) window.activateAtoms(activeCount);
+};
+
+document.getElementById('autoBtn').onclick = function() {
+  if (autoGrowing) {
+    autoGrowing = false;
+    if (autoTimer) clearInterval(autoTimer);
+    autoTimer = null;
+    document.getElementById('autoBtn').textContent = 'Auto-grow';
+    return;
+  }
+  autoGrowing = true;
+  document.getElementById('autoBtn').textContent = 'Stop';
+  autoTimer = setInterval(function() {
+    if (activeCount >= totalAtoms) {
+      autoGrowing = false;
+      clearInterval(autoTimer);
+      autoTimer = null;
+      document.getElementById('autoBtn').textContent = 'Auto-grow';
+      return;
+    }
+    activeCount++;
+    updateStatus();
+    if (window.activateAtoms) window.activateAtoms(activeCount);
+  }, 3000);  // 3 seconds between atoms
+};
+
+// Load molecule.js, then p5, then activate first atom only
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onerror = function() { log.textContent += '\nFailed to load molecule.js!'; };
+s.onload = function() {
+  log.textContent += '\nmolecule.js loaded, loading p5...';
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p5s.crossOrigin = 'anonymous';
+  p5s.onerror = function() { log.textContent += '\nFailed to load p5.js!'; };
+  p5s.onload = function() {
+    log.textContent += '\np5.js loaded';
+    // Wait for GPU init to complete, then activate only the first atom
+    var waitInit = setInterval(function() {
+      if (window.isGpuReady && window.isGpuReady()) {
+        clearInterval(waitInit);
+        // Let first frame render before reinitializing with 1 atom
+        setTimeout(function() {
+          window.activateAtoms(1);
+          updateStatus();
+        }, 1500);
+      }
+    }, 300);
+  };
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

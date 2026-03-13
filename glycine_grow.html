@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="controls" style="position:fixed;top:10px;left:10px;z-index:100;background:rgba(0,0,0,0.7);padding:8px 12px;border-radius:6px">
+  <button id="addBtn" style="font-size:14px;padding:4px 12px">Add next atom</button>
+  <button id="autoBtn" style="font-size:14px;padding:4px 12px;margin-left:6px">Auto-grow</button>
+  <span id="status" style="margin-left:10px"></span>
+</div>
+<pre id="log" style="margin-top:50px">Building glycine...</pre>
+<script>
+var log = document.getElementById('log');
+window.onerror = function(msg, url, line) {
+  log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
+};
+
+(function() {
+  var A = 1.8897;
+  var gridN = 200;
+
+  // Glycine: NH2-CH2-COOH (simplest amino acid) + 2 waters
+  // Heavy atoms first, then hydrogens, then waters
+  var rawCoords = [
+    // Backbone heavy atoms
+    { ax: 0.0, ay: 0.0, az: 0.0, Z: 3, el: 'N' },     // 0: N (amino)
+    { ax: 1.47, ay: 0.0, az: 0.0, Z: 4, el: 'C' },    // 1: Ca
+    { ax: 2.0, ay: 1.4, az: 0.0, Z: 4, el: 'C' },     // 2: C (carboxyl)
+    { ax: 1.3, ay: 2.4, az: 0.0, Z: 2, el: 'O' },     // 3: O (C=O)
+    { ax: 3.2, ay: 1.5, az: 0.0, Z: 2, el: 'O' },     // 4: O (C-OH)
+    // Hydrogens on amino group
+    { ax:-0.4, ay: 0.8, az: 0.3, Z: 1, el: 'H' },     // 5: H on N
+    { ax:-0.4, ay:-0.8, az:-0.3, Z: 1, el: 'H' },     // 6: H on N
+    // Hydrogens on Ca
+    { ax: 1.8, ay:-0.5, az: 0.9, Z: 1, el: 'H' },     // 7: Ha
+    { ax: 1.8, ay:-0.5, az:-0.9, Z: 1, el: 'H' },     // 8: Ha
+    // Hydroxyl H
+    { ax: 3.6, ay: 2.3, az: 0.0, Z: 1, el: 'H' },     // 9: H on OH
+    // Water 1 (near amino group)
+    { ax:-1.8, ay:-1.0, az: 0.0, Z: 2, el: 'O' },     // 10: O water1
+    { ax:-1.1, ay:-1.5, az: 0.0, Z: 1, el: 'H' },     // 11: H water1
+    { ax:-2.5, ay:-1.5, az: 0.0, Z: 1, el: 'H' },     // 12: H water1
+    // Water 2 (near carboxyl)
+    { ax: 3.0, ay: 3.5, az: 0.0, Z: 2, el: 'O' },     // 13: O water2
+    { ax: 2.3, ay: 3.1, az: 0.0, Z: 1, el: 'H' },     // 14: H water2
+    { ax: 3.7, ay: 3.1, az: 0.0, Z: 1, el: 'H' },     // 15: H water2
+  ];
+
+  // Center
+  var cx = 0, cy = 0, cz = 0;
+  for (var i = 0; i < rawCoords.length; i++) {
+    cx += rawCoords[i].ax; cy += rawCoords[i].ay; cz += rawCoords[i].az;
+  }
+  cx /= rawCoords.length; cy /= rawCoords.length; cz /= rawCoords.length;
+
+  var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (var i = 0; i < rawCoords.length; i++) {
+    var x = (rawCoords[i].ax - cx) * A, y = (rawCoords[i].ay - cy) * A, z = (rawCoords[i].az - cz) * A;
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+  }
+  var extent = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
+  var scr = extent + 12 * A;
+  scr = Math.max(15, Math.min(50, scr));
+
+  var h = scr / gridN;
+  var N2 = Math.round(gridN / 2);
+  var atoms = [];
+  for (var i = 0; i < rawCoords.length; i++) {
+    var rc = rawCoords[i];
+    var x = (rc.ax - cx) * A, y = (rc.ay - cy) * A, z = (rc.az - cz) * A;
+    var gi = Math.round(N2 + x / h);
+    var gj = Math.round(N2 + y / h);
+    var gk = Math.round(N2 + z / h);
+    gi = Math.max(3, Math.min(gridN - 3, gi));
+    gj = Math.max(3, Math.min(gridN - 3, gj));
+    gk = Math.max(3, Math.min(gridN - 3, gk));
+    atoms.push({ i: gi, j: gj, k: gk, Z: rc.Z, el: rc.el });
+  }
+
+  log.textContent = 'Glycine (NH2-CH2-COOH) + 2 waters: ' + atoms.length + ' atoms';
+  log.textContent += '\nSimplest amino acid, assembled atom by atom';
+  log.textContent += '\n' + gridN + '^3 grid, screen=' + scr.toFixed(1) + ' au';
+
+  window._atomNames = [
+    '0: N (amino)', '1: C (Ca)', '2: C (carboxyl)', '3: O (C=O)', '4: O (C-OH)',
+    '5: H (NH2)', '6: H (NH2)', '7: H (Ca)', '8: H (Ca)', '9: H (OH)',
+    '10: O (water 1)', '11: H (water 1)', '12: H (water 1)',
+    '13: O (water 2)', '14: H (water 2)', '15: H (water 2)',
+  ];
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'C') return 0.3;
+    if (a.el === 'N') return 0.3;
+    if (a.el === 'O') return 0.4;
+    return 0;
+  });
+})();
+
+var activeCount = 1;
+var autoGrowing = false;
+var autoTimer = null;
+var statusEl = document.getElementById('status');
+var totalAtoms = window.USER_Z.filter(function(z) { return z > 0; }).length;
+
+function updateStatus() {
+  statusEl.textContent = activeCount + '/' + totalAtoms + ' atoms';
+  if (activeCount < totalAtoms) {
+    statusEl.textContent += ' \u2014 next: ' + window._atomNames[activeCount];
+  } else {
+    statusEl.textContent += ' \u2014 complete!';
+  }
+}
+
+document.getElementById('addBtn').onclick = function() {
+  if (activeCount >= totalAtoms) return;
+  activeCount++;
+  updateStatus();
+  if (window.activateAtoms) window.activateAtoms(activeCount);
+};
+
+document.getElementById('autoBtn').onclick = function() {
+  if (autoGrowing) {
+    autoGrowing = false;
+    if (autoTimer) clearInterval(autoTimer);
+    autoTimer = null;
+    document.getElementById('autoBtn').textContent = 'Auto-grow';
+    return;
+  }
+  autoGrowing = true;
+  document.getElementById('autoBtn').textContent = 'Stop';
+  autoTimer = setInterval(function() {
+    if (activeCount >= totalAtoms) {
+      autoGrowing = false;
+      clearInterval(autoTimer);
+      autoTimer = null;
+      document.getElementById('autoBtn').textContent = 'Auto-grow';
+      return;
+    }
+    activeCount++;
+    updateStatus();
+    if (window.activateAtoms) window.activateAtoms(activeCount);
+  }, 3000);
+};
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onerror = function() { log.textContent += '\nFailed to load molecule.js!'; };
+s.onload = function() {
+  log.textContent += '\nmolecule.js loaded, loading p5...';
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p5s.crossOrigin = 'anonymous';
+  p5s.onerror = function() { log.textContent += '\nFailed to load p5.js!'; };
+  p5s.onload = function() {
+    log.textContent += '\np5.js loaded';
+    var waitInit = setInterval(function() {
+      if (window.isGpuReady && window.isGpuReady()) {
+        clearInterval(waitInit);
+        setTimeout(function() {
+          window.activateAtoms(1);
+          updateStatus();
+        }, 1500);
+      }
+    }, 300);
+  };
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

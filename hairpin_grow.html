@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="controls" style="position:fixed;top:10px;left:10px;z-index:100;background:rgba(0,0,0,0.7);padding:8px 12px;border-radius:6px">
+  <button id="addBtn" style="font-size:14px;padding:4px 12px">+1</button>
+  <button id="add5Btn" style="font-size:14px;padding:4px 12px;margin-left:4px">+5</button>
+  <button id="addResBtn" style="font-size:14px;padding:4px 12px;margin-left:4px">+residue</button>
+  <button id="autoBtn" style="font-size:14px;padding:4px 12px;margin-left:4px">Auto-grow</button>
+  <button id="addAllBtn" style="font-size:14px;padding:4px 12px;margin-left:4px">All</button>
+  <button id="dynBtn" style="font-size:14px;padding:4px 12px;margin-left:4px;background:#555;color:#fff;border:none;border-radius:4px">Dynamics</button>
+  <button id="recBtn" style="font-size:14px;padding:4px 12px;margin-left:8px;background:#c33;color:#fff;border:none;border-radius:4px">Record</button>
+  <span id="status" style="margin-left:10px"></span>
+</div>
+<pre id="log" style="margin-top:50px">Building hairpin (75% folded)...</pre>
+<script>
+var log = document.getElementById('log');
+window.onerror = function(msg, url, line) {
+  log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
+};
+
+(function() {
+  var t = 0.75;  // 75% folded
+  var A = 1.8897;
+  var nRes = 12;
+
+  var bNH = 1.01 * A;
+  var bCH = 1.09 * A;
+  var bCO = 1.24 * A;
+  var bOH = 0.97 * A;
+
+  var resAdv = 3.8 * A;
+  var zig = 0.5 * A;
+  var totalLen = (nRes - 1) * resAdv;
+  var x0 = -totalLen / 2;
+
+  var bbExt = [];
+  for (var r = 0; r < nRes; r++) {
+    var xr = x0 + r * resAdv;
+    var zigSign = (r % 2 === 0) ? 1 : -1;
+    var yBase = zigSign * zig;
+    bbExt.push({
+      N:  [xr - 0.35 * resAdv, yBase * 0.6],
+      Ca: [xr,                 -yBase * 0.4],
+      C:  [xr + 0.35 * resAdv, yBase * 0.3]
+    });
+  }
+
+  var hingeX = (bbExt[4].C[0] + bbExt[5].N[0]) / 2;
+  var hingeY = (bbExt[4].C[1] + bbExt[5].N[1]) / 2;
+  var bendAngle = t * Math.PI;
+
+  function rotFrac(r) {
+    if (r <= 4) return 0;
+    if (r === 5) return 0.33;
+    if (r === 6) return 0.67;
+    return 1.0;
+  }
+
+  function rotatePoint(px, py, theta) {
+    var dx = px - hingeX, dy = py - hingeY;
+    var c = Math.cos(theta), s = Math.sin(theta);
+    return [hingeX + dx * c - dy * s, hingeY + dx * s + dy * c];
+  }
+
+  var bb = [];
+  for (var r = 0; r < nRes; r++) {
+    var theta = rotFrac(r) * bendAngle;
+    var N  = rotatePoint(bbExt[r].N[0],  bbExt[r].N[1],  theta);
+    var Ca = rotatePoint(bbExt[r].Ca[0], bbExt[r].Ca[1], theta);
+    var C  = rotatePoint(bbExt[r].C[0],  bbExt[r].C[1],  theta);
+    bb.push({ N: N, Ca: Ca, C: C, rotAngle: theta });
+  }
+
+  // Collect in phases: heavy backbone per residue, then all H, then water
+  var heavyAtoms = [];
+  var hAtoms = [];
+  var residueBounds = [];
+
+  function addHeavy(x, y, z, Z, el, name) {
+    heavyAtoms.push({x:x, y:y, z:z, Z:Z, el:el, name:name});
+  }
+  function addH(x, y, z, name) {
+    hAtoms.push({x:x, y:y, z:z, Z:1, el:'H', name:name});
+  }
+
+  for (var r = 0; r < nRes; r++) {
+    var res = bb[r];
+    var Np = res.N, Cap = res.Ca, Cp = res.C;
+    var rLabel = 'Gly' + (r+1);
+
+    var nca_x = Cap[0] - Np[0], nca_y = Cap[1] - Np[1];
+    var nca_l = Math.sqrt(nca_x * nca_x + nca_y * nca_y);
+    var nca_px = -nca_y / nca_l, nca_py = nca_x / nca_l;
+
+    var cac_x = Cp[0] - Cap[0], cac_y = Cp[1] - Cap[1];
+    var cac_l = Math.sqrt(cac_x * cac_x + cac_y * cac_y);
+    var cac_px = -cac_y / cac_l, cac_py = cac_x / cac_l;
+
+    // Heavy: N, Ca, C, O
+    addHeavy(Np[0], Np[1], 0, 3, 'N', rLabel + ' N');
+    addHeavy(Cap[0], Cap[1], 0, 4, 'C', rLabel + ' Ca');
+    addHeavy(Cp[0], Cp[1], 0, 4, 'C', rLabel + ' C');
+
+    var oSide;
+    if (rotFrac(r) < 0.5) { oSide = (r % 2 === 0) ? -1 : 1; }
+    else { oSide = (r % 2 === 0) ? 1 : -1; }
+    addHeavy(Cp[0] + oSide * cac_px * bCO, Cp[1] + oSide * cac_py * bCO, 0, 2, 'O', rLabel + ' O');
+
+    residueBounds.push(heavyAtoms.length);
+
+    // H: NH, Ha1, Ha2
+    var nhSide = (rotFrac(r) < 0.5) ? -1 : 1;
+    addH(Np[0] + nhSide * nca_px * bNH, Np[1] + nhSide * nca_py * bNH, 0, rLabel + ' NH');
+
+    if (r === 0) {
+      addH(Np[0] - nhSide * nca_px * bNH, Np[1] - nhSide * nca_py * bNH, 0, rLabel + ' NH2');
+    }
+
+    var haPerp_x = cac_px * bCH * t;
+    var haPerp_y = cac_py * bCH * t;
+    var haPerp_z = bCH * (1 - t);
+    addH(Cap[0] + haPerp_x, Cap[1] + haPerp_y,  haPerp_z, rLabel + ' Ha1');
+    addH(Cap[0] - haPerp_x, Cap[1] - haPerp_y, -haPerp_z, rLabel + ' Ha2');
+  }
+
+  // C-terminal OH
+  var lastC = bb[nRes - 1].C, lastCa = bb[nRes - 1].Ca;
+  var lc_x = lastC[0] - lastCa[0], lc_y = lastC[1] - lastCa[1];
+  var lc_l = Math.sqrt(lc_x * lc_x + lc_y * lc_y);
+  var oh_x = lastC[0] + lc_x / lc_l * 1.34 * A;
+  var oh_y = lastC[1] + lc_y / lc_l * 1.34 * A;
+  addHeavy(oh_x, oh_y, 0, 2, 'O', 'C-term OH');
+  addH(oh_x + lc_x / lc_l * bOH, oh_y + lc_y / lc_l * bOH, 0, 'C-term H');
+
+  // Water near turn
+  var waterDist = 3 * A;
+  var wPerp_x = -Math.sin(bendAngle / 2), wPerp_y = Math.cos(bendAngle / 2);
+  var wx = hingeX + wPerp_x * waterDist;
+  var wy = hingeY + wPerp_y * waterDist;
+  addHeavy(wx, wy, 0, 2, 'O', 'Water O');
+  addH(wx - 0.76 * A, wy - 0.59 * A, 0, 'Water H1');
+  addH(wx + 0.76 * A, wy - 0.59 * A, 0, 'Water H2');
+
+  // Combine: heavy → H
+  var allAtoms = heavyAtoms.concat(hAtoms);
+  var nHeavy = heavyAtoms.length;
+
+  // Screen size from extent
+  var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (var i = 0; i < allAtoms.length; i++) {
+    var a = allAtoms[i];
+    if (a.x < minX) minX = a.x; if (a.x > maxX) maxX = a.x;
+    if (a.y < minY) minY = a.y; if (a.y > maxY) maxY = a.y;
+    if (a.z < minZ) minZ = a.z; if (a.z > maxZ) maxZ = a.z;
+  }
+  var cx = (minX + maxX) / 2, cy = (minY + maxY) / 2, cz = (minZ + maxZ) / 2;
+  var extent = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
+  var scr = extent + 20 * A;
+  scr = Math.max(40, Math.min(100, scr));
+
+  var gridN = 300;
+  var h = scr / gridN;
+  var N2 = Math.round(gridN / 2);
+  var atoms = [];
+  var atomNames = [];
+
+  for (var i = 0; i < allAtoms.length; i++) {
+    var a = allAtoms[i];
+    var gi = Math.round(N2 + (a.x - cx) / h);
+    var gj = Math.round(N2 + (a.y - cy) / h);
+    var gk = Math.round(N2 + (a.z - cz) / h);
+    gi = Math.max(3, Math.min(gridN - 3, gi));
+    gj = Math.max(3, Math.min(gridN - 3, gj));
+    gk = Math.max(3, Math.min(gridN - 3, gk));
+    atoms.push({ i: gi, j: gj, k: gk, Z: a.Z, el: a.el });
+    atomNames.push(i + ': ' + a.el + ' (' + a.name + ')');
+  }
+
+  log.textContent = 'Hairpin 75% folded: ' + atoms.length + ' atoms, ' + nRes + ' Gly + water';
+  log.textContent += '\n' + nHeavy + ' heavy atoms + ' + hAtoms.length + ' hydrogens';
+  log.textContent += '\nGrow: backbone skeleton \u2192 hydrogens \u2192 water';
+  log.textContent += '\n' + gridN + '^3 grid, screen=' + scr.toFixed(1) + ' au';
+
+  window._atomNames = atomNames;
+  window._nHeavy = nHeavy;
+  window._residueBounds = residueBounds;
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'C') return 0.3;
+    if (a.el === 'N') return 0.3;
+    if (a.el === 'O') return 0.4;
+    return 0;
+  });
+})();
+
+// --- Controls ---
+var activeCount = 1;
+var autoGrowing = false;
+var autoTimer = null;
+var statusEl = document.getElementById('status');
+var totalAtoms = window.USER_Z.filter(function(z) { return z > 0; }).length;
+
+function phaseName(n) {
+  return (n <= window._nHeavy) ? 'skeleton' : 'hydrogens';
+}
+
+function updateStatus() {
+  statusEl.textContent = activeCount + '/' + totalAtoms + ' (' + phaseName(activeCount) + ')';
+  if (activeCount < totalAtoms) {
+    statusEl.textContent += ' \u2014 next: ' + window._atomNames[activeCount];
+  } else {
+    statusEl.textContent += ' \u2014 complete!';
+  }
+}
+
+function addAtoms(n) {
+  if (activeCount >= totalAtoms) return;
+  activeCount = Math.min(activeCount + n, totalAtoms);
+  updateStatus();
+  if (window.activateAtoms) window.activateAtoms(activeCount);
+}
+
+function addNextResidue() {
+  var bounds = window._residueBounds;
+  for (var i = 0; i < bounds.length; i++) {
+    if (bounds[i] > activeCount) {
+      addAtoms(bounds[i] - activeCount);
+      return;
+    }
+  }
+  addAtoms(5);
+}
+
+document.getElementById('addBtn').onclick = function() { addAtoms(1); };
+document.getElementById('add5Btn').onclick = function() { addAtoms(5); };
+document.getElementById('addResBtn').onclick = function() { addNextResidue(); };
+document.getElementById('addAllBtn').onclick = function() { addAtoms(totalAtoms); };
+
+document.getElementById('autoBtn').onclick = function() {
+  if (autoGrowing) {
+    autoGrowing = false;
+    if (autoTimer) clearInterval(autoTimer);
+    autoTimer = null;
+    document.getElementById('autoBtn').textContent = 'Auto-grow';
+    return;
+  }
+  autoGrowing = true;
+  document.getElementById('autoBtn').textContent = 'Stop';
+  autoTimer = setInterval(function() {
+    if (activeCount >= totalAtoms) {
+      autoGrowing = false;
+      clearInterval(autoTimer);
+      autoTimer = null;
+      document.getElementById('autoBtn').textContent = 'Auto-grow';
+      return;
+    }
+    addAtoms(1);
+  }, 2000);
+};
+
+// --- Recording ---
+var recorder = null;
+var recChunks = [];
+
+document.getElementById('dynBtn').onclick = function() {
+  // Simulate D keypress to toggle dynamics
+  var evt = new KeyboardEvent('keydown', { key: 'd', bubbles: true });
+  var canvas = document.querySelector('canvas');
+  if (canvas) canvas.dispatchEvent(evt);
+  // Also call keyPressed directly if p5 is loaded
+  if (window.keyPressed) { window.key = 'd'; window.keyPressed(); }
+  var btn = document.getElementById('dynBtn');
+  // Toggle visual state (actual state is in molecule.js)
+  btn.style.background = btn.style.background === 'rgb(0, 180, 0)' ? '#555' : 'rgb(0, 180, 0)';
+};
+
+document.getElementById('recBtn').onclick = function() {
+  if (recorder && recorder.state === 'recording') {
+    recorder.stop();
+    document.getElementById('recBtn').textContent = 'Record';
+    document.getElementById('recBtn').style.background = '#c33';
+    return;
+  }
+
+  var canvas = document.querySelector('canvas');
+  if (!canvas) { statusEl.textContent = 'No canvas yet'; return; }
+
+  var stream = canvas.captureStream(30);
+  recChunks = [];
+  var mimeType = 'video/webm;codecs=vp9';
+  if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm;codecs=vp8';
+  if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+
+  recorder = new MediaRecorder(stream, { mimeType: mimeType, videoBitsPerSecond: 5000000 });
+  recorder.ondataavailable = function(e) { if (e.data.size > 0) recChunks.push(e.data); };
+  recorder.onstop = function() {
+    var blob = new Blob(recChunks, { type: mimeType });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'hairpin_75_grow.webm';
+    a.click();
+    URL.revokeObjectURL(url);
+    statusEl.textContent = 'Saved! (' + (blob.size / 1e6).toFixed(1) + ' MB)';
+  };
+
+  recorder.start(1000);
+  document.getElementById('recBtn').textContent = 'Stop Rec';
+  document.getElementById('recBtn').style.background = '#900';
+  statusEl.textContent = 'Recording...';
+
+  if (!autoGrowing) document.getElementById('autoBtn').click();
+};
+
+// --- Load scripts ---
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onerror = function() { log.textContent += '\nFailed to load molecule.js!'; };
+s.onload = function() {
+  log.textContent += '\nmolecule.js loaded, loading p5...';
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p5s.crossOrigin = 'anonymous';
+  p5s.onerror = function() { log.textContent += '\nFailed to load p5.js!'; };
+  p5s.onload = function() {
+    log.textContent += '\np5.js loaded';
+    var waitInit = setInterval(function() {
+      if (window.isGpuReady && window.isGpuReady()) {
+        clearInterval(waitInit);
+        setTimeout(function() {
+          window.activateAtoms(1);
+          updateStatus();
+        }, 1500);
+      }
+    }, 300);
+  };
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

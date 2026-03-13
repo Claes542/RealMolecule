@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="controls" style="position:fixed;top:10px;left:10px;z-index:100;background:rgba(0,0,0,0.7);padding:8px 12px;border-radius:6px">
+  <button id="addBtn" style="font-size:14px;padding:4px 12px">+1</button>
+  <button id="add10Btn" style="font-size:14px;padding:4px 12px;margin-left:4px">+10</button>
+  <button id="addResBtn" style="font-size:14px;padding:4px 12px;margin-left:4px">+residue</button>
+  <button id="autoBtn" style="font-size:14px;padding:4px 12px;margin-left:4px">Auto-grow</button>
+  <button id="addAllBtn" style="font-size:14px;padding:4px 12px;margin-left:4px">All</button>
+  <button id="recBtn" style="font-size:14px;padding:4px 12px;margin-left:8px;background:#c33;color:#fff;border:none;border-radius:4px">Record</button>
+  <span id="status" style="margin-left:10px"></span>
+</div>
+<pre id="log" style="margin-top:50px">Building villin headpiece...</pre>
+<script>
+var log = document.getElementById('log');
+window.onerror = function(msg, url, line) {
+  log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
+};
+
+(function() {
+  var gridN = 300, scr = 30;
+  var h = scr / gridN;
+  var N2 = Math.round(gridN / 2);
+  var A = 1.8897;
+
+  // Collect atoms in phases for ordered grow
+  var heavyAtoms = [];   // protein N, Ca, Cb, C, O — by residue
+  var hAtoms = [];       // protein H atoms
+  var waterAtoms = [];   // water molecules (O, H, H triplets)
+  var groupBoundaries = []; // index boundaries for residue groups in heavy atoms
+
+  function addHeavy(x, y, z, Z, el, name) {
+    heavyAtoms.push({x:x, y:y, z:z, Z:Z, el:el, name:name});
+  }
+  function addH(x, y, z, name) {
+    hAtoms.push({x:0, y:0, z:0, Z:1, el:'H', name:name, ax:x, ay:y, az:z});
+  }
+  function addWater(ox, oy, oz, idx) {
+    waterAtoms.push({x:ox, y:oy, z:oz, Z:2, el:'O', name:'Water ' + idx + ' O'});
+    waterAtoms.push({x:ox - 0.76*A, y:oy - 0.59*A, z:oz, Z:1, el:'H', name:'Water ' + idx + ' H'});
+    waterAtoms.push({x:ox + 0.76*A, y:oy - 0.59*A, z:oz, Z:1, el:'H', name:'Water ' + idx + ' H'});
+  }
+
+  var rise = 1.5 * A;
+  var rHelix = 2.3 * A;
+  var turnRad = 100 * Math.PI / 180;
+  var bNH = 1.01 * A, bCH = 1.09 * A, bCO = 1.23 * A, bCaCb = 1.52 * A;
+
+  var helixDefs = [
+    { nRes: 8, cx: -3.5*A, cy: -2*A, dir: +1 },
+    { nRes: 8, cx: +3.5*A, cy: -2*A, dir: -1 },
+    { nRes: 8, cx:  0,     cy: +4*A, dir: +1 },
+  ];
+
+  var allCa = [];
+  var resIdx = 0;
+
+  for (var hi = 0; hi < helixDefs.length; hi++) {
+    var hd = helixDefs[hi];
+    var nRes = hd.nRes;
+    var zStart = -nRes * rise / 2;
+
+    for (var r = 0; r < nRes; r++) {
+      resIdx++;
+      var rLabel = 'H' + (hi+1) + '-R' + (r+1);
+      var angle = r * turnRad + hi * 2.094;
+      var zr = zStart + r * rise;
+
+      var radX = Math.cos(angle), radY = Math.sin(angle);
+      var tanX = -Math.sin(angle), tanY = Math.cos(angle);
+
+      var caX = hd.cx + rHelix * radX;
+      var caY = hd.cy + rHelix * radY;
+      var caZ = hd.dir * zr;
+      allCa.push([caX, caY, caZ]);
+
+      var axZ = hd.dir;
+
+      // Heavy atoms for this residue
+      var nX = caX - 0.7*radX - 0.3*tanX;
+      var nY = caY - 0.7*radY - 0.3*tanY;
+      var nZ = caZ - 1.2*axZ;
+      addHeavy(nX, nY, nZ, 3, 'N', rLabel + ' N');
+      addHeavy(caX, caY, caZ, 4, 'C', rLabel + ' Ca');
+
+      var cbX = caX + bCaCb*radX*0.8;
+      var cbY = caY + bCaCb*radY*0.8;
+      var cbZ = caZ + bCaCb*0.6*axZ;
+      addHeavy(cbX, cbY, cbZ, 4, 'C', rLabel + ' Cb');
+
+      var cX = caX + 0.7*radX*0.3 + 0.3*tanX;
+      var cY = caY + 0.7*radY*0.3 + 0.3*tanY;
+      var cZ = caZ + 1.2*axZ;
+      addHeavy(cX, cY, cZ, 4, 'C', rLabel + ' C');
+
+      var oS = (r % 2 === 0) ? 1 : -1;
+      addHeavy(cX + oS*bCO*tanX, cY + oS*bCO*tanY, cZ, 2, 'O', rLabel + ' O');
+
+      // H atoms for this residue
+      var nhS = (hi < 2) ? 1 : -1;
+      addH(nX + nhS*bNH*tanX, nY + nhS*bNH*tanY, nZ, rLabel + ' NH');
+
+      var tcx = -hd.cx, tcy = -hd.cy;
+      var tcl = Math.sqrt(tcx*tcx + tcy*tcy) || 1;
+      addH(caX + bCH*tcx/tcl*0.7, caY + bCH*tcy/tcl*0.7, caZ + bCH*0.7*axZ, rLabel + ' Ha');
+
+      for (var hh = 0; hh < 3; hh++) {
+        var phi = hh * 2.094 + angle;
+        addH(cbX + bCH*0.8*Math.cos(phi),
+             cbY + bCH*0.8*Math.sin(phi),
+             cbZ + bCH*0.6*(hh===0 ? 1 : -0.5)*axZ, rLabel + ' Hb' + (hh+1));
+      }
+
+      groupBoundaries.push(heavyAtoms.length);
+    }
+  }
+
+  // Fix H atom coords (they were stored in ax/ay/az)
+  for (var i = 0; i < hAtoms.length; i++) {
+    hAtoms[i].x = hAtoms[i].ax;
+    hAtoms[i].y = hAtoms[i].ay;
+    hAtoms[i].z = hAtoms[i].az;
+  }
+
+  var nProteinHeavy = heavyAtoms.length;
+  var nProteinH = hAtoms.length;
+
+  // Hydration shell
+  var nWaterTarget = Math.floor((999 - nProteinHeavy - nProteinH) / 3);
+  var nWater = 0;
+
+  var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (var c = 0; c < allCa.length; c++) {
+    if (allCa[c][0] < minX) minX = allCa[c][0];
+    if (allCa[c][0] > maxX) maxX = allCa[c][0];
+    if (allCa[c][1] < minY) minY = allCa[c][1];
+    if (allCa[c][1] > maxY) maxY = allCa[c][1];
+    if (allCa[c][2] < minZ) minZ = allCa[c][2];
+    if (allCa[c][2] > maxZ) maxZ = allCa[c][2];
+  }
+
+  var waterSpacing = 2.8 * A;
+  var shellInner = 2.5 * A, shellOuter = 6.0 * A;
+  var pad = shellOuter;
+  var halfScr = scr / 2 - 2 * h;
+
+  var seed = 42;
+  function rand() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+
+  for (var wx = minX - pad; wx <= maxX + pad && nWater < nWaterTarget; wx += waterSpacing) {
+    for (var wy = minY - pad; wy <= maxY + pad && nWater < nWaterTarget; wy += waterSpacing) {
+      for (var wz = minZ - pad; wz <= maxZ + pad && nWater < nWaterTarget; wz += waterSpacing) {
+        var ox = wx + (rand()-0.5)*waterSpacing*0.4;
+        var oy = wy + (rand()-0.5)*waterSpacing*0.4;
+        var oz = wz + (rand()-0.5)*waterSpacing*0.4;
+        if (Math.abs(ox) > halfScr || Math.abs(oy) > halfScr || Math.abs(oz) > halfScr) continue;
+        var minDist2 = Infinity;
+        for (var c = 0; c < allCa.length; c++) {
+          var ddx = ox-allCa[c][0], ddy = oy-allCa[c][1], ddz = oz-allCa[c][2];
+          var d2 = ddx*ddx + ddy*ddy + ddz*ddz;
+          if (d2 < minDist2) minDist2 = d2;
+        }
+        if (Math.sqrt(minDist2) >= shellInner && Math.sqrt(minDist2) <= shellOuter) {
+          nWater++;
+          addWater(ox, oy, oz, nWater);
+        }
+      }
+    }
+  }
+
+  // Combine: protein heavy → protein H → water
+  var allAtoms = heavyAtoms.concat(hAtoms).concat(waterAtoms);
+
+  // Convert to grid coordinates
+  var atoms = [];
+  var atomNames = [];
+  for (var i = 0; i < allAtoms.length; i++) {
+    var a = allAtoms[i];
+    var gi = Math.round(N2 + a.x / h);
+    var gj = Math.round(N2 + a.y / h);
+    var gk = Math.round(N2 + a.z / h);
+    gi = Math.max(3, Math.min(gridN - 3, gi));
+    gj = Math.max(3, Math.min(gridN - 3, gj));
+    gk = Math.max(3, Math.min(gridN - 3, gk));
+    atoms.push({ i: gi, j: gj, k: gk, Z: a.Z, el: a.el });
+    atomNames.push(i + ': ' + a.el + ' (' + a.name + ')');
+  }
+
+  // Phase boundaries for display
+  var phaseProteinHeavyEnd = nProteinHeavy;
+  var phaseProteinHEnd = nProteinHeavy + nProteinH;
+  var phaseWaterEnd = allAtoms.length;
+
+  log.textContent = 'Villin headpiece grow: ' + allAtoms.length + ' atoms';
+  log.textContent += '\n' + nProteinHeavy + ' protein heavy + ' + nProteinH + ' protein H + ' + nWater + ' waters (' + (nWater*3) + ' atoms)';
+  log.textContent += '\nGrow order: backbone skeleton → hydrogens → hydration shell';
+  log.textContent += '\n' + gridN + '^3 grid, screen=' + scr + ' au';
+
+  window._atomNames = atomNames;
+  window._nProteinHeavy = phaseProteinHeavyEnd;
+  window._nProteinTotal = phaseProteinHEnd;
+  window._nTotal = phaseWaterEnd;
+  // Group boundaries for residue-at-a-time adding (in heavy atoms)
+  window._residueBounds = groupBoundaries;
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'C') return 0.3;
+    if (a.el === 'N') return 0.3;
+    if (a.el === 'O') return 0.4;
+    return 0;
+  });
+})();
+
+// --- Controls ---
+var activeCount = 1;
+var autoGrowing = false;
+var autoTimer = null;
+var statusEl = document.getElementById('status');
+var totalAtoms = window.USER_Z.filter(function(z) { return z > 0; }).length;
+
+function phaseName(n) {
+  if (n <= window._nProteinHeavy) return 'skeleton';
+  if (n <= window._nProteinTotal) return 'hydrogens';
+  return 'water shell';
+}
+
+function updateStatus() {
+  statusEl.textContent = activeCount + '/' + totalAtoms + ' (' + phaseName(activeCount) + ')';
+  if (activeCount < totalAtoms && activeCount < window._atomNames.length) {
+    statusEl.textContent += ' \u2014 next: ' + window._atomNames[activeCount];
+  } else if (activeCount >= totalAtoms) {
+    statusEl.textContent += ' \u2014 complete!';
+  }
+}
+
+function addAtoms(n) {
+  if (activeCount >= totalAtoms) return;
+  activeCount = Math.min(activeCount + n, totalAtoms);
+  updateStatus();
+  if (window.activateAtoms) window.activateAtoms(activeCount);
+}
+
+function addNextResidue() {
+  // Jump to the next residue boundary in heavy atoms
+  var bounds = window._residueBounds;
+  for (var i = 0; i < bounds.length; i++) {
+    if (bounds[i] > activeCount) {
+      addAtoms(bounds[i] - activeCount);
+      return;
+    }
+  }
+  // Past protein heavy — add 10
+  addAtoms(10);
+}
+
+document.getElementById('addBtn').onclick = function() { addAtoms(1); };
+document.getElementById('add10Btn').onclick = function() { addAtoms(10); };
+document.getElementById('addResBtn').onclick = function() { addNextResidue(); };
+document.getElementById('addAllBtn').onclick = function() { addAtoms(totalAtoms); };
+
+document.getElementById('autoBtn').onclick = function() {
+  if (autoGrowing) {
+    autoGrowing = false;
+    if (autoTimer) clearInterval(autoTimer);
+    autoTimer = null;
+    document.getElementById('autoBtn').textContent = 'Auto-grow';
+    return;
+  }
+  autoGrowing = true;
+  document.getElementById('autoBtn').textContent = 'Stop';
+  // Auto: add 10 atoms every 2 seconds
+  autoTimer = setInterval(function() {
+    if (activeCount >= totalAtoms) {
+      autoGrowing = false;
+      clearInterval(autoTimer);
+      autoTimer = null;
+      document.getElementById('autoBtn').textContent = 'Auto-grow';
+      return;
+    }
+    addAtoms(10);
+  }, 2000);
+};
+
+// --- Recording ---
+var recorder = null;
+var recChunks = [];
+
+document.getElementById('recBtn').onclick = function() {
+  if (recorder && recorder.state === 'recording') {
+    // Stop recording
+    recorder.stop();
+    document.getElementById('recBtn').textContent = 'Record';
+    document.getElementById('recBtn').style.background = '#c33';
+    return;
+  }
+
+  var canvas = document.querySelector('canvas');
+  if (!canvas) { statusEl.textContent = 'No canvas yet — wait for init'; return; }
+
+  var stream = canvas.captureStream(30);
+  recChunks = [];
+  var mimeType = 'video/webm;codecs=vp9';
+  if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm;codecs=vp8';
+  if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+
+  recorder = new MediaRecorder(stream, { mimeType: mimeType, videoBitsPerSecond: 5000000 });
+  recorder.ondataavailable = function(e) { if (e.data.size > 0) recChunks.push(e.data); };
+  recorder.onstop = function() {
+    var blob = new Blob(recChunks, { type: mimeType });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'villin_grow.webm';
+    a.click();
+    URL.revokeObjectURL(url);
+    statusEl.textContent = 'Saved! (' + (blob.size / 1e6).toFixed(1) + ' MB)';
+  };
+
+  recorder.start(1000);
+  document.getElementById('recBtn').textContent = 'Stop Rec';
+  document.getElementById('recBtn').style.background = '#900';
+  statusEl.textContent = 'Recording...';
+
+  // Auto-grow while recording: 10 atoms every 2s
+  if (!autoGrowing) {
+    document.getElementById('autoBtn').click();
+  }
+};
+
+// --- Load scripts ---
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onerror = function() { log.textContent += '\nFailed to load molecule.js!'; };
+s.onload = function() {
+  log.textContent += '\nmolecule.js loaded, loading p5...';
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p5s.crossOrigin = 'anonymous';
+  p5s.onerror = function() { log.textContent += '\nFailed to load p5.js!'; };
+  p5s.onload = function() {
+    log.textContent += '\np5.js loaded';
+    var waitInit = setInterval(function() {
+      if (window.isGpuReady && window.isGpuReady()) {
+        clearInterval(waitInit);
+        setTimeout(function() {
+          window.activateAtoms(1);
+          updateStatus();
+        }, 1500);
+      }
+    }, 300);
+  };
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

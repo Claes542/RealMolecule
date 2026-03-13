@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="controls" style="position:fixed;top:10px;left:10px;z-index:100;background:rgba(0,0,0,0.7);padding:8px 12px;border-radius:6px">
+  <button id="addBtn" style="font-size:14px;padding:4px 12px">Add next atom</button>
+  <button id="autoBtn" style="font-size:14px;padding:4px 12px;margin-left:6px">Auto-grow</button>
+  <span id="status" style="margin-left:10px"></span>
+</div>
+<pre id="log" style="margin-top:50px">Building water cluster...</pre>
+<script>
+var log = document.getElementById('log');
+window.onerror = function(msg, url, line) {
+  log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
+};
+
+(function() {
+  var A = 1.8897;
+  var gridN = 200;
+
+  // 3 water molecules — watch hydrogen bond network form
+  // Order: O1, H1a, H1b, O2, H2a, H2b, O3, H3a, H3b
+  var rawCoords = [
+    // Water 1 (center)
+    { ax: 0.0, ay: 0.0, az: 0.0, Z: 2, el: 'O' },
+    { ax: 0.76, ay: 0.59, az: 0.0, Z: 1, el: 'H' },
+    { ax:-0.76, ay: 0.59, az: 0.0, Z: 1, el: 'H' },
+    // Water 2 (right, H-bond donor to O1)
+    { ax: 2.8, ay: 0.2, az: 0.0, Z: 2, el: 'O' },
+    { ax: 2.1, ay:-0.2, az: 0.0, Z: 1, el: 'H' },
+    { ax: 3.5, ay:-0.3, az: 0.0, Z: 1, el: 'H' },
+    // Water 3 (left-above, H-bond acceptor from H1b)
+    { ax:-1.5, ay: 2.5, az: 0.0, Z: 2, el: 'O' },
+    { ax:-0.8, ay: 1.9, az: 0.0, Z: 1, el: 'H' },
+    { ax:-2.3, ay: 2.1, az: 0.0, Z: 1, el: 'H' },
+  ];
+
+  // Center
+  var cx = 0, cy = 0, cz = 0;
+  for (var i = 0; i < rawCoords.length; i++) {
+    cx += rawCoords[i].ax; cy += rawCoords[i].ay; cz += rawCoords[i].az;
+  }
+  cx /= rawCoords.length; cy /= rawCoords.length; cz /= rawCoords.length;
+
+  var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (var i = 0; i < rawCoords.length; i++) {
+    var x = (rawCoords[i].ax - cx) * A, y = (rawCoords[i].ay - cy) * A;
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+  }
+  var extent = Math.max(maxX - minX, maxY - minY);
+  var scr = extent + 12 * A;
+  scr = Math.max(15, Math.min(40, scr));
+
+  var h = scr / gridN;
+  var N2 = Math.round(gridN / 2);
+  var atoms = [];
+  for (var i = 0; i < rawCoords.length; i++) {
+    var rc = rawCoords[i];
+    var x = (rc.ax - cx) * A, y = (rc.ay - cy) * A, z = (rc.az - cz) * A;
+    var gi = Math.round(N2 + x / h);
+    var gj = Math.round(N2 + y / h);
+    var gk = Math.round(N2 + z / h);
+    gi = Math.max(3, Math.min(gridN - 3, gi));
+    gj = Math.max(3, Math.min(gridN - 3, gj));
+    gk = Math.max(3, Math.min(gridN - 3, gk));
+    atoms.push({ i: gi, j: gj, k: gk, Z: rc.Z, el: rc.el });
+  }
+
+  log.textContent = 'Water cluster (3 molecules): ' + atoms.length + ' atoms';
+  log.textContent += '\nH-bond network assembles atom by atom';
+  log.textContent += '\n' + gridN + '^3 grid, screen=' + scr.toFixed(1) + ' au';
+
+  window._atomNames = [
+    '0: O (water 1)', '1: H (water 1)', '2: H (water 1)',
+    '3: O (water 2)', '4: H (water 2)', '5: H (water 2)',
+    '6: O (water 3)', '7: H (water 3)', '8: H (water 3)',
+  ];
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'O') return 0.4;
+    return 0;
+  });
+})();
+
+var activeCount = 1;
+var autoGrowing = false;
+var autoTimer = null;
+var statusEl = document.getElementById('status');
+var totalAtoms = window.USER_Z.filter(function(z) { return z > 0; }).length;
+
+function updateStatus() {
+  statusEl.textContent = activeCount + '/' + totalAtoms + ' atoms';
+  if (activeCount < totalAtoms) {
+    statusEl.textContent += ' \u2014 next: ' + window._atomNames[activeCount];
+  } else {
+    statusEl.textContent += ' \u2014 complete!';
+  }
+}
+
+document.getElementById('addBtn').onclick = function() {
+  if (activeCount >= totalAtoms) return;
+  activeCount++;
+  updateStatus();
+  if (window.activateAtoms) window.activateAtoms(activeCount);
+};
+
+document.getElementById('autoBtn').onclick = function() {
+  if (autoGrowing) {
+    autoGrowing = false;
+    if (autoTimer) clearInterval(autoTimer);
+    autoTimer = null;
+    document.getElementById('autoBtn').textContent = 'Auto-grow';
+    return;
+  }
+  autoGrowing = true;
+  document.getElementById('autoBtn').textContent = 'Stop';
+  autoTimer = setInterval(function() {
+    if (activeCount >= totalAtoms) {
+      autoGrowing = false;
+      clearInterval(autoTimer);
+      autoTimer = null;
+      document.getElementById('autoBtn').textContent = 'Auto-grow';
+      return;
+    }
+    activeCount++;
+    updateStatus();
+    if (window.activateAtoms) window.activateAtoms(activeCount);
+  }, 3000);
+};
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onerror = function() { log.textContent += '\nFailed to load molecule.js!'; };
+s.onload = function() {
+  log.textContent += '\nmolecule.js loaded, loading p5...';
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p5s.crossOrigin = 'anonymous';
+  p5s.onerror = function() { log.textContent += '\nFailed to load p5.js!'; };
+  p5s.onload = function() {
+    log.textContent += '\np5.js loaded';
+    var waitInit = setInterval(function() {
+      if (window.isGpuReady && window.isGpuReady()) {
+        clearInterval(waitInit);
+        setTimeout(function() {
+          window.activateAtoms(1);
+          updateStatus();
+        }, 1500);
+      }
+    }, 300);
+  };
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
