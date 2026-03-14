@@ -38,11 +38,13 @@ const molNucPos = nucPos.map(p => [...p]);
 let E_min = Infinity;
 let screenAu = window.USER_SCREEN || 10;
 let hGrid = screenAu / NN, h2v = hGrid * hGrid, h3v = hGrid * hGrid * hGrid;
-const dv = NELEC > 100 ? 0.03 : 0.12;  // smaller timestep for large systems (high total K)
+const _hasBarH = _uz.some((z, i) => z === 1 && r_cut[i] === 0);
+const dv = NELEC > 100 ? 0.03 : (_hasBarH ? 0.02 : 0.12);  // smaller timestep when bare H present (K_max=20)
 let dtv = dv * h2v, half_dv = 0.5 * dv;
 const PX = 700 / NN;
 const INTERIOR = (NN - 1) * (NN - 1) * (NN - 1);
-const R_SING = 0.1;  // singularity limit for 1/r potential (au)
+const R_SING = 0.1;    // singularity limit for heavy atoms (au)
+const R_SING_H = 0.05; // smaller limit for hydrogen (no pseudopotential)
 
 // 2D dispatch to handle >65535 workgroups (300^3 grid needs ~104K)
 const DISPATCH_X = 256;  // workgroups in x dimension (fixed)
@@ -585,7 +587,7 @@ ${atomStructWGSL}
 @group(0) @binding(6) var<storage, read> atoms: array<Atom>;
 
 fn isInsideExcl(ci: u32, cj: u32, ck: u32, lbl: u32) -> bool {
-  let rc = max(atoms[lbl].rc, ${R_SING});
+  let rc = select(${R_SING_H}, atoms[lbl].rc, atoms[lbl].rc > 0.0);
   let dx = (f32(ci) - f32(atoms[lbl].posI)) * p.h;
   let dy = (f32(cj) - f32(atoms[lbl].posJ)) * p.h;
   let dz = (f32(ck) - f32(atoms[lbl].posK)) * p.h;
@@ -861,10 +863,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 `;
 
 // Recompute nuclear potential K on GPU after nuclei move — adapted for atomBuf (loop)
-// Analytical inner-sphere corrections for H (ψ = exp(-r)/√π, r < R_SING)
+// Analytical inner-sphere corrections for H (ψ = exp(-r)/√π, r < R_SING_H)
 // T_inner = 2·[1/4 - exp(-2a)(a²/2 + a/2 + 1/4)]
 // V_inner = -4·[1/4 - exp(-2a)(a/2 + 1/4)]
-const _a = R_SING, _e2a = Math.exp(-2 * _a);
+const _a = R_SING_H, _e2a = Math.exp(-2 * _a);
 const H_T_INNER = 2 * (0.25 - _e2a * (_a * _a / 2 + _a / 2 + 0.25));
 const H_V_INNER = -4 * (0.25 - _e2a * (_a / 2 + 0.25));
 const recomputeK_WGSL = `
@@ -892,7 +894,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dj = (f32(j) - f32(atoms[n].posJ)) * p.h;
     let dk = (f32(k) - f32(atoms[n].posK)) * p.h;
     let r = sqrt(di*di + dj*dj + dk*dk);
-    Kval += Za / max(r, max(atoms[n].rc, ${R_SING}));
+    Kval += Za / max(r, select(${R_SING_H}, atoms[n].rc, atoms[n].rc > 0.0));
   }
   K[id] = Kval;
 }
@@ -940,7 +942,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dz = zk - f32(atoms[n].posK) * p.h;
     let r2 = dx*dx + dy*dy + dz*dz + soft;
     let r = sqrt(r2);
-    Kval += Za / max(r, max(atoms[n].rc, ${R_SING}));
+    Kval += Za / max(r, select(${R_SING_H}, atoms[n].rc, atoms[n].rc > 0.0));
     // Normalized trial: ∫U²dV = Z_eff analytically (U = Z²/√π · exp(-Z·r))
     // Domains assigned by highest normalized density
     let uTrial = Za * Za * ${(1/Math.sqrt(Math.PI)).toFixed(10)} * exp(-Za * r);
