@@ -9,7 +9,7 @@ const MAX_ATOMS = 1024;
 const _uz = window.USER_Z || [2, 3, 1, 0, 0];
 while (_uz.length < MAX_ATOMS) _uz.push(0);
 const NELEC = _uz.filter(z => z > 0).length || 3;
-const NRED_E = 3;  // Energy reduce: T + V_eK + V_ee (norms via atomic accumulation)
+const NRED_E = 6;  // Energy reduce: T + V_eK + V_ee + dipole(x,y,z)
 const r_cut = window.USER_RC || [0, 0, 0, 0, 0];
 while (r_cut.length < MAX_ATOMS) r_cut.push(0);
 let R_out = 0.5;   // au, unused legacy
@@ -79,7 +79,7 @@ const NC = Math.floor(NN / 2);
 const SC = NC + 1, SC2 = SC * SC, SC3 = SC * SC * SC;
 const INTERIOR_C = (NC - 1) * (NC - 1) * (NC - 1);
 
-// Energy reduce uses only 3 values — REDUCE_WG fixed at 128 (3*128*4 = 1536 bytes shared mem)
+// Energy reduce: 6 values (T, V_eK, V_ee, dipX, dipY, dipZ) — REDUCE_WG=128 (6*128*4 = 3072 bytes shared mem)
 const REDUCE_WG = 128;
 const NORM_SCALE = 16777216.0; // 2^24 for fixed-point atomic norm accumulation
 const NORM_INV_SCALE = 1.0 / NORM_SCALE;
@@ -578,7 +578,7 @@ ${paramStructWGSL}
 @group(0) @binding(4) var<storage, read_write> partials: array<f32>;
 @group(0) @binding(5) var<storage, read> label: array<u32>;
 
-var<workgroup> sn: array<f32, ${3 * REDUCE_WG}>;
+var<workgroup> sn: array<f32, ${NRED_E * REDUCE_WG}>;
 
 @compute @workgroup_size(${REDUCE_WG})
 fn main(@builtin(global_invocation_id) gid: vec3<u32>,
@@ -587,8 +587,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
   let NM = p.NN - 1u;
   let tot = NM * NM * NM;
   let stride = ${MAX_REDUCE_WG}u * ${REDUCE_WG}u;
+  let NR = ${NRED_E}u;
 
-  sn[lid * 3u] = 0.0; sn[lid * 3u + 1u] = 0.0; sn[lid * 3u + 2u] = 0.0;
+  for (var q: u32 = 0u; q < NR; q++) { sn[lid * NR + q] = 0.0; }
 
   var cell = gid.x;
   loop {
@@ -599,15 +600,24 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
     let id = i * p.S2 + j * p.S + k;
 
     let v = U[id];
+    let rho = v * v;
     let myL = label[id];
 
     // Only include gradients within same domain (skip cross-boundary)
     let a = select(0.0, U[id + p.S2] - v, label[id + p.S2] == myL);
     let b = select(0.0, U[id + p.S]  - v, label[id + p.S]  == myL);
     let c = select(0.0, U[id + 1u]   - v, label[id + 1u]   == myL);
-    sn[lid * 3u]      += 0.5 * (a * a + b * b + c * c) * p.h;
-    sn[lid * 3u + 1u] += -K[id] * v * v * p.h3;
-    sn[lid * 3u + 2u] += Pv[id] * v * v * p.h3;
+    sn[lid * NR]        += 0.5 * (a * a + b * b + c * c) * p.h;
+    sn[lid * NR + 1u]   += -K[id] * rho * p.h3;
+    sn[lid * NR + 2u]   += Pv[id] * rho * p.h3;
+
+    // Electronic dipole: -∫ ρ(r)·r dV  (negative sign applied on CPU)
+    let xi = f32(i) * p.h;
+    let yj = f32(j) * p.h;
+    let zk = f32(k) * p.h;
+    sn[lid * NR + 3u]   += rho * xi * p.h3;
+    sn[lid * NR + 4u]   += rho * yj * p.h3;
+    sn[lid * NR + 5u]   += rho * zk * p.h3;
 
     cell = cell + stride;
   }
@@ -616,18 +626,18 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
 
   for (var s: u32 = ${REDUCE_WG >> 1}u; s > 0u; s >>= 1u) {
     if (lid < s) {
-      sn[lid * 3u]      += sn[(lid + s) * 3u];
-      sn[lid * 3u + 1u] += sn[(lid + s) * 3u + 1u];
-      sn[lid * 3u + 2u] += sn[(lid + s) * 3u + 2u];
+      for (var q: u32 = 0u; q < NR; q++) {
+        sn[lid * NR + q] += sn[(lid + s) * NR + q];
+      }
     }
     workgroupBarrier();
   }
 
   if (lid == 0u) {
-    let base = wgid.x * 3u;
-    partials[base]      = sn[0u];
-    partials[base + 1u] = sn[1u];
-    partials[base + 2u] = sn[2u];
+    let base = wgid.x * NR;
+    for (var q: u32 = 0u; q < NR; q++) {
+      partials[base + q] = sn[q];
+    }
   }
 }
 `;
@@ -638,33 +648,34 @@ struct NWG { count: u32 }
 @group(0) @binding(1) var<storage, read_write> sums: array<f32>;
 @group(0) @binding(2) var<uniform> nwg: NWG;
 
-var<workgroup> wg: array<f32, ${3 * REDUCE_WG}>;
+var<workgroup> wg: array<f32, ${NRED_E * REDUCE_WG}>;
 
 @compute @workgroup_size(${REDUCE_WG})
 fn main(@builtin(local_invocation_index) lid: u32) {
-  wg[lid * 3u] = 0.0; wg[lid * 3u + 1u] = 0.0; wg[lid * 3u + 2u] = 0.0;
+  let NR = ${NRED_E}u;
+  for (var q: u32 = 0u; q < NR; q++) { wg[lid * NR + q] = 0.0; }
 
   for (var i: u32 = lid; i < nwg.count; i += ${REDUCE_WG}u) {
-    wg[lid * 3u]      += partials[i * 3u];
-    wg[lid * 3u + 1u] += partials[i * 3u + 1u];
-    wg[lid * 3u + 2u] += partials[i * 3u + 2u];
+    for (var q: u32 = 0u; q < NR; q++) {
+      wg[lid * NR + q] += partials[i * NR + q];
+    }
   }
 
   workgroupBarrier();
 
   for (var s: u32 = ${REDUCE_WG >> 1}u; s > 0u; s >>= 1u) {
     if (lid < s) {
-      wg[lid * 3u]      += wg[(lid + s) * 3u];
-      wg[lid * 3u + 1u] += wg[(lid + s) * 3u + 1u];
-      wg[lid * 3u + 2u] += wg[(lid + s) * 3u + 2u];
+      for (var q: u32 = 0u; q < NR; q++) {
+        wg[lid * NR + q] += wg[(lid + s) * NR + q];
+      }
     }
     workgroupBarrier();
   }
 
   if (lid == 0u) {
-    sums[0u] = wg[0u];
-    sums[1u] = wg[1u];
-    sums[2u] = wg[2u];
+    for (var q: u32 = 0u; q < NR; q++) {
+      sums[q] = wg[q];
+    }
   }
 }
 `;
@@ -955,7 +966,7 @@ let gradPtotalBG = [], recomputeK_BG;
 
 let cur = 0, gpuReady = false, computing = false, initProgress = 0, computePromise = null;
 let tStep = 0, E = 0, lastMs = 0;
-let E_T = 0, E_eK = 0, E_ee = 0, E_KK = 0;
+let E_T = 0, E_eK = 0, E_ee = 0, E_KK = 0, dipole_au = 0, dipole_D = 0;
 let gpuError = null;
 
 // Single phase run
@@ -971,7 +982,7 @@ const WG_REDUCE = Math.min(MAX_REDUCE_WG, Math.ceil(INTERIOR / REDUCE_WG));
 const WG_NORM = Math.ceil(INTERIOR / 256);
 const WG_EXTRACT = Math.ceil(S / 16);
 const WG_COARSE = Math.ceil(INTERIOR_C / 256);
-const SUMS_BYTES = NRED_E * 4;  // 12 bytes: T, V_eK, V_ee
+const SUMS_BYTES = NRED_E * 4;  // 24 bytes: T, V_eK, V_ee, dipX, dipY, dipZ
 
 let sliceData = null;
 let sliceK = N2;  // z-slice index for visualization (scrollable with arrow keys)
@@ -1723,6 +1734,25 @@ async function doSteps(n) {
   E_eK = sumsData[1];
   E_ee = sumsData[2];
 
+  // Dipole moment: μ = Σ Z_a·R_a - ∫ ρ(r)·r dV
+  // sumsData[3..5] = electronic part ∫ ρ·r dV (positive, negate for electron charge)
+  {
+    let dip_x = 0, dip_y = 0, dip_z = 0;
+    // Nuclear contribution: Σ Z_a · R_a  (in grid coords * h = au)
+    for (let a = 0; a < NELEC; a++) {
+      if (Z[a] === 0) continue;
+      dip_x += Z[a] * nucPos[a][0] * hGrid;
+      dip_y += Z[a] * nucPos[a][1] * hGrid;
+      dip_z += Z[a] * nucPos[a][2] * hGrid;
+    }
+    // Electronic contribution (negative charge)
+    dip_x -= sumsData[3];
+    dip_y -= sumsData[4];
+    dip_z -= sumsData[5];
+    dipole_au = Math.sqrt(dip_x * dip_x + dip_y * dip_y + dip_z * dip_z);
+    dipole_D = dipole_au * 2.5417;  // au to Debye
+  }
+
   await sliceReadBuf.mapAsync(GPUMapMode.READ);
   sliceData = new Float32Array(sliceReadBuf.getMappedRange().slice(0));
   sliceReadBuf.unmap();
@@ -2038,7 +2068,7 @@ function draw() {
   if (lastMs > 0) text((lastMs / STEPS_PER_FRAME).toFixed(1) + "ms/step", 300, 35);
 
   fill(200);
-  text("T=" + E_T.toFixed(4) + " V_eK=" + E_eK.toFixed(4) + " V_ee=" + E_ee.toFixed(4) + " V_KK=" + E_KK.toFixed(4), 5, 50);
+  text("T=" + E_T.toFixed(4) + " V_eK=" + E_eK.toFixed(4) + " V_ee=" + E_ee.toFixed(4) + " V_KK=" + E_KK.toFixed(4) + "  Dipole=" + dipole_D.toFixed(3) + " D", 5, 50);
   fill(vcycleEnabled ? [0,255,0] : [255,100,0]);
   text("V-cycle: " + (vcycleEnabled ? "ON" : "OFF") + " (" + vcycleCount + " cycles)  [press V to toggle]", 5, 65);
 
