@@ -60,7 +60,7 @@ const W_STEPS_PER_FRAME = Math.max(1, STEPS_PER_FRAME);  // match U steps per fr
 const BOUNDARY_INTERVAL = 20;
 const NORM_INTERVAL = 20;
 const POISSON_INTERVAL = 50;
-const SIC_INTERVAL = NELEC <= 15 ? 1 : NELEC <= 30 ? 5 : 999999;  // skip SIC for large molecules
+const SIC_INTERVAL = 999999;  // SIC disabled — using (Z_eff-1)/Z_eff factor on total Hartree potential instead
 const SIC_JACOBI = NELEC <= 15 ? 10 : 4;
 
 // === Nuclear dynamics state ===
@@ -1450,7 +1450,7 @@ async function initGPU() {
       reduceEnergyBG[c] = device.createBindGroup({ layout: reduceEnergyPL.getBindGroupLayout(0), entries: [
         { binding: 0, resource: { buffer: paramsBuf } },
         { binding: 1, resource: { buffer: U_buf[c] } },
-        { binding: 2, resource: { buffer: PotherBuf } },
+        { binding: 2, resource: { buffer: P_buf[0] } },
         { binding: 3, resource: { buffer: K_buf } },
         { binding: 4, resource: { buffer: partialsBuf } },
         { binding: 5, resource: { buffer: labelBuf } },
