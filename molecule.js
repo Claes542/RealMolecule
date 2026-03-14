@@ -29,6 +29,9 @@ const _atoms = window.USER_ATOMS || [
 ];
 while (_atoms.length < MAX_ATOMS) _atoms.push({ i: N2, j: N2, Z: 0, el: '' });
 const atomLabels = _atoms.map(a => a.el);
+// True nuclear charges (Z) for V_KK — distinct from Z_eff used for electron energies
+const _elZ = { H:1, He:2, Li:3, Be:4, B:5, C:6, N:7, O:8, F:9, Ne:10, Na:11, S:16 };
+const Z_nuc = _atoms.map(a => _elZ[a.el] || a.Z);
 let nucPos = _atoms.map(a => [a.i, a.j, a.k !== undefined ? a.k : N2]);
 const molNucPos = nucPos.map(p => [...p]);
 
@@ -571,12 +574,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 const MAX_REDUCE_WG = 256;
 const reduceEnergyWGSL = `
 ${paramStructWGSL}
+${atomStructWGSL}
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read> U: array<f32>;
 @group(0) @binding(2) var<storage, read> Pv: array<f32>;
 @group(0) @binding(3) var<storage, read> K: array<f32>;
 @group(0) @binding(4) var<storage, read_write> partials: array<f32>;
 @group(0) @binding(5) var<storage, read> label: array<u32>;
+@group(0) @binding(6) var<storage, read> atoms: array<Atom>;
 
 var<workgroup> sn: array<f32, ${NRED_E * REDUCE_WG}>;
 
@@ -607,9 +612,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
     let a = select(0.0, U[id + p.S2] - v, label[id + p.S2] == myL);
     let b = select(0.0, U[id + p.S]  - v, label[id + p.S]  == myL);
     let c = select(0.0, U[id + 1u]   - v, label[id + 1u]   == myL);
-    sn[lid * NR]        += 0.5 * (a * a + b * b + c * c) * p.h;
-    sn[lid * NR + 1u]   += -K[id] * rho * p.h3;
-    sn[lid * NR + 2u]   += Pv[id] * rho * p.h3;
+    let Zeff = atoms[myL].Z;
+    let invZ = select(0.0, 1.0 / Zeff, Zeff > 0.0);
+    sn[lid * NR]        += 0.5 * (a * a + b * b + c * c) * p.h * invZ;
+    sn[lid * NR + 1u]   += -K[id] * rho * p.h3 * invZ;
+    let sicF = select(0.0, (Zeff - 1.0) / Zeff, Zeff > 1.0);
+    sn[lid * NR + 2u]   += Pv[id] * rho * p.h3 * invZ * sicF;
 
     // Electronic dipole: -∫ ρ(r)·r dV  (negative sign applied on CPU)
     let xi = f32(i) * p.h;
@@ -865,7 +873,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dj = (f32(j) - f32(atoms[n].posJ)) * p.h;
     let dk = (f32(k) - f32(atoms[n].posK)) * p.h;
     let r = sqrt(di*di + dj*dj + dk*dk);
-    Kval += Za / max(r, ${R_SING});
+    Kval += Za / max(r, atoms[n].rc);
   }
   K[id] = Kval;
 }
@@ -913,7 +921,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dz = zk - f32(atoms[n].posK) * p.h;
     let r2 = dx*dx + dy*dy + dz*dz + soft;
     let r = sqrt(r2);
-    Kval += Za / max(r, ${R_SING});
+    Kval += Za / max(r, atoms[n].rc);
     // Normalized trial: ∫U²dV = Z_eff analytically (U = Z²/√π · exp(-Z·r))
     // Domains assigned by highest normalized density
     let uTrial = Za * Za * ${(1/Math.sqrt(Math.PI)).toFixed(10)} * exp(-Za * r);
@@ -966,7 +974,46 @@ let gradPtotalBG = [], recomputeK_BG;
 
 let cur = 0, gpuReady = false, computing = false, initProgress = 0, computePromise = null;
 let tStep = 0, E = 0, lastMs = 0;
-let E_T = 0, E_eK = 0, E_ee = 0, E_KK = 0, dipole_au = 0, dipole_D = 0;
+let E_T = 0, E_eK = 0, E_ee = 0, E_KK = 0, dipole_au = 0, dipole_D = 0, E_bind = 0;
+
+// Isolated atom energies via 1D variational: U(r) = A·exp(-α·r), r > r_c
+// Minimizes E(α) = T/Z_eff + V_eK/Z_eff = ½α² - (Z/I₂)·I₁
+function isolatedAtomEnergy(Zn, rc) {
+  if (Zn <= 0) return 0;
+  let bestE = 0;
+  const aMax = Zn * 4;
+  for (let a = 0.1; a <= aMax; a += 0.005) {
+    const c = 2 * a;
+    const erc = Math.exp(-c * rc);
+    // I₂ = 4π ∫(rc..∞) r² exp(-cr) dr
+    const I2 = 4 * Math.PI * erc * (rc * rc / c + 2 * rc / (c * c) + 2 / (c * c * c));
+    // I₁ = 4π ∫(rc..∞) r exp(-cr) dr  (for ∫U²/r dV)
+    const I1 = 4 * Math.PI * erc * (rc / c + 1 / (c * c));
+    if (I2 <= 0) continue;
+    const T = 0.5 * a * a;
+    const V = -(Zn / I2) * I1;
+    const E = T + V;
+    if (E < bestE) bestE = E;
+  }
+  return bestE;
+}
+
+// Precompute isolated atom energies for all unique (Z, r_c) pairs
+const _atomRefE = {};
+for (let n = 0; n < NELEC; n++) {
+  if (_uz[n] <= 0) continue;
+  const key = _uz[n] + '_' + r_cut[n].toFixed(3);
+  if (!(key in _atomRefE)) {
+    _atomRefE[key] = isolatedAtomEnergy(_uz[n], r_cut[n]);
+  }
+}
+let E_atoms_sum = 0;
+for (let n = 0; n < NELEC; n++) {
+  if (_uz[n] <= 0) continue;
+  const key = _uz[n] + '_' + r_cut[n].toFixed(3);
+  E_atoms_sum += _atomRefE[key];
+}
+console.log("Isolated atom energies:", _atomRefE, "Sum:", E_atoms_sum.toFixed(6));
 let gpuError = null;
 
 // Single phase run
@@ -1176,6 +1223,13 @@ window.activateAtoms = async function(count) {
   gpuError = null;
   nucStepCount = 0;
   // Preserve dynamicsEnabled — don't reset it so user's D-key toggle persists
+  // Recalculate isolated atom energy sum for active atoms
+  E_atoms_sum = 0;
+  for (let n = 0; n < count; n++) {
+    if (Z_orig[n] <= 0) continue;
+    const key = Z_orig[n] + '_' + r_cut[n].toFixed(3);
+    E_atoms_sum += _atomRefE[key];
+  }
   window._activeCount = count;
   _activating = false;
   // If another request came in while we were busy, process it
@@ -1386,6 +1440,7 @@ async function initGPU() {
         { binding: 3, resource: { buffer: K_buf } },
         { binding: 4, resource: { buffer: partialsBuf } },
         { binding: 5, resource: { buffer: labelBuf } },
+        { binding: 6, resource: { buffer: atomBuf } },
       ]});
       accumNormsBG[c] = device.createBindGroup({ layout: accumNormsPL.getBindGroupLayout(0), entries: [
         { binding: 0, resource: { buffer: paramsBuf } },
@@ -1770,11 +1825,12 @@ async function doSteps(n) {
           ((nucPos[a][0]-nucPos[b][0])*hGrid)**2 +
           ((nucPos[a][1]-nucPos[b][1])*hGrid)**2 +
           ((nucPos[a][2]-nucPos[b][2])*hGrid)**2 + soft_nuc);
-        E_KK += Z[a]*Z[b]/d;
+        E_KK += Z_nuc[a]*Z_nuc[b]/d;
       }
     }
   }
   E = E_T + E_eK + E_ee + E_KK;
+  E_bind = E - E_atoms_sum;
 
   if (!isFinite(E)) {
     gpuError = "Numerical instability at step " + tStep;
@@ -2068,7 +2124,7 @@ function draw() {
   if (lastMs > 0) text((lastMs / STEPS_PER_FRAME).toFixed(1) + "ms/step", 300, 35);
 
   fill(200);
-  text("T=" + E_T.toFixed(4) + " V_eK=" + E_eK.toFixed(4) + " V_ee=" + E_ee.toFixed(4) + " V_KK=" + E_KK.toFixed(4) + "  Dipole=" + dipole_D.toFixed(3) + " D", 5, 50);
+  text("T=" + E_T.toFixed(4) + " V_eK=" + E_eK.toFixed(4) + " V_ee=" + E_ee.toFixed(4) + " V_KK=" + E_KK.toFixed(4) + "  Dipole=" + dipole_D.toFixed(3) + " D  E_bind=" + E_bind.toFixed(4) + " Ha", 5, 50);
   fill(vcycleEnabled ? [0,255,0] : [255,100,0]);
   text("V-cycle: " + (vcycleEnabled ? "ON" : "OFF") + " (" + vcycleCount + " cycles)  [press V to toggle]", 5, 65);
 
