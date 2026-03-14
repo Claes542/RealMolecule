@@ -887,7 +887,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dj = (f32(j) - f32(atoms[n].posJ)) * p.h;
     let dk = (f32(k) - f32(atoms[n].posK)) * p.h;
     let r = sqrt(di*di + dj*dj + dk*dk);
-    Kval += Za / max(r, atoms[n].rc);
+    Kval += Za / max(r, max(atoms[n].rc, ${R_SING}));
   }
   K[id] = Kval;
 }
@@ -935,7 +935,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dz = zk - f32(atoms[n].posK) * p.h;
     let r2 = dx*dx + dy*dy + dz*dz + soft;
     let r = sqrt(r2);
-    Kval += Za / max(r, atoms[n].rc);
+    Kval += Za / max(r, max(atoms[n].rc, ${R_SING}));
     // Normalized trial: ∫U²dV = Z_eff analytically (U = Z²/√π · exp(-Z·r))
     // Domains assigned by highest normalized density
     let uTrial = Za * Za * ${(1/Math.sqrt(Math.PI)).toFixed(10)} * exp(-Za * r);
