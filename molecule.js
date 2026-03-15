@@ -66,11 +66,11 @@ const SIC_INTERVAL = NELEC <= 15 ? 1 : NELEC <= 30 ? 5 : 999999;  // SIC in dyna
 const SIC_JACOBI = NELEC <= 15 ? 50 : 10;
 
 // === Nuclear dynamics state ===
-const N_MOVE = 200;         // electronic steps between nuclear moves
-const DT_NUC = 0.8;         // au (~0.02 fs)
-const NUC_SUBSTEPS = 1;     // single step (forces recomputed each move)
+const N_MOVE = 50;          // electronic steps between nuclear moves
+const DT_NUC = 2.0;         // au (~0.05 fs)
+const NUC_SUBSTEPS = 2;     // substeps per frame
 const DAMPING = 0.98;       // light damping
-const MAX_VEL = 0.1;        // au/au_time
+const MAX_VEL = 0.3;        // au/au_time
 let forceScale = 1.0;       // adjustable via slider/keys
 let boundarySpeed = 0.5;    // dt_w for free boundary evolution
 let nucVel = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
@@ -1618,6 +1618,14 @@ async function uploadInitialData() {
     console.log("Shell init complete");
   }
 
+  // Custom label initialization: override Voronoi domain assignment
+  if (window.CUSTOM_LABEL_INIT) {
+    console.log("Custom label init: overriding Voronoi domains");
+    const lData = window.CUSTOM_LABEL_INIT(S, hGrid, nucPos, NELEC);
+    device.queue.writeBuffer(labelBuf, 0, lData);
+    console.log("Custom label init complete");
+  }
+
   // Copy to double-buffered slots
   const cpEnc = device.createCommandEncoder();
   cpEnc.copyBufferToBuffer(U_buf[0], 0, U_buf[1], 0, S3 * 4);
@@ -2534,11 +2542,15 @@ async function doSteps(n) {
   E_ee = sumsData[2];  // SIC already removed self-interaction from PotherBuf
   // Per-H correction: exclusion sphere around each nucleus clips T and V_eK
   // This is a per-nucleus artifact independent of bonding
+  // Only for standalone H atoms (not grouped into heavier nuclei via NUCLEAR_GROUPS)
   {
     const H_RAW = { 100: [0.5, -1.0], 200: [0.503, -1.028], 300: [0.5, -1.0] };
     const raw = H_RAW[NN] || H_RAW[200];
+    const grp = window.NUCLEAR_GROUPS;
     let nH = 0;
-    for (let a = 0; a < NELEC; a++) { if (Z[a] === 1 && r_cut[a] === 0) nH++; }
+    for (let a = 0; a < NELEC; a++) {
+      if (Z[a] === 1 && r_cut[a] === 0 && !grp) nH++;
+    }
     E_T  += nH * (0.5 - raw[0]);
     E_eK += nH * (-1.0 - raw[1]);
   }
@@ -2572,14 +2584,16 @@ async function doSteps(n) {
   E_KK = 0;
   if (addNucRepulsion) {
     const soft_nuc = 0.04 * h2v;
+    const grp = window.NUCLEAR_GROUPS;
     for (let a = 0; a < NELEC; a++) {
       for (let b = a + 1; b < NELEC; b++) {
         if (Z[a] === 0 || Z[b] === 0) continue;
+        if (grp && grp[a] === grp[b]) continue;  // same physical nucleus
         const d = Math.sqrt(
           ((nucPos[a][0]-nucPos[b][0])*hGrid)**2 +
           ((nucPos[a][1]-nucPos[b][1])*hGrid)**2 +
           ((nucPos[a][2]-nucPos[b][2])*hGrid)**2 + soft_nuc);
-        E_KK += Z_nuc[a]*Z_nuc[b]/d;
+        E_KK += Z[a]*Z[b]/d;
       }
     }
   }
@@ -3020,8 +3034,11 @@ async function doLOBPCGStep() {
   {
     const H_RAW = { 100: [0.5, -1.0], 200: [0.503, -1.028], 300: [0.5, -1.0] };
     const raw = H_RAW[NN] || H_RAW[200];
+    const grp = window.NUCLEAR_GROUPS;
     let nH = 0;
-    for (let a = 0; a < NELEC; a++) { if (Z[a] === 1 && r_cut[a] === 0) nH++; }
+    for (let a = 0; a < NELEC; a++) {
+      if (Z[a] === 1 && r_cut[a] === 0 && !grp) nH++;
+    }
     E_T  += nH * (0.5 - raw[0]);
     E_eK += nH * (-1.0 - raw[1]);
   }
@@ -3048,14 +3065,16 @@ async function doLOBPCGStep() {
   E_KK = 0;
   if (addNucRepulsion) {
     const soft_nuc = 0.04 * h2v;
+    const grp = window.NUCLEAR_GROUPS;
     for (let a = 0; a < NELEC; a++) {
       for (let b = a + 1; b < NELEC; b++) {
         if (Z[a] === 0 || Z[b] === 0) continue;
+        if (grp && grp[a] === grp[b]) continue;  // same physical nucleus
         const d = Math.sqrt(
           ((nucPos[a][0]-nucPos[b][0])*hGrid)**2 +
           ((nucPos[a][1]-nucPos[b][1])*hGrid)**2 +
           ((nucPos[a][2]-nucPos[b][2])*hGrid)**2 + soft_nuc);
-        E_KK += Z_nuc[a]*Z_nuc[b]/d;
+        E_KK += Z[a]*Z[b]/d;
       }
     }
   }
@@ -3348,10 +3367,10 @@ function draw() {
         const fx = nucForce[n][0], fy = nucForce[n][1];
         const fmag = Math.sqrt(fx*fx + fy*fy);
         if (fmag > 1e-8) {
-          const arrowScale = 100;
+          const arrowScale = 250 * forceScale;
           const ax = nucPos[n][0] * PX + fx * arrowScale;
           const ay = nucPos[n][1] * PX + fy * arrowScale;
-          stroke(0, 255, 0); strokeWeight(1);
+          stroke(0, 255, 0); strokeWeight(3);
           line(nucPos[n][0] * PX, nucPos[n][1] * PX, ax, ay);
         }
       }

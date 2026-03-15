@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>He₂ Adaptive Sweep (200³)</title>
+  <style>
+    body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; overflow: hidden; flex-direction: column; color: #fff; font-family: monospace; }
+    canvas { border: none; }
+    #resultsTable { position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.85); border: 1px solid #444; padding: 10px; z-index: 100; font-size: 13px; }
+    #resultsTable table { border-collapse: collapse; }
+    #resultsTable th, #resultsTable td { padding: 4px 10px; text-align: right; border-bottom: 1px solid #333; }
+    #resultsTable th { color: #0cf; border-bottom: 2px solid #0cf; }
+    #resultsTable .best { color: #0f0; font-weight: bold; }
+    #resultsTable .pending { color: #666; }
+  </style>
+</head>
+<body>
+  <script>
+    window.onerror = function(msg, url, line) {
+      document.body.style.color = 'red';
+      document.body.innerHTML = '<pre>ERROR: ' + msg + '\nLine: ' + line + '\nFile: ' + url + '</pre>';
+    };
+
+    var bondLengths = [3.0];
+    var sweepIdx = 0;
+    var sweepResults = [];
+
+    var N = 200, scr = 6;
+    var hg = scr / N;
+
+    // Each He = 2 H nuclei at adjacent grid points (modeling single Z=2 nucleus), 2 electrons
+    // He₂ = 4 atoms, NO_NUC_REPULSION (no artificial intra-He repulsion)
+    // Physical E_KK = Z_A × Z_B / R = 2×2/R = 4/R added manually
+    var planeShift = 0.1;  // 0.1 au outward from He kernel
+
+    function makeAtoms(bond) {
+      var halfCells = Math.round(0.5 * bond / hg);
+      var ci = Math.round(0.5 * scr / hg);
+      var cj = Math.round(0.5 * scr / hg);
+      // Both nuclei of each He at same position (adjacent cells)
+      return [
+        // He_A: atoms 0,1 at left position
+        { i: ci - halfCells,     j: cj, Z: 1, el: 'H' },
+        { i: ci - halfCells + 1, j: cj, Z: 1, el: 'H' },
+        // He_B: atoms 2,3 at right position
+        { i: ci + halfCells,     j: cj, Z: 1, el: 'H' },
+        { i: ci + halfCells + 1, j: cj, Z: 1, el: 'H' }
+      ];
+    }
+
+    // Custom label init: split each He's electrons with a plane through the kernel,
+    // shifted 0.1 au outward from center of He₂
+    // He_A at x_A: plane at x_A - planeShift (outer domain 0 | inner domain 1)
+    // He_B at x_B: plane at x_B + planeShift (inner domain 2 | outer domain 3)
+    window.CUSTOM_LABEL_INIT = function(S, hGrid, nucPos, NELEC) {
+      var lData = new Uint32Array(S * S * S);
+      var S2 = S * S;
+      var cx = 0.5 * (nucPos[0][0] + nucPos[2][0]);  // center of He₂
+      // He_A center (avg of atoms 0,1), He_B center (avg of atoms 2,3)
+      var xA = 0.5 * (nucPos[0][0] + nucPos[1][0]);
+      var xB = 0.5 * (nucPos[2][0] + nucPos[3][0]);
+      // Plane positions (in grid coords): shifted 0.1 au outward from each kernel
+      var planeA = xA - planeShift / hGrid;  // left of He_A
+      var planeB = xB + planeShift / hGrid;  // right of He_B
+      var midX = 0.5 * (xA + xB);  // midpoint between He centers
+
+      for (var i = 0; i < S; i++) {
+        for (var j = 0; j < S; j++) {
+          for (var k = 0; k < S; k++) {
+            var id = i * S2 + j * S + k;
+            if (i < midX) {
+              // He_A side
+              lData[id] = (i < planeA) ? 0 : 1;  // outer=0, inner=1
+            } else {
+              // He_B side
+              lData[id] = (i > planeB) ? 3 : 2;  // inner=2, outer=3
+            }
+          }
+        }
+      }
+      return lData;
+    };
+
+    window.USER_NN = N;
+    window.USER_ATOMS = makeAtoms(bondLengths[0]);
+    window.USER_SCREEN = scr;
+    window.USER_STEPS = 50000;
+    window.USER_Z = [1, 1, 1, 1];
+    window.USER_RC = [0, 0, 0, 0];
+    window.CONVERGENCE_THRESHOLD = 0.01;
+    window.INIT_ZEFF = 2;
+    // Group atoms into physical nuclei: atoms 0,1 = He_A, atoms 2,3 = He_B
+    // E_KK only counts inter-group pairs (He_A vs He_B), not intra-He
+    window.NUCLEAR_GROUPS = [0, 0, 1, 1];
+
+    // He₂ reference:
+    // 2 × He(HF) = 2 × (-2.862) = -5.724 Ha
+    // 2 × He(exact) = 2 × (-2.904) = -5.808 Ha
+    // He₂ bound only by dispersion: D_e ≈ 0.035 mHa at R_e ≈ 5.6 bohr
+
+    function updateTable() {
+      var div = document.getElementById('resultsTable');
+      if (!div) {
+        div = document.createElement('div');
+        div.id = 'resultsTable';
+        document.body.appendChild(div);
+      }
+
+      var html = '<div style="color:#0cf;font-size:14px;margin-bottom:8px">He\u2082 Bond Length Sweep</div>';
+      html += '<div style="color:#888;font-size:11px;margin-bottom:6px">V_KK = 4/R (inter-He only, via NUCLEAR_GROUPS)</div>';
+      html += '<table><tr><th>R (au)</th><th>E_total</th><th>\u0394E (mHa)</th><th>Steps</th></tr>';
+
+      // Use large-R energy as dissociation reference
+      var Ediss = null;
+      if (sweepResults.length === bondLengths.length) {
+        Ediss = sweepResults[sweepResults.length - 1].E;
+      }
+
+      var bestE = Infinity, bestIdx = -1;
+      for (var i = 0; i < sweepResults.length; i++) {
+        if (sweepResults[i].E < bestE) { bestE = sweepResults[i].E; bestIdx = i; }
+      }
+
+      for (var i = 0; i < bondLengths.length; i++) {
+        if (i < sweepResults.length) {
+          var r = sweepResults[i];
+          var dE = Ediss !== null ? (r.E - Ediss) * 1000 : 0;
+          var cls = (i === bestIdx) ? ' class="best"' : '';
+          html += '<tr' + cls + '><td>' + r.bond.toFixed(1) + '</td><td>' + r.E.toFixed(4) + '</td><td>' + (Ediss !== null ? ((dE >= 0 ? '+' : '') + dE.toFixed(1)) : '...') + '</td><td>' + r.steps + '</td></tr>';
+        } else {
+          var marker = (i === sweepIdx) ? '...' : '-';
+          html += '<tr class="pending"><td>' + bondLengths[i].toFixed(1) + '</td><td>' + marker + '</td><td>' + marker + '</td><td>' + marker + '</td></tr>';
+        }
+      }
+      html += '</table>';
+
+      if (sweepResults.length === bondLengths.length) {
+        var bestR = sweepResults[bestIdx];
+        var bind_mHa = (Ediss - bestR.E) * 1000;
+        html += '<div style="margin-top:10px;font-size:12px;color:#fff">Summary:</div>';
+        html += '<table style="margin-top:4px"><tr><th></th><th>Value</th></tr>';
+        html += '<tr><td style="text-align:left;color:#0f0">Best R</td><td>' + bestR.bond.toFixed(1) + ' au</td></tr>';
+        html += '<tr><td style="text-align:left;color:#0f0">E(best)</td><td>' + bestR.E.toFixed(4) + ' Ha</td></tr>';
+        html += '<tr><td style="text-align:left;color:#0f0">\u0394E (binding)</td><td>' + bind_mHa.toFixed(1) + ' mHa</td></tr>';
+        html += '<tr><td style="text-align:left;color:#888">E(\u221e) ref</td><td>' + Ediss.toFixed(4) + ' Ha</td></tr>';
+        html += '<tr><td style="text-align:left;color:#888">2\u00d7He HF</td><td>-5.724 Ha</td></tr>';
+        html += '<tr><td style="text-align:left;color:#888">2\u00d7He exact</td><td>-5.808 Ha</td></tr>';
+        html += '</table>';
+        html += '<div style="color:#888;font-size:11px;margin-top:6px">He\u2082 real D\u2091 \u2248 0.035 mHa (dispersion only, no HF binding)</div>';
+        html += '<div style="color:#888;font-size:11px">V_KK = 4/R between He +2 kernels (NUCLEAR_GROUPS skips intra-He)</div>';
+      }
+
+      div.innerHTML = html;
+    }
+
+    setTimeout(updateTable, 100);
+
+    window.onSweepDone = function(E, steps) {
+      var bond = bondLengths[sweepIdx];
+      sweepResults.push({ bond: bond, E: E, steps: steps });
+      console.log('SWEEP [' + (sweepIdx+1) + '/' + bondLengths.length + '] R=' + bond.toFixed(2) + ' au  E=' + E.toFixed(6) + '  steps=' + steps);
+      updateTable();
+
+      sweepIdx++;
+      if (sweepIdx < bondLengths.length) {
+        var atoms = makeAtoms(bondLengths[sweepIdx]);
+        var ck = Math.round(0.5 * scr / hg);
+        var positions = atoms.map(function(a) { return [a.i, a.j, a.k || ck]; });
+        window.restartWithPositions(positions);
+      } else {
+        console.log('=== He2 SWEEP COMPLETE ===');
+        for (var i = 0; i < sweepResults.length; i++) {
+          var r = sweepResults[i];
+          console.log('  R=' + r.bond.toFixed(1) + '  E=' + r.E.toFixed(6) + '  steps=' + r.steps);
+        }
+        updateTable();
+      }
+    };
+
+    var s = document.createElement('script');
+    s.src = 'molecule.js?t=' + Date.now();
+    s.onerror = function() { document.body.innerHTML = '<pre style="color:red">Failed to load molecule.js</pre>'; };
+    s.onload = function() {
+      var p5s = document.createElement('script');
+      p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+      document.body.appendChild(p5s);
+    };
+    document.body.appendChild(s);
+  </script>
+</body>
+</html>

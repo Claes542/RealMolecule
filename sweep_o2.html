@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>O₂ Adaptive Sweep (200³)</title>
+  <style>
+    body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; overflow: hidden; flex-direction: column; color: #fff; font-family: monospace; }
+    canvas { border: none; }
+    #resultsTable { position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.85); border: 1px solid #444; padding: 10px; z-index: 100; font-size: 13px; }
+    #resultsTable table { border-collapse: collapse; }
+    #resultsTable th, #resultsTable td { padding: 4px 10px; text-align: right; border-bottom: 1px solid #333; }
+    #resultsTable th { color: #0cf; border-bottom: 2px solid #0cf; }
+    #resultsTable .best { color: #0f0; font-weight: bold; }
+    #resultsTable .pending { color: #666; }
+  </style>
+</head>
+<body>
+  <script>
+    window.onerror = function(msg, url, line) {
+      document.body.style.color = 'red';
+      document.body.innerHTML = '<pre>ERROR: ' + msg + '\nLine: ' + line + '\nFile: ' + url + '</pre>';
+    };
+
+    // O₂: two O atoms, each modeled as +2 kernel with r_c=0.4
+    // R_e(O₂) = 2.28 bohr (1.21 Å)
+    // D_e(O₂) = 5.21 eV = 0.1915 Ha
+    var bondLengths = [1.5, 2.0, 2.3, 2.5, 3.0, 4.0, 6.0];
+    var sweepIdx = 0;
+    var sweepResults = [];
+
+    var N = 200, scr = 10;
+    var hg = scr / N;
+
+    function makeAtoms(bond) {
+      var halfCells = Math.round(0.5 * bond / hg);
+      var ci = Math.round(0.5 * scr / hg);
+      var cj = Math.round(0.5 * scr / hg);
+      return [
+        { i: ci - halfCells, j: cj, Z: 2, el: 'O2' },
+        { i: ci + halfCells, j: cj, Z: 2, el: 'O2' }
+      ];
+    }
+
+    window.USER_NN = N;
+    window.USER_ATOMS = makeAtoms(bondLengths[0]);
+    window.USER_SCREEN = scr;
+    window.USER_STEPS = 50000;
+    window.USER_Z = [2, 2];
+    window.USER_RC = [0.6, 0.6];
+    window.CONVERGENCE_THRESHOLD = 0.01;
+
+    // O₂ reference:
+    // R_e = 2.28 bohr, D_e = 5.21 eV = 0.1915 Ha
+    // D_0 = 5.12 eV = 0.1882 Ha (experimental)
+
+    function updateTable() {
+      var div = document.getElementById('resultsTable');
+      if (!div) {
+        div = document.createElement('div');
+        div.id = 'resultsTable';
+        document.body.appendChild(div);
+      }
+
+      // Use large-R energy as dissociation reference
+      var Ediss = null;
+      if (sweepResults.length === bondLengths.length) {
+        Ediss = sweepResults[sweepResults.length - 1].E;
+      }
+
+      var bestE = Infinity, bestIdx = -1;
+      for (var i = 0; i < sweepResults.length; i++) {
+        if (sweepResults[i].E < bestE) { bestE = sweepResults[i].E; bestIdx = i; }
+      }
+
+      var html = '<div style="color:#0cf;font-size:14px;margin-bottom:8px">O\u2082 Bond Length Sweep</div>';
+      html += '<div style="color:#888;font-size:11px;margin-bottom:6px">Z=+2 kernels, r\u2082=0.4 au, 200\u00b3 / ' + scr + ' au</div>';
+      html += '<table><tr><th>R (au)</th><th>E_total</th><th>\u0394E (mHa)</th><th>Steps</th></tr>';
+
+      for (var i = 0; i < bondLengths.length; i++) {
+        if (i < sweepResults.length) {
+          var r = sweepResults[i];
+          var dE = Ediss !== null ? (r.E - Ediss) * 1000 : 0;
+          var cls = (i === bestIdx) ? ' class="best"' : '';
+          html += '<tr' + cls + '><td>' + r.bond.toFixed(1) + '</td><td>' + r.E.toFixed(4) + '</td><td>' + (Ediss !== null ? ((dE >= 0 ? '+' : '') + dE.toFixed(1)) : '...') + '</td><td>' + r.steps + '</td></tr>';
+        } else {
+          var marker = (i === sweepIdx) ? '...' : '-';
+          html += '<tr class="pending"><td>' + bondLengths[i].toFixed(1) + '</td><td>' + marker + '</td><td>' + marker + '</td><td>' + marker + '</td></tr>';
+        }
+      }
+      html += '</table>';
+
+      if (sweepResults.length === bondLengths.length) {
+        var bestR = sweepResults[bestIdx];
+        var bind_mHa = (Ediss - bestR.E) * 1000;
+        var bind_eV = bind_mHa * 0.027211;
+        html += '<div style="margin-top:10px;font-size:12px;color:#fff">Summary:</div>';
+        html += '<table style="margin-top:4px"><tr><th></th><th>Value</th></tr>';
+        html += '<tr><td style="text-align:left;color:#0f0">Best R</td><td>' + bestR.bond.toFixed(1) + ' au</td></tr>';
+        html += '<tr><td style="text-align:left;color:#0f0">E(best)</td><td>' + bestR.E.toFixed(4) + ' Ha</td></tr>';
+        html += '<tr><td style="text-align:left;color:#0f0">Binding</td><td>' + bind_mHa.toFixed(1) + ' mHa (' + bind_eV.toFixed(2) + ' eV)</td></tr>';
+        html += '<tr><td style="text-align:left;color:#888">E(\u221e) ref</td><td>' + Ediss.toFixed(4) + ' Ha</td></tr>';
+        html += '<tr><td style="text-align:left;color:#888">R\u2091 exp</td><td>2.28 au</td></tr>';
+        html += '<tr><td style="text-align:left;color:#888">D\u2091 exp</td><td>0.1915 Ha (5.21 eV)</td></tr>';
+        html += '</table>';
+        html += '<div style="color:#888;font-size:11px;margin-top:6px">+2 pseudopotential kernels, r\u2092=0.4 au</div>';
+      }
+
+      div.innerHTML = html;
+    }
+
+    setTimeout(updateTable, 100);
+
+    window.onSweepDone = function(E, steps) {
+      var bond = bondLengths[sweepIdx];
+      sweepResults.push({ bond: bond, E: E, steps: steps });
+      console.log('SWEEP [' + (sweepIdx+1) + '/' + bondLengths.length + '] R=' + bond.toFixed(2) + ' au  E=' + E.toFixed(6) + '  steps=' + steps);
+      updateTable();
+
+      sweepIdx++;
+      if (sweepIdx < bondLengths.length) {
+        var atoms = makeAtoms(bondLengths[sweepIdx]);
+        var ck = Math.round(0.5 * scr / hg);
+        var positions = atoms.map(function(a) { return [a.i, a.j, a.k || ck]; });
+        window.restartWithPositions(positions);
+      } else {
+        console.log('=== O2 SWEEP COMPLETE ===');
+        for (var i = 0; i < sweepResults.length; i++) {
+          var r = sweepResults[i];
+          console.log('  R=' + r.bond.toFixed(1) + '  E=' + r.E.toFixed(6) + '  steps=' + r.steps);
+        }
+        updateTable();
+      }
+    };
+
+    var s = document.createElement('script');
+    s.src = 'molecule.js?t=' + Date.now();
+    s.onerror = function() { document.body.innerHTML = '<pre style="color:red">Failed to load molecule.js</pre>'; };
+    s.onload = function() {
+      var p5s = document.createElement('script');
+      p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+      document.body.appendChild(p5s);
+    };
+    document.body.appendChild(s);
+  </script>
+</body>
+</html>
