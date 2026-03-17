@@ -43,7 +43,8 @@ let screenAu = window.USER_SCREEN || 10;
 let hGrid = screenAu / NN, h2v = hGrid * hGrid, h3v = hGrid * hGrid * hGrid;
 const dv = NELEC > 500 ? 0.01 : NELEC > 100 ? 0.03 : 0.12;  // smaller timestep for large systems
 let dtv = dv * h2v, half_dv = 0.5 * dv;
-const PX = 700 / NN;
+const CANVAS_SIZE = window.USER_CANVAS || 700;
+const PX = CANVAS_SIZE / NN;
 const INTERIOR = (NN - 1) * (NN - 1) * (NN - 1);
 const R_SING = 2 * hGrid;  // exclude 2 grid spacings from nucleus
 
@@ -1767,7 +1768,7 @@ window.isGpuReady = function() { return gpuReady; };
 
 function setup() {
   console.log("setup: NELEC=" + NELEC + " NRED_E=" + NRED_E + " REDUCE_WG=" + REDUCE_WG);
-  createCanvas(700, 700);
+  createCanvas(CANVAS_SIZE, CANVAS_SIZE);
   textSize(9);
 
   // Control sliders (top-right)
@@ -3375,7 +3376,7 @@ function draw() {
     }
     loadPixels();
     const d = pixelDensity();
-    const W = 700 * d, H = 700 * d;
+    const W = CANVAS_SIZE * d, H = CANVAS_SIZE * d;
     for (let p = 0; p < W * H * 4; p += 4) {
       pixels[p] = 0; pixels[p+1] = 0; pixels[p+2] = 0; pixels[p+3] = 255;
     }
@@ -3465,7 +3466,7 @@ function draw() {
         const row = lineRows[li];
         const rowY = PX * row;
         stroke(255, 255, 255, 40); strokeWeight(1);
-        line(0, rowY, 700, rowY);
+        line(0, rowY, CANVAS_SIZE, rowY);
         strokeWeight(2); noFill();
         for (let i = 1; i < NN - 1; i++) {
           const v1 = sliceData[i * SS + row];
@@ -3507,7 +3508,7 @@ function draw() {
 
   // Screen boundary
   noFill(); stroke(100); strokeWeight(1);
-  rect(0, 0, 700, 700);
+  rect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
   noStroke();
 
   fill(255);
