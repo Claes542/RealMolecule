@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="controls" style="position:fixed;top:10px;left:10px;z-index:100;background:rgba(0,0,0,0.7);padding:8px 12px;border-radius:6px">
+  <label>Fold: <input id="foldSlider" type="range" min="0" max="100" style="width:200px;vertical-align:middle">
+  <span id="foldVal"></span></label>
+  <button id="goBtn" style="margin-left:8px">Go</button>
+</div>
+<pre id="log" style="margin-top:50px">Building hairpin...</pre>
+<script>
+var log = document.getElementById('log');
+window.onerror = function(msg, url, line) {
+  log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
+};
+
+// Read fold fraction from URL (0=unfolded, 1=folded)
+var params = new URLSearchParams(window.location.search);
+var foldFrac = parseFloat(params.get('fold'));
+if (isNaN(foldFrac)) foldFrac = 1.0;
+foldFrac = Math.max(0, Math.min(1, foldFrac));
+
+var slider = document.getElementById('foldSlider');
+var foldVal = document.getElementById('foldVal');
+slider.value = Math.round(foldFrac * 100);
+foldVal.textContent = Math.round(foldFrac * 100) + '%';
+slider.oninput = function() { foldVal.textContent = this.value + '%'; };
+
+document.getElementById('goBtn').onclick = function() {
+  var f = slider.value / 100;
+  window.location.search = '?fold=' + f.toFixed(2);
+};
+
+(function() {
+  var t = foldFrac;  // 0=unfolded, 1=folded
+  var A = 1.8897;
+  var nRes = 12;
+
+  // Bond lengths (au)
+  var bNH = 1.01 * A;
+  var bCH = 1.09 * A;
+  var bCO = 1.24 * A;
+  var bOH = 0.97 * A;
+
+  // --- Build extended chain backbone, then bend it ---
+  // Extended chain: 3.8 A per residue along x
+  var resAdv = 3.8 * A;
+  var zig = 0.5 * A;
+  var totalLen = (nRes - 1) * resAdv;
+  var x0 = -totalLen / 2;
+
+  // Backbone positions (N, Ca, C) per residue in extended form
+  var bbExt = [];
+  for (var r = 0; r < nRes; r++) {
+    var xr = x0 + r * resAdv;
+    var zigSign = (r % 2 === 0) ? 1 : -1;
+    var yBase = zigSign * zig;
+    bbExt.push({
+      N:  [xr - 0.35 * resAdv, yBase * 0.6],
+      Ca: [xr,                 -yBase * 0.4],
+      C:  [xr + 0.35 * resAdv, yBase * 0.3]
+    });
+  }
+
+  // Hinge point: midpoint between res 4 C and res 5 N
+  var hingeX = (bbExt[4].C[0] + bbExt[5].N[0]) / 2;
+  var hingeY = (bbExt[4].C[1] + bbExt[5].N[1]) / 2;
+
+  // Bend angle: t * PI (0=straight, PI=fully folded hairpin)
+  var bendAngle = t * Math.PI;
+
+  // Rotation fraction per residue:
+  //   res 0-4: 0 (strand 1, fixed)
+  //   res 5: 0.33 (turn start)
+  //   res 6: 0.67 (turn end)
+  //   res 7-11: 1.0 (strand 2, full rotation)
+  function rotFrac(r) {
+    if (r <= 4) return 0;
+    if (r === 5) return 0.33;
+    if (r === 6) return 0.67;
+    return 1.0;
+  }
+
+  // Rotate point (px, py) around hinge by angle theta
+  function rotatePoint(px, py, theta) {
+    var dx = px - hingeX, dy = py - hingeY;
+    var c = Math.cos(theta), s = Math.sin(theta);
+    return [hingeX + dx * c - dy * s, hingeY + dx * s + dy * c];
+  }
+
+  // Apply bending to backbone
+  var bb = [];
+  for (var r = 0; r < nRes; r++) {
+    var theta = rotFrac(r) * bendAngle;
+    var N  = rotatePoint(bbExt[r].N[0],  bbExt[r].N[1],  theta);
+    var Ca = rotatePoint(bbExt[r].Ca[0], bbExt[r].Ca[1], theta);
+    var C  = rotatePoint(bbExt[r].C[0],  bbExt[r].C[1],  theta);
+    bb.push({ N: N, Ca: Ca, C: C, rotAngle: theta });
+  }
+
+  // --- Place atoms from bent backbone ---
+  var positions = [];  // {x, y, z, el, Z}
+  var elList = [];
+  var zList = [];
+
+  function pushAtom(x, y, z, el, Z) {
+    positions.push({x: x, y: y, z: z});
+    elList.push(el);
+    zList.push(Z);
+  }
+
+  for (var r = 0; r < nRes; r++) {
+    var res = bb[r];
+    var Np = res.N, Cap = res.Ca, Cp = res.C;
+    var theta = res.rotAngle;
+
+    // Direction vectors for atom placement
+    var nca_x = Cap[0] - Np[0], nca_y = Cap[1] - Np[1];
+    var nca_l = Math.sqrt(nca_x * nca_x + nca_y * nca_y);
+    var nca_px = -nca_y / nca_l, nca_py = nca_x / nca_l;
+
+    var cac_x = Cp[0] - Cap[0], cac_y = Cp[1] - Cap[1];
+    var cac_l = Math.sqrt(cac_x * cac_x + cac_y * cac_y);
+    var cac_px = -cac_y / cac_l, cac_py = cac_x / cac_l;
+
+    // N
+    pushAtom(Np[0], Np[1], 0, 'N', 3);
+
+    // H on N (perpendicular, pointing outward)
+    // Flip side for strand 2 when folded
+    var nhSide = (rotFrac(r) < 0.5) ? -1 : 1;
+    pushAtom(Np[0] + nhSide * nca_px * bNH, Np[1] + nhSide * nca_py * bNH, 0, 'H', 1);
+
+    // Extra H on N-terminus
+    if (r === 0) {
+      pushAtom(Np[0] - nhSide * nca_px * bNH, Np[1] - nhSide * nca_py * bNH, 0, 'H', 1);
+    }
+
+    // Ca
+    pushAtom(Cap[0], Cap[1], 0, 'C', 4);
+
+    // Ha1, Ha2 — perpendicular to backbone
+    // Use z-direction for unfolded, xy-perpendicular for folded, interpolate
+    var haPerp_x = cac_px * bCH * t;
+    var haPerp_y = cac_py * bCH * t;
+    var haPerp_z = bCH * (1 - t);
+    pushAtom(Cap[0] + haPerp_x, Cap[1] + haPerp_y,  haPerp_z, 'H', 1);
+    pushAtom(Cap[0] - haPerp_x, Cap[1] - haPerp_y, -haPerp_z, 'H', 1);
+
+    // Carbonyl C
+    pushAtom(Cp[0], Cp[1], 0, 'C', 4);
+
+    // Carbonyl O (alternating sides)
+    var oSide;
+    if (rotFrac(r) < 0.5) {
+      oSide = (r % 2 === 0) ? -1 : 1;
+    } else {
+      oSide = (r % 2 === 0) ? 1 : -1;
+    }
+    pushAtom(Cp[0] + oSide * cac_px * bCO, Cp[1] + oSide * cac_py * bCO, 0, 'O', 2);
+  }
+
+  // C-terminal OH
+  var lastC = bb[nRes - 1].C, lastCa = bb[nRes - 1].Ca;
+  var lc_x = lastC[0] - lastCa[0], lc_y = lastC[1] - lastCa[1];
+  var lc_l = Math.sqrt(lc_x * lc_x + lc_y * lc_y);
+  var oh_x = lastC[0] + lc_x / lc_l * 1.34 * A;
+  var oh_y = lastC[1] + lc_y / lc_l * 1.34 * A;
+  pushAtom(oh_x, oh_y, 0, 'O', 2);
+  pushAtom(oh_x + lc_x / lc_l * bOH, oh_y + lc_y / lc_l * bOH, 0, 'H', 1);
+
+  // Water molecule near the turn
+  var turnCa = bb[5].Ca;
+  // Place water perpendicular to the chain, away from the fold
+  var waterDist = 3 * A;
+  var wPerp_x = -Math.sin(bendAngle / 2), wPerp_y = Math.cos(bendAngle / 2);
+  var wx = hingeX + wPerp_x * waterDist;
+  var wy = hingeY + wPerp_y * waterDist;
+  pushAtom(wx, wy, 0, 'O', 2);
+  pushAtom(wx - 0.76 * A, wy - 0.59 * A, 0, 'H', 1);
+  pushAtom(wx + 0.76 * A, wy - 0.59 * A, 0, 'H', 1);
+
+  // --- Screen size adapts to geometry extent ---
+  var minX = Infinity, maxX = -Infinity;
+  var minY = Infinity, maxY = -Infinity;
+  var minZ = Infinity, maxZ = -Infinity;
+  for (var i = 0; i < positions.length; i++) {
+    var p = positions[i];
+    if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+    if (p.z < minZ) minZ = p.z; if (p.z > maxZ) maxZ = p.z;
+  }
+  var extentX = maxX - minX, extentY = maxY - minY, extentZ = maxZ - minZ;
+  var maxExtent = Math.max(extentX, extentY, extentZ);
+  var scr = maxExtent + 20 * A;  // padding of 20 A (~38 au)
+  scr = Math.max(40, Math.min(100, scr));  // clamp
+
+  // Center offset
+  var cx = (minX + maxX) / 2, cy = (minY + maxY) / 2, cz = (minZ + maxZ) / 2;
+
+  var gridN = 500;
+  var h = scr / gridN;
+  var N2 = Math.round(gridN / 2);
+  var atoms = [];
+
+  for (var i = 0; i < positions.length; i++) {
+    var p = positions[i];
+    var gi = Math.round(N2 + (p.x - cx) / h);
+    var gj = Math.round(N2 + (p.y - cy) / h);
+    var gk = Math.round(N2 + (p.z - cz) / h);
+    gi = Math.max(3, Math.min(gridN - 3, gi));
+    gj = Math.max(3, Math.min(gridN - 3, gj));
+    gk = Math.max(3, Math.min(gridN - 3, gk));
+    atoms.push({ i: gi, j: gj, k: gk, Z: zList[i], el: elList[i] });
+  }
+
+  log.textContent = 'Hairpin (fold=' + Math.round(t * 100) + '%): ' + atoms.length + ' atoms, ' + nRes + ' glycine residues + 1 water';
+  log.textContent += '\n' + gridN + '^3 grid, screen=' + scr.toFixed(1) + ' au';
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_Z = zList;
+  window.USER_RC = elList.map(function(el) {
+    if (el === 'H') return 0;
+    if (el === 'C') return 0.3;
+    if (el === 'N') return 0.3;
+    if (el === 'O') return 0.4;
+    return 0;
+  });
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onerror = function() { log.textContent += '\nFailed to load molecule.js!'; };
+s.onload = function() {
+  log.textContent += '\nmolecule.js loaded, loading p5...';
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p5s.crossOrigin = 'anonymous';
+  p5s.onerror = function() { log.textContent += '\nFailed to load p5.js!'; };
+  p5s.onload = function() { log.textContent += '\np5.js loaded'; };
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
