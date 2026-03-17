@@ -71,10 +71,10 @@ const SIC_JACOBI = NELEC <= 15 ? 50 : 10;
 
 // === Nuclear dynamics state ===
 const N_MOVE = NELEC <= 5 ? 50 : 200;  // electronic steps between nuclear moves
-const DT_NUC = NELEC <= 5 ? 2.0 : 0.8;  // au
+const DT_NUC = window.USER_DT_NUC || (NELEC <= 5 ? 2.0 : NELEC > 200 ? 0.2 : 0.8);  // au
 const NUC_SUBSTEPS = NELEC <= 5 ? 2 : 1;
-const DAMPING = 0.98;       // light damping
-const MAX_VEL = NELEC <= 5 ? 0.3 : 0.1;  // au/au_time
+const DAMPING = window.USER_DAMPING || 0.98;       // light damping
+const MAX_VEL = NELEC <= 5 ? 0.3 : NELEC > 200 ? 0.03 : 0.1;  // au/au_time
 let forceScale = 1.0;       // adjustable via slider/keys
 let boundarySpeed = 0.5;    // dt_w for free boundary evolution
 let nucVel = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
@@ -3222,14 +3222,16 @@ async function moveNuclei(gpuForces) {
 
   // Add nuclear-nuclear (kernel-kernel) Coulomb repulsion forces
   // F_A += sum_{B≠A} Z_A * Z_B * (R_A - R_B) / |R_A - R_B|^3
+  const grp = window.NUCLEAR_GROUPS;
   for (let a = 0; a < NELEC; a++) {
     if (Z[a] === 0) continue;
     for (let b = 0; b < NELEC; b++) {
       if (b === a || Z[b] === 0) continue;
+      if (grp && grp[a] === grp[b]) continue;  // same physical nucleus
       const dx = (nucPos[a][0] - nucPos[b][0]) * hGrid;
       const dy = (nucPos[a][1] - nucPos[b][1]) * hGrid;
       const dz = (nucPos[a][2] - nucPos[b][2]) * hGrid;
-      const r2 = dx*dx + dy*dy + dz*dz;
+      const r2 = dx*dx + dy*dy + dz*dz + hGrid*hGrid;  // softened to prevent division by zero
       const r = Math.sqrt(r2);
       const inv_r3 = 1.0 / (r * r2);
       nucForce[a][0] += Z[a] * Z[b] * dx * inv_r3;

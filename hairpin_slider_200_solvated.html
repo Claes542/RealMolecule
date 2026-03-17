@@ -200,9 +200,10 @@ document.getElementById('goBtn').onclick = function() {
   // --- Solvation shell: water molecules around the protein ---
   var ohBond = 0.96 * A;
   var halfAng = 52.25 * Math.PI / 180;
-  var waterSpacing = 2.8 * A;  // liquid water O-O distance
-  var minWaterDist = 2.5 * A;  // min distance from protein atoms
+  var waterSpacing = 2.4 * A;  // dense packing to mimic hydrophobic pressure
+  var minWaterDist = 2.3 * A;  // closer to protein surface
   var maxR = scr / 2 - 3 * A;  // stay within grid
+  var maxWaterFromProtein = 8.0 * A;  // only 2 shells, limit total count
   var nWater = 0;
 
   for (var wxp = pcx - maxR; wxp <= pcx + maxR; wxp += waterSpacing) {
@@ -210,16 +211,21 @@ document.getElementById('goBtn').onclick = function() {
       // Stay within domain
       if (Math.abs(wxp - pcx) > maxR || Math.abs(wyp - pcy) > maxR) continue;
 
-      // Check minimum distance from all protein atoms
+      // Check distance from all protein atoms
       var tooClose = false;
+      var nearProtein = false;
       for (var pi = 0; pi < nProtein; pi++) {
         var ddx = wxp - positions[pi].x, ddy = wyp - positions[pi].y;
-        if (ddx * ddx + ddy * ddy < minWaterDist * minWaterDist) {
+        var d2 = ddx * ddx + ddy * ddy;
+        if (d2 < minWaterDist * minWaterDist) {
           tooClose = true;
           break;
         }
+        if (d2 < maxWaterFromProtein * maxWaterFromProtein) {
+          nearProtein = true;
+        }
       }
-      if (tooClose) continue;
+      if (tooClose || !nearProtein) continue;
 
       // Deterministic orientation from position
       var wAngle = (wxp * 7.3 + wyp * 11.1) % (2 * Math.PI);
@@ -234,7 +240,7 @@ document.getElementById('goBtn').onclick = function() {
 
   var cx = pcx, cy = pcy, cz = (minZ + maxZ) / 2;
 
-  var gridN = 200;
+  var gridN = 300;
   var h = scr / gridN;
   var N2 = Math.round(gridN / 2);
   var atoms = [];
@@ -253,6 +259,8 @@ document.getElementById('goBtn').onclick = function() {
   log.textContent = 'Solvated hairpin (fold=' + Math.round(t * 100) + '%): ' + nProtein + ' protein + ' + nWater + ' waters = ' + atoms.length + ' atoms';
   log.textContent += '\n' + gridN + '^3 grid, screen=' + scr.toFixed(1) + ' au';
 
+  window.USER_DT_NUC = 0.1;   // small nuclear timestep for dense solvation
+  window.USER_DAMPING = 0.95;  // stronger damping to prevent blowup
   window.USER_PROTEIN_COUNT = nProtein;
   window.USER_NN = gridN;
   window.USER_ATOMS = atoms;
