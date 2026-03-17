@@ -41,7 +41,7 @@ let E_min = Infinity;
 const PROTEIN_COUNT = window.USER_PROTEIN_COUNT || NELEC;  // atoms with force arrows
 let screenAu = window.USER_SCREEN || 10;
 let hGrid = screenAu / NN, h2v = hGrid * hGrid, h3v = hGrid * hGrid * hGrid;
-const dv = NELEC > 100 ? 0.03 : 0.12;  // smaller timestep for large systems
+const dv = NELEC > 500 ? 0.01 : NELEC > 100 ? 0.03 : 0.12;  // smaller timestep for large systems
 let dtv = dv * h2v, half_dv = 0.5 * dv;
 const PX = 700 / NN;
 const INTERIOR = (NN - 1) * (NN - 1) * (NN - 1);
