@@ -87,14 +87,14 @@ const DT_NUC = window.USER_DT_NUC || (NELEC <= 5 ? 2.0 : NELEC > 200 ? 0.2 : 0.8
 const NUC_SUBSTEPS = NELEC <= 5 ? 2 : 1;
 const DAMPING = window.USER_DAMPING || 0.98;       // light damping
 const MAX_VEL = NELEC <= 5 ? 0.3 : NELEC > 200 ? 0.03 : 0.1;  // au/au_time
-let forceScale = 1.0;       // adjustable via slider/keys
+let forceScale = window.USER_FORCE_SCALE || 1.0;       // adjustable via slider/keys
 let boundarySpeed = 0.5;    // dt_w for free boundary evolution
 let nucVel = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
 let nucForce = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
 let nucForceElec = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
 let nucForceNuc = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
 let nucForceTotal = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
-let nucStepCount = 0, dynamicsEnabled = false;
+let nucStepCount = 0, dynamicsEnabled = window.USER_DYNAMICS || false;
 function nucMass(z) { return ({1:1, 2:16, 3:14, 4:12}[z] || 1) * 1836; }
 
 // Multigrid coarse grid
@@ -1095,7 +1095,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // Normalized trial: ∫U²dV = Z_eff analytically (U = Zeff²/√π · exp(-Zeff·r))
     // Domains assigned by highest normalized density
     let Ze = select(Za, ${(window.INIT_ZEFF || 0).toFixed(1)}, ${window.INIT_ZEFF ? 'true' : 'false'});
-    let uTrial = Ze * Ze * ${(1/Math.sqrt(Math.PI)).toFixed(10)} * exp(-Ze * r);
+    let rReal = sqrt(r2);
+    let uTrial = select(Ze * Ze * ${(1/Math.sqrt(Math.PI)).toFixed(10)} * exp(-Ze * r), 0.0, rReal > ${(window.INIT_RCUT || 1e6).toFixed(1)});
     if (uTrial > bU) { bU = uTrial; bestN = n; }
   }
 
@@ -3535,11 +3536,12 @@ function draw() {
     if (Z[n] > 0) {
       const nx = nucPos[n][0] * PX, ny = nucPos[n][1] * PX;
       circle(nx, ny, 6);
-      if (n < PROTEIN_COUNT && nucForceTotal[n]) {
-        const arrowScale = 250 * forceScale;
+      if (nucForceTotal[n]) {
+        const arrowScale = (window.USER_ARROW_SCALE || 250) * forceScale;
         const fx = nucForceTotal[n][0], fy = nucForceTotal[n][1];
         if (fx*fx + fy*fy > 1e-16) {
-          stroke(255, 255, 0); strokeWeight(3);
+          if (n < PROTEIN_COUNT) { stroke(255, 255, 0); } else { stroke(0, 220, 255); }
+          strokeWeight(3);
           line(nx, ny, nx + fx * arrowScale, ny + fy * arrowScale);
         }
         stroke(255); strokeWeight(1);

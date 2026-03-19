@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// Beta hairpin 12-residue polyglycine — SLIGHTLY BENT + solvation shell
+// Chain follows a gentle arc (bend angle ~150°), not folded into a hairpin
+// Water molecules surround the chain to provide hydrophobic pressure
+(function() {
+  var gridN = 300, scr = 80, N2 = 150;
+  var h = scr / gridN;
+  var A = 1.8897; // angstrom to au
+  var atoms = [];
+
+  function addAtom(au_x, au_y, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + au_x / h),
+      j: Math.round(N2 + au_y / h),
+      Z: Z, el: el, x: au_x, y: au_y
+    });
+  }
+
+  var nRes = 12;
+  var resAdv = 3.4 * A;   // ~6.4 au per residue
+  var zig = 0.5 * A;
+
+  // Lay out backbone along a gentle arc
+  // Arc bends ~30° total (150° opening angle) centered at residue 6
+  var bendAngle = 90 * Math.PI / 180; // total bend
+  var arcLen = (nRes - 1) * resAdv;
+  var arcRadius = arcLen / bendAngle; // large radius = gentle curve
+
+  // Place backbone positions along the arc
+  var bb = [];
+  for (var r = 0; r < nRes; r++) {
+    // Angle along arc, centered at 0
+    var t = (r / (nRes - 1) - 0.5) * bendAngle;
+    // Position on arc (arc center at y = -arcRadius)
+    var cx = arcRadius * Math.sin(t);
+    var cy = arcRadius * (1 - Math.cos(t));
+    // Local tangent direction
+    var tx = Math.cos(t);
+    var ty = Math.sin(t);
+    // Normal (perpendicular, pointing outward)
+    var nx = -ty;
+    var ny = tx;
+    var zigSign = (r % 2 === 0) ? 1 : -1;
+
+    bb.push({
+      N:  [cx - 0.35 * resAdv * tx + zigSign * zig * 0.6 * nx,
+           cy - 0.35 * resAdv * ty + zigSign * zig * 0.6 * ny],
+      Ca: [cx,
+           cy - zigSign * zig * 0.4 * ny],  // slight offset
+      C:  [cx + 0.35 * resAdv * tx + zigSign * zig * 0.3 * nx,
+           cy + 0.35 * resAdv * ty + zigSign * zig * 0.3 * ny]
+    });
+  }
+
+  // Place atoms for each residue
+  for (var r = 0; r < nRes; r++) {
+    var res = bb[r];
+    var Np = res.N, Cap = res.Ca, Cp = res.C;
+    var nca_x = Cap[0] - Np[0], nca_y = Cap[1] - Np[1];
+    var nca_l = Math.sqrt(nca_x * nca_x + nca_y * nca_y);
+    var nca_px = -nca_y / nca_l, nca_py = nca_x / nca_l;
+    var cac_x = Cp[0] - Cap[0], cac_y = Cp[1] - Cap[1];
+    var cac_l = Math.sqrt(cac_x * cac_x + cac_y * cac_y);
+    var cac_px = -cac_y / cac_l, cac_py = cac_x / cac_l;
+
+    // N
+    addAtom(Np[0], Np[1], 3, 'N');
+    // H on N
+    var nhSide = (r < 6) ? -1 : 1;
+    addAtom(Np[0] + nhSide * nca_px * 1.01 * A, Np[1] + nhSide * nca_py * 1.01 * A, 1, 'H');
+    if (r === 0) {
+      addAtom(Np[0] - nhSide * nca_px * 1.01 * A, Np[1] - nhSide * nca_py * 1.01 * A, 1, 'H');
+    }
+    // Ca
+    addAtom(Cap[0], Cap[1], 4, 'C');
+    // 2 H on Ca
+    addAtom(Cap[0] + cac_px * 1.09 * A, Cap[1] + cac_py * 1.09 * A, 1, 'H');
+    addAtom(Cap[0] - cac_px * 1.09 * A, Cap[1] - cac_py * 1.09 * A, 1, 'H');
+    // Carbonyl C
+    addAtom(Cp[0], Cp[1], 4, 'C');
+    // Carbonyl O
+    var oSide = (r < 6) ? ((r % 2 === 0) ? 1 : -1) : ((r % 2 === 0) ? -1 : 1);
+    addAtom(Cp[0] + oSide * cac_px * 1.24 * A, Cp[1] + oSide * cac_py * 1.24 * A, 2, 'O');
+  }
+
+  // C-terminal OH
+  var lastC = bb[nRes - 1].C, lastCa = bb[nRes - 1].Ca;
+  var lc_x = lastC[0] - lastCa[0], lc_y = lastC[1] - lastCa[1];
+  var lc_l = Math.sqrt(lc_x * lc_x + lc_y * lc_y);
+  var oh_x = lastC[0] + lc_x / lc_l * 1.34 * A;
+  var oh_y = lastC[1] + lc_y / lc_l * 1.34 * A;
+  addAtom(oh_x, oh_y, 2, 'O');
+  addAtom(oh_x + lc_x / lc_l * 0.97 * A, oh_y + lc_y / lc_l * 0.97 * A, 1, 'H');
+
+  var nProtein = atoms.length;
+
+  // --- Solvation shell: surround entire chain ---
+  var ohBond = 0.96 * A;
+  var halfAngle = 52.25 * Math.PI / 180;
+  var waterSpacing = 2.8 * A;
+  var minDist = 2.5 * A;
+  var shellDist = 8 * A;   // place water within this distance of any protein atom
+  var gridLimit = scr / 2 - 3; // stay within grid boundaries
+
+  var nWater = 0;
+  for (var wx = -gridLimit; wx <= gridLimit; wx += waterSpacing) {
+    for (var wy = -gridLimit; wy <= gridLimit; wy += waterSpacing) {
+      // Check proximity to protein: must be near some atom but not too close
+      var tooClose = false;
+      var nearProtein = false;
+      for (var p = 0; p < nProtein; p++) {
+        var dx = wx - atoms[p].x, dy = wy - atoms[p].y;
+        var d2 = dx * dx + dy * dy;
+        if (d2 < minDist * minDist) { tooClose = true; break; }
+        if (d2 < shellDist * shellDist) nearProtein = true;
+      }
+      if (tooClose || !nearProtein) continue;
+
+      var angle = (wx * 7.3 + wy * 11.1) % (2 * Math.PI);
+      addAtom(wx, wy, 2, 'O');
+      addAtom(wx + ohBond * Math.cos(angle + halfAngle),
+              wy + ohBond * Math.sin(angle + halfAngle), 1, 'H');
+      addAtom(wx + ohBond * Math.cos(angle - halfAngle),
+              wy + ohBond * Math.sin(angle - halfAngle), 1, 'H');
+      nWater++;
+    }
+  }
+
+  console.log('Bent solvated hairpin: ' + nProtein + ' protein atoms + ' +
+              nWater + ' waters (' + (nWater * 3) + ' water atoms) = ' +
+              atoms.length + ' total');
+
+  // Atom indices for fold angle measurement:
+  // Residue 0: N(0) H(1) H(2) Ca(3) Ha(4) Ha(5) C(6) O(7) = 8 atoms
+  // Residue r (r>=1): N(7r+1) H(7r+2) Ca(7r+3) Ha(7r+4) Ha(7r+5) C(7r+6) O(7r+7)
+  // Strand1 end = N of residue 0 (atom 0)
+  // Hinge = Ca of residue 6 (atom 6*7+3 = 45)
+  // Strand2 end = C of residue 11 (atom 11*7+6 = 83)
+  // After 12 residues: 85 backbone atoms + C-term O(85) H(86) = 87 protein atoms
+  window.USER_FOLD_ATOMS = [0, 45, 83];
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;      // start with nuclear motion on
+  window.USER_FORCE_SCALE = 50.0;  // 50x force for dynamics
+  window.USER_ARROW_SCALE = 5;     // small arrow display
+  window.USER_PROTEIN_COUNT = nProtein;  // for coloring force arrows
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'C') return 0.3;
+    if (a.el === 'N') return 0.3;
+    if (a.el === 'O') return 0.4;
+    return 0;
+  });
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
