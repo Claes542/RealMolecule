@@ -103,21 +103,28 @@ Watch molecules assemble one atom at a time — heavy skeleton first, then hydro
 
 ### Benchmarks: Protein Folding
 
-Validation of quantum forces for protein structure prediction:
+#### Hairpin folding from quantum forces alone
+
+https://github.com/Claes542/H2O/raw/main/hairpin_fold.webm
+
+> **12-residue polyglycine beta-hairpin** (87 atoms, no solvent) folds from a nearly straight chain (175° opening angle) into a U-shaped hairpin — driven purely by ab initio quantum mechanical forces. No empirical force field (AMBER, CHARMM, etc.) is used. The folding tendency emerges directly from solving the Schrödinger equation: backbone NH and CO groups on opposite strands create favorable electrostatic interactions (quantum hydrogen bonding). [Run it yourself →](hairpin_bent_dry.html)
+
+**Method**: The electronic structure is solved from first principles on a 200³ real-space grid (Born-Oppenheimer approximation). The resulting quantum forces drive coarse-grained rigid-body dynamics where two chain segments pivot at a central hinge. After each geometry update, the electronic structure is re-solved from scratch.
+
+#### Validation suite
 
 | Test | Atoms | Result |
 |------|-------|--------|
 | [Alanine dipeptide](ala_dipeptide.html) | 22 (3D) | Bond lengths match PySCF HF reference for pseudopotentials |
 | [Formamide dimer](formamide_dimer.html) | 12 (3D) | N-H···O=C hydrogen bond geometry correct (H···O ~1.9 Å) |
 | [Alpha-helix stability](alpha_helix.html) | 35 (3D) | 5-residue polyglycine helix stable under quantum dynamics |
-| [Hairpin folding](hairpin_bent_dry.html) | 87 (2D) | **Folds from near-straight (175°) to U-shape driven purely by quantum forces** ([video](hairpin_fold.webm)) |
+| [Hairpin folding](hairpin_bent_dry.html) | 87 (2D) | Folds from 175° to U-shape via quantum forces ([video](hairpin_fold.webm)) |
 | [Hairpin solvated](hairpin_bent_solvated.html) | ~200 (2D) | Solvated hairpin with elastic backbone dynamics |
 | [Phi/psi scan](ala_dipeptide_scan.html) | 22 | Ramachandran energy surface generator |
 
 **Dynamics models** (combined quantum + classical):
 - **Rigid-strand pivot** — Two strands rotate at hinge, quantum torques drive folding
 - **Elastic backbone** — Residues as beads on elastic string with SHAKE constraints
-- **3D rigid-group rotation** — Per-residue rotation around Ca-Ca axes for phi/psi changes
 - **Full quantum restart** — Wavefunctions re-initialized after each geometry update
 
 **Reference calculations**: PySCF HF/STO-3G and HF/6-31G* scripts included (`*_pyscf.py`)
