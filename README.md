@@ -110,7 +110,7 @@ Validation of quantum forces for protein structure prediction:
 | [Alanine dipeptide](ala_dipeptide.html) | 22 (3D) | Bond lengths match PySCF HF reference for pseudopotentials |
 | [Formamide dimer](formamide_dimer.html) | 12 (3D) | N-H···O=C hydrogen bond geometry correct (H···O ~1.9 Å) |
 | [Alpha-helix stability](alpha_helix.html) | 35 (3D) | 5-residue polyglycine helix stable under quantum dynamics |
-| [Hairpin folding](hairpin_bent_dry.html) | 87 (2D) | Rigid-strand pivot with quantum forces, fold angle tracked |
+| [Hairpin folding](hairpin_bent_dry.html) | 87 (2D) | **Folds from near-straight (175°) to U-shape driven purely by quantum forces** ([video](hairpin_fold.webm)) |
 | [Hairpin solvated](hairpin_bent_solvated.html) | ~200 (2D) | Solvated hairpin with elastic backbone dynamics |
 | [Phi/psi scan](ala_dipeptide_scan.html) | 22 | Ramachandran energy surface generator |
 
@@ -126,6 +126,7 @@ Validation of quantum forces for protein structure prediction:
 - **3** — Toggle 3D molecule viewer (auto-rotating, depth-sorted)
 - **D** — Toggle nuclear dynamics
 - **V** — Toggle multigrid V-cycle
+- **R** — Start/stop video recording (downloads .webm)
 - **+/-** — Adjust force scale
 
 ## Requirements

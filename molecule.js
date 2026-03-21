@@ -90,6 +90,12 @@ const MAX_VEL = NELEC <= 5 ? 0.3 : NELEC > 200 ? 0.03 : 0.1;  // au/au_time
 let forceScale = window.USER_FORCE_SCALE || 1.0;       // adjustable via slider/keys
 let boundarySpeed = 0.5;    // dt_w for free boundary evolution
 let nucVel = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
+// Apply initial velocities if specified
+if (window.USER_INIT_VEL) {
+  for (let a = 0; a < window.USER_INIT_VEL.length && a < MAX_ATOMS; a++) {
+    nucVel[a] = [...window.USER_INIT_VEL[a]];
+  }
+}
 let nucForce = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
 let nucForceElec = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
 let nucForceNuc = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
@@ -443,6 +449,47 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let id = i * p.S2 + j * p.S + k;
   let u = U[id];
   rhoOther[id] = select(u * u, 0.0, label[id] == dom.idx);
+}
+`;
+
+// GPU-side initialization of P_direct[m] = sum_{n≠m} 0.5/r (replaces CPU triple loop)
+const initPdirectWGSL = `
+${paramStructWGSL}
+${atomStructWGSL}
+struct DomIdx { idx: u32, _p0: u32, _p1: u32, _p2: u32 }
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> atoms: array<Atom>;
+@group(0) @binding(2) var<storage, read_write> Pdirect: array<f32>;
+@group(0) @binding(3) var<storage, read_write> Pother: array<f32>;
+@group(0) @binding(4) var<uniform> dom: DomIdx;
+
+${cellIdxWGSL}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let NM = p.NN - 1u;
+  let tot = NM * NM * NM;
+  let cell = cellIdx(gid);
+  if (cell >= tot) { return; }
+  let k = (cell % NM) + 1u;
+  let j = ((cell / NM) % NM) + 1u;
+  let i = (cell / (NM * NM)) + 1u;
+  let id = i * p.S2 + j * p.S + k;
+  let xi = f32(i) * p.h;
+  let yj = f32(j) * p.h;
+  let zk = f32(k) * p.h;
+  let m = dom.idx;
+  var val: f32 = 0.0;
+  for (var n: u32 = 0u; n < ${NELEC}u; n++) {
+    let Za = atoms[n].Z;
+    if (Za <= 0.0 || n == m) { continue; }
+    let dx = xi - f32(atoms[n].posI) * p.h;
+    let dy = yj - f32(atoms[n].posJ) * p.h;
+    let dz = zk - f32(atoms[n].posK) * p.h;
+    let r = sqrt(dx*dx + dy*dy + dz*dz + p.h2);
+    val += 0.5 / r;
+  }
+  Pdirect[id] = val;
+  Pother[id] += val;
 }
 `;
 
@@ -1407,9 +1454,9 @@ let reduceEnergyPL, finalizeEnergyPL, accumNormsPL, decodeNormsPL, normalizePL, 
 let gpuInitAccumPL, gpuInitFinalPL;
 let computeRhoPL, computeResidualPL, restrictPL, coarseSmoothPL, prolongCorrectPL;
 let computeRhoSelfPL, subtractPselfPL;
-let computeRhoOtherPL, copyPotherForLabelPL;
+let computeRhoOtherPL, copyPotherForLabelPL, initPdirectPL;
 let P_directBuf = [], P_directScratchBuf;
-let computeRhoOtherBG = [], jacobiDirectBG = [], copyPotherForLabelBG = [];
+let computeRhoOtherBG = [], jacobiDirectBG = [], copyPotherForLabelBG = [], initPdirectBG = [];
 let updateBG = [], evolveBoundaryBG = [], fixBoundaryUBG = [], jacobiFineBG = [];
 let reduceEnergyBG = [], finalizeEnergyBG, accumNormsBG = [], decodeNormsBG, normalizeBG = [], extractBG = [];
 let gpuInitAccumBG, gpuInitFinalBG;
@@ -1976,8 +2023,10 @@ async function initGPU() {
     if (USE_DIRECT_POTHER) {
       const computeRhoOtherMod = await compileShader('computeRhoOther', computeRhoOtherWGSL);
       const copyPotherForLabelMod = await compileShader('copyPotherForLabel', copyPotherForLabelWGSL);
+      const initPdirectMod = await compileShader('initPdirect', initPdirectWGSL);
       computeRhoOtherPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: computeRhoOtherMod, entryPoint: 'main' } });
       copyPotherForLabelPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: copyPotherForLabelMod, entryPoint: 'main' } });
+      initPdirectPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: initPdirectMod, entryPoint: 'main' } });
     }
     jacobiSmoothPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: jacobiSmoothMod, entryPoint: 'main' } });
     computeRhoPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: computeRhoMod, entryPoint: 'main' } });
@@ -2233,36 +2282,34 @@ async function initGPU() {
           { binding: 3, resource: { buffer: labelBuf } },
           { binding: 4, resource: { buffer: domainBufs[m] } },
         ]});
+        // initPdirect: compute P_direct[m] = sum_{n!=m} 0.5/r on GPU
+        initPdirectBG[m] = device.createBindGroup({ layout: initPdirectPL.getBindGroupLayout(0), entries: [
+          { binding: 0, resource: { buffer: paramsBuf } },
+          { binding: 1, resource: { buffer: atomBuf } },
+          { binding: 2, resource: { buffer: P_directBuf[m] } },
+          { binding: 3, resource: { buffer: PotherBuf } },
+          { binding: 4, resource: { buffer: domainBufs[m] } },
+        ]});
       }
     }
 
-    // Initialize P_direct buffers with 0.5/r from other nucleus (matching original code)
+    // Initialize P_direct buffers with 0.5/r on GPU (replaces CPU triple loop that blocked main thread)
     if (USE_DIRECT_POTHER && N_ELECTRONS > 1) {
-      const potherData = new Float32Array(S3);
+      const clrEnc2 = device.createCommandEncoder();
+      clrEnc2.clearBuffer(PotherBuf);
+      device.queue.submit([clrEnc2.finish()]);
       for (let m = 0; m < NELEC; m++) {
         if (Z[m] === 0) continue;
-        const pData = new Float32Array(S3);
-        for (let n = 0; n < NELEC; n++) {
-          if (n === m || Z[n] === 0) continue;
-          const ni = nucPos[n][0], nj = nucPos[n][1], nk = nucPos[n][2];
-          for (let i = 1; i < NN; i++) {
-            for (let j = 1; j < NN; j++) {
-              for (let k = 1; k < NN; k++) {
-                const dx = (i - ni) * hGrid, dy = (j - nj) * hGrid, dz = (k - nk) * hGrid;
-                const r = Math.sqrt(dx*dx + dy*dy + dz*dz + h2v);
-                pData[i * S2 + j * S + k] += 0.5 / r;
-              }
-            }
-          }
-        }
-        device.queue.writeBuffer(P_directBuf[m], 0, pData);
-        // Also write to PotherBuf so first frame ITP uses correct P
-        // (label data not available on CPU, so write everywhere — copyPotherForLabel will fix per-label later)
-        for (let i = 0; i < S3; i++) potherData[i] += pData[i];
+        const initEnc = device.createCommandEncoder();
+        const cp = initEnc.beginComputePass();
+        cp.setPipeline(initPdirectPL);
+        cp.setBindGroup(0, initPdirectBG[m]);
+        dispatchLinear(cp, INTERIOR);
+        cp.end();
+        device.queue.submit([initEnc.finish()]);
       }
-      // Approximate PotherBuf as sum of all P_direct (correct at each cell since domains don't overlap)
-      device.queue.writeBuffer(PotherBuf, 0, potherData);
-      console.log("Direct Pother: initialized P_direct + PotherBuf with 0.5/r, NELEC=" + NELEC);
+      await device.queue.onSubmittedWorkDone();
+      console.log("Direct Pother: GPU-initialized P_direct + PotherBuf with 0.5/r, NELEC=" + NELEC);
     }
 
     // Nuclear dynamics bind groups
@@ -2388,12 +2435,16 @@ async function initGPU() {
 
 async function doSteps(n) {
   const t0 = performance.now();
-  device.pushErrorScope('validation');
-  device.pushErrorScope('out-of-memory');
-  const enc = device.createCommandEncoder();
+  const BATCH_SIZE = 50;  // submit GPU work every 50 steps to avoid driver OOM
   let needForceReadback = false;
 
   for (let s = 0; s < n; s++) {
+    // Start new command encoder at beginning of each batch
+    if (s % BATCH_SIZE === 0) {
+      device.pushErrorScope('validation');
+      device.pushErrorScope('out-of-memory');
+      var enc = device.createCommandEncoder();
+    }
     const next = 1 - cur;
     // --- Poisson solve (skip for single-electron systems or NO_VEE) ---
     let vp;
@@ -2570,6 +2621,16 @@ async function doSteps(n) {
       cp.end();
       needForceReadback = true;
     }
+
+    // Flush batch to GPU to avoid massive command buffers that crash the driver
+    if ((s + 1) % BATCH_SIZE === 0 && s < n - 1) {
+      device.queue.submit([enc.finish()]);
+      const oomErr = await device.popErrorScope();
+      const valErr = await device.popErrorScope();
+      if (oomErr) { console.error("GPU OOM batch:", oomErr.message); gpuError = "OOM: " + oomErr.message; return; }
+      if (valErr) { console.error("GPU Val batch:", valErr.message); }
+      await device.queue.onSubmittedWorkDone();
+    }
   }
 
   // --- Compute Pother = P_total - P_self (remove self-repulsion) ---
@@ -2659,14 +2720,23 @@ async function doSteps(n) {
   // --- Evolve level set W + flip labels where W < 0 ---
   frameCount++;
   if (window.FREEZE_BOUNDARY) { /* skip boundary evolution */ }
-  else for (let s = 0; s < W_STEPS_PER_FRAME; s++) {
-    let bp = enc.beginComputePass();
-    bp.setPipeline(evolveBoundaryPL);
-    bp.setBindGroup(0, evolveBoundaryBG[cur]);
-    dispatchLinear(bp, INTERIOR);
-    bp.end();
-    // U stays continuous at domain flips — normalization handles ∫U²=Z_eff
-    enc.copyBufferToBuffer(label2Buf, 0, labelBuf, 0, S3 * 4);
+  else {
+    const W_BATCH = 100;
+    for (let s = 0; s < W_STEPS_PER_FRAME; s++) {
+      let bp = enc.beginComputePass();
+      bp.setPipeline(evolveBoundaryPL);
+      bp.setBindGroup(0, evolveBoundaryBG[cur]);
+      dispatchLinear(bp, INTERIOR);
+      bp.end();
+      // U stays continuous at domain flips — normalization handles ∫U²=Z_eff
+      enc.copyBufferToBuffer(label2Buf, 0, labelBuf, 0, S3 * 4);
+      // Flush boundary batches to avoid huge command buffers
+      if ((s + 1) % W_BATCH === 0 && s < W_STEPS_PER_FRAME - 1) {
+        device.queue.submit([enc.finish()]);
+        await device.queue.onSubmittedWorkDone();
+        enc = device.createCommandEncoder();
+      }
+    }
   }
 
   const ep = enc.beginComputePass();
@@ -3344,162 +3414,87 @@ async function moveNuclei(gpuForces) {
     const offsets = cmd.offsets;
     const nRes = caIdx.length;
 
-    // 1. Sum quantum forces per residue (3D)
+    // 1. Sum quantum forces per residue
     const resFx = new Array(nRes).fill(0);
     const resFy = new Array(nRes).fill(0);
-    const resFz = new Array(nRes).fill(0);
     for (let g = 0; g < nRes; g++) {
       for (const a of groups[g]) {
         if (a < NELEC && Z[a] > 0) {
           resFx[g] += nucForce[a][0];
           resFy[g] += nucForce[a][1];
-          resFz[g] += nucForce[a][2];
         }
       }
     }
 
-    // Excluded volume: prevent non-neighboring residues from overlapping
-    const exclDist = 8.0; // minimum Ca-Ca distance (grid units) ~4 au ~2.1 Å
-    const exclK = 3.0;
-    for (let g = 0; g < nRes; g++) {
-      for (let g2 = g + 2; g2 < nRes; g2++) {
-        const ai = caIdx[g], bi = caIdx[g2];
-        const dx = nucPos[ai][0]-nucPos[bi][0];
-        const dy = nucPos[ai][1]-nucPos[bi][1];
-        const dz = nucPos[ai][2]-nucPos[bi][2];
-        const d = Math.sqrt(dx*dx+dy*dy+dz*dz) + 1e-10;
-        if (d < exclDist) {
-          const push = exclK * (exclDist - d) / d;
-          for (const a of groups[g]) {
-            if (a >= NELEC || Z[a] === 0) continue;
-            nucPos[a][0] += push * dx * 0.5;
-            nucPos[a][1] += push * dy * 0.5;
-            nucPos[a][2] += push * dz * 0.5;
-          }
-          for (const a of groups[g2]) {
-            if (a >= NELEC || Z[a] === 0) continue;
-            nucPos[a][0] -= push * dx * 0.5;
-            nucPos[a][1] -= push * dy * 0.5;
-            nucPos[a][2] -= push * dz * 0.5;
-          }
-        }
-      }
+    // 2. Two rigid strands pivoting at hinge
+    // Strand 1: residues 0-5, Strand 2: residues 6-11 (+C-term)
+    // Hinge point: midpoint between Ca[5] and Ca[6]
+    const hingeX = (nucPos[caIdx[5]][0] + nucPos[caIdx[6]][0]) / 2;
+    const hingeY = (nucPos[caIdx[5]][1] + nucPos[caIdx[6]][1]) / 2;
+
+    // Compute net torque on each strand around the hinge
+    let torque1 = 0, torque2 = 0;
+    for (let g = 0; g < 6; g++) {  // strand 1
+      const rx = nucPos[caIdx[g]][0] - hingeX;
+      const ry = nucPos[caIdx[g]][1] - hingeY;
+      torque1 += rx * resFy[g] - ry * resFx[g]; // cross product = torque
+    }
+    for (let g = 6; g < nRes; g++) {  // strand 2
+      const rx = nucPos[caIdx[g]][0] - hingeX;
+      const ry = nucPos[caIdx[g]][1] - hingeY;
+      torque2 += rx * resFy[g] - ry * resFx[g];
     }
 
-    // 3a. Rigid translation: small displacement by net force
-    const maxDisp = 0.3; // small to prevent collapse, rotation does the work
-    for (let g = 0; g < groups.length; g++) {
-      const fg = g < nRes ? g : nRes - 1;
-      let dx = resFx[fg] * forceScale * mdDt;
-      let dy = resFy[fg] * forceScale * mdDt;
-      let dz = resFz[fg] * forceScale * mdDt;
-      const mag = Math.sqrt(dx*dx + dy*dy + dz*dz);
-      if (mag > maxDisp) { dx *= maxDisp/mag; dy *= maxDisp/mag; dz *= maxDisp/mag; }
+    // Convert torque to rotation angle (small angle approximation)
+    const maxAngle = 0.02; // max rotation per step (radians)
+    let dTheta1 = torque1 * forceScale * mdDt * 0.0001;
+    let dTheta2 = torque2 * forceScale * mdDt * 0.0001;
+    dTheta1 = Math.max(-maxAngle, Math.min(maxAngle, dTheta1));
+    dTheta2 = Math.max(-maxAngle, Math.min(maxAngle, dTheta2));
+
+    // Rotate strand 1 around hinge
+    const cos1 = Math.cos(dTheta1), sin1 = Math.sin(dTheta1);
+    for (let g = 0; g <= 5; g++) {
       for (const a of groups[g]) {
         if (a >= NELEC || Z[a] === 0) continue;
-        nucPos[a][0] += dx;
-        nucPos[a][1] += dy;
-        nucPos[a][2] += dz;
+        const rx = nucPos[a][0] - hingeX;
+        const ry = nucPos[a][1] - hingeY;
+        nucPos[a][0] = hingeX + rx * cos1 - ry * sin1;
+        nucPos[a][1] = hingeY + rx * sin1 + ry * cos1;
       }
     }
 
-    // 2b. Rigid rotation: rotate downstream residues around each Ca-Ca bond axis
-    // based on torque from quantum forces. This allows phi/psi angle changes.
-    const maxAngle = 0.03; // max rotation per step (radians)
-    for (let g = 0; g < nRes - 1; g++) {
-      const ai = caIdx[g], bi = caIdx[g+1];
-      // Rotation axis: Ca[g] -> Ca[g+1]
-      let ax = nucPos[bi][0] - nucPos[ai][0];
-      let ay = nucPos[bi][1] - nucPos[ai][1];
-      let az = nucPos[bi][2] - nucPos[ai][2];
-      const al = Math.sqrt(ax*ax + ay*ay + az*az) + 1e-10;
-      ax /= al; ay /= al; az /= al; // unit rotation axis
-
-      // Compute torque on downstream residues (g+1 to end) around this axis
-      let torque = 0;
-      for (let gg = g + 1; gg < nRes; gg++) {
-        for (const a of groups[gg]) {
-          if (a >= NELEC || Z[a] === 0) continue;
-          // Lever arm: atom position relative to Ca[g]
-          const rx = nucPos[a][0] - nucPos[ai][0];
-          const ry = nucPos[a][1] - nucPos[ai][1];
-          const rz = nucPos[a][2] - nucPos[ai][2];
-          // Force on this atom
-          const fx = nucForce[a][0], fy = nucForce[a][1], fz = nucForce[a][2];
-          // Torque = (r × F) · axis
-          const tx = ry*fz - rz*fy;
-          const ty = rz*fx - rx*fz;
-          const tz = rx*fy - ry*fx;
-          torque += tx*ax + ty*ay + tz*az;
-        }
+    // Rotate strand 2 around hinge
+    const cos2 = Math.cos(dTheta2), sin2 = Math.sin(dTheta2);
+    for (let g = 6; g < nRes; g++) {
+      for (const a of groups[g]) {
+        if (a >= NELEC || Z[a] === 0) continue;
+        const rx = nucPos[a][0] - hingeX;
+        const ry = nucPos[a][1] - hingeY;
+        nucPos[a][0] = hingeX + rx * cos2 - ry * sin2;
+        nucPos[a][1] = hingeY + rx * sin2 + ry * cos2;
       }
-
-      // Convert torque to rotation angle
-      let dTheta = torque * forceScale * mdDt * 0.01;
-      dTheta = Math.max(-maxAngle, Math.min(maxAngle, dTheta));
-
-      if (Math.abs(dTheta) < 1e-8) continue;
-
-      // Rotate all downstream atoms around axis through Ca[g]
-      const c = Math.cos(dTheta), s = Math.sin(dTheta);
-      for (let gg = g + 1; gg < groups.length; gg++) {
-        for (const a of groups[gg]) {
-          if (a >= NELEC || Z[a] === 0) continue;
-          // Rodrigues' rotation formula
-          const px = nucPos[a][0] - nucPos[ai][0];
-          const py = nucPos[a][1] - nucPos[ai][1];
-          const pz = nucPos[a][2] - nucPos[ai][2];
-          const dot = px*ax + py*ay + pz*az;
-          const cx2 = ay*pz - az*py, cy2 = az*px - ax*pz, cz2 = ax*py - ay*px;
-          nucPos[a][0] = nucPos[ai][0] + px*c + cx2*s + ax*dot*(1-c);
-          nucPos[a][1] = nucPos[ai][1] + py*c + cy2*s + ay*dot*(1-c);
-          nucPos[a][2] = nucPos[ai][2] + pz*c + cz2*s + az*dot*(1-c);
-        }
+    }
+    // C-term OH follows strand 2
+    if (groups.length > nRes) {
+      for (const a of groups[nRes]) {
+        if (a >= NELEC || Z[a] === 0) continue;
+        const rx = nucPos[a][0] - hingeX;
+        const ry = nucPos[a][1] - hingeY;
+        nucPos[a][0] = hingeX + rx * cos2 - ry * sin2;
+        nucPos[a][1] = hingeY + rx * sin2 + ry * cos2;
       }
     }
 
-    // 3. SHAKE on Ca-Ca distances — 3D, move whole residue groups
-    if (!cmd._caR0) {
-      cmd._caR0 = [];
-      for (let g = 0; g < nRes - 1; g++) {
-        const ai = caIdx[g], bi = caIdx[g+1];
-        const dx = nucPos[ai][0]-nucPos[bi][0];
-        const dy = nucPos[ai][1]-nucPos[bi][1];
-        const dz = nucPos[ai][2]-nucPos[bi][2];
-        cmd._caR0.push(Math.sqrt(dx*dx + dy*dy + dz*dz));
-      }
-    }
-    for (let iter = 0; iter < mdSteps; iter++) {
-      for (let g = 0; g < nRes - 1; g++) {
-        const ai = caIdx[g], bi = caIdx[g+1];
-        const dx = nucPos[ai][0]-nucPos[bi][0];
-        const dy = nucPos[ai][1]-nucPos[bi][1];
-        const dz = nucPos[ai][2]-nucPos[bi][2];
-        const d = Math.sqrt(dx*dx + dy*dy + dz*dz) + 1e-10;
-        const err = (d - cmd._caR0[g]) / d * 0.5;
-        for (const a of groups[g]) {
-          if (a >= NELEC || Z[a] === 0) continue;
-          nucPos[a][0] -= err * dx;
-          nucPos[a][1] -= err * dy;
-          nucPos[a][2] -= err * dz;
-        }
-        for (const a of groups[g+1]) {
-          if (a >= NELEC || Z[a] === 0) continue;
-          nucPos[a][0] += err * dx;
-          nucPos[a][1] += err * dy;
-          nucPos[a][2] += err * dz;
-        }
-      }
-    }
+    console.log("RIGID STRANDS: torque1=" + torque1.toExponential(2) +
+      " torque2=" + torque2.toExponential(2) +
+      " dTheta1=" + (dTheta1*180/Math.PI).toFixed(3) + "° dTheta2=" + (dTheta2*180/Math.PI).toFixed(3) + "°");
 
-    console.log("CLASSICAL MD 3D: " + nRes + " residues, rigid translation + SHAKE — FULL RESTART");
-
-    // Boundary clamp (3D)
+    // Boundary clamp
     for (let a = 0; a < NELEC; a++) {
       if (Z[a] === 0) continue;
       nucPos[a][0] = Math.max(5, Math.min(NN - 5, nucPos[a][0]));
       nucPos[a][1] = Math.max(5, Math.min(NN - 5, nucPos[a][1]));
-      nucPos[a][2] = Math.max(5, Math.min(NN - 5, nucPos[a][2]));
     }
 
     console.log("CLASSICAL MD: SHAKE + offsets, " + nRes + " residues — FULL RESTART");
@@ -3652,6 +3647,9 @@ async function moveNuclei(gpuForces) {
   nucStepCount++;
   console.log("Nuc step " + nucStepCount + ": " +
     nucPos.filter((_, i) => Z[i] > 0).map(p => "(" + p.map(x => x.toFixed(2)).join(",") + ")").join(" "));
+
+  // Flag that atom positions changed — draw() will capture frame after rendering
+  window._nucUpdated = true;
 
   // Update atomBuf with new positions, recompute K on GPU (batched, keep converged U, labels, P)
   fillAtomBuf();
@@ -4077,6 +4075,12 @@ function draw() {
   // Slice position
   fill(180, 180, 255);
   text("Slice k=" + sliceK + "/" + NN + "  [Up/Down to scroll]", 5, 185);
+
+  // Capture video frame after canvas is fully rendered with updated atom positions
+  if (window._nucUpdated && window._recStreamTrack) {
+    try { window._recStreamTrack.requestFrame(); } catch(e) {}
+    window._nucUpdated = false;
+  }
 }
 
 function keyPressed() {
@@ -4088,6 +4092,9 @@ function keyPressed() {
     vcycleEnabled = !vcycleEnabled;
     vcycleCount = 0;
     console.log("V-cycle " + (vcycleEnabled ? "ENABLED" : "DISABLED"));
+  }
+  if (key === 'r' || key === 'R') {
+    if (window._toggleRecording) window._toggleRecording();
   }
   if (key === 'd' || key === 'D') {
     dynamicsEnabled = !dynamicsEnabled;

@@ -20,7 +20,7 @@
   var resAdv = 3.4 * A;   // ~6.4 au per residue
   var zig = 0.5 * A;
 
-  var openingAngle = 40 * Math.PI / 180;
+  var openingAngle = 175 * Math.PI / 180;
 
   var bb = [];
   var hingeIdx = 5.5;
@@ -246,6 +246,53 @@ s.src = 'molecule.js?t=' + Date.now();
 s.onload = function() {
   var p5s = document.createElement('script');
   p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p5s.onload = function() {
+    // Video recording: press R to start/stop, auto-downloads webm
+    var recorder = null, chunks = [], recording = false;
+    window._toggleRecording = function() {
+      var canvas = document.querySelector('canvas');
+      if (!canvas) return;
+      if (!recording) {
+        chunks = [];
+        var stream = canvas.captureStream(10); // 10 fps
+        var mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9')
+          ? 'video/webm; codecs=vp9'
+          : MediaRecorder.isTypeSupported('video/webm; codecs=vp8')
+          ? 'video/webm; codecs=vp8'
+          : MediaRecorder.isTypeSupported('video/webm')
+          ? 'video/webm'
+          : 'video/mp4';
+        console.log('Recording with: ' + mimeType);
+        recorder = new MediaRecorder(stream, { mimeType: mimeType });
+        recorder.ondataavailable = function(ev) { if (ev.data.size > 0) chunks.push(ev.data); };
+        recorder.onstop = function() {
+          var blob = new Blob(chunks, { type: mimeType });
+          var ext = mimeType.indexOf('mp4') >= 0 ? 'mp4' : 'webm';
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url; a.download = 'hairpin_fold.' + ext; a.click();
+          URL.revokeObjectURL(url);
+          console.log('Recording saved: hairpin_fold.webm');
+        };
+        window._recStreamTrack = stream.getVideoTracks()[0];
+        recorder.start();
+        recording = true;
+        var dot = document.createElement('div');
+        dot.id = 'rec-indicator';
+        dot.style.cssText = 'position:fixed;top:10px;right:10px;background:red;color:#fff;padding:4px 10px;border-radius:4px;font:bold 14px monospace;z-index:9999;';
+        dot.textContent = '\u25CF REC';
+        document.body.appendChild(dot);
+        console.log('Recording started (press R to stop)');
+      } else {
+        recorder.stop();
+        recording = false;
+        window._recStreamTrack = null;
+        var ind = document.getElementById('rec-indicator');
+        if (ind) ind.remove();
+        console.log('Recording stopped, saving...');
+      }
+    };
+  };
   document.body.appendChild(p5s);
 };
 document.body.appendChild(s);
