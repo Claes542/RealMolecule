@@ -72,7 +72,7 @@ function dispatchLinear(pass, totalCells) {
   }
 }
 
-const STEPS_PER_FRAME = NELEC <= 5 ? 500 : NELEC <= 15 ? 100 : NELEC <= 30 ? 50 : NELEC <= 100 ? 5 : 2;
+const STEPS_PER_FRAME = NELEC <= 5 ? 50 : NELEC <= 15 ? 50 : NELEC <= 30 ? 50 : NELEC <= 100 ? 5 : 2;
 const W_STEPS_PER_FRAME = Math.max(1, STEPS_PER_FRAME);  // match U steps per frame
 const BOUNDARY_INTERVAL = 20;
 const NORM_INTERVAL = 20;
@@ -2435,16 +2435,12 @@ async function initGPU() {
 
 async function doSteps(n) {
   const t0 = performance.now();
-  const BATCH_SIZE = 50;  // submit GPU work every 50 steps to avoid driver OOM
+  device.pushErrorScope('validation');
+  device.pushErrorScope('out-of-memory');
+  const enc = device.createCommandEncoder();
   let needForceReadback = false;
 
   for (let s = 0; s < n; s++) {
-    // Start new command encoder at beginning of each batch
-    if (s % BATCH_SIZE === 0) {
-      device.pushErrorScope('validation');
-      device.pushErrorScope('out-of-memory');
-      var enc = device.createCommandEncoder();
-    }
     const next = 1 - cur;
     // --- Poisson solve (skip for single-electron systems or NO_VEE) ---
     let vp;
@@ -2622,15 +2618,6 @@ async function doSteps(n) {
       needForceReadback = true;
     }
 
-    // Flush batch to GPU to avoid massive command buffers that crash the driver
-    if ((s + 1) % BATCH_SIZE === 0 && s < n - 1) {
-      device.queue.submit([enc.finish()]);
-      const oomErr = await device.popErrorScope();
-      const valErr = await device.popErrorScope();
-      if (oomErr) { console.error("GPU OOM batch:", oomErr.message); gpuError = "OOM: " + oomErr.message; return; }
-      if (valErr) { console.error("GPU Val batch:", valErr.message); }
-      await device.queue.onSubmittedWorkDone();
-    }
   }
 
   // --- Compute Pother = P_total - P_self (remove self-repulsion) ---
@@ -2720,23 +2707,14 @@ async function doSteps(n) {
   // --- Evolve level set W + flip labels where W < 0 ---
   frameCount++;
   if (window.FREEZE_BOUNDARY) { /* skip boundary evolution */ }
-  else {
-    const W_BATCH = 100;
-    for (let s = 0; s < W_STEPS_PER_FRAME; s++) {
-      let bp = enc.beginComputePass();
-      bp.setPipeline(evolveBoundaryPL);
-      bp.setBindGroup(0, evolveBoundaryBG[cur]);
-      dispatchLinear(bp, INTERIOR);
-      bp.end();
-      // U stays continuous at domain flips — normalization handles ∫U²=Z_eff
-      enc.copyBufferToBuffer(label2Buf, 0, labelBuf, 0, S3 * 4);
-      // Flush boundary batches to avoid huge command buffers
-      if ((s + 1) % W_BATCH === 0 && s < W_STEPS_PER_FRAME - 1) {
-        device.queue.submit([enc.finish()]);
-        await device.queue.onSubmittedWorkDone();
-        enc = device.createCommandEncoder();
-      }
-    }
+  else for (let s = 0; s < W_STEPS_PER_FRAME; s++) {
+    let bp = enc.beginComputePass();
+    bp.setPipeline(evolveBoundaryPL);
+    bp.setBindGroup(0, evolveBoundaryBG[cur]);
+    dispatchLinear(bp, INTERIOR);
+    bp.end();
+    // U stays continuous at domain flips — normalization handles ∫U²=Z_eff
+    enc.copyBufferToBuffer(label2Buf, 0, labelBuf, 0, S3 * 4);
   }
 
   const ep = enc.beginComputePass();

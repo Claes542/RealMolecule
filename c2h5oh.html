@@ -1,61 +1,84 @@
 <!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Ethanol (C2H5OH) — Quantum Simulation</title>
-  <style>
-    body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; overflow: hidden; flex-direction: column; }
-    canvas { border: none; }
-  </style>
-</head>
-<body>
-  <script>
-    window.onerror = function(msg, url, line) {
-      document.body.style.color = 'red';
-      document.body.innerHTML = '<pre>ERROR: ' + msg + '\nLine: ' + line + '\nFile: ' + url + '</pre>';
-    };
+<html><body style="margin:0;background:#000">
+<script>
+// Ethanol C2H5OH — spread configuration on 200^3
+// CH3-CH2-OH with bonds stretched ~1.5x for dynamics relaxation
+(function() {
+  var gridN = 200, scr = 20, N2 = 100;
+  var h = scr / gridN; // 0.1 au/grid
+  var A = 1.8897; // angstrom to au
+  var atoms = [];
+  var spread = 1.5; // stretch factor for initial spread
 
-    // Ethanol C2H5OH on 100^3 grid, 14 au screen
-    // 1 au ~ 7.14 grid cells
-    // C-C ~2.9au(21cells), C-O ~2.7au(19cells), C-H ~2.1au(15cells), O-H ~1.8au(13cells)
-    var _NN = 200;
-    var _screenAu = 10;
+  function addAtom(au_x, au_y, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + au_x / h),
+      j: Math.round(N2 + au_y / h),
+      Z: Z, el: el
+    });
+  }
 
-    var atoms = [
-      { i: 70,  j: 100, Z: 4, el: 'C' },   // C1 methyl
-      { i: 112, j: 100, Z: 4, el: 'C' },   // C2 methylene
-      { i: 146, j: 118, Z: 2, el: 'O' },   // O
-      { i: 168, j: 104, Z: 1, el: 'H' },   // H (hydroxyl)
-      { i: 44,  j: 86,  Z: 1, el: 'H' },   // H (methyl)
-      { i: 44,  j: 114, Z: 1, el: 'H' },   // H (methyl)
-      { i: 56,  j: 76,  Z: 1, el: 'H' },   // H (methyl)
-      { i: 112, j: 70,  Z: 1, el: 'H' },   // H (methylene)
-      { i: 112, j: 130, Z: 1, el: 'H' },   // H (methylene)
-    ];
+  // Ethanol geometry (spread ~1.5x from equilibrium)
+  // C1 (methyl carbon) at origin
+  var c1x = 0, c1y = 0;
+  // C2 (methylene carbon) — C-C bond ~1.54 A, spread
+  var cc = 1.54 * A * spread;
+  var c2x = cc, c2y = 0;
+  // O (hydroxyl) — C-O bond ~1.43 A, ~109° from C-C
+  var co = 1.43 * A * spread;
+  var cco = 109.5 * Math.PI / 180;
+  var ox = c2x + co * Math.cos(cco), oy = c2y + co * Math.sin(cco);
+  // H on O — O-H bond ~0.97 A
+  var oh = 0.97 * A * spread;
+  var hox = ox + oh * Math.cos(cco + 0.3), hoy = oy + oh * Math.sin(cco + 0.3);
 
-    function rcForZ(z) {
-      if (z <= 1) return 0;    // H
-      if (z === 2) return 0.4; // O
-      if (z === 3) return 0.3; // N
-      return 0.3;              // C
-    }
+  // C-H bond length ~1.09 A, spread
+  var ch = 1.09 * A * spread;
 
-    window.USER_NN = _NN;
-    window.USER_ATOMS = atoms;
-    window.USER_SCREEN = _screenAu;
-    window.USER_STEPS = 20000;
-    window.USER_Z = atoms.map(function(a) { return a.Z; });
-    window.USER_RC = atoms.map(function(a) { return rcForZ(a.Z); });
+  // C1: methyl carbon
+  addAtom(c1x, c1y, 4, 'C');
+  // 3 H on C1 (tetrahedral-ish, projected to 2D)
+  addAtom(c1x - ch * Math.cos(0.3), c1y + ch * Math.sin(0.3), 1, 'H');
+  addAtom(c1x - ch * Math.cos(0.3), c1y - ch * Math.sin(0.3), 1, 'H');
+  addAtom(c1x - ch * 0.9, c1y, 1, 'H');
 
-    var s = document.createElement('script');
-    s.src = 'molecule.js?t=' + Date.now();
-    s.onerror = function() { document.body.innerHTML = '<pre style="color:red">Failed to load molecule.js</pre>'; };
-    s.onload = function() {
-      var p5s = document.createElement('script');
-      p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
-      document.body.appendChild(p5s);
-    };
-    document.body.appendChild(s);
-  </script>
-</body>
-</html>
+  // C2: methylene carbon
+  addAtom(c2x, c2y, 4, 'C');
+  // 2 H on C2
+  addAtom(c2x + ch * Math.cos(1.2), c2y + ch * Math.sin(1.2), 1, 'H');
+  addAtom(c2x + ch * Math.cos(-1.2), c2y + ch * Math.sin(-1.2), 1, 'H');
+
+  // O: hydroxyl oxygen
+  addAtom(ox, oy, 2, 'O');
+  // H on O
+  addAtom(hox, hoy, 1, 'H');
+
+  console.log('Ethanol C2H5OH: ' + atoms.length + ' atoms');
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;
+  window.USER_FORCE_SCALE = 5.0;
+  window.USER_ARROW_SCALE = 10.0;
+  window.USER_DAMPING = 0.92;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'C') return 0.3;
+    if (a.el === 'O') return 0.4;
+    return 0;
+  });
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

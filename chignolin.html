@@ -231,10 +231,63 @@ document.getElementById('goBtn').onclick = function() {
   log.textContent += '\nStrand1: G-Y-D-P | Turn: E-T | Strand2: G-T-W-G';
   log.textContent += '\n' + gridN + '^3 grid, screen=' + scr.toFixed(1) + ' au';
 
+  // Find Ca atom indices for fold angle measurement and dynamics
+  // Count atoms per residue to find Ca positions
+  var atomCount = 0;
+  var caIndices = [];
+  var resStartIdx = [];
+  var resEndIdx = [];
+  var idx = 0;
+  for (var r = 0; r < nRes; r++) {
+    resStartIdx.push(idx);
+    var aa = seq[r];
+    idx++; // N
+    if (aa !== 'P') idx++; // H on N
+    if (r === 0) idx++; // extra H on N-term
+    var caIdx = idx;
+    caIndices.push(caIdx);
+    idx++; // Ca
+    if (aa === 'G') { idx += 2; } // 2 Ha
+    else { idx += 5; } // Ha + Cb + 3Hb
+    idx++; // C
+    idx++; // O
+    resEndIdx.push(idx);
+  }
+  idx += 2; // C-term OH
+  idx += 3; // water
+
+  // Fold angle: strand1 end (N of res 0), hinge (Ca of res 5), strand2 end (Ca of res 9)
+  window.USER_FOLD_ATOMS = [resStartIdx[0], caIndices[5], caIndices[9]];
+
+  // Rigid-strand pivot: strand1 (res 0-4), strand2 (res 5-9)
+  // Build groups
+  var chigGroups = [];
+  for (var r = 0; r < nRes; r++) {
+    var group = [];
+    for (var a = resStartIdx[r]; a < resEndIdx[r]; a++) group.push(a);
+    chigGroups.push(group);
+  }
+  // C-term OH + water follow last strand
+  var lastGroup = [];
+  for (var a = resEndIdx[nRes-1]; a < atoms.length; a++) lastGroup.push(a);
+  chigGroups.push(lastGroup);
+
+  window.USER_CLASSICAL_MD = {
+    caIndices: caIndices,
+    groups: chigGroups,
+    offsets: null,
+    mdSteps: 50,
+    mdDt: 0.01
+  };
+
   window.USER_NN = gridN;
   window.USER_ATOMS = atoms;
   window.USER_SCREEN = scr;
   window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;
+  window.USER_FORCE_SCALE = 50.0;
+  window.USER_ARROW_SCALE = 1.0;
+  window.USER_N_MOVE = 200;
   window.USER_Z = zList;
   window.USER_RC = elList.map(function(el) {
     if (el === 'H') return 0;

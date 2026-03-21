@@ -359,6 +359,7 @@ class RealQMSolver:
         self.max_vel = 0.3 if self.nElec <= 5 else 0.03 if self.nElec > 200 else 0.1
         self.dynamics_enabled = config.get('dynamics', False)
         self._nProtein = config.get('nProtein', self.nAtoms)
+        self._config_force_interval = config.get('force_interval', 500)
 
         # GPU arrays
         self.U = cp.zeros(self.S3, dtype=cp.float32)
@@ -547,8 +548,10 @@ class RealQMSolver:
         )
 
     def run(self, total_steps, norm_interval=20, poisson_interval=2,
-            force_interval=500, report_interval=500):
+            force_interval=None, report_interval=500):
         """Run the solver for total_steps. Returns list of snapshots."""
+        if force_interval is None:
+            force_interval = self._config_force_interval
         if not self._initialized:
             self.initialize()
 
@@ -622,9 +625,10 @@ class RealQMSolver:
                     snapshot['fold_angle'] = float(angle)
 
                 results.append(snapshot)
+                fmax = float(np.max(np.linalg.norm(self.nuc_force[:self._nProtein], axis=1)))
                 print(f"  Step {step}/{total_steps}: E={self.E:.6f} "
                       f"E_bind={self.E - self.E_atoms_sum:.6f} "
-                      f"({ms_per_step:.1f} ms/step)")
+                      f"F_max={fmax:.4f} ({ms_per_step:.1f} ms/step)")
 
         cp.cuda.Stream.null.synchronize()
         return results
