@@ -128,6 +128,12 @@ The chain compresses axially and curls outward into near-ideal helical geometry.
 
 **Method**: Per-residue rigid-body translation by net quantum forces on a 300³ grid (45 au box), with Ca-Ca SHAKE constraints (±15% of 3.8 Å). Mild radial helical bias (0.03) assists curling. Electronic structure re-solved from scratch after each geometry update.
 
+#### Alpha-helix formation — solvated
+
+https://github.com/Claes542/H2O/raw/main/helix_solvated.webm
+
+> Same 8-residue polyglycine helix formation, now surrounded by a single shell of explicit water molecules (~150 total atoms on 300³ grid). The water provides additional H-bond partners to the backbone C=O and N-H groups. [Run it yourself →](alpha_helix_solvated_dyn.html)
+
 #### Validation suite
 
 | Test | Atoms | Result |
