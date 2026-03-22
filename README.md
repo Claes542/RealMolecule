@@ -124,9 +124,9 @@ https://github.com/Claes542/H2O/raw/main/helix_formation.webm
 | Rise/residue | 3.0 Å | **1.63 Å** | 1.5 Å |
 | i→i+4 H-bonds | 0/4 | **2/4** (5 Å) | 4/4 (1.9 Å) |
 
-The chain compresses axially and curls outward into near-ideal helical geometry. Two i→i+4 hydrogen bonds form spontaneously: carbonyl oxygen of residue i attracted to amide hydrogen of residue i+4 — the defining feature of the alpha helix. Rise converges to within 9% of ideal, radius reaches 91% of ideal. [Run it yourself →](alpha_helix_dry.html)
+The chain compresses axially and curls outward into near-ideal helical geometry. Two i→i+4 hydrogen bonds form spontaneously: carbonyl oxygen of residue i attracted to amide hydrogen of residue i+4 — the defining feature of the alpha helix. Rise converges to within 9% of ideal, radius reaches 91% of ideal. [Run it yourself →](alpha_helix_dry_300.html)
 
-**Method**: Per-residue rigid-body translation by net quantum forces on a 200³ grid (45 au box), with Ca-Ca SHAKE constraints (±15% of 3.8 Å). Mild radial helical bias (0.03) assists curling. Electronic structure re-solved from scratch after each geometry update.
+**Method**: Per-residue rigid-body translation by net quantum forces on a 300³ grid (45 au box), with Ca-Ca SHAKE constraints (±15% of 3.8 Å). Mild radial helical bias (0.03) assists curling. Electronic structure re-solved from scratch after each geometry update.
 
 #### Validation suite
 
@@ -135,7 +135,7 @@ The chain compresses axially and curls outward into near-ideal helical geometry.
 | [Alanine dipeptide](ala_dipeptide.html) | 22 (3D) | Bond lengths match PySCF HF reference for pseudopotentials |
 | [Formamide dimer](formamide_dimer.html) | 12 (3D) | N-H···O=C hydrogen bond geometry correct (H···O ~1.9 Å) |
 | [Alpha-helix stability](alpha_helix.html) | 35 (3D) | 5-residue polyglycine helix stable under quantum dynamics |
-| [Alpha-helix formation](alpha_helix_dry.html) | ~50 (3D) | 8-residue near-linear → 67% helix, 2/4 H-bonds ([video](helix_formation.webm)) |
+| [Alpha-helix formation](alpha_helix_dry_300.html) | ~50 (3D) | 8-residue near-linear → 67% helix, 2/4 H-bonds ([video](helix_formation.webm)) |
 | [Hairpin folding](hairpin_bent_dry.html) | 87 (2D) | Folds from 175° to U-shape via quantum forces ([video](hairpin_fold.webm)) |
 | [Hairpin solvated](hairpin_bent_solvated.html) | ~200 (2D) | Solvated hairpin with elastic backbone dynamics |
 | [Phi/psi scan](ala_dipeptide_scan.html) | 22 | Ramachandran energy surface generator |
