@@ -1087,7 +1087,7 @@ async function extractSlice() {
 
 
 // --- p5.js Integration ---
-const STEPS_PER_FRAME = window.USER_SPF || (NN <= 100 ? 10 : 2);
+const STEPS_PER_FRAME = window.USER_SPF || (NN <= 100 ? 10 : 1);
 let initDone = false;
 let readbackPending = false;
 let lastLogStep = -1;
