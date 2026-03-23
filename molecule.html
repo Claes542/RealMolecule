@@ -291,16 +291,20 @@
       window.USER_STEPS = steps;
       window.USER_Z = atoms.map(function(a) { return a.Z; });
       window.USER_RC = atoms.map(function(a) { return rcForEl(a.el, a.Z); });
+      var isPureHe = hasHe && protons.length === 0 && regularAtoms.every(function(a) { return a.el === 'He'; });
       if (hasHe) {
-        window.NO_NUC_REPULSION = true;
         window.INIT_ZEFF = 2;
-        window.FREEZE_BOUNDARY = true; // keep half-plane stable while electrons settle
-        // Unfreeze after 2000 steps so boundary can adapt
+      }
+      if (isPureHe) {
+        // Pure He: no nuclear repulsion between the two Z=1 entries (same nucleus)
+        window.NO_NUC_REPULSION = true;
+        window.FREEZE_BOUNDARY = true;
         setTimeout(function() {
           window.FREEZE_BOUNDARY = false;
           console.log('Boundary unfrozen — free boundary evolution active');
-        }, 30000); // ~30s at 100³
+        }, 30000);
       }
+      // Mixed system (He + other atoms): boundaries must be free for electron transfer
 
       document.getElementById('config').style.display = 'none';
       var status = document.createElement('pre');
