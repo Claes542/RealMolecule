@@ -148,14 +148,14 @@
       btn.addEventListener('click', function() {
         document.querySelectorAll('.atom-btn').forEach(function(b) { b.classList.remove('selected'); });
         this.classList.add('selected');
-        selectedEl = { Z: parseInt(this.dataset.z), rc: parseFloat(this.dataset.rc) };
+        selectedEl = { Z: parseInt(this.dataset.z), rc: parseFloat(this.dataset.rc), el: this.dataset.el };
       });
     });
 
     cvs.addEventListener('click', function(e) {
       if (!selectedEl || placedAtoms.length >= MAX_PLACE) return;
       var rect = cvs.getBoundingClientRect();
-      placedAtoms.push({ px: e.clientX - rect.left, py: e.clientY - rect.top, Z: selectedEl.Z, rc: selectedEl.rc });
+      placedAtoms.push({ px: e.clientX - rect.left, py: e.clientY - rect.top, Z: selectedEl.Z, rc: selectedEl.rc, el: selectedEl.el });
       drawPlacement();
       updateList();
     });
@@ -195,23 +195,83 @@
       var screenAu = parseFloat(document.getElementById('screenInput').value) || 20;
       var steps = parseInt(document.getElementById('stepsInput').value) || 2000;
       var n2 = Math.floor(GRID_N / 2);
-      var h = screenAu / GRID_N;
-      var atoms = placedAtoms.map(function(a) {
-        return {
-          i: Math.round(a.px * GRID_N / 400),
-          j: Math.round(a.py * GRID_N / 400),
-          k: n2,
-          Z: a.Z,
-          rc: a.rc
-        };
-      });
+
+      // Separate protons, electrons, regular atoms
+      var protons = [], electrons = [], regularAtoms = [];
+      var hasHe = false;
+      for (var i = 0; i < placedAtoms.length; i++) {
+        var a = placedAtoms[i];
+        if (a.el === 'p+') protons.push(a);
+        else if (a.el === 'e-') electrons.push(a);
+        else regularAtoms.push(a);
+      }
+
+      var atoms = [];
+      var initPos = [];
+      var zNuc = [];
+      var bareProtons = [];
+
+      // Match electrons to protons
+      var usedElectrons = [];
+      for (var i = 0; i < protons.length; i++) {
+        var pi = Math.round(protons[i].px * GRID_N / 400);
+        var pj = Math.round(protons[i].py * GRID_N / 400);
+        var bestE = -1, bestD = Infinity;
+        for (var e = 0; e < electrons.length; e++) {
+          if (usedElectrons[e]) continue;
+          var dx = protons[i].px - electrons[e].px;
+          var dy = protons[i].py - electrons[e].py;
+          if (dx*dx + dy*dy < bestD) { bestD = dx*dx + dy*dy; bestE = e; }
+        }
+        if (bestE >= 0) {
+          usedElectrons[bestE] = true;
+          atoms.push({ i: pi, j: pj, k: n2, Z: 1, rc: 0 });
+          zNuc.push(1);
+          initPos.push([Math.round(electrons[bestE].px * GRID_N / 400), Math.round(electrons[bestE].py * GRID_N / 400)]);
+        } else {
+          bareProtons.push({ i: pi, j: pj });
+        }
+      }
+
+      // Regular atoms
+      for (var i = 0; i < regularAtoms.length; i++) {
+        var a = regularAtoms[i];
+        var gi = Math.round(a.px * GRID_N / 400);
+        var gj = Math.round(a.py * GRID_N / 400);
+        if (a.el === 'He') {
+          var offset = Math.round(GRID_N * 0.15);
+          atoms.push({ i: gi, j: gj, k: n2, Z: 1, rc: 0 });
+          zNuc.push(1);
+          initPos.push([gi - offset, gj]);
+          atoms.push({ i: gi, j: gj, k: n2, Z: 1, rc: 0 });
+          zNuc.push(1);
+          initPos.push([gi + offset, gj]);
+          hasHe = true;
+        } else {
+          atoms.push({ i: gi, j: gj, k: n2, Z: a.Z, rc: a.rc });
+          zNuc.push(a.Z);
+          initPos.push(null);
+        }
+      }
+
+      // Bare protons at the end
+      for (var i = 0; i < bareProtons.length; i++) {
+        atoms.push({ i: bareProtons[i].i, j: bareProtons[i].j, k: n2, Z: 0, rc: 0 });
+        zNuc.push(1);
+        initPos.push(null);
+      }
 
       window.USER_NN = GRID_N;
       window.USER_ATOMS = atoms;
+      window.USER_Z_NUC = zNuc;
+      window.USER_INIT_POS = initPos;
       window.USER_SCREEN = screenAu;
       window.USER_STEPS = steps;
       window.USER_SPF = screenAu <= 5 ? 20 : screenAu <= 10 ? 10 : 2;
       window.USER_INIT_R = 1.0;
+      if (hasHe) {
+        window.NO_NUC_REPULSION = true;
+      }
 
       document.getElementById('config').style.display = 'none';
       var status = document.createElement('pre');
