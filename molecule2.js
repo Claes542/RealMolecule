@@ -1037,10 +1037,14 @@ async function computeEnergy() {
           const wv = wArr[m][id];
           if (wv < 0.01) continue; // skip outside domain
           const wrho = rho * wv; // w-weighted density
-          const gx = uArr[m][id + S2] - v;
-          const gy = uArr[m][id + S] - v;
-          const gz = uArr[m][id + 1] - v;
-          E_T += 0.5 * (gx*gx + gy*gy + gz*gz) * h * wv;
+          // w-weighted gradient: only count flux within domain
+          const wxp = Math.min(wv, wArr[m][id + S2]);
+          const wyp = Math.min(wv, wArr[m][id + S]);
+          const wzp = Math.min(wv, wArr[m][id + 1]);
+          const gx = (uArr[m][id + S2] - v) * wxp;
+          const gy = (uArr[m][id + S] - v) * wyp;
+          const gz = (uArr[m][id + 1] - v) * wzp;
+          E_T += 0.5 * (gx*gx + gy*gy + gz*gz) * h;
           E_eK += -K[id] * wrho * h3;
           E_ee += PArr[m][id] * wrho * h3;
           E_pot += (PArr[m][id] - K[id]) * wrho * h3;
