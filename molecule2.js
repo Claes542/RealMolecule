@@ -279,7 +279,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let grad_w = sqrt(gwx*gwx + gwy*gwy + gwz*gwz);
 
   // Boundary evolution — w stays smooth for proper Neumann BC
-  let wRate = ${window.FREEZE_BOUNDARY ? '0.0' : '1.0'};
+  let wRate = ${window.FREEZE_BOUNDARY === true ? '0.0' : window.FREEZE_BOUNDARY === 'slow' ? '0.05' : '1.0'};
   var new_w = clamp(wc + wRate * (2.0 * p.dt * abs(c) * lap_w * p.inv_h2 + 10.0 * p.dt * c * grad_w), 0.0, 1.0);
   new_w *= mask;
   w_out[id] = new_w;
