@@ -9,11 +9,20 @@ const N2 = Math.round(NN / 2);
 const MAX_ATOMS = 1024;
 const _uz = window.USER_Z || [2, 3, 1, 0, 0];
 while (_uz.length < MAX_ATOMS) _uz.push(0);
-const NELEC = _uz.filter(z => z > 0).length || 3;
+const NELEC = (function() {
+  const zn = window.USER_Z_NUC || _uz;
+  let c = 0;
+  for (let i = 0; i < _uz.length; i++) if (_uz[i] > 0 || (zn[i] && zn[i] > 0)) c++;
+  return c || 3;
+})();
 const N_ELECTRONS = _uz.reduce((s, z) => s + z, 0);  // total valence electrons
 const NRED_E = 6;  // Energy reduce: T + V_eK + V_ee + dipole(x,y,z)
 const r_cut = window.USER_RC || [0, 0, 0, 0, 0];
 while (r_cut.length < MAX_ATOMS) r_cut.push(0);
+// Z_nuc: nuclear charge for K potential (defaults to Z if not set)
+// Allows bare protons (Z=0 no electron, Z_nuc=1 contributes to K)
+const Z_nuc = window.USER_Z_NUC || _uz.map(z => z);
+while (Z_nuc.length < MAX_ATOMS) Z_nuc.push(0);
 let R_out = 0.5;   // au, unused legacy
 let curvReg = 0.15;  // curvature regularization for free boundary
 let Z = [..._uz];
@@ -132,12 +141,12 @@ struct P {
   dt: f32, half_d: f32, h3: f32, sliceK: u32,
 }`;
 
-const ATOM_STRIDE = 8; // 8 f32s per atom (posI, posJ, posK, Z, rc, pad, pad, pad)
+const ATOM_STRIDE = 8; // 8 f32s per atom (posI, posJ, posK, Z, rc, Z_nuc, pad, pad)
 const ATOM_BUF_BYTES = MAX_ATOMS * ATOM_STRIDE * 4;
 const atomStructWGSL = `
 struct Atom {
   posI: u32, posJ: u32, posK: u32, Z: f32,
-  rc: f32, _p0: f32, _p1: f32, _p2: f32,
+  rc: f32, Z_nuc: f32, _p1: f32, _p2: f32,
 }`;
 
 // U update — label-based domains, Neumann BC at domain boundaries and r_c surfaces
@@ -1082,14 +1091,15 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let soft_k = p.h2;  // Coulomb softening: r=sqrt(r²+h²) matching original
   for (var n: u32 = 0u; n < ${NELEC}u; n++) {
     let Za = atoms[n].Z;
-    if (Za <= 0.0) { continue; }
+    let Zn = select(atoms[n].Z_nuc, Za, atoms[n].Z_nuc > 0.0);
+    if (Za <= 0.0 && Zn <= 0.0) { continue; }
     let di = (f32(i) - f32(atoms[n].posI)) * p.h;
     let dj = (f32(j) - f32(atoms[n].posJ)) * p.h;
     let dk = (f32(k) - f32(atoms[n].posK)) * p.h;
     let r2 = di*di + dj*dj + dk*dk;
     // Bare atoms (rc=0): Coulomb softening. Pseudopotential (rc>0): hard cutoff at rc.
     let r_eff = select(sqrt(r2 + soft_k), max(sqrt(r2), atoms[n].rc), atoms[n].rc > 0.0);
-    Kval += Za / r_eff;
+    Kval += Zn / r_eff;
   }
   K[id] = Kval;
 }
@@ -1131,14 +1141,15 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   for (var n: u32 = range.start; n < end; n++) {
     let Za = atoms[n].Z;
-    if (Za <= 0.0) { continue; }
+    let Zn = select(atoms[n].Z_nuc, Za, atoms[n].Z_nuc > 0.0); // nuclear charge (defaults to Z)
+    if (Za <= 0.0 && Zn <= 0.0) { continue; }
     let dx = xi - f32(atoms[n].posI) * p.h;
     let dy = yj - f32(atoms[n].posJ) * p.h;
     let dz = zk - f32(atoms[n].posK) * p.h;
     let r2 = dx*dx + dy*dy + dz*dz;
     // Bare atoms (rc=0): Coulomb softening. Pseudopotential (rc>0): hard cutoff at rc.
     let r = select(sqrt(r2 + soft_k), max(sqrt(r2 + 0.04 * p.h2), atoms[n].rc), atoms[n].rc > 0.0);
-    Kval += Za / r;
+    Kval += Zn / r;
     // Normalized trial: ∫U²dV = Z_eff analytically (U = Zeff²/√π · exp(-Zeff·r))
     // Domains assigned by highest normalized density
     let Ze = select(Za, ${(window.INIT_ZEFF || 0).toFixed(1)}, ${window.INIT_ZEFF ? 'true' : 'false'});
@@ -1567,6 +1578,7 @@ function fillAtomBuf() {
     au[off + 2] = nucPos[n][2];
     af[off + 3] = Z[n];
     af[off + 4] = r_cut[n];
+    af[off + 5] = Z_nuc[n]; // nuclear charge (may differ from Z for bare protons)
   }
   device.queue.writeBuffer(atomBuf, 0, ab);
 }

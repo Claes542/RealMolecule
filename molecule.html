@@ -232,14 +232,14 @@
       }
       // Pair protons with electrons: nucleus at proton position, wavefunction starts at electron position
       var atoms = [];
-      var initPos = []; // where to initialize each wavefunction (electron position)
+      var initPos = [];
+      var zNuc = []; // nuclear charges (may differ from Z for bare protons)
 
       // Match each electron to nearest proton
       var usedElectrons = [];
       for (var i = 0; i < protons.length; i++) {
         var pi = Math.round(protons[i].px * GRID_N / 400);
         var pj = Math.round(protons[i].py * GRID_N / 400);
-        atoms.push({ i: pi, j: pj, Z: 1, el: 'H' });
 
         // Find closest unmatched electron for this proton
         var bestE = -1, bestD = Infinity;
@@ -251,11 +251,16 @@
           if (d < bestD) { bestD = d; bestE = e; }
         }
         if (bestE >= 0) {
+          // Proton + electron → H atom, init wavefunction at electron position
           usedElectrons[bestE] = true;
-          // Electron position as wavefunction init (grid coords)
+          atoms.push({ i: pi, j: pj, Z: 1, el: 'H' });
+          zNuc.push(1);
           initPos.push([Math.round(electrons[bestE].px * GRID_N / 400), Math.round(electrons[bestE].py * GRID_N / 400)]);
         } else {
-          initPos.push(null); // no electron paired — init at nucleus
+          // Bare proton — no electron, Z=0 but Z_nuc=1 (contributes to K potential)
+          atoms.push({ i: pi, j: pj, Z: 0, el: 'p+' });
+          zNuc.push(1);
+          initPos.push(null);
         }
       }
 
@@ -264,21 +269,24 @@
         var gi = Math.round(a.px * GRID_N / 400);
         var gj = Math.round(a.py * GRID_N / 400);
         if (a.el === 'He') {
-          // He: 2 × Z=1 at +/-1 offset, NO_NUC_REPULSION, INIT_ZEFF=2
-          // This is the standard He treatment in RealQM
+          // He: 2 × Z=1 at +/-1 offset
           var offset = Math.round(GRID_N * 0.15);
           atoms.push({ i: gi, j: gj, Z: 1, el: 'He' });
-          initPos.push([gi - offset, gj]); // electron 1: left half-space
+          zNuc.push(1);
+          initPos.push([gi - offset, gj]);
           atoms.push({ i: gi + 1, j: gj, Z: 1, el: 'He' });
-          initPos.push([gi + offset, gj]); // electron 2: right half-space
+          zNuc.push(1);
+          initPos.push([gi + offset, gj]);
           hasHe = true;
         } else {
           atoms.push({ i: gi, j: gj, Z: a.Z, el: a.el });
-          initPos.push(null); // regular atoms init at nucleus
+          zNuc.push(a.Z);
+          initPos.push(null);
         }
       }
       while (atoms.length < MAX_PLACE) {
         atoms.push({ i: Math.round(GRID_N / 2), j: Math.round(GRID_N / 2), Z: 0, el: '' });
+        zNuc.push(0);
         initPos.push(null);
       }
 
@@ -290,6 +298,7 @@
       window.USER_SCREEN = screenAu;
       window.USER_STEPS = steps;
       window.USER_Z = atoms.map(function(a) { return a.Z; });
+      window.USER_Z_NUC = zNuc;
       window.USER_RC = atoms.map(function(a) { return rcForEl(a.el, a.Z); });
       var isPureHe = hasHe && protons.length === 0 && regularAtoms.every(function(a) { return a.el === 'He'; });
       if (hasHe) {
