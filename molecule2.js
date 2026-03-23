@@ -358,7 +358,6 @@ ${paramStructWGSL}
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read> u: array<f32>;
 @group(0) @binding(2) var<storage, read_write> partials: array<f32>;
-@group(0) @binding(3) var<storage, read> w: array<f32>;
 
 var<workgroup> sdata: array<f32, ${REDUCE_WG}>;
 
@@ -379,8 +378,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
     let i = (cell / (NM * NM)) + 1u;
     let id = i * p.S2 + j * p.S + k;
     let v = u[id];
-    let wv = w[id];
-    acc += select(0.0, v * v * p.h3, wv >= 0.5);  // only count inside domain
+    acc += v * v * p.h3;
     cell += stride;
   }
   sdata[lid] = acc;
@@ -833,7 +831,6 @@ function createSimBindGroups() {
           { binding: 0, resource: { buffer: paramsBuf } },
           { binding: 1, resource: { buffer: u_buf[m][1-c] } },
           { binding: 2, resource: { buffer: normPartialBuf[m] } },
-          { binding: 3, resource: { buffer: w_buf[m][1-c] } },
         ]});
       normalizeBG[m][c] = device.createBindGroup({
         layout: normalizePL.getBindGroupLayout(0), entries: [
