@@ -4075,7 +4075,7 @@ function draw() {
     // Draw atoms (sorted by depth for proper overlap)
     let atomList = [];
     for (let n = 0; n < NELEC; n++) {
-      if (Z[n] === 0) continue;
+      if (Z[n] === 0 && Z_nuc[n] === 0) continue;
       let ax = nucPos[n][0]-cx3, ay = nucPos[n][1]-cy3, az = nucPos[n][2]-cz3;
       let rx = ax*cosT + az*sinT, rz = -ax*sinT + az*cosT;
       let ry = ay*cosT2 - rz*sinT2, rz2 = ay*sinT2 + rz*cosT2;
@@ -4085,8 +4085,8 @@ function draw() {
 
     noStroke();
     for (const at of atomList) {
-      const col = elCol[at.z] || [200,200,200];
-      const sz = at.z === 1 ? 5 : 10; // H smaller
+      const col = at.z === 0 ? [255,80,80] : (elCol[at.z] || [200,200,200]);
+      const sz = at.z <= 1 ? 5 : 10;
       fill(col[0], col[1], col[2], 200);
       circle(at.sx, at.sy, sz);
     }
@@ -4147,6 +4147,17 @@ function draw() {
   // Draw nuclear positions with force arrows
   fill(255); stroke(255); strokeWeight(1);
   for (let n = 0; n < NELEC; n++) {
+    // Draw bare protons (Z=0, Z_nuc>0) as red crosses
+    if (Z[n] === 0 && Z_nuc[n] > 0) {
+      const nx = nucPos[n][0] * PX, ny = nucPos[n][1] * PX;
+      stroke(255, 80, 80); strokeWeight(2);
+      line(nx - 6, ny, nx + 6, ny);
+      line(nx, ny - 6, nx, ny + 6);
+      fill(255, 80, 80); noStroke();
+      textSize(10);
+      text('+' + Z_nuc[n], nx + 8, ny - 4);
+      stroke(255); strokeWeight(1); fill(255);
+    }
     if (Z[n] > 0) {
       const nx = nucPos[n][0] * PX, ny = nucPos[n][1] * PX;
       circle(nx, ny, 6);
