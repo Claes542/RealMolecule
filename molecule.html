@@ -263,13 +263,13 @@
         var gi = Math.round(a.px * GRID_N / 400);
         var gj = Math.round(a.py * GRID_N / 400);
         if (a.el === 'He') {
-          // He: Z=2 nucleus split as 2 × Z=1 atoms at same position
-          // Each gets 1 electron, initialized in separate half-spaces
-          // Total: K = 1/r + 1/r = 2/r, 2 electrons
+          // He: Z=2 nucleus split as 2 × Z=1 atoms, slightly offset
+          // Tiny offset (1 grid cell) keeps domain boundary stable
+          // Total: K ≈ 2/r, 2 electrons in separate half-spaces
           var offset = Math.round(GRID_N * 0.15);
-          atoms.push({ i: gi, j: gj, Z: 1, el: 'He' });
+          atoms.push({ i: gi - 1, j: gj, Z: 1, el: 'He' });
           initPos.push([gi - offset, gj]); // electron 1: left half-space
-          atoms.push({ i: gi, j: gj, Z: 1, el: 'He' });
+          atoms.push({ i: gi + 1, j: gj, Z: 1, el: 'He' });
           initPos.push([gi + offset, gj]); // electron 2: right half-space
         } else {
           atoms.push({ i: gi, j: gj, Z: a.Z, el: a.el });
