@@ -278,7 +278,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let gwz = (w_self[id + 1u]   - w_self[id - 1u])   * p.inv_h;
   let grad_w = sqrt(gwx*gwx + gwy*gwy + gwz*gwz);
 
-  var new_w = select(clamp(wc + 2.0 * p.dt * abs(c) * lap_w * p.inv_h2 + 10.0 * p.dt * c * grad_w, 0.0, 1.0), wc, ${window.FREEZE_BOUNDARY ? 'true' : 'false'});
+  // Slow w evolution for stability (0.01 = very slow boundary adaptation)
+  let wRate = ${window.FREEZE_BOUNDARY ? '0.01' : '1.0'};
+  var new_w = clamp(wc + wRate * (2.0 * p.dt * abs(c) * lap_w * p.inv_h2 + 10.0 * p.dt * c * grad_w), 0.0, 1.0);
   new_w *= mask;
   w_out[id] = new_w;
 
