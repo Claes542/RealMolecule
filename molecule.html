@@ -233,7 +233,8 @@
       // Pair protons with electrons: nucleus at proton position, wavefunction starts at electron position
       var atoms = [];
       var initPos = [];
-      var zNuc = []; // nuclear charges (may differ from Z for bare protons)
+      var zNuc = [];
+      var bareProtons = []; // deferred — added after electron-bearing atoms
 
       // Match each electron to nearest proton
       var usedElectrons = [];
@@ -241,7 +242,6 @@
         var pi = Math.round(protons[i].px * GRID_N / 400);
         var pj = Math.round(protons[i].py * GRID_N / 400);
 
-        // Find closest unmatched electron for this proton
         var bestE = -1, bestD = Infinity;
         for (var e = 0; e < electrons.length; e++) {
           if (usedElectrons[e]) continue;
@@ -251,16 +251,13 @@
           if (d < bestD) { bestD = d; bestE = e; }
         }
         if (bestE >= 0) {
-          // Proton + electron → H atom, init wavefunction at electron position
           usedElectrons[bestE] = true;
           atoms.push({ i: pi, j: pj, Z: 1, el: 'H' });
           zNuc.push(1);
           initPos.push([Math.round(electrons[bestE].px * GRID_N / 400), Math.round(electrons[bestE].py * GRID_N / 400)]);
         } else {
-          // Bare proton — no electron, Z=0 but Z_nuc=1 (contributes to K potential)
-          atoms.push({ i: pi, j: pj, Z: 0, el: 'p+' });
-          zNuc.push(1);
-          initPos.push(null);
+          // Defer bare protons — add after electron-bearing atoms
+          bareProtons.push({ i: pi, j: pj });
         }
       }
 
@@ -283,6 +280,13 @@
           zNuc.push(a.Z);
           initPos.push(null);
         }
+      }
+      // Add bare protons after all electron-bearing atoms
+      for (var i = 0; i < bareProtons.length; i++) {
+        atoms.push({ i: bareProtons[i].i, j: bareProtons[i].j, Z: 0, el: 'p+' });
+        zNuc.push(1);
+        initPos.push(null);
+        console.log('Bare proton at grid (' + bareProtons[i].i + ',' + bareProtons[i].j + ') — Z=0, Z_nuc=1');
       }
       while (atoms.length < MAX_PLACE) {
         atoms.push({ i: Math.round(GRID_N / 2), j: Math.round(GRID_N / 2), Z: 0, el: '' });
