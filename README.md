@@ -138,6 +138,8 @@ https://github.com/Claes542/H2O/raw/main/helix_solvated.webm
 
 #### Chignolin beta-hairpin: solvation effect on protein folding
 
+Solvated (folding): https://github.com/Claes542/H2O/raw/main/chignolin_solvated.webm
+
 **Chignolin** (GYDPETGTWG) is a 10-residue mini-protein that folds into a beta-hairpin — the simplest protein fold. Both simulations start from identical geometry: 25% bent (135° fold angle), with rigid-strand pivot dynamics at the turn (residue 5). All forces computed ab initio from the Schrödinger equation on a 300³ grid. No empirical force fields.
 
 | | **Solvated** (water shell) | **Dry** (vacuum) |
