@@ -304,7 +304,13 @@
       window.USER_Z = atoms.map(function(a) { return a.Z; });
       window.USER_Z_NUC = zNuc;
       window.USER_RC = atoms.map(function(a) { return rcForEl(a.el, a.Z); });
-      var isPureHe = hasHe && protons.length === 0 && regularAtoms.every(function(a) { return a.el === 'He'; });
+      // Enable dynamics when bare protons are present (let them settle)
+      if (bareProtons.length > 0) {
+        window.USER_DYNAMICS = true;
+        window.USER_FORCE_SCALE = 1.0;
+        window.USER_N_MOVE = 50;
+      }
+      var isPureHe = hasHe && bareProtons.length === 0 && regularAtoms.every(function(a) { return a.el === 'He'; });
       if (hasHe) {
         window.INIT_ZEFF = 2;
       }

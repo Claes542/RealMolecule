@@ -44,12 +44,15 @@ const atomLabels = _atoms.map(a => a.el);
 // Each nucleus gets Z_eff = sum of Z over its electrons
 const _nucMap = new Map(); // key "i,j,k" -> { idx, Z_eff, elecIndices }
 for (let e = 0; e < _atoms.length; e++) {
-  if (_atoms[e].Z === 0) continue;
+  const zEl = _atoms[e].Z;
+  const zNucVal = Z_nuc[e] || 0;
+  if (zEl === 0 && zNucVal === 0) continue;
   const a = _atoms[e];
   const k = a.k !== undefined ? a.k : N2;
   const key = a.i + "," + a.j + "," + k;
-  if (_nucMap.has(key)) { _nucMap.get(key).Z_eff += a.Z; _nucMap.get(key).elecIndices.push(e); }
-  else _nucMap.set(key, { idx: _nucMap.size, Z_eff: a.Z, elecIndices: [e] });
+  // Z_eff for nuclear repulsion uses Z_nuc (actual nuclear charge)
+  if (_nucMap.has(key)) { _nucMap.get(key).Z_eff += zNucVal || zEl; _nucMap.get(key).elecIndices.push(e); }
+  else _nucMap.set(key, { idx: _nucMap.size, Z_eff: zNucVal || zEl, elecIndices: [e] });
 }
 const uniqueNuclei = [..._nucMap.values()]; // [{idx, Z_eff, elecIndices}, ...]
 // Map electron index -> unique nucleus index
@@ -2854,8 +2857,8 @@ async function doSteps(n) {
     forceSumsReadBuf.unmap();
     // Store electronic forces
     for (let a = 0; a < NELEC; a++) {
-      if (Z[a] === 0) { nucForceElec[a] = [0,0,0]; nucForceNuc[a] = [0,0,0]; nucForceTotal[a] = [0,0,0]; continue; }
-      nucForceElec[a] = [forceData[a*3], forceData[a*3+1], forceData[a*3+2]];
+      if (Z[a] === 0 && Z_nuc[a] === 0) { nucForceElec[a] = [0,0,0]; nucForceNuc[a] = [0,0,0]; nucForceTotal[a] = [0,0,0]; continue; }
+      nucForceElec[a] = Z[a] > 0 ? [forceData[a*3], forceData[a*3+1], forceData[a*3+2]] : [0,0,0];
       nucForceNuc[a] = [0, 0, 0];
     }
     // Compute nuclear-nuclear Coulomb repulsion forces
@@ -2881,7 +2884,7 @@ async function doSteps(n) {
     }
     // Compute total forces
     for (let a = 0; a < NELEC; a++) {
-      if (Z[a] === 0) continue;
+      if (Z[a] === 0 && Z_nuc[a] === 0) continue;
       nucForceTotal[a] = [
         nucForceElec[a][0] + nucForceNuc[a][0],
         nucForceElec[a][1] + nucForceNuc[a][1],
@@ -3781,8 +3784,8 @@ async function moveNuclei(gpuForces) {
     } else {
       // Per-atom dynamics (original)
       for (let a = 0; a < NELEC; a++) {
-        if (Z[a] === 0) continue;
-        const m = nucMass(Z[a]);
+        if (Z[a] === 0 && Z_nuc[a] === 0) continue;
+        const m = nucMass(Z_nuc[a] || Z[a]);
         for (let d = 0; d < 3; d++) {
           nucVel[a][d] += nucForce[a][d] / m * DT_NUC * forceScale;
           nucVel[a][d] *= DAMPING;
