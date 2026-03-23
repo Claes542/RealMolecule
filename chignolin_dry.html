@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<pre id="log" style="margin:10px">Building chignolin (extended)...</pre>
+<script>
+var log = document.getElementById('log');
+window.onerror = function(msg, url, line) {
+  log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
+};
+
+// Chignolin GYDPETGTWG — starts FULLY EXTENDED (fold=0)
+// Translate dynamics: each residue moves by quantum forces
+// Track fold progress: end-to-end distance, turn angle, H-bonds
+(function() {
+  var A = 1.8897;
+  var nRes = 10;
+  var seq = ['G','Y','D','P','E','T','G','T','W','G'];
+
+  // Bond lengths (au)
+  var bNH  = 1.01 * A;
+  var bCH  = 1.09 * A;
+  var bCO  = 1.24 * A;
+  var bOH  = 0.97 * A;
+  var bCaCb = 1.52 * A;
+
+  // Extended chain backbone — straight zigzag
+  var resAdv = 3.8 * A;
+  var zig = 0.5 * A;
+  var totalLen = (nRes - 1) * resAdv;
+  var x0 = -totalLen / 2;
+
+  // Start with 25% bend — DRY (no water) — shows unfolding
+  var t = 0.25;
+
+  var bbExt = [];
+  for (var r = 0; r < nRes; r++) {
+    var xr = x0 + r * resAdv;
+    var zigSign = (r % 2 === 0) ? 1 : -1;
+    var yBase = zigSign * zig;
+    bbExt.push({
+      N:  [xr - 0.35 * resAdv, yBase * 0.6],
+      Ca: [xr,                 -yBase * 0.4],
+      C:  [xr + 0.35 * resAdv, yBase * 0.3]
+    });
+  }
+
+  // Hinge between strand 1 (res 0-3) and turn (res 4-5)
+  var hingeX = (bbExt[3].C[0] + bbExt[4].N[0]) / 2;
+  var hingeY = (bbExt[3].C[1] + bbExt[4].N[1]) / 2;
+  var bendAngle = t * Math.PI;
+
+  function rotFrac(r) {
+    if (r <= 3) return 0;
+    if (r === 4) return 0.33;
+    if (r === 5) return 0.67;
+    return 1.0;
+  }
+  function rotatePoint(px, py, theta) {
+    var dx = px - hingeX, dy = py - hingeY;
+    var c = Math.cos(theta), s = Math.sin(theta);
+    return [hingeX + dx * c - dy * s, hingeY + dx * s + dy * c];
+  }
+
+  var bb = [];
+  for (var r = 0; r < nRes; r++) {
+    var theta = rotFrac(r) * bendAngle;
+    var N  = rotatePoint(bbExt[r].N[0],  bbExt[r].N[1],  theta);
+    var Ca = rotatePoint(bbExt[r].Ca[0], bbExt[r].Ca[1], theta);
+    var C  = rotatePoint(bbExt[r].C[0],  bbExt[r].C[1],  theta);
+    bb.push({ N: N, Ca: Ca, C: C, rotAngle: theta });
+  }
+
+  // Place atoms with initial bend
+  var positions = [];
+  var elList = [];
+  var zList = [];
+
+  function pushAtom(x, y, z, el, Z) {
+    positions.push({x: x, y: y, z: z});
+    elList.push(el);
+    zList.push(Z);
+  }
+
+  // Track indices
+  var resStartIdx = [];
+  var resEndIdx = [];
+  var caIndices = [];
+  var carbonylOIdx = [];
+  var amideHIdx = [];
+
+  for (var r = 0; r < nRes; r++) {
+    resStartIdx.push(positions.length);
+    var res = bb[r];
+    var Np = res.N, Cap = res.Ca, Cp = res.C;
+    var aa = seq[r];
+    var isPro = (aa === 'P');
+    var isGly = (aa === 'G');
+
+    // Direction vectors
+    var nca_x = Cap[0] - Np[0], nca_y = Cap[1] - Np[1];
+    var nca_l = Math.sqrt(nca_x * nca_x + nca_y * nca_y);
+    var nca_px = -nca_y / nca_l, nca_py = nca_x / nca_l;
+
+    var cac_x = Cp[0] - Cap[0], cac_y = Cp[1] - Cap[1];
+    var cac_l = Math.sqrt(cac_x * cac_x + cac_y * cac_y);
+    var cac_px = -cac_y / cac_l, cac_py = cac_x / cac_l;
+
+    // N
+    pushAtom(Np[0], Np[1], 0, 'N', 3);
+
+    // H on N (not for Pro)
+    if (!isPro) {
+      amideHIdx.push(positions.length);
+      pushAtom(Np[0] - nca_px * bNH, Np[1] - nca_py * bNH, 0, 'H', 1);
+    } else {
+      amideHIdx.push(-1); // Pro has no amide H
+    }
+
+    // Extra H on N-terminus
+    if (r === 0) {
+      pushAtom(Np[0] + nca_px * bNH, Np[1] + nca_py * bNH, 0, 'H', 1);
+    }
+
+    // Ca
+    caIndices.push(positions.length);
+    pushAtom(Cap[0], Cap[1], 0, 'C', 4);
+
+    // Ha
+    if (isGly) {
+      pushAtom(Cap[0], Cap[1], bCH, 'H', 1);
+      pushAtom(Cap[0], Cap[1], -bCH, 'H', 1);
+    } else {
+      // Single Ha
+      var toCenter_x = -cac_px, toCenter_y = -cac_py;
+      pushAtom(Cap[0] + toCenter_x * bCH * 0.7, Cap[1] + toCenter_y * bCH * 0.7, bCH * 0.7, 'H', 1);
+
+      // Cb + 3 Hb
+      var cbX = Cap[0] + cac_px * bCaCb * 0.8;
+      var cbY = Cap[1] + cac_py * bCaCb * 0.8;
+      var cbZ = -bCaCb * 0.6;
+      pushAtom(cbX, cbY, cbZ, 'C', 4);
+      for (var hh = 0; hh < 3; hh++) {
+        var phi = hh * 2.094 + r * 1.2;
+        pushAtom(cbX + bCH * 0.8 * Math.cos(phi),
+                 cbY + bCH * 0.8 * Math.sin(phi),
+                 cbZ + bCH * 0.6 * (hh === 0 ? 1 : -0.5), 'H', 1);
+      }
+    }
+
+    // Carbonyl C
+    pushAtom(Cp[0], Cp[1], 0, 'C', 4);
+
+    // Carbonyl O
+    carbonylOIdx.push(positions.length);
+    var oSide = (r % 2 === 0) ? -1 : 1;
+    pushAtom(Cp[0] + oSide * cac_px * bCO, Cp[1] + oSide * cac_py * bCO, 0, 'O', 2);
+
+    resEndIdx.push(positions.length);
+  }
+
+  // C-terminal OH
+  var lastC = bb[nRes - 1].C, lastCa = bb[nRes - 1].Ca;
+  var lc_x = lastC[0] - lastCa[0], lc_y = lastC[1] - lastCa[1];
+  var lc_l = Math.sqrt(lc_x * lc_x + lc_y * lc_y);
+  pushAtom(lastC[0] + lc_x / lc_l * 1.34 * A, lastC[1] + lc_y / lc_l * 1.34 * A, 0, 'O', 2);
+  pushAtom(lastC[0] + lc_x / lc_l * (1.34 * A + bOH), lastC[1] + lc_y / lc_l * (1.34 * A + bOH), 0, 'H', 1);
+
+  var nProtein = positions.length;
+
+  // Screen size from protein extent
+  var minX = Infinity, maxX = -Infinity;
+  var minY = Infinity, maxY = -Infinity;
+  var minZ = Infinity, maxZ = -Infinity;
+  for (var i = 0; i < nProtein; i++) {
+    var p = positions[i];
+    if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+    if (p.z < minZ) minZ = p.z; if (p.z > maxZ) maxZ = p.z;
+  }
+  var maxExtent = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
+  var scr = maxExtent + 15 * A;
+  scr = Math.max(35, Math.min(90, scr));
+
+  var pcx = (minX + maxX) / 2, pcy = (minY + maxY) / 2, pcz = (minZ + maxZ) / 2;
+  var nWater = 0;
+
+  var cx = pcx, cy = pcy, cz = pcz;
+  var gridN = 300;
+  var h = scr / gridN;
+  var N2 = Math.round(gridN / 2);
+  var atoms = [];
+
+  for (var i = 0; i < positions.length; i++) {
+    var p = positions[i];
+    var gi = Math.round(N2 + (p.x - cx) / h);
+    var gj = Math.round(N2 + (p.y - cy) / h);
+    var gk = Math.round(N2 + (p.z - cz) / h);
+    gi = Math.max(3, Math.min(gridN - 3, gi));
+    gj = Math.max(3, Math.min(gridN - 3, gj));
+    gk = Math.max(3, Math.min(gridN - 3, gk));
+    atoms.push({ i: gi, j: gj, k: gk, Z: zList[i], el: elList[i] });
+  }
+
+  log.textContent = 'Chignolin GYDPETGTWG (DRY, 25% fold): ' + atoms.length + ' atoms';
+  log.textContent += '\nSequence: ' + seq.join('-');
+  log.textContent += '\nStrand1: G-Y-D-P | Turn: E-T | Strand2: G-T-W-G';
+  log.textContent += '\n' + gridN + '^3 grid, screen=' + scr.toFixed(1) + ' au';
+  log.textContent += '\nHinge dynamics at turn (res 5) — NO water, expect unfolding';
+
+  // Fold angle: N-term (res 0), turn (Ca of res 5), C-term (Ca of res 9)
+  window.USER_FOLD_ATOMS = [resStartIdx[0], caIndices[5], caIndices[9]];
+
+  // Build residue groups for translate dynamics
+  var chigGroups = [];
+  for (var r = 0; r < nRes; r++) {
+    var group = [];
+    for (var a = resStartIdx[r]; a < resEndIdx[r]; a++) group.push(a);
+    chigGroups.push(group);
+  }
+  // C-term OH + water follow last strand
+  var lastGroup = [];
+  for (var a = resEndIdx[nRes-1]; a < atoms.length; a++) lastGroup.push(a);
+  chigGroups.push(lastGroup);
+
+  // Key H-bonds in native chignolin hairpin:
+  // Strand1 O[1](Tyr) ··· H[8](Trp) — cross-strand
+  // Strand1 O[2](Asp) ··· H[7](Thr) — cross-strand
+  // These form the antiparallel beta-sheet H-bond pattern
+  var bondPairs = [
+    [resStartIdx[0], caIndices[0], "N0-Ca0:"],
+    [caIndices[0], caIndices[1], "Ca0-Ca1:"],
+  ];
+  // Cross-strand H-bonds (native hairpin)
+  // O of res 1 (Tyr) to H of res 8 (Trp)
+  if (amideHIdx[8] >= 0) bondPairs.push([carbonylOIdx[1], amideHIdx[8], "O1···H8:"]);
+  // O of res 2 (Asp) to H of res 7 (Thr)
+  if (amideHIdx[7] >= 0) bondPairs.push([carbonylOIdx[2], amideHIdx[7], "O2···H7:"]);
+  // O of res 8 (Trp) to H of res 1 (Tyr)
+  if (amideHIdx[1] >= 0) bondPairs.push([carbonylOIdx[8], amideHIdx[1], "O8···H1:"]);
+  // End-to-end distance
+  bondPairs.push([caIndices[0], caIndices[9], "Ca0-Ca9:"]);
+
+  window.USER_BOND_PAIRS = bondPairs;
+
+  window.USER_REFERENCE = {
+    bonds: {
+      "O1···H8": "1.9", "O2···H7": "1.9", "O8···H1": "1.9",
+      "Ca0-Ca9": "~8"
+    },
+    energy: "Chignolin: extended → native hairpin",
+    binding: "Native: antiparallel beta-hairpin with 2-3 cross-strand H-bonds"
+  };
+
+  window.USER_CLASSICAL_MD = {
+    hingeRes: 5,  // hinge between res 4 (turn start) and 5 (turn end)
+    caIndices: caIndices,
+    groups: chigGroups,
+    offsets: null,
+    mdSteps: 50,
+    mdDt: 0.01
+  };
+
+  window.USER_PROTEIN_COUNT = nProtein;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;
+  window.USER_FORCE_SCALE = 50.0;
+  window.USER_ARROW_SCALE = 0.2;
+  window.USER_N_MOVE = 15;
+  window.USER_Z = zList;
+  window.USER_RC = elList.map(function(el) {
+    if (el === 'H') return 0;
+    if (el === 'C') return 0.3;
+    if (el === 'N') return 0.3;
+    if (el === 'O') return 0.4;
+    return 0;
+  });
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p5s.onload = function() {
+    var recorder = null, chunks = [], recording = false, recInterval = null;
+    window._toggleRecording = function() {
+      var canvas = document.querySelector('canvas');
+      if (!canvas) return;
+      if (!recording) {
+        chunks = [];
+        var stream = canvas.captureStream(0);
+        var track = stream.getVideoTracks()[0];
+        window._recStreamTrack = track;
+        var mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9')
+          ? 'video/webm; codecs=vp9' : 'video/webm';
+        recorder = new MediaRecorder(stream, { mimeType: mimeType });
+        recorder.ondataavailable = function(ev) { if (ev.data.size > 0) chunks.push(ev.data); };
+        recorder.onstop = function() {
+          var blob = new Blob(chunks, { type: mimeType });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url; a.download = 'chignolin_dry.webm'; a.click();
+          URL.revokeObjectURL(url);
+        };
+        recorder.start(1000);
+        recInterval = setInterval(function() { try { track.requestFrame(); } catch(e) {} }, 20000);
+        recording = true;
+        var dot = document.createElement('div');
+        dot.id = 'rec-indicator';
+        dot.style.cssText = 'position:fixed;top:10px;right:10px;background:red;color:#fff;padding:4px 10px;border-radius:4px;font:bold 14px monospace;z-index:9999;';
+        dot.textContent = '\u25CF REC';
+        document.body.appendChild(dot);
+      } else {
+        if (recInterval) { clearInterval(recInterval); recInterval = null; }
+        recorder.stop(); recording = false;
+        window._recStreamTrack = null;
+        var ind = document.getElementById('rec-indicator');
+        if (ind) ind.remove();
+      }
+    };
+    setTimeout(function() {
+      window._view3D = true;
+      setTimeout(function() {
+        window._toggleRecording();
+        setTimeout(function() { if (recording) window._toggleRecording(); }, 60 * 60 * 1000);
+      }, 3000);
+    }, 5000);
+  };
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
