@@ -153,7 +153,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   if (cfg.initR > 0.0 && r_raw > cfg.initR) {
     u_out[id] = 0.0;
   } else {
-    u_out[id] = exp(-${(window.INIT_ZEFF || 1).toFixed(1)} * r_soft);
+    u_out[id] = exp(-2.0 * r_soft);  // He: exp(-Z*r) with Z=2
   }
 }
 `;
@@ -296,7 +296,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   let wlap = (flux_xp - flux_xm) + (flux_yp - flux_ym) + (flux_zp - flux_zm);
 
-  u_out[id] = uc + p.half_d * wlap + p.dt * (Kbuf[id] - 2.0 * Pot[id]) * uc * new_w;
+  let u_new = uc + p.half_d * wlap + p.dt * (Kbuf[id] - 2.0 * Pot[id]) * uc * new_w;
+  // Enforce u=0 outside domain to prevent charge leaking
+  u_out[id] = select(0.0, u_new, new_w > 0.01);
 }
 `;
 
