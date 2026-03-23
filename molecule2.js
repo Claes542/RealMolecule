@@ -153,7 +153,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   if (cfg.initR > 0.0 && r_raw > cfg.initR) {
     u_out[id] = 0.0;
   } else {
-    u_out[id] = exp(-r_soft);
+    let Zinit = ${window.INIT_ZEFF ? window.INIT_ZEFF.toFixed(1) : '1.0'};
+    u_out[id] = exp(-Zinit * r_soft);
   }
 }
 `;
