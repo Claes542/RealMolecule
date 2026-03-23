@@ -483,18 +483,28 @@ let stepCount = 0;
 let sliceData = null;
 
 // Compute Voronoi domain for electron m
+// Uses init positions (_initPos) when available, so He electrons get separate half-spaces
 function computeVoronoiDomain(m) {
   const domain = new Float32Array(S3);
   const am = atoms[m];
+  // Use init position for domain center if available (e.g. He half-space)
+  const ipM = _initPos[m];
+  const mi = ipM ? ipM[0] : am.i;
+  const mj = ipM ? ipM[1] : am.j;
+  const mk = ipM && ipM[2] !== undefined ? ipM[2] : (am.k || N2);
   for (let i = 0; i <= NN; i++) {
     for (let j = 0; j <= NN; j++) {
       for (let k = 0; k <= NN; k++) {
-        const dx0 = (i - am.i) * h, dy0 = (j - am.j) * h, dz0 = (k - am.k) * h;
+        const dx0 = (i - mi) * h, dy0 = (j - mj) * h, dz0 = (k - mk) * h;
         let myDist2 = dx0*dx0 + dy0*dy0 + dz0*dz0;
         let closest = true;
-        for (let n = 0; n < atoms.length; n++) {
-          if (n === m) continue;
-          const dx = (i - atoms[n].i) * h, dy = (j - atoms[n].j) * h, dz = (k - atoms[n].k) * h;
+        for (let n = 0; n < ALL_ATOMS; n++) {
+          if (n === m || atoms[n].Z <= 0) continue; // skip bare protons and self
+          const ipN = _initPos[n];
+          const ni = ipN ? ipN[0] : atoms[n].i;
+          const nj = ipN ? ipN[1] : atoms[n].j;
+          const nk = ipN && ipN[2] !== undefined ? ipN[2] : (atoms[n].k || N2);
+          const dx = (i - ni) * h, dy = (j - nj) * h, dz = (k - nk) * h;
           if (dx*dx + dy*dy + dz*dz < myDist2) { closest = false; break; }
         }
         if (closest) domain[i * S2 + j * S + k] = 1.0;
