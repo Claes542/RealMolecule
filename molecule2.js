@@ -278,10 +278,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let gwz = (w_self[id + 1u]   - w_self[id - 1u])   * p.inv_h;
   let grad_w = sqrt(gwx*gwx + gwy*gwy + gwz*gwz);
 
-  // Slow w evolution for stability (0.01 = very slow boundary adaptation)
-  let wRate = ${window.FREEZE_BOUNDARY ? '0.01' : '1.0'};
+  // Boundary evolution
+  let wRate = ${window.FREEZE_BOUNDARY ? '0.0' : '1.0'};
   var new_w = clamp(wc + wRate * (2.0 * p.dt * abs(c) * lap_w * p.inv_h2 + 10.0 * p.dt * c * grad_w), 0.0, 1.0);
   new_w *= mask;
+  // Sharp boundary: snap to 0 or 1 to prevent leakage
+  new_w = select(0.0, 1.0, new_w > 0.5);
   w_out[id] = new_w;
 
   // --- Update u using new w at center ---
@@ -1037,15 +1039,15 @@ async function computeEnergy() {
           const v = uArr[m][id];
           const rho = v * v;
           const wv = wArr[m][id];
-          if (wv > 0.1) {
-            const gx = uArr[m][id + S2] - v;
-            const gy = uArr[m][id + S] - v;
-            const gz = uArr[m][id + 1] - v;
-            E_T += 0.5 * (gx*gx + gy*gy + gz*gz) * h;
-          }
-          E_eK += -K[id] * rho * h3;
-          E_ee += PArr[m][id] * rho * h3;
-          E_pot += (PArr[m][id] - K[id]) * rho * h3;
+          if (wv < 0.01) continue; // skip outside domain
+          const wrho = rho * wv; // w-weighted density
+          const gx = uArr[m][id + S2] - v;
+          const gy = uArr[m][id + S] - v;
+          const gz = uArr[m][id + 1] - v;
+          E_T += 0.5 * (gx*gx + gy*gy + gz*gz) * h * wv;
+          E_eK += -K[id] * wrho * h3;
+          E_ee += PArr[m][id] * wrho * h3;
+          E_pot += (PArr[m][id] - K[id]) * wrho * h3;
         }
       }
     }
