@@ -324,7 +324,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let lap_P = P_in[id + p.S2] + P_in[id - p.S2]
             + P_in[id + p.S]  + P_in[id - p.S]
             + P_in[id + 1u]   + P_in[id - 1u] - 6.0 * Pc;
-  P_out[id] = Pc + p.dt * (lap_P * p.inv_h2 + p.TWO_PI * rho_src[id]);
+  P_out[id] = Pc + p.dt * (lap_P * p.inv_h2 + 2.0 * p.TWO_PI * rho_src[id]);
 }
 `;
 
