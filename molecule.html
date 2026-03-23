@@ -223,6 +223,7 @@
       // Protons become Z=1 nuclei at their position
       // Electrons are placed near their closest unpaired proton (solver handles the wavefunction)
       var protons = [], electrons = [], regularAtoms = [];
+      var hasHe = false;
       for (var i = 0; i < placedAtoms.length; i++) {
         var a = placedAtoms[i];
         if (a.el === 'p+') protons.push(a);
@@ -263,14 +264,14 @@
         var gi = Math.round(a.px * GRID_N / 400);
         var gj = Math.round(a.py * GRID_N / 400);
         if (a.el === 'He') {
-          // He: Z=2 nucleus split as 2 × Z=1 atoms, slightly offset
-          // Tiny offset (1 grid cell) keeps domain boundary stable
-          // Total: K ≈ 2/r, 2 electrons in separate half-spaces
+          // He: 2 × Z=1 at +/-1 offset, NO_NUC_REPULSION, INIT_ZEFF=2
+          // This is the standard He treatment in RealQM
           var offset = Math.round(GRID_N * 0.15);
-          atoms.push({ i: gi - 1, j: gj, Z: 1, el: 'He' });
+          atoms.push({ i: gi, j: gj, Z: 1, el: 'He' });
           initPos.push([gi - offset, gj]); // electron 1: left half-space
           atoms.push({ i: gi + 1, j: gj, Z: 1, el: 'He' });
           initPos.push([gi + offset, gj]); // electron 2: right half-space
+          hasHe = true;
         } else {
           atoms.push({ i: gi, j: gj, Z: a.Z, el: a.el });
           initPos.push(null); // regular atoms init at nucleus
@@ -290,6 +291,10 @@
       window.USER_STEPS = steps;
       window.USER_Z = atoms.map(function(a) { return a.Z; });
       window.USER_RC = atoms.map(function(a) { return rcForEl(a.el, a.Z); });
+      if (hasHe) {
+        window.NO_NUC_REPULSION = true;
+        window.INIT_ZEFF = 2;
+      }
 
       document.getElementById('config').style.display = 'none';
       var status = document.createElement('pre');
