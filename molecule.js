@@ -4147,16 +4147,12 @@ function draw() {
   // Draw nuclear positions with force arrows
   fill(255); stroke(255); strokeWeight(1);
   for (let n = 0; n < NELEC; n++) {
-    // Draw bare protons (Z=0, Z_nuc>0) as red crosses
+    // Draw bare protons (Z=0, Z_nuc>0) as white dots like other nuclei
     if (Z[n] === 0 && Z_nuc[n] > 0) {
       const nx = nucPos[n][0] * PX, ny = nucPos[n][1] * PX;
-      stroke(255, 80, 80); strokeWeight(2);
-      line(nx - 6, ny, nx + 6, ny);
-      line(nx, ny - 6, nx, ny + 6);
-      fill(255, 80, 80); noStroke();
-      textSize(10);
-      text('+' + Z_nuc[n], nx + 8, ny - 4);
-      stroke(255); strokeWeight(1); fill(255);
+      fill(255); noStroke();
+      circle(nx, ny, 6);
+      stroke(255); strokeWeight(1);
     }
     if (Z[n] > 0) {
       const nx = nucPos[n][0] * PX, ny = nucPos[n][1] * PX;
