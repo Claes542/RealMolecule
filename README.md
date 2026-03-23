@@ -136,6 +136,17 @@ https://github.com/Claes542/H2O/raw/main/helix_solvated.webm
 
 > Same 8-residue polyglycine helix formation, now surrounded by a single shell of explicit water molecules (~150 total atoms on 300³ grid). The water provides additional H-bond partners to the backbone C=O and N-H groups. [Run it yourself →](alpha_helix_solvated_dyn.html)
 
+#### Chignolin beta-hairpin folding — solvation effect
+
+> **10-residue chignolin (GYDPETGTWG)** demonstrates that solvation is essential for hairpin folding. Starting from 135° (25% bent), the solvated chain folds toward ~80° driven by quantum forces + water H-bonding. In vacuum (dry), the same chain consistently **unfolds** back toward 180° — the extended state is preferred without solvent. This matches the known physics: water entropy and backbone-solvent H-bonds drive beta-hairpin formation in nature. [Run solvated →](chignolin_extended.html)
+
+| Condition | Start | Direction | Interpretation |
+|-----------|-------|-----------|----------------|
+| **Solvated** (water shell) | 135° | → 119° → folding | Water drives compaction |
+| **Dry** (vacuum) | 135° | → 145° → unfolding | Extended state preferred in vacuum |
+
+**Method**: Rigid-strand pivot dynamics at the turn (res 5) on 300³ grid with single water shell (2.8–6.0 Å). Electronic structure re-solved after each geometry update.
+
 #### Validation suite
 
 | Test | Atoms | Result |
@@ -145,7 +156,7 @@ https://github.com/Claes542/H2O/raw/main/helix_solvated.webm
 | [Alpha-helix stability](alpha_helix.html) | 35 (3D) | 5-residue polyglycine helix stable under quantum dynamics |
 | [Alpha-helix formation](alpha_helix_dry_300.html) | ~50 (3D) | 8-residue near-linear → 67% helix, 2/4 H-bonds ([video](helix_formation.webm)) |
 | [Hairpin folding](hairpin_bent_dry.html) | 87 (2D) | Folds from 175° to U-shape via quantum forces ([video](hairpin_fold.webm)) |
-| [Chignolin folding](chignolin_extended.html) | ~90 (3D) | 10-residue GYDPETGTWG extended → hairpin, cross-strand H-bond tracking |
+| [Chignolin folding](chignolin_extended.html) | ~200 (3D) | 10-residue GYDPETGTWG solvated: folds from 135° → 119°+; unfolds in vacuum |
 | [Trp-cage folding](trpcage_fold.html) | ~200 (3D) | 20-residue TC5b extended → native fold, helix + hydrophobic core |
 | [Hairpin solvated](hairpin_bent_solvated.html) | ~200 (2D) | Solvated hairpin with elastic backbone dynamics |
 | [Phi/psi scan](ala_dipeptide_scan.html) | 22 | Ramachandran energy surface generator |

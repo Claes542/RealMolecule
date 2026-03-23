@@ -4038,7 +4038,53 @@ function draw() {
     // Label
     fill(255, 255, 0);
     noStroke();
-    text("3D VIEW (press 3 to toggle) — H=white C=green N=blue O=red", 5, 20);
+    textSize(11);
+    text("3D VIEW (3=toggle) H=white C=green N=blue O=red  R=record D=dynamics", 5, 15);
+
+    // Fold angle in 3D view
+    if (window.USER_FOLD_ATOMS) {
+      const fa = window.USER_FOLD_ATOMS;
+      const a3 = nucPos[fa[0]], b3 = nucPos[fa[1]], c3 = nucPos[fa[2]];
+      const ba3 = [a3[0]-b3[0], a3[1]-b3[1], a3[2]-b3[2]];
+      const bc3 = [c3[0]-b3[0], c3[1]-b3[1], c3[2]-b3[2]];
+      const dot3 = ba3[0]*bc3[0] + ba3[1]*bc3[1] + ba3[2]*bc3[2];
+      const magBA3 = Math.sqrt(ba3[0]*ba3[0]+ba3[1]*ba3[1]+ba3[2]*ba3[2]);
+      const magBC3 = Math.sqrt(bc3[0]*bc3[0]+bc3[1]*bc3[1]+bc3[2]*bc3[2]);
+      const foldAngle3 = Math.acos(Math.max(-1, Math.min(1, dot3 / (magBA3 * magBC3)))) * 180 / Math.PI;
+      const foldPct3 = (1 - foldAngle3 / 180) * 100;
+      fill(255, 255, 0);
+      text("Fold: " + foldAngle3.toFixed(1) + "\u00B0 (" + foldPct3.toFixed(0) + "%)  [180\u00B0=open, 0\u00B0=folded]", 5, 30);
+    }
+
+    // Bond distances in 3D view
+    if (window.USER_BOND_PAIRS) {
+      fill(200, 200, 255);
+      const bp3 = window.USER_BOND_PAIRS;
+      const bohrToAng3 = 0.529177;
+      let bondY3 = 45;
+      for (let b = 0; b < bp3.length; b++) {
+        const a1 = bp3[b][0], a2 = bp3[b][1], label = bp3[b][2] || "";
+        const dx = nucPos[a1][0] - nucPos[a2][0];
+        const dy = nucPos[a1][1] - nucPos[a2][1];
+        const dz = nucPos[a1][2] - nucPos[a2][2];
+        const dAu = Math.sqrt(dx*dx + dy*dy + dz*dz) * hGrid;
+        const dAng = dAu * bohrToAng3;
+        text(label + " " + dAng.toFixed(2) + "\u00C5", 5, bondY3);
+        bondY3 += 13;
+      }
+    }
+
+    // Helix progress in 3D view
+    if (window.USER_HELIX_PROGRESS) {
+      fill(0, 255, 200);
+      text("Helix: " + (window._helixPct || 0).toFixed(1) + "%  R=" + ((window._helixRadius || 0)*0.529177).toFixed(2) +
+        "\u00C5  rise=" + ((window._helixRise || 0)*0.529177).toFixed(2) + "\u00C5  H-bonds=" + (window._helixHbonds || 0), 5, CANVAS_SIZE - 20);
+    }
+
+    // Dynamics status
+    fill(dynamicsEnabled ? [0,255,255] : [150,150,150]);
+    text("Dynamics: " + (dynamicsEnabled ? "ON" : "OFF") + "  nucStep=" + nucStepCount + "  Force=" + forceScale.toFixed(1) + "x", 5, CANVAS_SIZE - 5);
+
     return; // skip normal 2D draw
   }
 

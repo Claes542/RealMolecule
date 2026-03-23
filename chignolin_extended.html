@@ -28,8 +28,8 @@ window.onerror = function(msg, url, line) {
   var totalLen = (nRes - 1) * resAdv;
   var x0 = -totalLen / 2;
 
-  // Start with slight bend (20%) to break symmetry
-  var t = 0.2;
+  // Start with 25% bend + solvation shell — more extended, folding is more convincing
+  var t = 0.25;
 
   var bbExt = [];
   for (var r = 0; r < nRes; r++) {
@@ -164,28 +164,65 @@ window.onerror = function(msg, url, line) {
   pushAtom(lastC[0] + lc_x / lc_l * 1.34 * A, lastC[1] + lc_y / lc_l * 1.34 * A, 0, 'O', 2);
   pushAtom(lastC[0] + lc_x / lc_l * (1.34 * A + bOH), lastC[1] + lc_y / lc_l * (1.34 * A + bOH), 0, 'H', 1);
 
-  // One water near center
-  pushAtom(0, 5 * A, 0, 'O', 2);
-  pushAtom(-0.76 * A, 5 * A - 0.59 * A, 0, 'H', 1);
-  pushAtom(0.76 * A, 5 * A - 0.59 * A, 0, 'H', 1);
+  var nProtein = positions.length;
 
-  var nProtein = positions.length - 3; // exclude water
-
-  // Screen size
+  // Screen size from protein extent
   var minX = Infinity, maxX = -Infinity;
   var minY = Infinity, maxY = -Infinity;
   var minZ = Infinity, maxZ = -Infinity;
-  for (var i = 0; i < positions.length; i++) {
+  for (var i = 0; i < nProtein; i++) {
     var p = positions[i];
     if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
     if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
     if (p.z < minZ) minZ = p.z; if (p.z > maxZ) maxZ = p.z;
   }
   var maxExtent = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
-  var scr = maxExtent + 15 * A;
-  scr = Math.max(35, Math.min(90, scr));
+  var scr = maxExtent + 20 * A; // extra room for water shell
+  scr = Math.max(45, Math.min(90, scr));
 
-  var cx = (minX + maxX) / 2, cy = (minY + maxY) / 2, cz = (minZ + maxZ) / 2;
+  // Protein centroid
+  var pcx = (minX + maxX) / 2, pcy = (minY + maxY) / 2, pcz = (minZ + maxZ) / 2;
+
+  // Solvation shell — single layer of waters around protein
+  var ohBond = 0.96 * A;
+  var halfAng = 52.25 * Math.PI / 180;
+  var waterSpacing = 3.0 * A;
+  var minWaterDist = 2.8 * A;
+  var maxWaterDist = 6.0 * A;
+  var maxR = scr / 2 - 2 * A;
+  var nWater = 0;
+
+  for (var wx = pcx - maxR; wx <= pcx + maxR; wx += waterSpacing) {
+    for (var wy = pcy - maxR; wy <= pcy + maxR; wy += waterSpacing) {
+      for (var wz = pcz - maxR; wz <= pcz + maxR; wz += waterSpacing) {
+        var dr = Math.sqrt((wx-pcx)*(wx-pcx) + (wy-pcy)*(wy-pcy) + (wz-pcz)*(wz-pcz));
+        if (dr > maxR) continue;
+
+        var tooClose = false;
+        var closestDist = Infinity;
+        for (var pi = 0; pi < nProtein; pi++) {
+          var ddx = wx - positions[pi].x;
+          var ddy = wy - positions[pi].y;
+          var ddz = wz - positions[pi].z;
+          var d2 = ddx*ddx + ddy*ddy + ddz*ddz;
+          if (d2 < minWaterDist * minWaterDist) { tooClose = true; break; }
+          if (d2 < closestDist) closestDist = d2;
+        }
+        if (tooClose) continue;
+        if (Math.sqrt(closestDist) > maxWaterDist) continue;
+
+        var wAngle = (wx * 7.3 + wy * 11.1 + wz * 3.7) % (2 * Math.PI);
+        pushAtom(wx, wy, wz, 'O', 2);
+        pushAtom(wx + ohBond * Math.cos(wAngle + halfAng),
+                 wy + ohBond * Math.sin(wAngle + halfAng), wz, 'H', 1);
+        pushAtom(wx + ohBond * Math.cos(wAngle - halfAng),
+                 wy + ohBond * Math.sin(wAngle - halfAng), wz, 'H', 1);
+        nWater++;
+      }
+    }
+  }
+
+  var cx = pcx, cy = pcy, cz = pcz;
   var gridN = 300;
   var h = scr / gridN;
   var N2 = Math.round(gridN / 2);
@@ -202,11 +239,11 @@ window.onerror = function(msg, url, line) {
     atoms.push({ i: gi, j: gj, k: gk, Z: zList[i], el: elList[i] });
   }
 
-  log.textContent = 'Chignolin GYDPETGTWG (EXTENDED): ' + atoms.length + ' atoms';
+  log.textContent = 'Chignolin GYDPETGTWG (solvated, 50% fold): ' + nProtein + ' protein + ' + nWater + ' waters = ' + atoms.length + ' atoms';
   log.textContent += '\nSequence: ' + seq.join('-');
   log.textContent += '\nStrand1: G-Y-D-P | Turn: E-T | Strand2: G-T-W-G';
   log.textContent += '\n' + gridN + '^3 grid, screen=' + scr.toFixed(1) + ' au';
-  log.textContent += '\nStarting fully extended — dynamics will attempt folding';
+  log.textContent += '\nHinge dynamics at turn (res 5) — water provides H-bond driving force';
 
   // Fold angle: N-term (res 0), turn (Ca of res 5), C-term (Ca of res 9)
   window.USER_FOLD_ATOMS = [resStartIdx[0], caIndices[5], caIndices[9]];
@@ -253,14 +290,12 @@ window.onerror = function(msg, url, line) {
   };
 
   window.USER_CLASSICAL_MD = {
-    mode: 'translate',
-    pinEnds: 2,
+    hingeRes: 5,  // hinge between res 4 (turn start) and 5 (turn end)
     caIndices: caIndices,
     groups: chigGroups,
     offsets: null,
     mdSteps: 50,
-    mdDt: 0.01,
-    targetCaCa: 3.8 * A
+    mdDt: 0.01
   };
 
   window.USER_PROTEIN_COUNT = nProtein;
