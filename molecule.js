@@ -1573,7 +1573,23 @@ function fillAtomBuf() {
 
 async function uploadInitialData() {
   console.log("GPU Init: " + NELEC + " atoms, NN=" + NN + " S3=" + S3);
-  fillAtomBuf();
+
+  // If USER_INIT_POS is set, temporarily move atoms to electron positions for wavefunction init
+  const initPos = window.USER_INIT_POS;
+  const savedPos = [];
+  if (initPos) {
+    for (let n = 0; n < NELEC; n++) {
+      savedPos.push([nucPos[n][0], nucPos[n][1], nucPos[n][2]]);
+      if (initPos[n]) {
+        nucPos[n][0] = initPos[n][0];
+        nucPos[n][1] = initPos[n][1];
+        // keep k (z) the same
+        console.log("Atom " + n + ": init wavefunction at (" + initPos[n][0] + "," + initPos[n][1] + ") nucleus at (" + savedPos[n][0] + "," + savedPos[n][1] + ")");
+      }
+    }
+  }
+
+  fillAtomBuf(); // upload with electron positions for U init
 
   const t0 = performance.now();
   const WG_INIT = Math.ceil(S3 / 256);
@@ -1606,6 +1622,31 @@ async function uploadInitialData() {
     dispatchLinear(ip, S3);
     ip.end();
     device.queue.submit([enc.finish()]);
+  }
+
+  // Restore nucleus positions and recompute K potential
+  if (initPos && savedPos.length > 0) {
+    for (let n = 0; n < NELEC; n++) {
+      nucPos[n][0] = savedPos[n][0];
+      nucPos[n][1] = savedPos[n][1];
+      nucPos[n][2] = savedPos[n][2];
+    }
+    fillAtomBuf(); // re-upload with true nucleus positions
+    // Recompute K with correct nucleus positions
+    {
+      const kEnc = device.createCommandEncoder();
+      kEnc.clearBuffer(K_buf);
+      device.queue.submit([kEnc.finish()]);
+      const kEnc2 = device.createCommandEncoder();
+      const kp = kEnc2.beginComputePass();
+      kp.setPipeline(recomputeK_PL);
+      kp.setBindGroup(0, recomputeK_BG);
+      dispatchLinear(kp, S3);
+      kp.end();
+      device.queue.submit([kEnc2.finish()]);
+      await device.queue.onSubmittedWorkDone();
+    }
+    console.log("Restored nucleus positions — K recomputed at proton locations");
   }
 
   // Final pass: set U and P from bestR2 (labels already set by accum)

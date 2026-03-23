@@ -225,24 +225,48 @@
         else if (a.el === 'e-') electrons.push(a);
         else regularAtoms.push(a);
       }
-      // Each proton becomes a Z=1 atom at its position
-      // Unpaired protons still appear as Z=1 (bare proton gets 1 electron from solver)
+      // Pair protons with electrons: nucleus at proton position, wavefunction starts at electron position
       var atoms = [];
+      var initPos = []; // where to initialize each wavefunction (electron position)
+
+      // Match each electron to nearest proton
+      var usedElectrons = [];
       for (var i = 0; i < protons.length; i++) {
-        atoms.push({ i: Math.round(protons[i].px * GRID_N / 400), j: Math.round(protons[i].py * GRID_N / 400), Z: 1, el: 'H' });
+        var pi = Math.round(protons[i].px * GRID_N / 400);
+        var pj = Math.round(protons[i].py * GRID_N / 400);
+        atoms.push({ i: pi, j: pj, Z: 1, el: 'H' });
+
+        // Find closest unmatched electron for this proton
+        var bestE = -1, bestD = Infinity;
+        for (var e = 0; e < electrons.length; e++) {
+          if (usedElectrons[e]) continue;
+          var dx = protons[i].px - electrons[e].px;
+          var dy = protons[i].py - electrons[e].py;
+          var d = dx*dx + dy*dy;
+          if (d < bestD) { bestD = d; bestE = e; }
+        }
+        if (bestE >= 0) {
+          usedElectrons[bestE] = true;
+          // Electron position as wavefunction init (grid coords)
+          initPos.push([Math.round(electrons[bestE].px * GRID_N / 400), Math.round(electrons[bestE].py * GRID_N / 400)]);
+        } else {
+          initPos.push(null); // no electron paired — init at nucleus
+        }
       }
-      // Extra electrons beyond protons: place as Z=0 markers (solver ignores nucleus but sees density)
-      // For now, electrons without a proton are ignored with a warning
-      if (electrons.length > protons.length) {
-        console.warn('More electrons than protons — extra electrons ignored (need a proton each)');
-      }
+
       for (var i = 0; i < regularAtoms.length; i++) {
         var a = regularAtoms[i];
         atoms.push({ i: Math.round(a.px * GRID_N / 400), j: Math.round(a.py * GRID_N / 400), Z: a.Z, el: a.el });
+        initPos.push(null); // regular atoms init at nucleus
       }
       while (atoms.length < MAX_PLACE) {
         atoms.push({ i: Math.round(GRID_N / 2), j: Math.round(GRID_N / 2), Z: 0, el: '' });
+        initPos.push(null);
       }
+
+      // Tell solver to init wavefunctions at electron positions, not nucleus positions
+      // Strategy: temporarily set atom positions to electron positions for init, then move back
+      window.USER_INIT_POS = initPos; // [i, j] or null per atom
       window.USER_NN = GRID_N;
       window.USER_ATOMS = atoms;
       window.USER_SCREEN = screenAu;
