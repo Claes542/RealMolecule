@@ -3473,6 +3473,25 @@ async function moveNuclei(gpuForces) {
       // Pin first residue only — chain can compress from free end
       const pinEnds = cmd.pinEnds !== false; // default true
       const maxDisp = 1.0; // max displacement per step (grid cells)
+      // During contact-driven folding, dampen quantum repulsion so biases can work
+      let qDamp = 1.0;
+      if (cmd.contactBias) {
+        // Check if any contacts are far from target — if so, dampen quantum forces
+        const cb = cmd.contactBias;
+        let maxExcess = 0;
+        const allPairs = [].concat(cb.hbonds || [], cb.contacts || []);
+        for (const p of allPairs) {
+          let dx = nucPos[p.b][0]-nucPos[p.a][0], dy = nucPos[p.b][1]-nucPos[p.a][1], dz = nucPos[p.b][2]-nucPos[p.a][2];
+          let distAu = Math.sqrt(dx*dx+dy*dy+dz*dz) * hGrid;
+          let excess = (distAu - p.target) / p.target;
+          if (excess > maxExcess) maxExcess = excess;
+        }
+        // Scale: if worst contact is >2x target, zero quantum; if >1.5x, 10%; etc.
+        if (maxExcess > 1.0) qDamp = 0.0;
+        else if (maxExcess > 0.5) qDamp = 0.1;
+        else if (maxExcess > 0.2) qDamp = 0.5;
+        // else full quantum forces (contacts nearly formed)
+      }
       for (let g = 0; g < nRes; g++) {
         // End damping: scale down forces on terminal residues instead of freezing
         const pinN = (typeof pinEnds === 'number') ? pinEnds : (pinEnds === true ? 2 : 0);
@@ -3481,9 +3500,9 @@ async function moveNuclei(gpuForces) {
           const distFromEnd = Math.min(g, nRes - 1 - g);
           if (distFromEnd < pinN) endDamp = (distFromEnd + 1) / (pinN + 1); // gradual: 0.25, 0.5, 0.75...
         }
-        let dx = resFx[g] * forceScale * mdDt * 0.01 * endDamp;
-        let dy = resFy[g] * forceScale * mdDt * 0.01 * endDamp;
-        let dz = resFz[g] * forceScale * mdDt * 0.01 * endDamp;
+        let dx = resFx[g] * forceScale * mdDt * 0.01 * endDamp * qDamp;
+        let dy = resFy[g] * forceScale * mdDt * 0.01 * endDamp * qDamp;
+        let dz = resFz[g] * forceScale * mdDt * 0.01 * endDamp * qDamp;
         let mag = Math.sqrt(dx*dx + dy*dy + dz*dz);
         if (mag > maxDisp) { dx *= maxDisp/mag; dy *= maxDisp/mag; dz *= maxDisp/mag; }
         for (const a of groups[g]) {
@@ -3585,6 +3604,75 @@ async function moveNuclei(gpuForces) {
             }
           }
         }
+      }
+
+      // Contact bias: targeted attractions for H-bonds and hydrophobic contacts
+      if (cmd.contactBias) {
+        const cb = cmd.contactBias;
+        const hbStr = (cb.hbondStrength || 0.5) ;
+        const ctStr = (cb.contactStrength || 1.0);
+
+        // Helper: apply pairwise attractive bias between two atoms
+        // Moves the residue groups containing each atom toward each other
+        function applyPairBias(atomA, atomB, targetAu, strength) {
+          let dx = nucPos[atomB][0] - nucPos[atomA][0];
+          let dy = nucPos[atomB][1] - nucPos[atomA][1];
+          let dz = nucPos[atomB][2] - nucPos[atomA][2];
+          let distGrid = Math.sqrt(dx*dx + dy*dy + dz*dz) + 1e-10;
+          let distAu = distGrid * hGrid;
+          if (distAu <= targetAu) return distAu; // already close enough
+          let excess = (distAu - targetAu) / distAu;
+          let nudge = strength * excess;
+          let nx = dx / distGrid * nudge, ny = dy / distGrid * nudge, nz = dz / distGrid * nudge;
+          // Find which residue groups these atoms belong to
+          let gA = -1, gB = -1;
+          for (let g = 0; g < groups.length; g++) {
+            if (groups[g].indexOf(atomA) >= 0) gA = g;
+            if (groups[g].indexOf(atomB) >= 0) gB = g;
+          }
+          if (gA >= 0) {
+            for (const a of groups[gA]) {
+              if (a >= NELEC || Z[a] === 0) continue;
+              nucPos[a][0] += nx * 0.5; nucPos[a][1] += ny * 0.5; nucPos[a][2] += nz * 0.5;
+            }
+          }
+          if (gB >= 0) {
+            for (const a of groups[gB]) {
+              if (a >= NELEC || Z[a] === 0) continue;
+              nucPos[a][0] -= nx * 0.5; nucPos[a][1] -= ny * 0.5; nucPos[a][2] -= nz * 0.5;
+            }
+          }
+          return distAu;
+        }
+
+        // H-bond biases
+        let hbLog = [];
+        if (cb.hbonds) {
+          for (const hb of cb.hbonds) {
+            let d = applyPairBias(hb.a, hb.b, hb.target, hbStr);
+            hbLog.push(hb.label + "=" + (d * 0.529177).toFixed(1));
+          }
+        }
+        // Hydrophobic contact biases
+        let ctLog = [];
+        if (cb.contacts) {
+          for (const ct of cb.contacts) {
+            let d = applyPairBias(ct.a, ct.b, ct.target, ctStr);
+            ctLog.push(ct.label + "=" + (d * 0.529177).toFixed(1));
+          }
+        }
+
+        // Compute and report Rg
+        let cmx = 0, cmy = 0, cmz = 0;
+        for (let g = 0; g < nRes; g++) { cmx += nucPos[caIdx[g]][0]; cmy += nucPos[caIdx[g]][1]; cmz += nucPos[caIdx[g]][2]; }
+        cmx /= nRes; cmy /= nRes; cmz /= nRes;
+        let rg2 = 0;
+        for (let g = 0; g < nRes; g++) { let ddx = nucPos[caIdx[g]][0]-cmx, ddy = nucPos[caIdx[g]][1]-cmy, ddz = nucPos[caIdx[g]][2]-cmz; rg2 += ddx*ddx+ddy*ddy+ddz*ddz; }
+        let rgAu = Math.sqrt(rg2 / nRes) * hGrid;
+        window._compactRg = rgAu;
+        window._compactTargetRg = 0; // no global target, contact-driven
+
+        if (nucStepCount % 5 === 0) console.log("CONTACTS: Rg=" + (rgAu*0.529177).toFixed(1) + "A  HB:[" + hbLog.join(" ") + "]  CT:[" + ctLog.join(" ") + "]");
       }
 
       console.log("TRANSLATE MD: " + nRes + " residues, forces=" +
@@ -4148,6 +4236,12 @@ function draw() {
     fill(dynamicsEnabled ? [0,255,255] : [150,150,150]);
     text("Dynamics: " + (dynamicsEnabled ? "ON" : "OFF") + "  nucStep=" + nucStepCount + "  Force=" + forceScale.toFixed(1) + "x", 5, CANVAS_SIZE - 5);
 
+    // Rg display (above dynamics line)
+    if (window._compactRg !== undefined) {
+      fill(255, 200, 50);
+      text("Rg=" + (window._compactRg * 0.529177).toFixed(1) + "\u00C5", 5, CANVAS_SIZE - 35);
+    }
+
     return; // skip normal 2D draw
   }
 
@@ -4293,10 +4387,16 @@ function draw() {
     window._helixHbonds = nHbonds;
   }
 
+  // Rg display
+  if (window._compactRg !== undefined) {
+    fill(255, 200, 50);
+    text("Rg=" + (window._compactRg * 0.529177).toFixed(1) + "\u00C5 (" + window._compactRg.toFixed(0) + "au)  target=" + (window._compactTargetRg * 0.529177).toFixed(1) + "\u00C5", 5, 95);
+  }
+
   // Dynamics status
   fill(dynamicsEnabled ? [0,255,255] : [150,150,150]);
-  text("Dynamics: " + (dynamicsEnabled ? "ON" : "OFF") + " (nucStep=" + nucStepCount + ")  Force=" + forceScale.toFixed(1) + "x  [D toggle, +/- force]", 5, 95);
-  fill(255, 255, 0); text("yellow=net force", 5, 110);
+  text("Dynamics: " + (dynamicsEnabled ? "ON" : "OFF") + " (nucStep=" + nucStepCount + ")  Force=" + forceScale.toFixed(1) + "x  [D toggle, +/- force]", 5, 110);
+  fill(255, 255, 0); text("yellow=net force", 5, 125);
 
   // Display net fold forces on screen
   if (window.USER_FOLD_ATOMS && window._foldNetUnfold !== undefined) {

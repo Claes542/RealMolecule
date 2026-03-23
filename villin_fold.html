@@ -1,24 +1,29 @@
 <!DOCTYPE html>
 <html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
-<pre id="log">Building Trp-cage (extended)...</pre>
+<pre id="log">Building villin HP35...</pre>
 <script>
 var log = document.getElementById('log');
 window.onerror = function(msg, url, line) {
   log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
 };
 
-// Trp-cage TC5b: NLYIQWLKDGGPSSGRPPPS (20 residues)
-// Start from extended chain with slight bend (~10%)
-// Translate dynamics with SHAKE + fold tracking
-// Native structure: helix(1-9) + 3_10 helix(11-14) + polyproline II(17-19)
-// Key contact: Trp6 buries into hydrophobic core
+// Villin headpiece HP35: LSDEDFKAVFGMTRSAFANLPLWKQQNLKKEKGLF (35 residues)
+// Three-helix bundle:
+//   Helix 1: res 3-9   (EDFKAVF)
+//   Helix 2: res 14-18 (AFANL)
+//   Helix 3: res 22-32 (KQQNLKKEKGL)
+// Hydrophobic core: Phe6, Phe10, Phe17 pack together
+// Native Rg ~ 9 Å
 (function() {
-  var gridN = 300, scr = 80;
+  var gridN = 400, scr = 100;
   var h = scr / gridN;
   var N2 = Math.round(gridN / 2);
   var A = 1.8897;
-  var nRes = 20;
-  var seq = ['N','L','Y','I','Q','W','L','K','D','G','G','P','S','S','G','R','P','P','P','S'];
+  var nRes = 35;
+  var seq = ['L','S','D','E','D','F','K','A','V','F',
+             'G','M','T','R','S','A','F','A','N','L',
+             'P','L','W','K','Q','Q','N','L','K','K',
+             'E','K','G','L','F'];
 
   var atoms = [];
   var elList = [];
@@ -44,12 +49,10 @@ window.onerror = function(msg, url, line) {
   var bCaCb = 1.52 * A;
 
   // Compact spiral start — fits inside screen box
-  // Place residues along a helix so the chain fits within ±30 au
-  var resAdv = 3.8 * A;  // Ca-Ca distance along chain
-  var zig = 0.5 * A;
-  var helixRadius = 12.0; // au — radius of starting spiral
-  var helixRise = 3.0;    // au per residue along helix axis (z)
-  var helixAngle = 2 * Math.PI / 5.5; // ~65° per residue — loose spiral
+  var resAdv = 3.8 * A;
+  var helixRadius = 15.0; // au
+  var helixRise = 2.5;    // au per residue along helix axis (z)
+  var helixAngle = 2 * Math.PI / 6.0; // ~60° per residue
   var z0 = -(nRes - 1) * helixRise / 2;
 
   var bb = [];
@@ -58,7 +61,6 @@ window.onerror = function(msg, url, line) {
     var cx = helixRadius * Math.cos(angle);
     var cy = helixRadius * Math.sin(angle);
     var cz = z0 + r * helixRise;
-    // N, Ca, C spread along the local tangent
     var tx = -helixRadius * Math.sin(angle) * helixAngle;
     var ty =  helixRadius * Math.cos(angle) * helixAngle;
     var tz = helixRise;
@@ -79,7 +81,6 @@ window.onerror = function(msg, url, line) {
   var carbonylOIdx = [];
   var amideHIdx = [];
 
-  // Helper: cross product
   function cross(a, b) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
   function normalize(v) { var l = Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2])+1e-10; return [v[0]/l,v[1]/l,v[2]/l]; }
 
@@ -91,17 +92,14 @@ window.onerror = function(msg, url, line) {
     var isPro = (aa === 'P');
     var isGly = (aa === 'G');
 
-    // 3D local frame: tangent (N→Ca), perpendicular
     var nca = [Cap[0]-Np[0], Cap[1]-Np[1], Cap[2]-Np[2]];
     var nca_n = normalize(nca);
     var cac = [Cp[0]-Cap[0], Cp[1]-Cap[1], Cp[2]-Cap[2]];
     var cac_n = normalize(cac);
-    // Perpendicular to backbone plane
     var perp = normalize(cross(nca_n, cac_n));
-    // If degenerate (straight), pick arbitrary perp
     if (Math.abs(perp[0])+Math.abs(perp[1])+Math.abs(perp[2]) < 0.01) perp = normalize(cross(nca_n, [0,0,1]));
     if (Math.abs(perp[0])+Math.abs(perp[1])+Math.abs(perp[2]) < 0.01) perp = normalize(cross(nca_n, [0,1,0]));
-    var perp2 = normalize(cross(nca_n, perp)); // second perpendicular
+    var perp2 = normalize(cross(nca_n, perp));
 
     // N
     pushAtom(Np[0], Np[1], Np[2], 'N', 3);
@@ -133,7 +131,7 @@ window.onerror = function(msg, url, line) {
                Cap[1] + perp[1]*bCH*0.7 + perp2[1]*bCH*0.7,
                Cap[2] + perp[2]*bCH*0.7 + perp2[2]*bCH*0.7, 'H', 1);
 
-      // Cb + 3 Hb (simplified sidechain)
+      // Cb + 3 Hb
       var cbX = Cap[0] - perp[0]*bCaCb*0.8;
       var cbY = Cap[1] - perp[1]*bCaCb*0.8;
       var cbZ = Cap[2] - perp[2]*bCaCb*0.8;
@@ -165,13 +163,14 @@ window.onerror = function(msg, url, line) {
 
   var nProtein = atoms.length;
 
-  log.textContent = 'Trp-cage TC5b (spiral start): ' + atoms.length + ' atoms, ' + nRes + ' residues';
+  log.textContent = 'Villin HP35 (spiral start): ' + atoms.length + ' atoms, ' + nRes + ' residues';
   log.textContent += '\nSequence: ' + seq.join('-');
-  log.textContent += '\nHelix(1-9) + Turn(10-14) + PPII(17-19)';
+  log.textContent += '\nHelix1(3-9) + Helix2(14-18) + Helix3(22-32)';
+  log.textContent += '\nHydrophobic core: F5-F9-F16';
   log.textContent += '\n' + gridN + '^3 grid, screen=' + scr.toFixed(1) + ' au';
 
-  // Fold angle: N-term(Ca0), mid(Ca10), C-term(Ca19)
-  window.USER_FOLD_ATOMS = [caIndices[0], caIndices[10], caIndices[19]];
+  // Fold angle: N-term, mid, C-term
+  window.USER_FOLD_ATOMS = [caIndices[0], caIndices[17], caIndices[34]];
 
   // Build residue groups
   var resGroups = [];
@@ -180,33 +179,40 @@ window.onerror = function(msg, url, line) {
     for (var a = resStartIdx[r]; a < resEndIdx[r]; a++) group.push(a);
     resGroups.push(group);
   }
-  // C-terminal OH
   resGroups.push([nProtein - 2, nProtein - 1]);
 
-  // Key contacts in native trp-cage:
-  // Helix H-bonds: O[i]···H[i+4] for i=1-5 (alpha helix region)
-  // Trp6 burial: Ca6 close to Ca16-18 (hydrophobic core)
+  // Bond pairs to display
   var bondPairs = [];
-  // Helix i→i+4 H-bonds (residues 1-9)
-  for (var i = 1; i + 4 <= 9; i++) {
-    if (amideHIdx[i+4] >= 0) {
-      bondPairs.push([carbonylOIdx[i], amideHIdx[i+4], "O"+i+"···H"+(i+4)+":"]);
-    }
+  // Helix 1 H-bonds
+  for (var i = 3; i + 4 <= 9; i++) {
+    if (amideHIdx[i+4] >= 0) bondPairs.push([carbonylOIdx[i], amideHIdx[i+4], "H1:O"+i+"···H"+(i+4)+":"]);
   }
-  // Trp6-ProPro core distance
-  bondPairs.push([caIndices[5], caIndices[17], "W6-P18:"]);
+  // Helix 2 H-bonds
+  for (var i = 14; i + 4 <= 18; i++) {
+    if (amideHIdx[i+4] >= 0) bondPairs.push([carbonylOIdx[i], amideHIdx[i+4], "H2:O"+i+"···H"+(i+4)+":"]);
+  }
+  // Helix 3 H-bonds (sample)
+  for (var i = 22; i + 4 <= 32; i += 2) {
+    if (amideHIdx[i+4] >= 0) bondPairs.push([carbonylOIdx[i], amideHIdx[i+4], "H3:O"+i+"···H"+(i+4)+":"]);
+  }
+  // Core contacts
+  bondPairs.push([caIndices[5], caIndices[9], "F6-F10:"]);
+  bondPairs.push([caIndices[5], caIndices[16], "F6-F17:"]);
+  bondPairs.push([caIndices[9], caIndices[16], "F10-F17:"]);
   // End-to-end
-  bondPairs.push([caIndices[0], caIndices[19], "Ca0-Ca19:"]);
+  bondPairs.push([caIndices[0], caIndices[34], "Ca0-Ca34:"]);
 
   window.USER_BOND_PAIRS = bondPairs;
 
   window.USER_REFERENCE = {
     bonds: {
-      "Ca0-Ca19": "~10",
-      "W6-P18": "~6"
+      "F6-F10": "~6",
+      "F6-F17": "~8",
+      "F10-F17": "~7",
+      "Ca0-Ca34": "~12"
     },
-    energy: "Trp-cage TC5b: extended → native fold",
-    binding: "Native: helix(1-9) + hydrophobic core(Trp6 burial)"
+    energy: "Villin HP35: three-helix bundle folding",
+    binding: "Native: 3 helices packed around Phe core"
   };
 
   window.USER_CLASSICAL_MD = {
@@ -219,34 +225,39 @@ window.onerror = function(msg, url, line) {
     mdDt: 0.01,
     targetCaCa: 3.8 * A,
     contactBias: {
-      // H-bond attractions:
-      //   Alpha helix (res 1-9): O[i] → H[i+4]
-      //   3_10 helix (res 11-14): O[i] → H[i+3]
+      // H-bond attractions for all 3 helices (i→i+4)
       hbonds: (function() {
         var hb = [];
-        // Alpha helix i→i+4
-        for (var i = 1; i + 4 <= 9; i++) {
-          if (amideHIdx[i+4] >= 0) {
-            hb.push({ a: carbonylOIdx[i], b: amideHIdx[i+4], target: 2.0 * A, label: "O"+i+"···H"+(i+4) });
-          }
+        // Helix 1: res 3-9
+        for (var i = 3; i + 4 <= 9; i++) {
+          if (amideHIdx[i+4] >= 0) hb.push({ a: carbonylOIdx[i], b: amideHIdx[i+4], target: 2.0 * A, label: "H1:O"+i+"···H"+(i+4) });
         }
-        // 3_10 helix i→i+3
-        for (var i = 11; i + 3 <= 14; i++) {
-          if (amideHIdx[i+3] >= 0) {
-            hb.push({ a: carbonylOIdx[i], b: amideHIdx[i+3], target: 2.0 * A, label: "O"+i+"···H"+(i+3) });
-          }
+        // Helix 2: res 14-18
+        for (var i = 14; i + 4 <= 18; i++) {
+          if (amideHIdx[i+4] >= 0) hb.push({ a: carbonylOIdx[i], b: amideHIdx[i+4], target: 2.0 * A, label: "H2:O"+i+"···H"+(i+4) });
+        }
+        // Helix 3: res 22-32
+        for (var i = 22; i + 4 <= 32; i++) {
+          if (amideHIdx[i+4] >= 0) hb.push({ a: carbonylOIdx[i], b: amideHIdx[i+4], target: 2.0 * A, label: "H3:O"+i+"···H"+(i+4) });
         }
         return hb;
       })(),
-      // Hydrophobic contacts: Trp6 burial into Pro core
+      // Hydrophobic core: Phe6-Phe10-Phe17 triangle
+      // + inter-helix contacts to pack helices together
       contacts: [
-        { a: caIndices[5], b: caIndices[17], target: 6.0 * A, label: "W6-P18" },
-        { a: caIndices[5], b: caIndices[16], target: 7.0 * A, label: "W6-P17" },
-        { a: caIndices[5], b: caIndices[18], target: 7.0 * A, label: "W6-P19" },
-        { a: caIndices[0], b: caIndices[19], target: 10.0 * A, label: "Ca0-Ca19" }
+        // Phe core triangle
+        { a: caIndices[5], b: caIndices[9],  target: 6.0 * A, label: "F6-F10" },
+        { a: caIndices[5], b: caIndices[16], target: 8.0 * A, label: "F6-F17" },
+        { a: caIndices[9], b: caIndices[16], target: 7.0 * A, label: "F10-F17" },
+        // Inter-helix packing: helix1-helix2 turn
+        { a: caIndices[9], b: caIndices[14], target: 8.0 * A, label: "H1end-H2start" },
+        // Inter-helix packing: helix2-helix3 turn
+        { a: caIndices[18], b: caIndices[22], target: 8.0 * A, label: "H2end-H3start" },
+        // End-to-end compaction
+        { a: caIndices[0], b: caIndices[34], target: 12.0 * A, label: "Ca0-Ca34" }
       ],
-      hbondStrength: 0.8,   // grid cells per step for H-bonds
-      contactStrength: 1.5   // grid cells per step for hydrophobic contacts
+      hbondStrength: 0.8,
+      contactStrength: 1.5
     }
   };
 
@@ -293,11 +304,11 @@ s.onload = function() {
           var blob = new Blob(chunks, { type: mimeType });
           var url = URL.createObjectURL(blob);
           var a = document.createElement('a');
-          a.href = url; a.download = 'trpcage_fold.webm'; a.click();
+          a.href = url; a.download = 'villin_fold.webm'; a.click();
           URL.revokeObjectURL(url);
         };
         recorder.start(1000);
-        recInterval = setInterval(function() { try { track.requestFrame(); } catch(e) {} }, 20000); // 1 frame per 20s → 1hr = 180 frames → 6s at 30fps
+        recInterval = setInterval(function() { try { track.requestFrame(); } catch(e) {} }, 20000);
         recording = true;
         var dot = document.createElement('div');
         dot.id = 'rec-indicator';
