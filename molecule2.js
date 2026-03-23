@@ -1116,7 +1116,9 @@ window.draw = function() {
   }
 
   if (stepCount < MAX_STEPS) {
+    var _t0 = performance.now();
     doSteps(STEPS_PER_FRAME);
+    window._msPerStep = ((performance.now() - _t0) / STEPS_PER_FRAME).toFixed(1);
   }
 
   if (!readbackPending) {
@@ -1257,7 +1259,7 @@ window.draw = function() {
   text(NN + "\u00B3 / " + screenAu + " au", rx, 38);
   text(NELEC + " atoms/electrons", rx, 56);
   const rcStr = atoms.some(a => a.rc > 0) ? " r_c=" + atoms[0].rc : "";
-  text("step " + stepCount + rcStr, rx, 74);
+  text("step " + stepCount + rcStr + "  " + (window._msPerStep || "?") + " ms/step", rx, 74);
 
   textSize(12);
   text("T = " + E_T.toFixed(4), rx, 96);
