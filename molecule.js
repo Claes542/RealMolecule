@@ -3784,8 +3784,10 @@ async function moveNuclei(gpuForces) {
       }
     } else {
       // Per-atom dynamics (original)
+      const frozenAtoms = window.USER_FROZEN_ATOMS || [];
       for (let a = 0; a < NELEC; a++) {
         if (Z[a] === 0 && Z_nuc[a] === 0) continue;
+        if (frozenAtoms.indexOf(a) >= 0) continue;
         const m = nucMass(Z_nuc[a] || Z[a]);
         for (let d = 0; d < 3; d++) {
           nucVel[a][d] += nucForce[a][d] / m * DT_NUC * forceScale;
