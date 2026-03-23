@@ -115,6 +115,8 @@ https://github.com/Claes542/H2O/raw/main/hairpin_fold.webm
 
 https://github.com/Claes542/H2O/raw/main/helix_formation.webm
 
+200³ grid version (faster, 2D density view): https://github.com/Claes542/H2O/raw/main/helix_formation_200.webm
+
 > **8-residue polyglycine** starts as a nearly straight chain (radius 0.5 Å, rise 3.0 Å/residue) and folds into an alpha helix — driven purely by ab initio quantum forces. No empirical force fields are used.
 
 | Parameter | Start | Final | Ideal α-helix |
