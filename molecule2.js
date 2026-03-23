@@ -64,7 +64,7 @@ if (!window.NO_NUC_REPULSION) {
     }
 }
 
-console.log(`molecule2: NN=${NN}, ${NELEC} atoms/electrons, h=${h.toFixed(4)}, dt=${dt.toExponential(3)}`);
+console.log(`molecule2: NN=${NN}, ${NELEC} electrons, ${ALL_ATOMS} total atoms, h=${h.toFixed(4)}, dt=${dt.toExponential(3)}, INIT_ZEFF=${window.INIT_ZEFF||'none'}`);
 console.log(`Dispatch: ${DISPATCH_X} x ${DISPATCH_Y} workgroups of ${WG_SIZE}`);
 console.log(`V_KK = ${V_KK.toFixed(6)}`);
 for (const a of atoms)
@@ -153,8 +153,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   if (cfg.initR > 0.0 && r_raw > cfg.initR) {
     u_out[id] = 0.0;
   } else {
-    let Zinit = ${window.INIT_ZEFF ? window.INIT_ZEFF.toFixed(1) : '1.0'};
-    u_out[id] = exp(-Zinit * r_soft);
+    u_out[id] = exp(-${(window.INIT_ZEFF || 1).toFixed(1)} * r_soft);
   }
 }
 `;
