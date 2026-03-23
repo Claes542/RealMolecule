@@ -1155,9 +1155,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     Kval += Zn / r;
     // Normalized trial: ∫U²dV = Z_eff analytically (U = Zeff²/√π · exp(-Zeff·r))
     // Domains assigned by highest normalized density
-    let Ze = select(Za, ${(window.INIT_ZEFF || 0).toFixed(1)}, ${window.INIT_ZEFF ? 'true' : 'false'});
+    // Skip wavefunction init for bare protons (Za=0): no electron domain
+    let Ze = select(Za, ${(window.INIT_ZEFF || 0).toFixed(1)}, ${window.INIT_ZEFF ? 'true' : 'false'} && Za > 0.0);
     let rReal = sqrt(r2);
-    let uTrial = select(Ze * Ze * ${(1/Math.sqrt(Math.PI)).toFixed(10)} * exp(-Ze * r), 0.0, rReal > ${(window.INIT_RCUT || 1e6).toFixed(1)});
+    let uTrial = select(Ze * Ze * ${(1/Math.sqrt(Math.PI)).toFixed(10)} * exp(-Ze * r), 0.0, rReal > ${(window.INIT_RCUT || 1e6).toFixed(1)} || Za <= 0.0);
     if (uTrial > bU) { bU = uTrial; bestN = n; }
   }
 
