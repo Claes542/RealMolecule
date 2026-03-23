@@ -260,7 +260,7 @@
           atoms.push({ i: gi, j: gj, Z: 1, el: 'He' });
           zNuc.push(1);
           initPos.push([gi - offset, gj]);
-          atoms.push({ i: gi + 1, j: gj, Z: 1, el: 'He' });
+          atoms.push({ i: gi, j: gj, Z: 1, el: 'He' });
           zNuc.push(1);
           initPos.push([gi + offset, gj]);
           hasHe = true;
@@ -300,20 +300,17 @@
         window.USER_FORCE_SCALE = 1.0;
         window.USER_N_MOVE = 50;
       }
-      var isPureHe = hasHe && bareProtons.length === 0 && regularAtoms.every(function(a) { return a.el === 'He'; });
       if (hasHe) {
         window.INIT_ZEFF = 2;
-      }
-      if (isPureHe) {
-        // Pure He: no nuclear repulsion between the two Z=1 entries (same nucleus)
+        // The two He entries (same nucleus split for 2 electrons) must not repel
         window.NO_NUC_REPULSION = true;
+        // Freeze boundary initially so He half-spaces stay stable
         window.FREEZE_BOUNDARY = true;
         setTimeout(function() {
           window.FREEZE_BOUNDARY = false;
           console.log('Boundary unfrozen — free boundary evolution active');
         }, 30000);
       }
-      // Mixed system (He + other atoms): boundaries must be free for electron transfer
 
       document.getElementById('config').style.display = 'none';
       var status = document.createElement('pre');
