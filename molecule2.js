@@ -380,7 +380,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
     let id = i * p.S2 + j * p.S + k;
     let v = u[id];
     let wv = w[id];
-    acc += v * v * wv * p.h3;  // weight by domain indicator w
+    acc += select(0.0, v * v * p.h3, wv >= 0.5);  // only count inside domain
     cell += stride;
   }
   sdata[lid] = acc;
@@ -1035,12 +1035,12 @@ async function computeEnergy() {
           const v = uArr[m][id];
           const rho = v * v;
           const wv = wArr[m][id];
-          if (wv < 0.01) continue; // skip outside domain
+          if (wv < 0.5) continue; // skip outside domain
           const wrho = rho * wv; // w-weighted density
           // w-weighted gradient: only count flux within domain
-          const wxp = Math.min(wv, wArr[m][id + S2]);
-          const wyp = Math.min(wv, wArr[m][id + S]);
-          const wzp = Math.min(wv, wArr[m][id + 1]);
+          const wxp = wArr[m][id + S2] < 0.5 ? 0 : 1;
+          const wyp = wArr[m][id + S] < 0.5 ? 0 : 1;
+          const wzp = wArr[m][id + 1] < 0.5 ? 0 : 1;
           const gx = (uArr[m][id + S2] - v) * wxp;
           const gy = (uArr[m][id + S] - v) * wyp;
           const gz = (uArr[m][id + 1] - v) * wzp;
