@@ -80,11 +80,14 @@
     var zColors = {'-1': '#48f', 1: '#fff', 2: '#f44', 3: '#48f', 4: '#4f4'};
     var elColors = {'p+': '#f44', 'e-': '#48f', 'H': '#fff', 'He': '#ff0', 'O': '#f44', 'N': '#48f', 'C': '#4f4'};
 
-    function rcForZ(z) {
-      if (z <= 1) return 0;    // H
-      if (z === 2) return 0.4; // O
-      if (z === 3) return 0.3; // N
-      return 0.3;              // C
+    function rcForEl(el, z) {
+      if (el === 'H' || el === 'p+' || el === 'e-') return 0;
+      if (el === 'He') return 0;
+      if (el === 'O') return 0.4;
+      if (el === 'N') return 0.3;
+      if (el === 'C') return 0.3;
+      if (z <= 1) return 0;
+      return 0.3;
     }
 
     function updateHeader() {
@@ -284,7 +287,7 @@
       window.USER_SCREEN = screenAu;
       window.USER_STEPS = steps;
       window.USER_Z = atoms.map(function(a) { return a.Z; });
-      window.USER_RC = atoms.map(function(a) { return rcForZ(a.Z); });
+      window.USER_RC = atoms.map(function(a) { return rcForEl(a.el, a.Z); });
 
       document.getElementById('config').style.display = 'none';
       var status = document.createElement('pre');
