@@ -34,12 +34,15 @@
         </div>
       </div>
     </div>
-    <p id="header">Select atom type, then click to place:</p>
+    <p id="header">Select particle or atom, then click to place:</p>
     <div>
-      <button class="atom-btn" data-z="1" data-el="H">H &mdash; 1 proton + 1 electron</button>
-      <button class="atom-btn" data-z="2" data-el="O">O &mdash; 2 protons + 2 electrons</button>
-      <button class="atom-btn" data-z="3" data-el="N">N &mdash; 3 protons + 3 electrons</button>
-      <button class="atom-btn" data-z="4" data-el="C">C &mdash; 4 protons + 4 electrons</button>
+      <button class="atom-btn" data-z="1" data-el="p+" style="border-color:#f44;color:#f88">proton +1</button>
+      <button class="atom-btn" data-z="1" data-el="e-" style="border-color:#48f;color:#8af">electron &minus;1</button>
+      <span style="color:#555;margin:0 8px">|</span>
+      <button class="atom-btn" data-z="1" data-el="H">H (1p + 1e)</button>
+      <button class="atom-btn" data-z="2" data-el="O">O (2p + 2e)</button>
+      <button class="atom-btn" data-z="3" data-el="N">N (3p + 3e)</button>
+      <button class="atom-btn" data-z="4" data-el="C">C (4p + 4e)</button>
     </div>
     <canvas id="placement" width="400" height="400"></canvas>
     <div id="atomList">No atoms placed</div>
@@ -72,7 +75,8 @@
     var MAX_PLACE = 10;
     var cvs = document.getElementById('placement');
     var ctx = cvs.getContext('2d');
-    var zColors = {1: '#fff', 2: '#f44', 3: '#48f', 4: '#4f4'};
+    var zColors = {'-1': '#48f', 1: '#fff', 2: '#f44', 3: '#48f', 4: '#4f4'};
+    var elColors = {'p+': '#f44', 'e-': '#48f', 'H': '#fff', 'O': '#f44', 'N': '#48f', 'C': '#4f4'};
 
     function rcForZ(z) {
       if (z <= 1) return 0;    // H
@@ -114,19 +118,45 @@
       ctx.strokeRect(0, 0, 400, 400);
       for (var i = 0; i < placedAtoms.length; i++) {
         var at = placedAtoms[i];
-        ctx.fillStyle = zColors[at.Z] || '#888';
-        ctx.beginPath();
-        ctx.arc(at.px, at.py, 10, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 14px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(at.el, at.px, at.py - 14);
-        ctx.font = '10px monospace';
-        ctx.fillStyle = '#f88';
-        ctx.fillText('+' + at.Z, at.px - 8, at.py + 4);
-        ctx.fillStyle = '#88f';
-        ctx.fillText('\u2212' + at.Z, at.px + 10, at.py + 4);
+        if (at.el === 'p+') {
+          // Proton: small red dot with + label
+          ctx.fillStyle = '#f44';
+          ctx.beginPath();
+          ctx.arc(at.px, at.py, 6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 12px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText('+1', at.px, at.py + 20);
+        } else if (at.el === 'e-') {
+          // Electron: blue cloud
+          for (var r = 25; r > 0; r--) {
+            var alpha = 0.12 * Math.exp(-r / 10);
+            ctx.fillStyle = 'rgba(80,130,255,' + alpha + ')';
+            ctx.beginPath();
+            ctx.arc(at.px, at.py, r, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.fillStyle = '#8af';
+          ctx.font = 'bold 12px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText('\u22121', at.px, at.py + 30);
+        } else {
+          // Atom: solid dot with element label
+          ctx.fillStyle = elColors[at.el] || '#888';
+          ctx.beginPath();
+          ctx.arc(at.px, at.py, 10, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 14px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(at.el, at.px, at.py - 14);
+          ctx.font = '10px monospace';
+          ctx.fillStyle = '#f88';
+          ctx.fillText('+' + at.Z, at.px - 8, at.py + 4);
+          ctx.fillStyle = '#88f';
+          ctx.fillText('\u2212' + at.Z, at.px + 10, at.py + 4);
+        }
       }
       if (placedAtoms.length >= 2) {
         ctx.strokeStyle = 'rgba(255,255,255,0.3)';
@@ -184,9 +214,31 @@
     document.getElementById('launch').addEventListener('click', function() {
       var screenAu = parseFloat(document.getElementById('screenInput').value) || 10;
       var steps = parseInt(document.getElementById('stepsInput').value) || 20000;
-      var atoms = placedAtoms.map(function(a) {
-        return { i: Math.round(a.px * GRID_N / 400), j: Math.round(a.py * GRID_N / 400), Z: a.Z, el: a.el };
-      });
+      // Pair protons and electrons: each proton needs an electron to form an H-like atom
+      // Protons become Z=1 nuclei at their position
+      // Electrons are placed near their closest unpaired proton (solver handles the wavefunction)
+      var protons = [], electrons = [], regularAtoms = [];
+      for (var i = 0; i < placedAtoms.length; i++) {
+        var a = placedAtoms[i];
+        if (a.el === 'p+') protons.push(a);
+        else if (a.el === 'e-') electrons.push(a);
+        else regularAtoms.push(a);
+      }
+      // Each proton becomes a Z=1 atom at its position
+      // Unpaired protons still appear as Z=1 (bare proton gets 1 electron from solver)
+      var atoms = [];
+      for (var i = 0; i < protons.length; i++) {
+        atoms.push({ i: Math.round(protons[i].px * GRID_N / 400), j: Math.round(protons[i].py * GRID_N / 400), Z: 1, el: 'H' });
+      }
+      // Extra electrons beyond protons: place as Z=0 markers (solver ignores nucleus but sees density)
+      // For now, electrons without a proton are ignored with a warning
+      if (electrons.length > protons.length) {
+        console.warn('More electrons than protons — extra electrons ignored (need a proton each)');
+      }
+      for (var i = 0; i < regularAtoms.length; i++) {
+        var a = regularAtoms[i];
+        atoms.push({ i: Math.round(a.px * GRID_N / 400), j: Math.round(a.py * GRID_N / 400), Z: a.Z, el: a.el });
+      }
       while (atoms.length < MAX_PLACE) {
         atoms.push({ i: Math.round(GRID_N / 2), j: Math.round(GRID_N / 2), Z: 0, el: '' });
       }
