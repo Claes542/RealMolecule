@@ -1118,7 +1118,9 @@ window.draw = function() {
   if (stepCount < MAX_STEPS) {
     var _t0 = performance.now();
     doSteps(STEPS_PER_FRAME);
-    window._msPerStep = ((performance.now() - _t0) / STEPS_PER_FRAME).toFixed(1);
+    device.queue.onSubmittedWorkDone().then(function() {
+      window._msPerStep = ((performance.now() - _t0) / STEPS_PER_FRAME).toFixed(1);
+    });
   }
 
   if (!readbackPending) {
