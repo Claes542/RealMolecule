@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Molecule2 Builder — Quantum Simulation</title>
+  <style>
+    body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; overflow: hidden; flex-direction: column; }
+    canvas { border: none; }
+    #config { color: #fff; font-family: monospace; font-size: 14px; text-align: center; }
+    .atom-btn { padding: 8px 16px; margin: 4px; font-size: 16px; cursor: pointer; border: 2px solid #555; background: #222; color: #fff; border-radius: 4px; }
+    .atom-btn.selected { border-color: #0f0; background: #040; }
+    .atom-btn:hover { background: #333; }
+    #placement { border: 1px solid #555; cursor: crosshair; display: block; margin: 8px auto; }
+    #info { color: #aaa; margin: 4px; }
+    #atomList { color: #ff0; min-height: 20px; }
+    .action-btn { background: #060; color: #fff; border: 2px solid #0a0; padding: 12px 36px; font-size: 20px; font-weight: bold; cursor: pointer; margin: 8px; border-radius: 6px; }
+    .action-btn:hover { background: #080; border-color: #0f0; }
+    .action-btn:disabled { background: #222; color: #555; border-color: #333; cursor: default; }
+    .cfg-input { width: 50px; background: #222; color: #fff; border: 1px solid #555; padding: 4px; font-size: 14px; }
+    #stepsInput { width: 60px; }
+    select.cfg-input { width: auto; }
+    .title { color: #4fc3f7; font-size: 18px; margin-bottom: 8px; }
+    .subtitle { color: #888; font-size: 12px; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <div id="config">
+    <div class="title">Molecule2 — Original RealQM Algorithm</div>
+    <div class="subtitle">1 valence electron per atom, w level set boundaries, coupled Poisson</div>
+    <p id="header">Select particle or atom, then click to place:</p>
+    <div>
+      <button class="atom-btn" data-z="1" data-rc="0" data-el="H">H (1p + 1e)</button>
+      <button class="atom-btn" data-z="2" data-rc="0.4" data-el="O">O (2p + 2e)</button>
+      <button class="atom-btn" data-z="3" data-rc="0.3" data-el="N">N (3p + 3e)</button>
+      <button class="atom-btn" data-z="4" data-rc="0.3" data-el="C">C (4p + 4e)</button>
+    </div>
+    <div style="display:flex;gap:12px;align-items:flex-start;justify-content:center">
+      <canvas id="placement" width="400" height="400"></canvas>
+      <div style="display:flex;flex-direction:column;gap:8px;min-width:140px">
+        <button class="action-btn" id="launch" disabled>Launch</button>
+        <button class="action-btn" id="clearBtn" style="background:#600;border-color:#a00">Clear</button>
+        <button class="action-btn" id="h2oPreset" style="background:#004;border-color:#06a;font-size:14px;padding:8px 16px">H₂O preset</button>
+        <div id="info" style="font-size:11px">Right-click to remove last atom</div>
+        <div style="font-size:12px">
+          Grid:
+          <select id="gridSelect" class="cfg-input">
+            <option value="100" data-max="10" data-screen="5" selected>100&sup3; (fast)</option>
+            <option value="200" data-max="10" data-screen="5">200&sup3;</option>
+            <option value="300" data-max="10" data-screen="5">300&sup3;</option>
+          </select><br>
+          Screen: <input id="screenInput" class="cfg-input" type="number" value="5" min="2" max="40" step="1"> au<br>
+          Steps: <input id="stepsInput" class="cfg-input" type="number" value="100000" min="100" max="1000000" step="1000">
+        </div>
+        <div id="atomList" style="font-size:11px">No atoms placed</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    window.onerror = function(msg, url, line) {
+      document.body.style.color = 'red';
+      document.body.innerHTML = '<pre>ERROR: ' + msg + '\nLine: ' + line + '\nFile: ' + url + '</pre>';
+    };
+
+    var selectedEl = null;
+    var placedAtoms = [];
+    var GRID_N = 100;
+    var MAX_PLACE = 10;
+    var cvs = document.getElementById('placement');
+    var ctx = cvs.getContext('2d');
+    var zColors = {1: '#fff', 2: '#f44', 3: '#48f', 4: '#4f4'};
+    var zNames = {1: 'H', 2: 'O', 3: 'N', 4: 'C'};
+
+    function updateHeader() {
+      document.getElementById('header').textContent =
+        GRID_N + '^3 grid — place up to ' + MAX_PLACE + ' atoms:';
+    }
+
+    document.getElementById('gridSelect').addEventListener('change', function() {
+      var opt = this.options[this.selectedIndex];
+      GRID_N = parseInt(this.value);
+      MAX_PLACE = parseInt(opt.dataset.max);
+      document.getElementById('screenInput').value = opt.dataset.screen;
+      while (placedAtoms.length > MAX_PLACE) placedAtoms.pop();
+      updateHeader();
+      drawPlacement();
+      updateList();
+    });
+
+    function drawPlacement() {
+      var screenAu = parseFloat(document.getElementById('screenInput').value) || 20;
+      ctx.fillStyle = '#111';
+      ctx.fillRect(0, 0, 400, 400);
+      ctx.strokeStyle = '#222';
+      var pxPerAu = 400 / screenAu;
+      for (var a = 0; a <= screenAu; a++) {
+        var p = Math.round(a * pxPerAu);
+        ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, 400); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(400, p); ctx.stroke();
+      }
+      ctx.strokeStyle = '#555';
+      ctx.strokeRect(0, 0, 400, 400);
+      for (var i = 0; i < placedAtoms.length; i++) {
+        var at = placedAtoms[i];
+        ctx.fillStyle = zColors[at.Z] || '#888';
+        ctx.beginPath();
+        ctx.arc(at.px, at.py, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 14px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(zNames[at.Z] || '?', at.px, at.py - 14);
+        ctx.fillText('Z=' + at.Z, at.px, at.py + 24);
+      }
+      if (placedAtoms.length >= 2) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctx.lineWidth = 1;
+        for (var a = 0; a < placedAtoms.length; a++) {
+          for (var b = a + 1; b < placedAtoms.length; b++) {
+            ctx.beginPath();
+            ctx.moveTo(placedAtoms[a].px, placedAtoms[a].py);
+            ctx.lineTo(placedAtoms[b].px, placedAtoms[b].py);
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    function updateList() {
+      if (placedAtoms.length === 0) {
+        document.getElementById('atomList').textContent = 'No atoms placed';
+      } else {
+        var screenAu = parseFloat(document.getElementById('screenInput').value) || 20;
+        var parts = placedAtoms.map(function(a) {
+          var au_x = (a.px * screenAu / 400).toFixed(1);
+          var au_y = (a.py * screenAu / 400).toFixed(1);
+          return (zNames[a.Z] || '?') + '(Z=' + a.Z + ',rc=' + a.rc + ') at (' + au_x + ',' + au_y + ')';
+        });
+        document.getElementById('atomList').textContent = placedAtoms.length + '/' + MAX_PLACE + ': ' + parts.join(' | ');
+      }
+      document.getElementById('launch').disabled = placedAtoms.length < 1;
+    }
+
+    document.querySelectorAll('.atom-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.atom-btn').forEach(function(b) { b.classList.remove('selected'); });
+        this.classList.add('selected');
+        selectedEl = { Z: parseInt(this.dataset.z), rc: parseFloat(this.dataset.rc) };
+      });
+    });
+
+    cvs.addEventListener('click', function(e) {
+      if (!selectedEl || placedAtoms.length >= MAX_PLACE) return;
+      var rect = cvs.getBoundingClientRect();
+      placedAtoms.push({ px: e.clientX - rect.left, py: e.clientY - rect.top, Z: selectedEl.Z, rc: selectedEl.rc });
+      drawPlacement();
+      updateList();
+    });
+
+    cvs.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+      if (placedAtoms.length > 0) { placedAtoms.pop(); drawPlacement(); updateList(); }
+    });
+
+    document.getElementById('screenInput').addEventListener('change', function() { drawPlacement(); updateList(); });
+    document.getElementById('clearBtn').addEventListener('click', function() { placedAtoms = []; drawPlacement(); updateList(); });
+
+    document.getElementById('h2oPreset').addEventListener('click', function() {
+      // H2O: O(Z=2, rc=0.4) at center, 2 H(Z=1) at rOH=1.81 au, angle=104.5 deg
+      var screenAu = 5;
+      document.getElementById('screenInput').value = screenAu;
+      GRID_N = 200;
+      document.getElementById('gridSelect').value = '200';
+      MAX_PLACE = 10;
+      var pxPerAu = 400 / screenAu;
+      var cx = screenAu / 2, cy = screenAu / 2;  // center in au
+      var rOH = 1.81;
+      var halfA = 104.5 / 2 * Math.PI / 180;
+      var dx = rOH * Math.cos(halfA);
+      var dy = rOH * Math.sin(halfA);
+      placedAtoms = [
+        { px: cx * pxPerAu, py: cy * pxPerAu, Z: 2, rc: 0.4 },           // O
+        { px: (cx + dx) * pxPerAu, py: (cy + dy) * pxPerAu, Z: 1, rc: 0 }, // H
+        { px: (cx + dx) * pxPerAu, py: (cy - dy) * pxPerAu, Z: 1, rc: 0 }, // H
+      ];
+      updateHeader();
+      drawPlacement();
+      updateList();
+    });
+
+    document.getElementById('launch').addEventListener('click', function() {
+      var screenAu = parseFloat(document.getElementById('screenInput').value) || 20;
+      var steps = parseInt(document.getElementById('stepsInput').value) || 2000;
+      var n2 = Math.floor(GRID_N / 2);
+      var h = screenAu / GRID_N;
+      var atoms = placedAtoms.map(function(a) {
+        return {
+          i: Math.round(a.px * GRID_N / 400),
+          j: Math.round(a.py * GRID_N / 400),
+          k: n2,
+          Z: a.Z,
+          rc: a.rc
+        };
+      });
+
+      window.USER_NN = GRID_N;
+      window.USER_ATOMS = atoms;
+      window.USER_SCREEN = screenAu;
+      window.USER_STEPS = steps;
+      window.USER_SPF = screenAu <= 5 ? 20 : screenAu <= 10 ? 10 : 2;
+      window.USER_INIT_R = 1.0;
+
+      document.getElementById('config').style.display = 'none';
+      var status = document.createElement('pre');
+      status.style.color = '#0f0';
+      status.id = 'loadStatus';
+      status.textContent = 'Loading molecule2.js...';
+      // Show errors on page
+      window.onerror = function(msg, url, line) {
+        status.style.color = 'red';
+        status.textContent = 'ERROR: ' + msg + '\nLine: ' + line + '\nFile: ' + url;
+        return true;
+      };
+      document.body.appendChild(status);
+      var s = document.createElement('script');
+      s.src = 'molecule2.js?t=' + Date.now();
+      s.onerror = function() { document.body.innerHTML = '<pre style="color:red">Failed to load molecule2.js</pre>'; };
+      s.onload = function() {
+        status.textContent = 'molecule2.js loaded (NN=' + GRID_N + ', ' + atoms.length + ' atoms). Loading p5.js...';
+        var p5s = document.createElement('script');
+        p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+        p5s.onerror = function() { status.textContent = 'Failed to load p5.js from CDN!'; status.style.color = 'red'; };
+        p5s.onload = function() {
+          status.remove();
+          var dyn = document.createElement('script');
+          dyn.src = 'molecule2_dynamics.js?t=' + Date.now();
+          document.body.appendChild(dyn);
+        };
+        document.body.appendChild(p5s);
+      };
+      document.body.appendChild(s);
+    });
+
+    updateHeader();
+    drawPlacement();
+  </script>
+</body>
+</html>
