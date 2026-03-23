@@ -2863,7 +2863,11 @@ async function doSteps(n) {
       nucForceNuc[a] = [0, 0, 0];
     }
     // Compute nuclear-nuclear Coulomb repulsion forces
-    for (let a = 0; a < uniqueNuclei.length; a++) {
+    if (!addNucRepulsion) {
+      // Skip nuc-nuc forces (e.g. He internal entries)
+      for (let a = 0; a < NELEC; a++) nucForceNuc[a] = [0, 0, 0];
+    }
+    for (let a = 0; addNucRepulsion && a < uniqueNuclei.length; a++) {
       const ea = uniqueNuclei[a].elecIndices[0];
       let fx = 0, fy = 0, fz = 0;
       for (let b = 0; b < uniqueNuclei.length; b++) {
