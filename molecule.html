@@ -23,17 +23,6 @@
 </head>
 <body>
   <div id="config">
-    <div style="margin-bottom:12px;padding:12px;border:1px solid #333;border-radius:6px;max-width:420px;text-align:left">
-      <div style="display:flex;align-items:center;gap:16px">
-        <canvas id="atomDiagram" width="100" height="100" style="flex-shrink:0"></canvas>
-        <div style="font-size:12px;line-height:1.5">
-          <b style="color:#4fc3f7">Hydrogen atom</b><br>
-          <span style="color:#f44">+1 proton</span> (nucleus/kernel)<br>
-          <span style="color:#48f">&minus;1 electron</span> (cloud/orbital)<br>
-          Heavier atoms: Z protons + Z electrons
-        </div>
-      </div>
-    </div>
     <p id="header">Select particle or atom, then click to place:</p>
     <div>
       <button class="atom-btn" data-z="1" data-el="p+" style="border-color:#f44;color:#f88">proton +1</button>
@@ -345,34 +334,6 @@
       };
       document.body.appendChild(s);
     });
-
-    // Draw atom diagram: proton + electron cloud
-    (function() {
-      var dc = document.getElementById('atomDiagram');
-      var dx = dc.getContext('2d');
-      var cx = 50, cy = 50;
-      // Electron cloud (radial gradient, blue)
-      for (var r = 40; r > 0; r--) {
-        var alpha = 0.08 * Math.exp(-r / 15);
-        dx.fillStyle = 'rgba(80,130,255,' + alpha + ')';
-        dx.beginPath();
-        dx.arc(cx, cy, r, 0, Math.PI * 2);
-        dx.fill();
-      }
-      // Cloud label
-      dx.fillStyle = 'rgba(80,130,255,0.6)';
-      dx.font = '9px monospace';
-      dx.textAlign = 'center';
-      dx.fillText('\u22121 electron', cx, cy - 28);
-      // Proton (red dot at center)
-      dx.fillStyle = '#f44';
-      dx.beginPath();
-      dx.arc(cx, cy, 5, 0, Math.PI * 2);
-      dx.fill();
-      // Proton label
-      dx.fillStyle = '#f44';
-      dx.fillText('+1 proton', cx, cy + 18);
-    })();
 
     updateHeader();
     drawPlacement();
