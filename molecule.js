@@ -1094,7 +1094,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let soft_k = p.h2;  // Coulomb softening: r=sqrt(r²+h²) matching original
   for (var n: u32 = 0u; n < ${NELEC}u; n++) {
     let Za = atoms[n].Z;
-    let Zn = select(atoms[n].Z_nuc, Za, atoms[n].Z_nuc > 0.0);
+    let Zn = select(Za, atoms[n].Z_nuc, atoms[n].Z_nuc > 0.0);
     if (Za <= 0.0 && Zn <= 0.0) { continue; }
     let di = (f32(i) - f32(atoms[n].posI)) * p.h;
     let dj = (f32(j) - f32(atoms[n].posJ)) * p.h;
@@ -1144,7 +1144,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   for (var n: u32 = range.start; n < end; n++) {
     let Za = atoms[n].Z;
-    let Zn = select(atoms[n].Z_nuc, Za, atoms[n].Z_nuc > 0.0); // nuclear charge (defaults to Z)
+    let Zn = select(Za, atoms[n].Z_nuc, atoms[n].Z_nuc > 0.0); // nuclear charge (defaults to Z)
     if (Za <= 0.0 && Zn <= 0.0) { continue; }
     let dx = xi - f32(atoms[n].posI) * p.h;
     let dy = yj - f32(atoms[n].posJ) * p.h;
