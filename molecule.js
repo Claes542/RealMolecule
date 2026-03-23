@@ -71,6 +71,7 @@ const CANVAS_SIZE = window.USER_CANVAS || 700;
 const PX = CANVAS_SIZE / NN;
 const INTERIOR = (NN - 1) * (NN - 1) * (NN - 1);
 const R_SING = 2 * hGrid;  // exclude 2 grid spacings from nucleus
+const W_CUTOFF = window.USER_W_CUTOFF || 0;  // smooth ψ cutoff near other nuclei (au), 0 = off
 
 // 2D dispatch to handle >65535 workgroups (300^3 grid needs ~104K)
 const DISPATCH_X = 256;  // workgroups in x dimension (fixed)
@@ -212,12 +213,47 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let l_kp = label[id + 1u];   let excl_kp = isInsideRc(i, j, k+1u, l_kp);
   let l_km = label[id - 1u];   let excl_km = isInsideRc(i, j, k-1u, l_km);
 
-  let u_ip = select(uc, Ui[id + p.S2], l_ip == myL && !excl_ip);
-  let u_im = select(uc, Ui[id - p.S2], l_im == myL && !excl_im);
-  let u_jp = select(uc, Ui[id + p.S],  l_jp == myL && !excl_jp);
-  let u_jm = select(uc, Ui[id - p.S],  l_jm == myL && !excl_jm);
-  let u_kp = select(uc, Ui[id + 1u],   l_kp == myL && !excl_kp);
-  let u_km = select(uc, Ui[id - 1u],   l_km == myL && !excl_km);
+  // Smooth W cutoff: Neumann BC near other electrons' nuclei
+  // w(r) blends neighbor toward uc (flat) near other nucleus
+  let w_c = ${W_CUTOFF.toFixed(6)};
+  var w_ip: f32 = 1.0; var w_im: f32 = 1.0;
+  var w_jp: f32 = 1.0; var w_jm: f32 = 1.0;
+  var w_kp: f32 = 1.0; var w_km: f32 = 1.0;
+  if (w_c > 0.0) {
+    let hw = 2.0 * p.h;
+    for (var n: u32 = 0u; n < ${NELEC}u; n++) {
+      if (n == myL) { continue; }
+      let ax = f32(atoms[n].posI); let ay = f32(atoms[n].posJ); let az = f32(atoms[n].posK);
+      // w(r) for each neighbor position
+      let d_ip = sqrt((f32(i+1u)-ax)*(f32(i+1u)-ax) + (f32(j)-ay)*(f32(j)-ay) + (f32(k)-az)*(f32(k)-az)) * p.h;
+      let d_im = sqrt((f32(i-1u)-ax)*(f32(i-1u)-ax) + (f32(j)-ay)*(f32(j)-ay) + (f32(k)-az)*(f32(k)-az)) * p.h;
+      let d_jp = sqrt((f32(i)-ax)*(f32(i)-ax) + (f32(j+1u)-ay)*(f32(j+1u)-ay) + (f32(k)-az)*(f32(k)-az)) * p.h;
+      let d_jm = sqrt((f32(i)-ax)*(f32(i)-ax) + (f32(j-1u)-ay)*(f32(j-1u)-ay) + (f32(k)-az)*(f32(k)-az)) * p.h;
+      let d_kp = sqrt((f32(i)-ax)*(f32(i)-ax) + (f32(j)-ay)*(f32(j)-ay) + (f32(k+1u)-az)*(f32(k+1u)-az)) * p.h;
+      let d_km = sqrt((f32(i)-ax)*(f32(i)-ax) + (f32(j)-ay)*(f32(j)-ay) + (f32(k-1u)-az)*(f32(k-1u)-az)) * p.h;
+      w_ip = min(w_ip, clamp((d_ip - w_c + hw) / (2.0 * hw), 0.0, 1.0));
+      w_im = min(w_im, clamp((d_im - w_c + hw) / (2.0 * hw), 0.0, 1.0));
+      w_jp = min(w_jp, clamp((d_jp - w_c + hw) / (2.0 * hw), 0.0, 1.0));
+      w_jm = min(w_jm, clamp((d_jm - w_c + hw) / (2.0 * hw), 0.0, 1.0));
+      w_kp = min(w_kp, clamp((d_kp - w_c + hw) / (2.0 * hw), 0.0, 1.0));
+      w_km = min(w_km, clamp((d_km - w_c + hw) / (2.0 * hw), 0.0, 1.0));
+    }
+  }
+
+  // Blend neighbors toward uc where w < 1 (smooth Neumann at cutoff)
+  let u_raw_ip = select(uc, Ui[id + p.S2], l_ip == myL && !excl_ip);
+  let u_raw_im = select(uc, Ui[id - p.S2], l_im == myL && !excl_im);
+  let u_raw_jp = select(uc, Ui[id + p.S],  l_jp == myL && !excl_jp);
+  let u_raw_jm = select(uc, Ui[id - p.S],  l_jm == myL && !excl_jm);
+  let u_raw_kp = select(uc, Ui[id + 1u],   l_kp == myL && !excl_kp);
+  let u_raw_km = select(uc, Ui[id - 1u],   l_km == myL && !excl_km);
+
+  let u_ip = mix(uc, u_raw_ip, w_ip);
+  let u_im = mix(uc, u_raw_im, w_im);
+  let u_jp = mix(uc, u_raw_jp, w_jp);
+  let u_jm = mix(uc, u_raw_jm, w_jm);
+  let u_kp = mix(uc, u_raw_kp, w_kp);
+  let u_km = mix(uc, u_raw_km, w_km);
 
   let lap = u_ip + u_im + u_jp + u_jm + u_kp + u_km - 6.0 * uc;
 
@@ -969,9 +1005,27 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
 
   let sk = p.sliceK;
 
-  // K line data along j=sliceK axis — true 1/r (uncapped for display)
+  // K line + w(r) cutoff line along j=sliceK axis
   if (j == 0u) {
-    out[3u * SS * SS + i] = K[i * p.S2 + sk * p.S + sk];
+    let lineIdx = i * p.S2 + sk * p.S + sk;
+    out[3u * SS * SS + i] = K[lineIdx];
+    // Compute w(r) cutoff analytically
+    let w_c = ${W_CUTOFF.toFixed(6)};
+    var wVal: f32 = 1.0;
+    if (w_c > 0.0) {
+      let hw = 2.0 * p.h;
+      let lbl = label[lineIdx];
+      for (var n: u32 = 0u; n < ${NELEC}u; n++) {
+        if (n == lbl) { continue; }
+        let dx = (f32(i) - f32(atoms[n].posI)) * p.h;
+        let dy = (f32(sk) - f32(atoms[n].posJ)) * p.h;
+        let dz = (f32(sk) - f32(atoms[n].posK)) * p.h;
+        let d = sqrt(dx*dx + dy*dy + dz*dz);
+        let s = clamp((d - w_c + hw) / (2.0 * hw), 0.0, 1.0);
+        wVal = min(wVal, s * s * (3.0 - 2.0 * s));
+      }
+    }
+    out[3u * SS * SS + SS + i] = wVal;
   }
 
   if (i < 1u || i >= p.NN || j < 1u || j >= p.NN) {
@@ -1551,7 +1605,7 @@ let addNucRepulsion = window.NO_NUC_REPULSION ? false : true;
 let vcycleEnabled = true;
 let vcycleCount = 0;
 
-const SLICE_SIZE = (3 * S * S + S) * 4;  // 3 image slices (density, Z, boundary) + 1 K line
+const SLICE_SIZE = (3 * S * S + 2 * S) * 4;  // 3 image slices (density, Z, boundary) + K line + W line
 const WG_UPDATE = Math.ceil(INTERIOR / 256);
 const WG_REDUCE = Math.min(MAX_REDUCE_WG, Math.ceil(INTERIOR / REDUCE_WG));
 const WG_NORM = Math.ceil(INTERIOR / 256);
@@ -4123,8 +4177,22 @@ function draw() {
       }
     }
 
-    // K potential line plot along the slice axis (through nuclei)
+    // W line plot along the slice axis (through nuclei)
     const kBase = 3 * SS * SS;
+    const wBase = kBase + SS;
+    if (sliceData.length > wBase + NN) {
+      // Plot W as cyan line at bottom
+      const wPlotY = CANVAS_SIZE - 80;
+      const wPlotH = 60;
+      stroke(0, 255, 255, 180); strokeWeight(2); noFill();
+      for (let i = 1; i < NN - 1; i++) {
+        const w1 = sliceData[wBase + i];
+        const w2 = sliceData[wBase + i + 1];
+        line(PX * i, wPlotY - w1 * wPlotH, PX * (i+1), wPlotY - w2 * wPlotH);
+      }
+      fill(0, 255, 255); noStroke(); textSize(10);
+      text("W (domain weight)", 5, wPlotY - wPlotH - 2);
+    }
   }
   } // end skip 2D when _view3D
 
