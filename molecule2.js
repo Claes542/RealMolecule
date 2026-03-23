@@ -278,12 +278,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let gwz = (w_self[id + 1u]   - w_self[id - 1u])   * p.inv_h;
   let grad_w = sqrt(gwx*gwx + gwy*gwy + gwz*gwz);
 
-  // Boundary evolution
+  // Boundary evolution — w stays smooth for proper Neumann BC
   let wRate = ${window.FREEZE_BOUNDARY ? '0.0' : '1.0'};
   var new_w = clamp(wc + wRate * (2.0 * p.dt * abs(c) * lap_w * p.inv_h2 + 10.0 * p.dt * c * grad_w), 0.0, 1.0);
   new_w *= mask;
-  // Sharp boundary: snap to 0 or 1 to prevent leakage
-  new_w = select(0.0, 1.0, new_w > 0.5);
   w_out[id] = new_w;
 
   // --- Update u using new w at center ---
@@ -298,9 +296,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   let wlap = (flux_xp - flux_xm) + (flux_yp - flux_ym) + (flux_zp - flux_zm);
 
-  let u_new = uc + p.half_d * wlap + p.dt * (Kbuf[id] - 2.0 * Pot[id]) * uc * new_w;
-  // Enforce u=0 outside domain to prevent charge leaking
-  u_out[id] = select(0.0, u_new, new_w > 0.01);
+  u_out[id] = uc + p.half_d * wlap + p.dt * (Kbuf[id] - 2.0 * Pot[id]) * uc * new_w;
 }
 `;
 
