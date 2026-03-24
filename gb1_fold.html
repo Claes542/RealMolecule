@@ -310,7 +310,10 @@ s.onload = function() {
           URL.revokeObjectURL(url);
         };
         recorder.start(1000);
-        recInterval = setInterval(function() { try { track.requestFrame(); } catch(e) {} }, 1000);
+        // Request frame on every p5 draw cycle (works even with slow sims)
+        var origDraw = window.draw;
+        window._recOrigDraw = origDraw;
+        window.draw = function() { if (origDraw) origDraw(); try { track.requestFrame(); } catch(e) {} };
         recording = true;
         var dot = document.createElement('div');
         dot.id = 'rec-indicator';
@@ -318,19 +321,17 @@ s.onload = function() {
         dot.textContent = '\u25CF REC';
         document.body.appendChild(dot);
       } else {
-        if (recInterval) { clearInterval(recInterval); recInterval = null; }
+        // Restore original draw
+        if (window._recOrigDraw) { window.draw = window._recOrigDraw; window._recOrigDraw = null; }
         recorder.stop(); recording = false;
         window._recStreamTrack = null;
         var ind = document.getElementById('rec-indicator');
         if (ind) ind.remove();
       }
     };
+    // Auto-start 3D view; press R to start/stop recording manually
     setTimeout(function() {
       window._view3D = true;
-      setTimeout(function() {
-        window._toggleRecording();
-        setTimeout(function() { if (recording) window._toggleRecording(); }, 60 * 60 * 1000);
-      }, 3000);
     }, 5000);
   };
   document.body.appendChild(p5s);
