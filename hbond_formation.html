@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// N-H···O=C hydrogen bond formation test
+// Two formamides start SEPARATED (~4 Å apart)
+// Watch them attract and form the H-bond spontaneously
+// This is the fundamental process of protein folding
+(function() {
+  var gridN = 200, scr = 10, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  // Formamide 1 (left): H-CO-NH2, C=O pointing RIGHT toward molecule 2
+  //    O
+  //    ‖
+  // H—C
+  //    \
+  //     N—H
+  //     |
+  //     H
+  // O split into 2 half-shell electrons (Z=1 each) at ±offset perpendicular to C=O
+  // Free boundary plane through O nucleus separates the two lone-pair domains
+  // O = bare nucleus (Z=0, Z_nuc=2) + two electron domains (Z=1, Z_nuc=0) at lone pair positions
+  var x1 = -2.0 * A;
+  var oOff = 0.3 * A;  // lone pair offset perpendicular to C=O
+  var ox1 = x1 + 1.24 * A;
+  addAtom(x1,              0,          0, 4, 'C');       // 0: C
+  addAtom(ox1,             0,          0, 0, 'O');       // 1: O nucleus (bare, Z=0, Z_nuc=2)
+  addAtom(ox1,             oOff,       0, 1, 'O');       // 2: O electron-a (lone pair above)
+  addAtom(ox1,            -oOff,       0, 1, 'O');       // 3: O electron-b (lone pair below)
+  addAtom(x1 - 0.6 * A,  -1.0 * A,    0, 3, 'N');       // 4: N
+  addAtom(x1 - 0.6 * A,  -1.0*A - 1.01*A, 0, 1, 'H');  // 5: H on N
+  addAtom(x1 - 1.2 * A,  -0.5 * A,    0, 1, 'H');       // 6: H on N
+  addAtom(x1 - 0.5 * A,   1.0 * A,    0, 1, 'H');       // 7: H on C
+
+  // Formamide 2 (right)
+  var x2 = 2.0 * A;
+  var ox2 = x2 + 1.24 * A;
+  addAtom(x2,              0,          0, 4, 'C');       // 8: C
+  addAtom(ox2,             0,          0, 0, 'O');       // 9: O nucleus (bare, Z=0, Z_nuc=2)
+  addAtom(ox2,             oOff,       0, 1, 'O');       // 10: O electron-a
+  addAtom(ox2,            -oOff,       0, 1, 'O');       // 11: O electron-b
+  addAtom(x2 - 0.6 * A,   1.0 * A,    0, 3, 'N');       // 12: N
+  addAtom(x2 - 0.6*A - 1.01*A, 1.0*A, 0, 1, 'H');      // 13: H on N (toward mol 1 O)
+  addAtom(x2 - 1.2 * A,   0.5 * A,    0, 1, 'H');       // 14: H on N
+  addAtom(x2 - 0.5 * A,  -1.0 * A,    0, 1, 'H');       // 15: H on C
+
+  console.log('H-bond formation: 2 formamides, separated by ~4 Å');
+  console.log('Watch H(9) on N(8) approach O(1) on C(0)');
+
+  // Key distances to monitor
+  window.USER_BOND_PAIRS = [
+    [13, 1, "H···Onuc:"],   // H(13) on mol2 N → O nucleus(1) of mol1
+    [13, 2, "H···Oa:"],     // H(13) → O electron-a(2) of mol1
+    [13, 3, "H···Ob:"],     // H(13) → O electron-b(3) of mol1
+    [12, 1, "N···Onuc:"],   // N(12) → O nucleus(1) donor-acceptor
+    [0, 8, "C1-C2:"],       // inter-molecular
+    [5, 9, "H5···O2nuc:"],  // second H-bond: H(5) mol1 → O nucleus(9) mol2
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: {
+      "H···O": "1.9-2.0 (if H-bond forms)",
+      "N···O": "2.9-3.0 (if H-bond forms)",
+      "C1-C2": "~3.7 (dimer equilibrium)"
+    },
+    energy: "H-bond energy: ~0.3 eV (7 kcal/mol) for double H-bond",
+    binding: "Watch H···O decrease from ~4 Å to ~2 Å as N-H finds O=C"
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_N_MOVE = 20;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  // Z_nuc: bare O nuclei (Z=0) get Z_nuc=2, O electrons (Z=1) get Z_nuc=0
+  window.USER_Z_NUC = atoms.map(function(a, idx) {
+    if (a.Z === 0 && a.el === 'O') return 2;  // bare nucleus
+    if (a.Z === 1 && a.el === 'O') return 0;  // electron-only, no nucleus
+    return a.Z;  // default: Z_nuc = Z
+  });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'C') return 0.3;
+    if (a.el === 'N') return 0.3;
+    if (a.el === 'O') return 0.3;
+    return 0;
+  });
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

@@ -174,8 +174,14 @@ fn distToAtom(ci: u32, cj: u32, ck: u32, n: u32) -> f32 {
 
 fn isInsideRc(ci: u32, cj: u32, ck: u32, lbl: u32) -> bool {
   let rc = atoms[lbl].rc;
-  if (rc <= 0.0) { return false; }
-  return distToAtom(ci, cj, ck, lbl) < rc;
+  if (rc > 0.0 && distToAtom(ci, cj, ck, lbl) < rc) { return true; }
+  // Also check bare nuclei (Z=0, Z_nuc>0) — their r_c applies to all electrons
+  for (var n: u32 = 0u; n < ${NELEC}u; n++) {
+    if (atoms[n].Z <= 0.0 && atoms[n].Z_nuc > 0.0 && atoms[n].rc > 0.0) {
+      if (distToAtom(ci, cj, ck, n) < atoms[n].rc) { return true; }
+    }
+  }
+  return false;
 }
 
 fn isInsideAnalytical(ci: u32, cj: u32, ck: u32, lbl: u32) -> bool {
@@ -1075,7 +1081,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let atom = gid.x;
   if (atom >= ${NELEC}u) { return; }
 
-  let ZA = atoms[atom].Z;
+  let ZA = select(atoms[atom].Z, atoms[atom].Z_nuc, atoms[atom].Z <= 0.0);
   if (ZA <= 0.0) {
     forceSums[atom * 3u] = 0.0;
     forceSums[atom * 3u + 1u] = 0.0;
@@ -2913,7 +2919,7 @@ async function doSteps(n) {
     // Store electronic forces
     for (let a = 0; a < NELEC; a++) {
       if (Z[a] === 0 && Z_nuc[a] === 0) { nucForceElec[a] = [0,0,0]; nucForceNuc[a] = [0,0,0]; nucForceTotal[a] = [0,0,0]; continue; }
-      nucForceElec[a] = Z[a] > 0 ? [forceData[a*3], forceData[a*3+1], forceData[a*3+2]] : [0,0,0];
+      nucForceElec[a] = (Z[a] > 0 || Z_nuc[a] > 0) ? [forceData[a*3], forceData[a*3+1], forceData[a*3+2]] : [0,0,0];
       nucForceNuc[a] = [0, 0, 0];
     }
     // Compute nuclear-nuclear Coulomb repulsion forces
@@ -4238,7 +4244,8 @@ function draw() {
     // Draw atoms (sorted by depth for proper overlap)
     let atomList = [];
     for (let n = 0; n < NELEC; n++) {
-      if (Z[n] === 0 && Z_nuc[n] === 0) continue;
+      if (Z[n] === 0 && Z_nuc[n] === 0) continue;  // skip empty
+      if (Z[n] > 0 && Z_nuc[n] === 0) continue;  // skip electron-only (no kernel)
       let ax = nucPos[n][0]-cx3, ay = nucPos[n][1]-cy3, az = nucPos[n][2]-cz3;
       let rx = ax*cosT + az*sinT, rz = -ax*sinT + az*cosT;
       let ry = ay*cosT2 - rz*sinT2, rz2 = ay*sinT2 + rz*cosT2;
@@ -4413,7 +4420,7 @@ function draw() {
       circle(nx, ny, 6);
       stroke(255); strokeWeight(1);
     }
-    if (Z[n] > 0) {
+    if (Z_nuc[n] > 0) {  // draw all kernels (including bare nuclei)
       const nx = nucPos[n][0] * PX, ny = nucPos[n][1] * PX;
       circle(nx, ny, 6);
       if (nucForceTotal[n]) {
