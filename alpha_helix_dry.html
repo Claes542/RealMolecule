@@ -109,9 +109,12 @@
     atomIdx.C.push(atoms.length);
     pushAtom(cx, cy, cz, 'C', 4);
 
-    // Carbonyl O — points radially outward
-    atomIdx.O.push(atoms.length);
-    pushAtom(cx + radC[0]*bCO, cy + radC[1]*bCO, cz, 'O', 2);
+    // Split-electron O: kernel + 2 electrons split along z-axis
+    var oX = cx + radC[0]*bCO, oY = cy + radC[1]*bCO;
+    atomIdx.O.push(atoms.length);  // index of kernel
+    pushAtom(oX, oY, cz, 'O', 0);       // O kernel
+    pushAtom(oX, oY, cz + h, 'O', 1);   // O electron-a
+    pushAtom(oX, oY, cz - h, 'O', 1);   // O electron-b
   }
 
   // C-terminal OH
@@ -119,8 +122,11 @@
   var lastZC = zOff + (nRes - 1) * rise + rise * 0.7;
   var lastCx = radius * Math.cos(lastPhiC);
   var lastCy = radius * Math.sin(lastPhiC);
-  pushAtom(lastCx, lastCy, lastZC + 1.34 * A, 'O', 2);
-  pushAtom(lastCx, lastCy, lastZC + 1.34 * A + bOH, 'H', 1);
+  var ctOz = lastZC + 1.34 * A;
+  pushAtom(lastCx, lastCy, ctOz, 'O', 0);       // O kernel
+  pushAtom(lastCx + h, lastCy, ctOz, 'O', 1);   // O electron-a
+  pushAtom(lastCx - h, lastCy, ctOz, 'O', 1);   // O electron-b
+  pushAtom(lastCx, lastCy, ctOz + bOH, 'H', 1);
 
   console.log('Loose helix Gly12 (dry): ' + atoms.length + ' atoms');
 
@@ -191,11 +197,17 @@
   window.USER_ARROW_SCALE = 0.2;
   window.USER_N_MOVE = 15;
   window.USER_Z = zList;
-  window.USER_RC = elList.map(function(el) {
-    if (el === 'H') return 0;
-    if (el === 'C') return 0.3;
-    if (el === 'N') return 0.3;
-    if (el === 'O') return 0.4;
+  window.USER_Z_NUC = atoms.map(function(a) {
+    if (a.Z === 0 && a.el === 'O') return 2;
+    if (a.Z === 1 && a.el === 'O') return 0;
+    return a.Z;
+  });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'C') return 0.3;
+    if (a.el === 'N') return 0.3;
+    if (a.el === 'O' && a.Z === 0) return 0.5;
+    if (a.el === 'O') return 0;
     return 0;
   });
 })();
@@ -238,17 +250,17 @@ s.onload = function() {
           console.log('Recording saved: helix_fold_20x.' + ext);
         };
         recorder.start(1000);
-        // Capture 1 frame every 3 seconds → 20x speedup at 30fps playback
+        // Capture 1 frame/sec → 30min = 1800 frames → 60s at 30fps = 1 min video
         recInterval = setInterval(function() {
           try { track.requestFrame(); } catch(e) {}
-        }, 3000);
+        }, 1000);
         recording = true;
         var dot = document.createElement('div');
         dot.id = 'rec-indicator';
         dot.style.cssText = 'position:fixed;top:10px;right:10px;background:red;color:#fff;padding:4px 10px;border-radius:4px;font:bold 14px monospace;z-index:9999;';
         dot.textContent = '\u25CF REC 20x';
         document.body.appendChild(dot);
-        console.log('Recording started (R to stop) — 20x timelapse, 1hr → ~3min video');
+        console.log('Recording started (R to stop) — 1 frame/sec, ~30min → ~1min video');
       } else {
         if (recInterval) { clearInterval(recInterval); recInterval = null; }
         recorder.stop();
@@ -259,6 +271,20 @@ s.onload = function() {
         console.log('Recording stopped, saving...');
       }
     };
+
+    // Auto-start: enable 3D view and start recording after canvas is ready
+    setTimeout(function() {
+      window._view3D = true;
+      console.log('Auto-enabled 3D view');
+      setTimeout(function() {
+        window._toggleRecording();
+        console.log('Auto-started recording — will auto-stop after 30 min');
+        // Auto-stop after 30 minutes → ~1800 frames at 1fps → 60s at 30fps
+        setTimeout(function() {
+          if (recording) window._toggleRecording();
+        }, 30 * 60 * 1000);
+      }, 3000);
+    }, 5000);
   };
   document.body.appendChild(p5s);
 };

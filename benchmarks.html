@@ -25,10 +25,39 @@
   </style>
 </head>
 <body>
-  <a class="back" href="index.html">&larr; Back to main</a>
+  <a class="back" href="gallery.html">&larr; Back to gallery</a>
   <h1>Benchmarks</h1>
-  <p>WebGPU quantum chemistry simulations compared against published reference values.
-     All calculations use imaginary time propagation on a 200&sup3; real-space grid.</p>
+  <p>WebGPU quantum chemistry: from atoms to proteins on real-space grids using
+     imaginary time propagation + domain decomposition.</p>
+
+  <h2>Progress Summary</h2>
+  <div class="card" style="border-color:#0cf;margin-bottom:30px">
+    <h3 style="color:#0cf">Split-Electron O Model &mdash; Key Discovery</h3>
+    <div class="desc" style="font-size:13px;line-height:1.8">
+      <b>Problem:</b> Single-electron O (Z=2) gave proton transfer (H&rarr;O at 1.3&nbsp;&Aring;) instead of H-bonds.<br>
+      <b>Solution:</b> O = bare +2 kernel + 2 electrons split by domain boundary plane.
+      The Pauli repulsion from two electron domains creates the barrier that holds H at 2.0&nbsp;&Aring;.<br>
+      <b>Validation chain:</b>
+    </div>
+    <table>
+      <tr><th>Level</th><th>System</th><th>Key result</th><th>Status</th></tr>
+      <tr><td>Atom</td><td>He (2e&minus;)</td><td>E = &minus;2.89 Ha (HF: &minus;2.862, exact: &minus;2.904)</td><td class="val">67% correlation ✓</td></tr>
+      <tr><td>H-bond</td><td>N-H&middot;&middot;&middot;O (3 atoms)</td><td>H-N=1.00, H&middot;&middot;&middot;O=2.02, N&middot;&middot;&middot;O=3.02 &Aring;</td><td class="val">exact match ✓</td></tr>
+      <tr><td>Dimer</td><td>Formamide&times;2</td><td>H&middot;&middot;&middot;O=1.96, N&middot;&middot;&middot;O=2.85 &Aring;</td><td class="val">exact match ✓</td></tr>
+      <tr><td>Protein</td><td>BBA5 (23 res)</td><td>2/4 H-bonds at 2.0&nbsp;&Aring;, 2/4 at 1.5&nbsp;&Aring;</td><td style="color:#ffb74d">angle-dependent</td></tr>
+      <tr><td>Protein</td><td>GB1 (56 res)</td><td>All helix H-bonds formed, &beta;-sheet zipping</td><td class="val">topology correct ✓</td></tr>
+      <tr><td>Protein</td><td>Trp-cage (20 res)</td><td>4/5 helix H-bonds, Rg=7.2&nbsp;&Aring;</td><td class="val">near native ✓</td></tr>
+      <tr><td>Protein</td><td>Ubiquitin (76 res)</td><td>&alpha;-helix forming, &beta;-sheet closing</td><td style="color:#ffb74d">in progress</td></tr>
+      <tr><td>Protein</td><td>Villin HP35 (35 res)</td><td>Set up, not yet run with split-O</td><td style="color:#888">pending</td></tr>
+      <tr><td>Protein</td><td>Myoglobin (153 res)</td><td>8 helices, set up</td><td style="color:#888">pending</td></tr>
+    </table>
+    <div class="desc" style="font-size:13px;margin-top:12px;border-top:1px solid #333;padding-top:10px">
+      <b>Open issues:</b> (1) Split-O barrier fails for some approach angles (2/4 H-bonds dive to 1.5&nbsp;&Aring;).
+      Fix: tetrahedral 4-electron O for spherical coverage.
+      (2) Blind folding needs solvent or collapse mechanism for &gt;3&nbsp;&Aring; starting distances.
+      (3) molecule.js regression breaks He &mdash; using molecule_old.js as workaround.
+    </div>
+  </div>
 
   <h2>H&#8322; Molecule</h2>
   <div class="grid">
