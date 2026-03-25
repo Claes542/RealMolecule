@@ -80,6 +80,34 @@ s.src = 'molecule.js?t=' + Date.now();
 s.onload = function() {
   var p5s = document.createElement('script');
   p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p5s.onload = function() {
+    setTimeout(function() {
+      var canvas = document.querySelector('canvas');
+      if (!canvas) return;
+      var chunks = [], stream = canvas.captureStream(0);
+      var track = stream.getVideoTracks()[0];
+      var mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9') ? 'video/webm; codecs=vp9' : 'video/webm';
+      var recorder = new MediaRecorder(stream, { mimeType: mimeType });
+      recorder.ondataavailable = function(ev) { if (ev.data.size > 0) chunks.push(ev.data); };
+      recorder.onstop = function() {
+        var blob = new Blob(chunks, { type: mimeType });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a'); a.href = url; a.download = 'nho_test.webm'; a.click();
+      };
+      recorder.start(1000);
+      var origDraw = window.draw;
+      window.draw = function() { if (origDraw) origDraw(); try { track.requestFrame(); } catch(e) {} };
+      var dot = document.createElement('div');
+      dot.id = 'rec-indicator';
+      dot.style.cssText = 'position:fixed;top:10px;left:10px;background:red;color:#fff;padding:4px 10px;border-radius:4px;font:bold 14px monospace;z-index:9999;animation:blink 1s infinite;';
+      dot.textContent = '\u25CF REC';
+      var style = document.createElement('style');
+      style.textContent = '@keyframes blink{0%,100%{opacity:1}50%{opacity:0.4}}';
+      document.head.appendChild(style);
+      document.body.appendChild(dot);
+      setTimeout(function() { recorder.stop(); dot.remove(); }, 30 * 60 * 1000);
+    }, 5000);
+  };
   document.body.appendChild(p5s);
 };
 document.body.appendChild(s);
