@@ -4254,6 +4254,96 @@ function draw() {
       circle(at.sx, at.sy, sz);
     }
 
+    // Ribbon overlay: colored backbone trace through Ca atoms
+    const cmd3 = window.USER_CLASSICAL_MD;
+    if (cmd3 && cmd3.caIndices && cmd3.caIndices.length > 2) {
+      const caIdx = cmd3.caIndices;
+      const nCa = caIdx.length;
+
+      // Project all Ca positions
+      const caProj = [];
+      for (let g = 0; g < nCa; g++) {
+        const a = caIdx[g];
+        let ax = nucPos[a][0]-cx3, ay = nucPos[a][1]-cy3, az = nucPos[a][2]-cz3;
+        let rx = ax*cosT + az*sinT, rz = -ax*sinT + az*cosT;
+        let ry = ay*cosT2 - rz*sinT2;
+        caProj.push({ x: canvMid + rx*scale3, y: canvMid + ry*scale3 });
+      }
+
+      // Classify secondary structure from local geometry
+      // Helix: Ca[i-1]-Ca[i]-Ca[i+1] angle < 100° AND Ca[i]-Ca[i+2] distance < 6 Å
+      // Sheet: angle > 115° AND Ca[i]-Ca[i+2] distance > 6.5 Å
+      const ssType = new Array(nCa).fill(0); // 0=coil, 1=helix, 2=sheet
+      const bohrToAng = 0.529177;
+      for (let g = 1; g < nCa - 1; g++) {
+        const a0 = caIdx[g-1], a1 = caIdx[g], a2 = caIdx[g+1];
+        const bax = nucPos[a0][0]-nucPos[a1][0], bay = nucPos[a0][1]-nucPos[a1][1], baz = nucPos[a0][2]-nucPos[a1][2];
+        const bcx = nucPos[a2][0]-nucPos[a1][0], bcy = nucPos[a2][1]-nucPos[a1][1], bcz = nucPos[a2][2]-nucPos[a1][2];
+        const magBA = Math.sqrt(bax*bax+bay*bay+baz*baz);
+        const magBC = Math.sqrt(bcx*bcx+bcy*bcy+bcz*bcz);
+        const dot = bax*bcx + bay*bcy + baz*bcz;
+        const ang = Math.acos(Math.max(-1, Math.min(1, dot / (magBA * magBC + 1e-10)))) * 180 / Math.PI;
+
+        // Ca[i] to Ca[i+2] distance
+        let d_i2 = 999;
+        if (g + 1 < nCa) {
+          const a3 = caIdx[g+1];
+          const dx = (nucPos[a1][0]-nucPos[a3][0]) * hGrid * bohrToAng;
+          const dy = (nucPos[a1][1]-nucPos[a3][1]) * hGrid * bohrToAng;
+          const dz = (nucPos[a1][2]-nucPos[a3][2]) * hGrid * bohrToAng;
+          d_i2 = Math.sqrt(dx*dx+dy*dy+dz*dz);
+        }
+
+        if (ang < 105 && d_i2 < 6.0) {
+          ssType[g] = 1; // helix
+        } else if (ang > 115 && d_i2 > 6.0) {
+          ssType[g] = 2; // sheet
+        }
+      }
+      // Extend assignments to neighbors (smooth out isolated assignments)
+      for (let pass = 0; pass < 2; pass++) {
+        for (let g = 1; g < nCa - 1; g++) {
+          if (ssType[g] === 0 && ssType[g-1] === ssType[g+1] && ssType[g-1] !== 0) {
+            ssType[g] = ssType[g-1];
+          }
+        }
+      }
+
+      // Draw ribbon
+      const ssCol = {0: [150,150,150], 1: [255,50,100], 2: [255,220,50]};
+      const ssWidth = {0: 1, 1: 4, 2: 3};
+      for (let g = 0; g < nCa - 1; g++) {
+        const ss = ssType[g] || ssType[g+1] || 0;
+        const col = ssCol[ss];
+        stroke(col[0], col[1], col[2], 200);
+        strokeWeight(ssWidth[ss]);
+        line(caProj[g].x, caProj[g].y, caProj[g+1].x, caProj[g+1].y);
+      }
+
+      // Helix: add sine wave ribbon for visual effect
+      for (let g = 0; g < nCa - 1; g++) {
+        if (ssType[g] === 1 && ssType[g+1] === 1) {
+          stroke(255, 80, 150, 120);
+          strokeWeight(1);
+          const steps = 8;
+          for (let s = 0; s < steps; s++) {
+            const t1 = s / steps, t2 = (s+1) / steps;
+            const x1 = caProj[g].x + (caProj[g+1].x - caProj[g].x) * t1;
+            const y1 = caProj[g].y + (caProj[g+1].y - caProj[g].y) * t1 + Math.sin(t1 * Math.PI * 2 + g * 1.7) * 4;
+            const x2 = caProj[g].x + (caProj[g+1].x - caProj[g].x) * t2;
+            const y2 = caProj[g].y + (caProj[g+1].y - caProj[g].y) * t2 + Math.sin(t2 * Math.PI * 2 + g * 1.7) * 4;
+            line(x1, y1, x2, y2);
+          }
+        }
+      }
+
+      // Legend
+      noStroke(); textSize(10);
+      fill(255, 50, 100); text("\u2588 helix", CANVAS_SIZE - 120, 15);
+      fill(255, 220, 50); text("\u2588 sheet", CANVAS_SIZE - 120, 27);
+      fill(150, 150, 150); text("\u2588 coil", CANVAS_SIZE - 120, 39);
+    }
+
     // Label
     fill(255, 255, 0);
     noStroke();
