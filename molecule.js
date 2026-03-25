@@ -72,6 +72,14 @@ const PX = CANVAS_SIZE / NN;
 const INTERIOR = (NN - 1) * (NN - 1) * (NN - 1);
 const R_SING = 2 * hGrid;  // exclude 2 grid spacings from nucleus
 const W_CUTOFF = window.USER_W_CUTOFF || 0;  // smooth ψ cutoff near other nuclei (au), 0 = off
+// Detect if any bare nuclei exist (Z=0, Z_nuc>0) at compile time
+const HAS_BARE_NUCLEI = (function() {
+  const zn = window.USER_Z_NUC || _uz.map(z => z);
+  for (let i = 0; i < _uz.length; i++) {
+    if (_uz[i] === 0 && (zn[i] || 0) > 0) return true;
+  }
+  return false;
+})();
 
 // 2D dispatch to handle >65535 workgroups (300^3 grid needs ~104K)
 const DISPATCH_X = 256;  // workgroups in x dimension (fixed)
@@ -175,12 +183,14 @@ fn distToAtom(ci: u32, cj: u32, ck: u32, n: u32) -> f32 {
 fn isInsideRc(ci: u32, cj: u32, ck: u32, lbl: u32) -> bool {
   let rc = atoms[lbl].rc;
   if (rc > 0.0 && distToAtom(ci, cj, ck, lbl) < rc) { return true; }
-  // Also check bare nuclei (Z=0, Z_nuc>0) — their r_c applies to all electrons
+${HAS_BARE_NUCLEI ? `
+  // Check bare nuclei (Z=0, Z_nuc>0) — only compiled when they exist
   for (var n: u32 = 0u; n < ${NELEC}u; n++) {
     if (atoms[n].Z <= 0.0 && atoms[n].Z_nuc > 0.0 && atoms[n].rc > 0.0) {
       if (distToAtom(ci, cj, ck, n) < atoms[n].rc) { return true; }
     }
   }
+` : ''}
   return false;
 }
 
