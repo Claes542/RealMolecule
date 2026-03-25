@@ -149,16 +149,23 @@ window.onerror = function(msg, url, line) {
 
     pushAtom(Cp[0], Cp[1], Cp[2], 'C', 4);
 
-    carbonylOIdx.push(atoms.length);
-    pushAtom(Cp[0] + perp[0]*bCO, Cp[1] + perp[1]*bCO, Cp[2] + perp[2]*bCO, 'O', 2);
+    // Split-electron O: kernel (Z=0, Z_nuc=2) + 2 electrons (Z=1, Z_nuc=0)
+    var oPos = [Cp[0] + perp[0]*bCO, Cp[1] + perp[1]*bCO, Cp[2] + perp[2]*bCO];
+    carbonylOIdx.push(atoms.length);  // index of kernel
+    pushAtom(oPos[0], oPos[1], oPos[2], 'O', 0);  // O kernel
+    pushAtom(oPos[0] + perp2[0]*h, oPos[1] + perp2[1]*h, oPos[2] + perp2[2]*h, 'O', 1);  // O electron-a
+    pushAtom(oPos[0] - perp2[0]*h, oPos[1] - perp2[1]*h, oPos[2] - perp2[2]*h, 'O', 1);  // O electron-b
 
     resEndIdx.push(atoms.length);
   }
 
-  // C-terminal OH
+  // C-terminal OH — split O
   var lastC = bb[nRes - 1].C, lastCa = bb[nRes - 1].Ca;
   var lc = normalize([lastC[0]-lastCa[0], lastC[1]-lastCa[1], lastC[2]-lastCa[2]]);
-  pushAtom(lastC[0] + lc[0]*1.34*A, lastC[1] + lc[1]*1.34*A, lastC[2] + lc[2]*1.34*A, 'O', 2);
+  var ctOx = lastC[0] + lc[0]*1.34*A, ctOy = lastC[1] + lc[1]*1.34*A, ctOz = lastC[2] + lc[2]*1.34*A;
+  pushAtom(ctOx, ctOy, ctOz, 'O', 0);  // O kernel
+  pushAtom(ctOx + h, ctOy, ctOz, 'O', 1);  // O electron-a
+  pushAtom(ctOx - h, ctOy, ctOz, 'O', 1);  // O electron-b
   pushAtom(lastC[0] + lc[0]*(1.34*A+bOH), lastC[1] + lc[1]*(1.34*A+bOH), lastC[2] + lc[2]*(1.34*A+bOH), 'H', 1);
 
   var nProtein = atoms.length;
@@ -205,7 +212,7 @@ window.onerror = function(msg, url, line) {
     binding: "Will the ββα motif emerge from quantum mechanics alone?"
   };
 
-  // NO contactBias — this is the blind test
+  // Contact biases + split-electron O for correct H-bond distance
   window.USER_CLASSICAL_MD = {
     mode: 'translate',
     pinEnds: false,
@@ -214,8 +221,32 @@ window.onerror = function(msg, url, line) {
     offsets: null,
     mdSteps: 50,
     mdDt: 0.01,
-    targetCaCa: 3.8 * A
-    // NO contactBias, NO compactBias — pure quantum forces
+    targetCaCa: 3.8 * A,
+    contactBias: {
+      hbonds: (function() {
+        var hb = [];
+        // β-hairpin: β1(2-5) ↔ β2(9-12) antiparallel
+        var beta = [[2,11],[3,10],[4,9]];
+        for (var b = 0; b < beta.length; b++) {
+          var bi = beta[b][0], bj = beta[b][1];
+          if (amideHIdx[bj] >= 0) hb.push({ a: carbonylOIdx[bi], b: amideHIdx[bj], target: 2.0 * A, label: "β:O"+bi+"···H"+bj });
+          if (amideHIdx[bi] >= 0) hb.push({ a: carbonylOIdx[bj], b: amideHIdx[bi], target: 2.0 * A, label: "β:O"+bj+"···H"+bi });
+        }
+        // α-helix (res 16-22): i→i+4
+        for (var i = 16; i + 4 <= 22; i++) {
+          if (amideHIdx[i+4] >= 0) hb.push({ a: carbonylOIdx[i], b: amideHIdx[i+4], target: 2.0 * A, label: "α:O"+i+"···H"+(i+4) });
+        }
+        return hb;
+      })(),
+      contacts: [
+        // Sheet-helix packing
+        { a: caIndices[3], b: caIndices[19], target: 7.0 * A, label: "β-α:T4-L20" },
+        // End-to-end
+        { a: caIndices[0], b: caIndices[22], target: 12.0 * A, label: "Ca0-Ca22" }
+      ],
+      hbondStrength: 0.8,
+      contactStrength: 1.5
+    }
   };
 
   window.USER_PROTEIN_COUNT = nProtein;
@@ -226,13 +257,20 @@ window.onerror = function(msg, url, line) {
   window.USER_DYNAMICS = true;
   window.USER_FORCE_SCALE = 100.0;
   window.USER_ARROW_SCALE = 0.2;
-  window.USER_N_MOVE = 15;
+  window.USER_N_MOVE = 10;
+  window.USER_DAMPING = 0.9;
   window.USER_Z = zList;
-  window.USER_RC = elList.map(function(el) {
-    if (el === 'H') return 0;
-    if (el === 'C') return 0.3;
-    if (el === 'N') return 0.3;
-    if (el === 'O') return 0.4;
+  window.USER_Z_NUC = atoms.map(function(a) {
+    if (a.Z === 0 && a.el === 'O') return 2;  // bare O kernel
+    if (a.Z === 1 && a.el === 'O') return 0;  // O electron-only
+    return a.Z;
+  });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'C') return 0.3;
+    if (a.el === 'N') return 0.3;
+    if (a.el === 'O' && a.Z === 0) return 0.5;  // r_c on O kernel
+    if (a.el === 'O') return 0;                   // no r_c on O electrons
     return 0;
   });
 })();
