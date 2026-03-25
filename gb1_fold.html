@@ -144,9 +144,12 @@ window.onerror = function(msg, url, line) {
     // Carbonyl C
     pushAtom(Cp[0], Cp[1], Cp[2], 'C', 4);
 
-    // Carbonyl O
-    carbonylOIdx.push(atoms.length);
-    pushAtom(Cp[0] + perp[0]*bCO, Cp[1] + perp[1]*bCO, Cp[2] + perp[2]*bCO, 'O', 2);
+    // Split-electron O: kernel (Z=0, Z_nuc=2) + 2 electrons (Z=1, Z_nuc=0)
+    var oPos = [Cp[0] + perp[0]*bCO, Cp[1] + perp[1]*bCO, Cp[2] + perp[2]*bCO];
+    carbonylOIdx.push(atoms.length);  // index of kernel
+    pushAtom(oPos[0], oPos[1], oPos[2], 'O', 0);  // O kernel
+    pushAtom(oPos[0] + perp2[0]*h, oPos[1] + perp2[1]*h, oPos[2] + perp2[2]*h, 'O', 1);  // O electron-a
+    pushAtom(oPos[0] - perp2[0]*h, oPos[1] - perp2[1]*h, oPos[2] - perp2[2]*h, 'O', 1);  // O electron-b
 
     resEndIdx.push(atoms.length);
   }
@@ -154,7 +157,10 @@ window.onerror = function(msg, url, line) {
   // C-terminal OH
   var lastC = bb[nRes - 1].C, lastCa = bb[nRes - 1].Ca;
   var lc = normalize([lastC[0]-lastCa[0], lastC[1]-lastCa[1], lastC[2]-lastCa[2]]);
-  pushAtom(lastC[0] + lc[0]*1.34*A, lastC[1] + lc[1]*1.34*A, lastC[2] + lc[2]*1.34*A, 'O', 2);
+  var ctOx = lastC[0] + lc[0]*1.34*A, ctOy = lastC[1] + lc[1]*1.34*A, ctOz = lastC[2] + lc[2]*1.34*A;
+  pushAtom(ctOx, ctOy, ctOz, 'O', 0);  // O kernel
+  pushAtom(ctOx + h, ctOy, ctOz, 'O', 1);  // O electron-a
+  pushAtom(ctOx - h, ctOy, ctOz, 'O', 1);  // O electron-b
   pushAtom(lastC[0] + lc[0]*(1.34*A+bOH), lastC[1] + lc[1]*(1.34*A+bOH), lastC[2] + lc[2]*(1.34*A+bOH), 'H', 1);
 
   var nProtein = atoms.length;
@@ -274,11 +280,17 @@ window.onerror = function(msg, url, line) {
   window.USER_ARROW_SCALE = 0.2;
   window.USER_N_MOVE = 15;
   window.USER_Z = zList;
-  window.USER_RC = elList.map(function(el) {
-    if (el === 'H') return 0;
-    if (el === 'C') return 0.3;
-    if (el === 'N') return 0.3;
-    if (el === 'O') return 0.4;
+  window.USER_Z_NUC = atoms.map(function(a) {
+    if (a.Z === 0 && a.el === 'O') return 2;  // bare O kernel
+    if (a.Z === 1 && a.el === 'O') return 0;  // O electron-only
+    return a.Z;
+  });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'C') return 0.3;
+    if (a.el === 'N') return 0.3;
+    if (a.el === 'O' && a.Z === 0) return 0.5;  // r_c on O kernel
+    if (a.el === 'O') return 0;  // no r_c on O electrons
     return 0;
   });
 })();
