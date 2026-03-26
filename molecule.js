@@ -3676,6 +3676,35 @@ async function moveNuclei(gpuForces) {
         }
       }
 
+      // Steric repulsion: prevent non-bonded Ca atoms from getting too close
+      // Mimics van der Waals excluded volume — pushes apart residues closer than minNB
+      {
+        const minNB_au = 3.0;  // minimum non-bonded Ca-Ca distance in Å
+        const minNB = minNB_au * 1.8897 / hGrid;  // in grid cells
+        const stericStr = 0.5;  // grid cells per step repulsion
+        for (let g1 = 0; g1 < nRes; g1++) {
+          for (let g2 = g1 + 2; g2 < nRes; g2++) {  // skip bonded neighbors (g1±1)
+            const a1 = caIdx[g1], a2 = caIdx[g2];
+            let dx = nucPos[a2][0] - nucPos[a1][0];
+            let dy = nucPos[a2][1] - nucPos[a1][1];
+            let dz = nucPos[a2][2] - nucPos[a1][2];
+            let dist = Math.sqrt(dx*dx + dy*dy + dz*dz) + 1e-10;
+            if (dist < minNB) {
+              let push = stericStr * (minNB - dist) / dist;
+              let px = dx * push * 0.5, py = dy * push * 0.5, pz = dz * push * 0.5;
+              for (const a of groups[g1]) {
+                if (a >= NELEC || Z[a] === 0) continue;
+                nucPos[a][0] -= px; nucPos[a][1] -= py; nucPos[a][2] -= pz;
+              }
+              for (const a of groups[g2]) {
+                if (a >= NELEC || Z[a] === 0) continue;
+                nucPos[a][0] += px; nucPos[a][1] += py; nucPos[a][2] += pz;
+              }
+            }
+          }
+        }
+      }
+
       // Contact bias: targeted attractions for H-bonds and hydrophobic contacts
       if (cmd.contactBias) {
         const cb = cmd.contactBias;
