@@ -28,17 +28,19 @@ window.onerror = function(msg, url, line) {
   var y0 = -(ny - 1) * aLat / 2;
   var z0 = -(nz - 1) * aLat / 2;
 
-  // Perturbed lattice — random displacement up to 20% of spacing
+  // All atoms kicked 10% randomly — does lattice restore?
   var seed = 42;
   function rand() { seed = (seed * 16807 + 7) % 2147483647; return seed / 2147483647; }
-  var perturb = 0.2 * aLat;  // 20% perturbation
+  var kickDist = 0.1 * aLat;
 
   for (var iz = 0; iz < nz; iz++) {
     for (var iy = 0; iy < ny; iy++) {
       for (var ix = 0; ix < nx; ix++) {
-        var x = x0 + ix * aLat + (rand() - 0.5) * perturb;
-        var y = y0 + iy * aLat + (rand() - 0.5) * perturb;
-        var z = z0 + iz * aLat + (rand() - 0.5) * perturb;
+        // Only kick inner atoms (not on boundary)
+        var inner = (ix > 0 && ix < nx-1 && iy > 0 && iy < ny-1 && iz > 0 && iz < nz-1);
+        var x = x0 + ix * aLat + (inner ? (rand() - 0.5) * kickDist : 0);
+        var y = y0 + iy * aLat + (inner ? (rand() - 0.5) * kickDist : 0);
+        var z = z0 + iz * aLat + (inner ? (rand() - 0.5) * kickDist : 0);
         var gi = Math.round(N2 + x / h);
         var gj = Math.round(N2 + y / h);
         var gk = Math.round(N2 + z / h);
@@ -50,17 +52,35 @@ window.onerror = function(msg, url, line) {
     }
   }
 
-  log.textContent = 'Li metal: ' + atoms.length + ' atoms (' + nx + 'x' + ny + 'x' + nz + ')';
+  log.textContent = 'Li metal PERTURBED: ' + atoms.length + ' atoms (' + nx + 'x' + ny + 'x' + nz + ')';
   log.textContent += '\nNearest-neighbor: ' + (aLat * 0.529177).toFixed(2) + ' Å (' + aLat.toFixed(1) + ' au)';
+  log.textContent += '\nAll atoms kicked 10% randomly — watch lattice restore';
   log.textContent += '\n' + gridN + '^3 grid, screen=' + scr + ' au';
-  log.textContent += '\n1 valence electron per Li, r_c=1.0 au ([1s²] core)';
 
   window.USER_NN = gridN;
   window.USER_ATOMS = atoms;
   window.USER_SCREEN = scr;
   window.USER_STEPS = 1000000;
   window.USER_Z = atoms.map(function() { return 1; });
-  window.USER_RC = atoms.map(function() { return 1.0; });  // Li core: [1s²], large r_c
+  window.USER_RC = atoms.map(function() { return 0.5; });  // Li core: sharper potential
+  // Fix outer atoms — only inner atoms move
+  var fixed = {};
+  var idx = 0;
+  for (var iz2 = 0; iz2 < nz; iz2++) {
+    for (var iy2 = 0; iy2 < ny; iy2++) {
+      for (var ix2 = 0; ix2 < nx; ix2++) {
+        if (ix2 === 0 || ix2 === nx-1 || iy2 === 0 || iy2 === ny-1 || iz2 === 0 || iz2 === nz-1) {
+          fixed[idx] = true;
+        }
+        idx++;
+      }
+    }
+  }
+  window.USER_FIXED_ATOMS = fixed;
+  window.USER_DYNAMICS = true;
+  window.USER_DAMPING = 0.95;  // light damping to settle
+  window.USER_N_MOVE = 100;    // enough ITP steps for good forces
+  window.USER_NO_RESTART = true;  // keep converged density, don't restart after moves
 })();
 
 var s = document.createElement('script');

@@ -3048,10 +3048,11 @@ async function moveNuclei(gpuForces) {
   const prevNucPos = nucPos.map(p => [...p]);
 
   for (let sub = 0; sub < NUC_SUBSTEPS; sub++) {
+    const fixedAtoms = window.USER_FIXED_ATOMS || {};
     for (let a = 0; a < NELEC; a++) {
-      if (Z[a] === 0) continue;
+      if (Z[a] === 0 || fixedAtoms[a]) continue;
       const m = nucMass(Z[a]);
-      const ndim = window.USER_1D ? 1 : 3;  // constrain to x-axis if USER_1D
+      const ndim = window.USER_1D ? 1 : 3;
       for (let d = 0; d < ndim; d++) {
         nucVel[a][d] += nucForce[a][d] / m * DT_NUC * forceScale;
         nucVel[a][d] *= DAMPING;
@@ -3067,8 +3068,8 @@ async function moveNuclei(gpuForces) {
     nucPos.filter((_, i) => Z[i] > 0).map(p => "(" + p.map(x => x.toFixed(2)).join(",") + ")").join(" "));
 
   // Reinitialize wavefunctions as compact spheres at new nuclear positions
-  // This ensures density always follows nuclei
-  {
+  // Skip if USER_NO_RESTART — keep converged density for small displacements
+  if (!window.USER_NO_RESTART) {
     const Zeff = window.INIT_ZEFF || 1.0;
     const Uinit = new Float32Array(S3);
     const Linit = new Uint32Array(S3);
