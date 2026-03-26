@@ -3051,7 +3051,8 @@ async function moveNuclei(gpuForces) {
     for (let a = 0; a < NELEC; a++) {
       if (Z[a] === 0) continue;
       const m = nucMass(Z[a]);
-      for (let d = 0; d < 3; d++) {
+      const ndim = window.USER_1D ? 1 : 3;  // constrain to x-axis if USER_1D
+      for (let d = 0; d < ndim; d++) {
         nucVel[a][d] += nucForce[a][d] / m * DT_NUC * forceScale;
         nucVel[a][d] *= DAMPING;
         nucVel[a][d] = Math.max(-MAX_VEL, Math.min(MAX_VEL, nucVel[a][d]));
