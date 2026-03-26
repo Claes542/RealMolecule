@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<pre id="log">Building BBA5 (solvated blind)...</pre>
+<script>
+var log = document.getElementById('log');
+window.onerror = function(msg, url, line) {
+  log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
+};
+
+// BBA5 SOLVATED BLIND FOLD
+// 23 residues + water shell, split-electron O
+// NO contact biases — water drives everything
+// Native: β1(2-5) + turn + β2(9-12) + loop + α(16-22)
+(function() {
+  var gridN = 200, scr = 35;
+  var h = scr / gridN;
+  var N2 = Math.round(gridN / 2);
+  var A = 1.8897;
+  var nRes = 23;
+  var seq = ['E','Q','Y','T','A','K','Y','K','G','R',
+             'T','V','S','Q','K','L','A','I','D','L',
+             'R','E','F'];
+
+  var atoms = [];
+  var elList = [];
+  var zList = [];
+
+  function pushAtom(x, y, z, el, Z) {
+    var gi = Math.round(N2 + x / h);
+    var gj = Math.round(N2 + y / h);
+    var gk = Math.round(N2 + z / h);
+    gi = Math.max(3, Math.min(gridN - 3, gi));
+    gj = Math.max(3, Math.min(gridN - 3, gj));
+    gk = Math.max(3, Math.min(gridN - 3, gk));
+    atoms.push({ i: gi, j: gj, k: gk, Z: Z, el: el });
+    elList.push(el);
+    zList.push(Z);
+  }
+
+  var bNH = 1.01 * A;
+  var bCH = 1.09 * A;
+  var bCO = 1.24 * A;
+  var bOH = 0.97 * A;
+  var bCaCb = 1.52 * A;
+
+  // Compact random coil
+  var resAdv = 3.8 * A;
+  var seed = 137;
+  function rand() { seed = (seed * 16807 + 7) % 2147483647; return seed / 2147483647; }
+
+  var caPos = [[0, 0, 0]];
+  for (var r = 1; r < nRes; r++) {
+    var theta = Math.acos(2 * rand() - 1);
+    var phi = 2 * Math.PI * rand();
+    var dx = resAdv * Math.sin(theta) * Math.cos(phi);
+    var dy = resAdv * Math.sin(theta) * Math.sin(phi);
+    var dz = resAdv * Math.cos(theta);
+    var prev = caPos[r - 1];
+    caPos.push([prev[0] + dx, prev[1] + dy, prev[2] + dz]);
+  }
+  var cx = 0, cy = 0, cz = 0;
+  for (var r = 0; r < nRes; r++) { cx += caPos[r][0]; cy += caPos[r][1]; cz += caPos[r][2]; }
+  cx /= nRes; cy /= nRes; cz /= nRes;
+  for (var r = 0; r < nRes; r++) { caPos[r][0] -= cx; caPos[r][1] -= cy; caPos[r][2] -= cz; }
+
+  var bb = [];
+  for (var r = 0; r < nRes; r++) {
+    var ca = caPos[r];
+    var tx, ty, tz;
+    if (r < nRes - 1) {
+      tx = caPos[r+1][0] - ca[0]; ty = caPos[r+1][1] - ca[1]; tz = caPos[r+1][2] - ca[2];
+    } else {
+      tx = ca[0] - caPos[r-1][0]; ty = ca[1] - caPos[r-1][1]; tz = ca[2] - caPos[r-1][2];
+    }
+    var tl = Math.sqrt(tx*tx + ty*ty + tz*tz) + 1e-10;
+    tx /= tl; ty /= tl; tz /= tl;
+    var spread = resAdv * 0.35;
+    bb.push({
+      N:  [ca[0] - spread * tx, ca[1] - spread * ty, ca[2] - spread * tz],
+      Ca: ca,
+      C:  [ca[0] + spread * tx, ca[1] + spread * ty, ca[2] + spread * tz]
+    });
+  }
+
+  var resStartIdx = [];
+  var resEndIdx = [];
+  var caIndices = [];
+  var carbonylOIdx = [];
+  var amideHIdx = [];
+
+  function cross(a, b) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+  function normalize(v) { var l = Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2])+1e-10; return [v[0]/l,v[1]/l,v[2]/l]; }
+
+  for (var r = 0; r < nRes; r++) {
+    resStartIdx.push(atoms.length);
+    var res = bb[r];
+    var Np = res.N, Cap = res.Ca, Cp = res.C;
+    var aa = seq[r];
+    var isPro = (aa === 'P');
+    var isGly = (aa === 'G');
+
+    var nca = [Cap[0]-Np[0], Cap[1]-Np[1], Cap[2]-Np[2]];
+    var nca_n = normalize(nca);
+    var cac = [Cp[0]-Cap[0], Cp[1]-Cap[1], Cp[2]-Cap[2]];
+    var perp = normalize(cross(nca_n, cac));
+    if (Math.abs(perp[0])+Math.abs(perp[1])+Math.abs(perp[2]) < 0.01) perp = normalize(cross(nca_n, [0,0,1]));
+    if (Math.abs(perp[0])+Math.abs(perp[1])+Math.abs(perp[2]) < 0.01) perp = normalize(cross(nca_n, [0,1,0]));
+    var perp2 = normalize(cross(nca_n, perp));
+
+    pushAtom(Np[0], Np[1], Np[2], 'N', 3);
+
+    if (!isPro) {
+      amideHIdx.push(atoms.length);
+      pushAtom(Np[0] + perp[0]*bNH, Np[1] + perp[1]*bNH, Np[2] + perp[2]*bNH, 'H', 1);
+    } else {
+      amideHIdx.push(-1);
+    }
+
+    if (r === 0) {
+      pushAtom(Np[0] - perp[0]*bNH, Np[1] - perp[1]*bNH, Np[2] - perp[2]*bNH, 'H', 1);
+    }
+
+    caIndices.push(atoms.length);
+    pushAtom(Cap[0], Cap[1], Cap[2], 'C', 4);
+
+    if (isGly) {
+      pushAtom(Cap[0] + perp[0]*bCH, Cap[1] + perp[1]*bCH, Cap[2] + perp[2]*bCH, 'H', 1);
+      pushAtom(Cap[0] - perp[0]*bCH, Cap[1] - perp[1]*bCH, Cap[2] - perp[2]*bCH, 'H', 1);
+    } else {
+      pushAtom(Cap[0] + perp[0]*bCH*0.7 + perp2[0]*bCH*0.7,
+               Cap[1] + perp[1]*bCH*0.7 + perp2[1]*bCH*0.7,
+               Cap[2] + perp[2]*bCH*0.7 + perp2[2]*bCH*0.7, 'H', 1);
+      var cbX = Cap[0] - perp[0]*bCaCb*0.8;
+      var cbY = Cap[1] - perp[1]*bCaCb*0.8;
+      var cbZ = Cap[2] - perp[2]*bCaCb*0.8;
+      pushAtom(cbX, cbY, cbZ, 'C', 4);
+      for (var hh = 0; hh < 3; hh++) {
+        var phi = hh * 2.094 + r * 1.2;
+        var hx = perp[0]*Math.cos(phi) + perp2[0]*Math.sin(phi);
+        var hy = perp[1]*Math.cos(phi) + perp2[1]*Math.sin(phi);
+        var hz = perp[2]*Math.cos(phi) + perp2[2]*Math.sin(phi);
+        pushAtom(cbX + hx*bCH*0.8, cbY + hy*bCH*0.8, cbZ + hz*bCH*0.8, 'H', 1);
+      }
+    }
+
+    pushAtom(Cp[0], Cp[1], Cp[2], 'C', 4);
+
+    // Split-electron O
+    var oPos = [Cp[0] + perp[0]*bCO, Cp[1] + perp[1]*bCO, Cp[2] + perp[2]*bCO];
+    carbonylOIdx.push(atoms.length);
+    pushAtom(oPos[0], oPos[1], oPos[2], 'O', 0);
+    pushAtom(oPos[0] + perp2[0]*h, oPos[1] + perp2[1]*h, oPos[2] + perp2[2]*h, 'O', 1);
+    pushAtom(oPos[0] - perp2[0]*h, oPos[1] - perp2[1]*h, oPos[2] - perp2[2]*h, 'O', 1);
+
+    resEndIdx.push(atoms.length);
+  }
+
+  // C-terminal OH
+  var lastC = bb[nRes - 1].C, lastCa = bb[nRes - 1].Ca;
+  var lc = normalize([lastC[0]-lastCa[0], lastC[1]-lastCa[1], lastC[2]-lastCa[2]]);
+  var ctOx = lastC[0] + lc[0]*1.34*A, ctOy = lastC[1] + lc[1]*1.34*A, ctOz = lastC[2] + lc[2]*1.34*A;
+  pushAtom(ctOx, ctOy, ctOz, 'O', 0);
+  pushAtom(ctOx + h, ctOy, ctOz, 'O', 1);
+  pushAtom(ctOx - h, ctOy, ctOz, 'O', 1);
+  pushAtom(lastC[0] + lc[0]*(1.34*A+bOH), lastC[1] + lc[1]*(1.34*A+bOH), lastC[2] + lc[2]*(1.34*A+bOH), 'H', 1);
+
+  var nProtein = atoms.length;
+  log.textContent = 'Protein: ' + nProtein + ' atoms (' + nRes + ' residues)';
+
+  // ===== WATER SHELL =====
+  var minX = Infinity, maxX = -Infinity;
+  var minY = Infinity, maxY = -Infinity;
+  var minZ = Infinity, maxZ = -Infinity;
+  for (var r = 0; r < nRes; r++) {
+    if (caPos[r][0] < minX) minX = caPos[r][0]; if (caPos[r][0] > maxX) maxX = caPos[r][0];
+    if (caPos[r][1] < minY) minY = caPos[r][1]; if (caPos[r][1] > maxY) maxY = caPos[r][1];
+    if (caPos[r][2] < minZ) minZ = caPos[r][2]; if (caPos[r][2] > maxZ) maxZ = caPos[r][2];
+  }
+
+  var waterSpacing = 2.8 * A;
+  var shellInner = 3.0 * A;
+  var shellOuter = 5.5 * A;
+  var pad = shellOuter;
+  var halfScr = scr / 2 - 2 * h;
+  var nWater = 0;
+  var maxWater = 50;
+
+  for (var wx = minX - pad; wx <= maxX + pad && nWater < maxWater; wx += waterSpacing) {
+    for (var wy = minY - pad; wy <= maxY + pad && nWater < maxWater; wy += waterSpacing) {
+      for (var wz = minZ - pad; wz <= maxZ + pad && nWater < maxWater; wz += waterSpacing) {
+        var ox = wx + (rand()-0.5)*waterSpacing*0.4;
+        var oy = wy + (rand()-0.5)*waterSpacing*0.4;
+        var oz = wz + (rand()-0.5)*waterSpacing*0.4;
+
+        if (Math.abs(ox) > halfScr || Math.abs(oy) > halfScr || Math.abs(oz) > halfScr) continue;
+
+        var minDist2 = Infinity;
+        for (var c = 0; c < nRes; c++) {
+          var ddx = ox-caPos[c][0], ddy = oy-caPos[c][1], ddz = oz-caPos[c][2];
+          var d2 = ddx*ddx + ddy*ddy + ddz*ddz;
+          if (d2 < minDist2) minDist2 = d2;
+        }
+        var minDist = Math.sqrt(minDist2);
+
+        if (minDist >= shellInner && minDist <= shellOuter) {
+          // Water: standard O (Z=2), no split electrons
+          pushAtom(ox, oy, oz, 'O', 2);
+          pushAtom(ox - 0.76*A, oy - 0.59*A, oz, 'H', 1);
+          pushAtom(ox + 0.76*A, oy - 0.59*A, oz, 'H', 1);
+          nWater++;
+        }
+      }
+    }
+  }
+
+  log.textContent += '\nWater: ' + nWater + ' molecules (' + (nWater*5) + ' atoms)';
+  log.textContent += '\nTotal: ' + atoms.length + ' atoms on ' + gridN + '^3 grid';
+  log.textContent += '\nBLIND FOLD: NO biases — water drives folding';
+
+  window.USER_FOLD_ATOMS = [caIndices[0], caIndices[11], caIndices[22]];
+
+  // Monitor distances (display only)
+  var bondPairs = [];
+  if (amideHIdx[10] >= 0) bondPairs.push([carbonylOIdx[3], amideHIdx[10], "β:O3···H10:"]);
+  if (amideHIdx[11] >= 0) bondPairs.push([carbonylOIdx[2], amideHIdx[11], "β:O2···H11:"]);
+  if (amideHIdx[20] >= 0) bondPairs.push([carbonylOIdx[16], amideHIdx[20], "α:O16···H20:"]);
+  if (amideHIdx[21] >= 0) bondPairs.push([carbonylOIdx[17], amideHIdx[21], "α:O17···H21:"]);
+  bondPairs.push([caIndices[3], caIndices[19], "β-α:T4-L20:"]);
+  bondPairs.push([caIndices[0], caIndices[22], "Ca0-Ca22:"]);
+
+  window.USER_BOND_PAIRS = bondPairs;
+
+  window.USER_REFERENCE = {
+    bonds: {
+      "β:O3···H10": "~2.0 (if sheet forms)",
+      "α:O16···H20": "~2.0 (if helix forms)",
+      "T4-L20": "~7 (if core packs)",
+      "Ca0-Ca22": "~12"
+    },
+    energy: "BBA5 SOLVATED BLIND — water drives ββα folding",
+    binding: "No biases. Will both β-sheet AND α-helix emerge from water?"
+  };
+
+  // NO contactBias — blind test
+  var resGroups = [];
+  for (var r = 0; r < nRes; r++) {
+    var group = [];
+    for (var a = resStartIdx[r]; a < resEndIdx[r]; a++) group.push(a);
+    resGroups.push(group);
+  }
+  resGroups.push([nProtein - 4, nProtein - 3, nProtein - 2, nProtein - 1]);
+
+  window.USER_CLASSICAL_MD = {
+    mode: 'translate',
+    pinEnds: false,
+    caIndices: caIndices,
+    groups: resGroups,
+    offsets: null,
+    mdSteps: 50,
+    mdDt: 0.01,
+    targetCaCa: 3.8 * A
+  };
+
+  window.USER_PROTEIN_COUNT = nProtein;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;
+  window.USER_FORCE_SCALE = 100.0;
+  window.USER_ARROW_SCALE = 0.2;
+  window.USER_N_MOVE = 15;
+  window.USER_DAMPING = 0.9;
+  window.USER_Z = zList;
+  window.USER_Z_NUC = atoms.map(function(a) {
+    if (a.Z === 0 && a.el === 'O') return 2;
+    if (a.Z === 1 && a.el === 'O') return 0;
+    return a.Z;
+  });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'C') return 0.3;
+    if (a.el === 'N') return 0.3;
+    if (a.el === 'O' && a.Z === 0) return 0.5;
+    if (a.el === 'O') return 0;
+    return 0;
+  });
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p5s.onload = function() {
+    var recorder = null, chunks = [], recording = false;
+    window._toggleRecording = function() {
+      var canvas = document.querySelector('canvas');
+      if (!canvas) return;
+      if (!recording) {
+        chunks = [];
+        var stream = canvas.captureStream(0);
+        var track = stream.getVideoTracks()[0];
+        var mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9') ? 'video/webm; codecs=vp9' : 'video/webm';
+        recorder = new MediaRecorder(stream, { mimeType: mimeType });
+        recorder.ondataavailable = function(ev) { if (ev.data.size > 0) chunks.push(ev.data); };
+        recorder.onstop = function() {
+          var blob = new Blob(chunks, { type: mimeType });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a'); a.href = url; a.download = 'bba5_solvated_blind.webm'; a.click();
+        };
+        recorder.start(1000);
+        var frameCount = 0;
+        var dot = document.createElement('div');
+        dot.id = 'rec-indicator';
+        dot.style.cssText = 'position:fixed;top:10px;left:10px;background:red;color:#fff;padding:4px 10px;border-radius:4px;font:bold 14px monospace;z-index:9999;animation:blink 1s infinite;';
+        dot.textContent = '\u25CF REC 0';
+        var style = document.createElement('style');
+        style.textContent = '@keyframes blink{0%,100%{opacity:1}50%{opacity:0.4}}';
+        document.head.appendChild(style);
+        var origDraw = window.draw;
+        window._recOrigDraw = origDraw;
+        window.draw = function() { if (origDraw) origDraw(); try { track.requestFrame(); frameCount++; } catch(e) {} if (dot) dot.textContent = '\u25CF REC ' + frameCount; };
+        recording = true;
+        document.body.appendChild(dot);
+      } else {
+        if (window._recOrigDraw) { window.draw = window._recOrigDraw; window._recOrigDraw = null; }
+        recorder.stop(); recording = false;
+        var ind = document.getElementById('rec-indicator');
+        if (ind) ind.remove();
+      }
+    };
+    setTimeout(function() {
+      window._view3D = true;
+      setTimeout(function() { window._toggleRecording(); }, 2000);
+      setTimeout(function() { if (document.getElementById('rec-indicator')) window._toggleRecording(); }, 30 * 60 * 1000);
+    }, 5000);
+  };
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
