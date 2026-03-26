@@ -66,16 +66,21 @@ const SIC_INTERVAL = NELEC <= 15 ? 1 : NELEC <= 30 ? 5 : 999999;  // SIC in dyna
 const SIC_JACOBI = NELEC <= 15 ? 50 : 10;
 
 // === Nuclear dynamics state ===
-const N_MOVE = 200;         // electronic steps between nuclear moves
+const N_MOVE = window.USER_N_MOVE || 200;
 const DT_NUC = 0.8;         // au (~0.02 fs)
 const NUC_SUBSTEPS = 1;     // single step (forces recomputed each move)
-const DAMPING = 0.98;       // light damping
+const DAMPING = window.USER_DAMPING || 0.98;
 const MAX_VEL = 0.1;        // au/au_time
 let forceScale = 1.0;       // adjustable via slider/keys
 let boundarySpeed = 0.5;    // dt_w for free boundary evolution
 let nucVel = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
+if (window.USER_INIT_VEL) {
+  for (let a = 0; a < window.USER_INIT_VEL.length && a < MAX_ATOMS; a++) {
+    nucVel[a] = [...window.USER_INIT_VEL[a]];
+  }
+}
 let nucForce = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
-let nucStepCount = 0, dynamicsEnabled = false;
+let nucStepCount = 0, dynamicsEnabled = window.USER_DYNAMICS || false;
 function nucMass(z) { return ({1:1, 2:16, 3:14, 4:12}[z] || 1) * 1836; }
 
 // Multigrid coarse grid
@@ -3039,6 +3044,9 @@ async function moveNuclei(gpuForces) {
   console.log("Forces (elec+nuc): " + nucForce.filter((_,i) => Z[i]>0).map((f,i) =>
     atomLabels[i]+"=("+f.map(x=>x.toExponential(3)).join(",")+")").join(" "));
 
+  // Save positions before move for wavefunction transport
+  const prevNucPos = nucPos.map(p => [...p]);
+
   for (let sub = 0; sub < NUC_SUBSTEPS; sub++) {
     for (let a = 0; a < NELEC; a++) {
       if (Z[a] === 0) continue;
@@ -3056,6 +3064,36 @@ async function moveNuclei(gpuForces) {
   nucStepCount++;
   console.log("Nuc step " + nucStepCount + ": " +
     nucPos.filter((_, i) => Z[i] > 0).map(p => "(" + p.map(x => x.toFixed(2)).join(",") + ")").join(" "));
+
+  // Reinitialize wavefunctions as compact spheres at new nuclear positions
+  // This ensures density always follows nuclei
+  {
+    const Zeff = window.INIT_ZEFF || 1.0;
+    const Uinit = new Float32Array(S3);
+    const Linit = new Uint32Array(S3);
+    for (let i = 1; i < NN; i++) {
+      for (let j = 1; j < NN; j++) {
+        for (let k = 1; k < NN; k++) {
+          const idx = i * S2 + j * S + k;
+          // Find nearest nucleus
+          let bestA = 0, bestD2 = Infinity;
+          for (let a = 0; a < NELEC; a++) {
+            if (Z[a] === 0) continue;
+            const di = i - nucPos[a][0], dj = j - nucPos[a][1], dk = k - nucPos[a][2];
+            const d2 = di*di + dj*dj + dk*dk;
+            if (d2 < bestD2) { bestD2 = d2; bestA = a; }
+          }
+          Linit[idx] = bestA;
+          const r = Math.sqrt(bestD2) * hGrid;
+          Uinit[idx] = Math.exp(-Zeff * r);
+        }
+      }
+    }
+    device.queue.writeBuffer(U_buf[cur], 0, Uinit);
+    device.queue.writeBuffer(U_buf[1 - cur], 0, Uinit);
+    device.queue.writeBuffer(labelBuf, 0, Linit);
+    device.queue.writeBuffer(label2Buf, 0, Linit);
+  }
 
   // Update atomBuf with new positions, recompute K on GPU (batched, keep converged U, labels, P)
   fillAtomBuf();

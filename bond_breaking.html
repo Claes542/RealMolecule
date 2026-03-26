@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// H + H2 → H2 + H  exchange reaction
+// A lone H atom approaches an H2 molecule — tests bond breaking/forming
+// This is something only quantum mechanics can do (classical MD can't break bonds)
+// Known: barrier ~0.4 eV, transition state is linear H-H-H
+(function() {
+  var gridN = 100, scr = 10, N2 = 50;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  // Ha-Hb bonded pair at rest, Hc approaches from right
+  // Ha ——— Hb · · · · · Hc ←←
+  var bondH2 = 1.4;  // 1.4 au
+  addAtom(-bondH2/2, 0, 0, 1, 'H');         // 0: H_a (left of H2)
+  addAtom(bondH2/2, 0, 0, 1, 'H');          // 1: H_b (right of H2)
+  addAtom(bondH2/2 + 3.0, 0, 0, 1, 'H');   // 2: H_c (lone, 3 au right of Hb, moving left)
+
+  console.log('Ha(-0.7) --- Hb(+0.7) ... Hc(+3.7) ←←');
+  console.log('Ha-Hb bonded (1.4 au), Hc approaching from right');
+
+  window.USER_BOND_PAIRS = [
+    [0, 1, "Ha-Hb:"],   // original H2 bond (should stay 1.4 then stretch)
+    [1, 2, "Hb-Hc:"],   // gap → new bond forming
+    [0, 2, "Ha-Hc:"],   // total span
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: {
+      "Ha-Hb": "0.74",  // equilibrium H2
+      "Hb-Hc": "0.74",  // product H2
+      "Ha-Hc": "1.48"   // if both bonded (transition state)
+    },
+    energy: "H2 bond energy: -1.17 Ha. Barrier: ~0.4 eV",
+    binding: "Watch Ha-Hb stretch and Hb-Hc shrink as bond transfers"
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;   // converge first, press D
+  window.USER_STEPS = 50000;      // more density steps before dynamics
+  window.INIT_ZEFF = 10;          // very compact — effectively sharp cutoff at R~0.3 au
+  // Give Hc initial velocity toward H2 (leftward)
+  // Hc approaches H2 from closer range with higher velocity
+  window.USER_INIT_VEL = [[0,0,0], [0,0,0], [-0.03, 0, 0]];
+  window.USER_N_MOVE = 200;      // many ITP steps per nuclear move
+  window.USER_DT_NUC = 0.5;      // small nuclear timestep for stability
+  window.USER_DAMPING = 1.0;     // no damping — elastic collision (molecule_old.js uses 0.98 default)
+  window.USER_FORCE_SCALE = 0.5;
+  window.USER_ARROW_SCALE = 500.0;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) { return 0; });
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule_old.js?t=' + Date.now();  // bare H atoms need isInsideAnalytical
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
