@@ -1092,8 +1092,8 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
 // === Nuclear dynamics shaders ===
 
 // Two force methods: HF integral (small systems) and gradient-of-P (large systems)
-const USE_GRADP_FORCE = !USE_DIRECT_POTHER && NELEC > 30;  // only when multigrid P_buf is used
-const FORCE_RADIUS = USE_GRADP_FORCE ? Math.max(3, Math.round(1.0 / hGrid)) : 0;
+const USE_GRADP_FORCE = window.USER_GRADP_FORCE || false;  // opt-in via USER_GRADP_FORCE
+const FORCE_RADIUS = USE_GRADP_FORCE ? Math.max(5, Math.round(3.0 / hGrid)) : 0;  // 3 au sphere to capture water forces
 
 const gradPtotal_WGSL = USE_GRADP_FORCE ? `
 // Averaged gradient of total electron potential P in sphere around nucleus
