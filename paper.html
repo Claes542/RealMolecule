@@ -221,7 +221,24 @@ O (electron-rich) attracts H, N (in between) releases H, C (electron-poor) holds
 If all three had the same electron count, there would be no directional H-bond, no protein folding.
 </p>
 
-<h2>8. Open Issues</h2>
+<h2>8. Force Computation</h2>
+<p>
+Two methods for computing forces on nuclei from the electron density:
+</p>
+<ul>
+  <li><b>Hellmann&ndash;Feynman integral</b>: F<sub>A</sub> = Z<sub>A</sub> &int; &rho;(r)(r&minus;R<sub>A</sub>)/|r&minus;R<sub>A</sub>|&sup3; dV.
+    Exact but O(N&sup3; &times; atoms). Used for small systems (&le;30 atoms).</li>
+  <li><b>Gradient of total potential</b>: F<sub>A</sub> = 2Z<sub>A</sub>&langle;&nabla;P&rangle;<sub>R</sub>,
+    averaged in a 1&nbsp;au sphere around the nucleus. Uses converged P from the multigrid V-cycle.
+    O(R&sup3; &times; atoms) &mdash; <b>7.5&times; faster</b> for proteins. Used for &gt;30 atoms.</li>
+</ul>
+<p>
+Both methods give the same physics: the force from the total electron density on each nucleus.
+The gradient-of-P requires a converged Poisson solution, which the multigrid provides for large systems.
+For the trp-cage (200 atoms, 200&sup3; grid): <b>40&nbsp;ms/step with gradient-of-P vs 300&nbsp;ms/step with HF integral</b>.
+</p>
+
+<h2>9. Open Issues</h2>
 <ul>
   <li><b>Over-compression</b>: missing van der Waals repulsion lets non-bonded atoms get too close</li>
   <li><b>Split-O angle dependence</b>: 2 of 4 H-bonds dive to 1.5&nbsp;&Aring; when H approaches along the domain boundary plane. Fix: tetrahedral 4-electron O for spherical coverage</li>
