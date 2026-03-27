@@ -1091,9 +1091,83 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
 
 // === Nuclear dynamics shaders ===
 
-// Direct Coulomb force on nuclei from electron density:
-// F_A = Z_A * ∫ ρ(r) * (r - R_A) / |r - R_A|³ dV
-const gradPtotal_WGSL = `
+// Two force methods: HF integral (small systems) and gradient-of-P (large systems)
+const USE_GRADP_FORCE = !USE_DIRECT_POTHER && NELEC > 30;  // only when multigrid P_buf is used
+const FORCE_RADIUS = USE_GRADP_FORCE ? Math.max(3, Math.round(1.0 / hGrid)) : 0;
+
+const gradPtotal_WGSL = USE_GRADP_FORCE ? `
+// Averaged gradient of total electron potential P in sphere around nucleus
+// F_A = 2 * Z_A * <∇P>_R — uses converged P from multigrid V-cycle
+${paramStructWGSL}
+${atomStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> Pt: array<f32>;
+@group(0) @binding(2) var<storage, read_write> forceSums: array<f32>;
+@group(0) @binding(3) var<storage, read> atoms: array<Atom>;
+
+@compute @workgroup_size(1)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let atom = gid.x;
+  if (atom >= ${NELEC}u) { return; }
+
+  let ZA = select(atoms[atom].Z, atoms[atom].Z_nuc, atoms[atom].Z <= 0.0);
+  if (ZA <= 0.0) {
+    forceSums[atom * 3u] = 0.0;
+    forceSums[atom * 3u + 1u] = 0.0;
+    forceSums[atom * 3u + 2u] = 0.0;
+    return;
+  }
+
+  let ci = i32(atoms[atom].posI);
+  let cj = i32(atoms[atom].posJ);
+  let ck = i32(atoms[atom].posK);
+  let R = ${FORCE_RADIUS}i;
+  let R2f = f32(R * R);
+  let inv2h = 0.5 * p.inv_h;
+  let S = i32(p.S);
+
+  var sumFi: f32 = 0.0;
+  var sumFj: f32 = 0.0;
+  var sumFk: f32 = 0.0;
+  var count: f32 = 0.0;
+
+  for (var di: i32 = -R; di <= R; di++) {
+    let ii = ci + di;
+    if (ii < 1 || ii >= S - 1) { continue; }
+    for (var dj: i32 = -R; dj <= R; dj++) {
+      let jj = cj + dj;
+      if (jj < 1 || jj >= S - 1) { continue; }
+      for (var dk: i32 = -R; dk <= R; dk++) {
+        let kk = ck + dk;
+        if (kk < 1 || kk >= S - 1) { continue; }
+        let r2 = f32(di*di + dj*dj + dk*dk);
+        if (r2 > R2f) { continue; }
+
+        let ui = u32(ii); let uj = u32(jj); let uk = u32(kk);
+        let gI = (Pt[(ui+1u)*p.S2 + uj*p.S + uk] - Pt[(ui-1u)*p.S2 + uj*p.S + uk]) * inv2h;
+        let gJ = (Pt[ui*p.S2 + (uj+1u)*p.S + uk] - Pt[ui*p.S2 + (uj-1u)*p.S + uk]) * inv2h;
+        let gK = (Pt[ui*p.S2 + uj*p.S + (uk+1u)] - Pt[ui*p.S2 + uj*p.S + (uk-1u)]) * inv2h;
+        sumFi += gI;
+        sumFj += gJ;
+        sumFk += gK;
+        count += 1.0;
+      }
+    }
+  }
+
+  if (count > 0.0) {
+    sumFi /= count;
+    sumFj /= count;
+    sumFk /= count;
+  }
+
+  forceSums[atom * 3u]      = 2.0 * ZA * sumFi;
+  forceSums[atom * 3u + 1u] = 2.0 * ZA * sumFj;
+  forceSums[atom * 3u + 2u] = 2.0 * ZA * sumFk;
+}
+` :
+// Direct Coulomb force (HF integral) for small systems
+`
 ${paramStructWGSL}
 ${atomStructWGSL}
 @group(0) @binding(0) var<uniform> p: P;
@@ -2460,9 +2534,11 @@ async function initGPU() {
       // Bind to correct potential buffer:
       // NELEC ≤ 5: PotherBuf (direct per-electron Poisson)
       // NELEC > 5: P_buf[0] (total Poisson from multigrid)
+      // HF uses U_buf; gradP uses P_buf (multigrid) or PotherBuf (direct)
+      const forceBuf = USE_GRADP_FORCE ? (USE_DIRECT_POTHER ? PotherBuf : P_buf[0]) : U_buf[c];
       gradPtotalBG[c] = device.createBindGroup({ layout: gradPtotalPL.getBindGroupLayout(0), entries: [
         { binding: 0, resource: { buffer: paramsBuf } },
-        { binding: 1, resource: { buffer: U_buf[c] } },
+        { binding: 1, resource: { buffer: forceBuf } },
         { binding: 2, resource: { buffer: forceSumsBuf } },
         { binding: 3, resource: { buffer: atomBuf } },
       ]});
@@ -2944,12 +3020,13 @@ async function doSteps(n) {
     await forceSumsReadBuf.mapAsync(GPUMapMode.READ);
     const forceData = new Float32Array(forceSumsReadBuf.getMappedRange().slice(0));
     forceSumsReadBuf.unmap();
-    // Store electronic forces
+    // Store electronic forces (HF integral from GPU)
     for (let a = 0; a < NELEC; a++) {
       if (Z[a] === 0 && Z_nuc[a] === 0) { nucForceElec[a] = [0,0,0]; nucForceNuc[a] = [0,0,0]; nucForceTotal[a] = [0,0,0]; continue; }
       nucForceElec[a] = (Z[a] > 0 || Z_nuc[a] > 0) ? [forceData[a*3], forceData[a*3+1], forceData[a*3+2]] : [0,0,0];
       nucForceNuc[a] = [0, 0, 0];
     }
+
     // Compute nuclear-nuclear Coulomb repulsion forces
     if (!addNucRepulsion) {
       // Skip nuc-nuc forces (e.g. He internal entries)
@@ -4619,6 +4696,7 @@ function draw() {
   fill(dynamicsEnabled ? [0,255,255] : [150,150,150]);
   text("Dynamics: " + (dynamicsEnabled ? "ON" : "OFF") + " (nucStep=" + nucStepCount + ")  Force=" + forceScale.toFixed(1) + "x  [D toggle, +/- force]", 5, 110);
   fill(255, 255, 0); text("yellow=net force", 5, 125);
+
 
   // Display net fold forces on screen
   if (window.USER_FOLD_ATOMS && window._foldNetUnfold !== undefined) {
