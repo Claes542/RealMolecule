@@ -28,33 +28,23 @@
   // Separation: C1-C2 ~ 5.5 Å so H-bond O···H ~ 1.9 Å
   var csep = 5.5 * A; // C-C separation in au
 
-  // Formamide 1 (left) — O: Z_nuc=4, 4 tetrahedral electrons, r_c=0.5
+  // Formamide 1 (left) — simple O (Z=2, r_c=0.8)
   var x1 = -csep / 2;
-  var ox1 = x1 - 1.22*A;
   addAtom(x1, 0, 0, 4, 'C');                           // 0: C1
-  addAtom(ox1, 0, 0, 0, 'O');                           // 1: O1 kernel (Z=0, Z_nuc=4)
-  addAtom(ox1+h, h, h, 1, 'O');                         // 2: O1 e⁻ tetrahedral
-  addAtom(ox1+h, -h, -h, 1, 'O');                       // 3: O1 e⁻
-  addAtom(ox1-h, h, -h, 1, 'O');                        // 4: O1 e⁻
-  addAtom(ox1-h, -h, h, 1, 'O');                        // 5: O1 e⁻
-  addAtom(x1, 0, 1.09*A, 1, 'H');                      // 6: HC1
-  addAtom(x1 + 1.34*A, 0.3*A, 0, 3, 'N');              // 7: N1
-  addAtom(x1 + 1.34*A + 0.87*A, -0.2*A, 0, 1, 'H');   // 8: HN1a (H-bond donor)
-  addAtom(x1 + 1.34*A + 0.3*A, 1.2*A, 0, 1, 'H');     // 9: HN1b
+  addAtom(x1 - 1.22*A, 0, 0, 2, 'O');                  // 1: O1
+  addAtom(x1, 0, 1.09*A, 1, 'H');                      // 2: HC1
+  addAtom(x1 + 1.34*A, 0.3*A, 0, 3, 'N');              // 3: N1
+  addAtom(x1 + 1.34*A + 0.87*A, -0.2*A, 0, 1, 'H');   // 4: HN1a (H-bond donor)
+  addAtom(x1 + 1.34*A + 0.3*A, 1.2*A, 0, 1, 'H');     // 5: HN1b
 
-  // Formamide 2 (right) — same tetrahedral O
+  // Formamide 2 (right)
   var x2 = csep / 2;
-  var ox2 = x2 - 1.22*A;
-  addAtom(x2, 0, 0, 4, 'C');                           // 10: C2
-  addAtom(ox2, 0, 0, 0, 'O');                           // 11: O2 kernel (Z=0, Z_nuc=4)
-  addAtom(ox2+h, h, h, 1, 'O');                         // 12: O2 e⁻ tetrahedral
-  addAtom(ox2+h, -h, -h, 1, 'O');                       // 13: O2 e⁻
-  addAtom(ox2-h, h, -h, 1, 'O');                        // 14: O2 e⁻
-  addAtom(ox2-h, -h, h, 1, 'O');                        // 15: O2 e⁻
-  addAtom(x2, 0, -1.09*A, 1, 'H');                     // 16: HC2
-  addAtom(x2 + 1.34*A, -0.3*A, 0, 3, 'N');             // 17: N2
-  addAtom(x2 + 1.34*A + 0.87*A, 0.2*A, 0, 1, 'H');    // 18: HN2a
-  addAtom(x2 + 1.34*A + 0.3*A, -1.2*A, 0, 1, 'H');    // 19: HN2b
+  addAtom(x2, 0, 0, 4, 'C');                           // 6: C2
+  addAtom(x2 - 1.22*A, 0, 0, 2, 'O');                  // 7: O2
+  addAtom(x2, 0, -1.09*A, 1, 'H');                     // 8: HC2
+  addAtom(x2 + 1.34*A, -0.3*A, 0, 3, 'N');             // 9: N2
+  addAtom(x2 + 1.34*A + 0.87*A, 0.2*A, 0, 1, 'H');    // 10: HN2a
+  addAtom(x2 + 1.34*A + 0.3*A, -1.2*A, 0, 1, 'H');    // 11: HN2b
 
   console.log('Formamide dimer: ' + atoms.length + ' atoms');
   console.log('H-bond: HN1a(4) → O2(7)');
@@ -63,16 +53,14 @@
   // Bond pairs for display
   // Intramolecular bonds
   window.USER_BOND_PAIRS = [
-    [0, 1, "C=O:"],      // C1-O1 kernel
-    [0, 7, "C-N:"],      // C1-N1
-    [7, 8, "N-H:"],      // N1-HN1a (donor H)
-    [10, 11, "C=O:"],    // C2-O2 kernel
-    [10, 17, "C-N:"],    // C2-N2
-    // H-bond: HN1a(8) → O2 kernel(11)
-    [8, 11, "H···O:"],   // H-bond distance
-    [7, 11, "N···O:"],   // donor-acceptor
-    // Inter-monomer
-    [0, 10, "C···C:"],   // C1-C2 separation
+    [0, 1, "C=O:"],      // C1-O1
+    [0, 3, "C-N:"],      // C1-N1
+    [3, 4, "N-H:"],      // N1-HN1a
+    [6, 7, "C=O:"],      // C2-O2
+    [6, 9, "C-N:"],      // C2-N2
+    [4, 7, "H···O:"],    // H-bond: HN1a → O2
+    [3, 7, "N···O:"],    // donor-acceptor
+    [0, 6, "C···C:"],    // inter-monomer
   ];
 
   // PySCF HF/6-31G* reference values for on-screen comparison
@@ -99,17 +87,11 @@
   window.USER_DAMPING = 0.92;
   window.USER_N_MOVE = 50;
   window.USER_Z = atoms.map(function(a) { return a.Z; });
-  window.USER_Z_NUC = atoms.map(function(a) {
-    if (a.Z === 0 && a.el === 'O') return 4;  // O kernel: Z_nuc=4
-    if (a.Z === 1 && a.el === 'O') return 0;  // O electron-only
-    return a.Z;
-  });
   window.USER_RC = atoms.map(function(a) {
     if (a.el === 'H') return 0;
     if (a.el === 'C') return 0.3;
-    if (a.el === 'N') return 0.5;              // same core as O: [1s² 2s²]
-    if (a.el === 'O' && a.Z === 0) return 0.5; // O kernel
-    if (a.el === 'O') return 0;
+    if (a.el === 'N') return 0.3;
+    if (a.el === 'O') return 0.8;
     return 0;
   });
 })();

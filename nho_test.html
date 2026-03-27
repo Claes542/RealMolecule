@@ -22,24 +22,18 @@
   var bNH = 1.01 * A;
   var sep = 2.0 * A;  // initial H···O gap (closer)
 
-  // O: Z_nuc=4, 4 tetrahedral electrons, r_c=0.5 (bigger core than C)
-  // Shell structure: [1s² 2s²] core (4e, in r_c) + 4 valence (2p⁴)
-  addAtom(-bNH, 0, 0, 3, 'N');       // 0: N (Z=3)
-  addAtom(0,    0, 0, 1, 'H');       // 1: H (Z=1) at origin
-  addAtom(sep,  0, 0, 0, 'O');       // 2: O nucleus (Z=0, Z_nuc=4)
-  // 4 electrons in tetrahedral arrangement (offset by 1 grid cell)
-  addAtom(sep + h, sep > 0 ? h : -h, h, 1, 'O');    // 3: e⁻ (+,+,+)
-  addAtom(sep + h, sep > 0 ? -h : h, -h, 1, 'O');   // 4: e⁻ (+,-,-)
-  addAtom(sep - h, sep > 0 ? h : -h, -h, 1, 'O');   // 5: e⁻ (-,+,-)
-  addAtom(sep - h, sep > 0 ? -h : h, h, 1, 'O');    // 6: e⁻ (-,-,+)
+  // Simple O: Z=2, r_c=0.8
+  addAtom(-bNH, 0, 0, 3, 'N');       // 0: N (Z=3, r_c=0.3)
+  addAtom(0,    0, 0, 1, 'H');       // 1: H (Z=1)
+  addAtom(sep,  0, 0, 2, 'O');       // 2: O (Z=2, r_c=0.8)
 
   console.log('N-H···O test: 3 atoms');
   console.log('N at -1.01A, H at 0, O at 3.0A');
 
   window.USER_BOND_PAIRS = [
-    [1, 0, "H-N:"],      // covalent bond (should stay ~1.0 Å)
-    [1, 2, "H···O:"],    // H to O nucleus (should reach ~1.9 Å)
-    [0, 2, "N···O:"],    // donor-acceptor (should be ~3.0 Å)
+    [0, 1, "N-H:"],
+    [1, 2, "H···O:"],    // to O kernel
+    [0, 2, "N···O:"],
   ];
 
   window.USER_REFERENCE = {
@@ -60,20 +54,10 @@
   window.USER_FORCE_SCALE = 1.0;
   window.USER_ARROW_SCALE = 200.0;
   window.USER_N_MOVE = 20;
-  window.USER_DAMPING = 0.8;  // strong damping to settle H oscillation
-  window.USER_Z = atoms.map(function(a) { return a.Z; });
-  window.USER_Z_NUC = atoms.map(function(a) {
-    if (a.Z === 0 && a.el === 'O') return 4;  // O kernel: Z_nuc=4 (8 - 4 core e⁻)
-    if (a.Z === 1 && a.el === 'O') return 0;  // O electron-only
-    return a.Z;
-  });
-  window.USER_RC = atoms.map(function(a) {
-    if (a.el === 'H') return 0;
-    if (a.el === 'N') return 0.5;  // same core as O: [1s² 2s²]
-    if (a.el === 'O' && a.Z === 0) return 0.5;  // r_c only on kernel
-    if (a.el === 'O') return 0;                  // no r_c on electrons
-    return 0;
-  });
+  window.USER_DAMPING = 0.8;
+  window.USER_Z = [3, 1, 2];
+  window.USER_RC = [0.3, 0, 0.8];
+  window.INIT_ZEFF = 2;
 })();
 
 var s = document.createElement('script');
