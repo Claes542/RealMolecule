@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// Two water molecules — do they form an H-bond?
+// H2O ... H2O on 100^3
+(function() {
+  var gridN = 100, scr = 10, N2 = 50;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  // Water 1 (left): split-electron O (kernel + 2 electrons) + two H
+  var sep = 3.0 * A;  // O-O separation ~3 Å
+  var ox1 = -sep/2;
+  addAtom(ox1, 0, 0, 0, 'O');                       // 0: O1 kernel
+  addAtom(ox1 + h*0.529177, 0, 0, 1, 'O');          // 1: O1 electron-a (along axis)
+  addAtom(ox1 - h*0.529177, 0, 0, 1, 'O');          // 2: O1 electron-b (along axis)
+  addAtom(ox1 + 0.76*A, -0.59*A, 0, 1, 'H');       // 3: H1a (pointing toward O2)
+  addAtom(ox1 - 0.76*A, -0.59*A, 0, 1, 'H');       // 4: H1b
+
+  // Water 2 (right): split-electron O + two H
+  var ox2 = sep/2;
+  addAtom(ox2, 0, 0, 0, 'O');                       // 5: O2 kernel
+  addAtom(ox2 + h*0.529177, 0, 0, 1, 'O');          // 6: O2 electron-a (along axis)
+  addAtom(ox2 - h*0.529177, 0, 0, 1, 'O');          // 7: O2 electron-b (along axis)
+  addAtom(ox2 + 0.76*A, 0.59*A, 0, 1, 'H');        // 8: H2a
+  addAtom(ox2 - 0.76*A, 0.59*A, 0, 1, 'H');        // 9: H2b (pointing toward O1)
+
+  console.log('2 water molecules, O-O separation: ' + (sep*0.529177).toFixed(2) + ' Å');
+
+  window.USER_BOND_PAIRS = [
+    [0, 5, "O1-O2:"],    // O-O kernel distance
+    [3, 5, "H1a-O2:"],   // H-bond: H of water1 → O2 kernel
+    [9, 0, "H2b-O1:"],   // H-bond: H of water2 → O1 kernel
+    [0, 3, "O1-H1a:"],   // intramolecular
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: {
+      "O1-O2": "2.8 (H-bonded dimer)",
+      "H1a-O2": "1.9 (H-bond)",
+      "O1-H1a": "0.96 (covalent)"
+    },
+    energy: "Water dimer binding: ~5 kcal/mol",
+    binding: "Do the two waters form an O-H···O hydrogen bond?"
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;  // converge first, press D
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;
+  window.USER_N_MOVE = 50;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_Z_NUC = atoms.map(function(a) {
+    if (a.Z === 0 && a.el === 'O') return 2;  // O kernel
+    if (a.Z === 1 && a.el === 'O') return 0;  // O electron
+    return a.Z;
+  });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'O' && a.Z === 0) return 1.0;  // O kernel
+    if (a.el === 'O') return 0;                   // O electron
+    return 0;
+  });
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();  // has bond distance display
+s.onerror = function() { document.body.innerHTML = '<pre style="color:red">Failed to load</pre>'; };
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

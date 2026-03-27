@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// Simplest O-H test: one O kernel + electrons, one H
+// Does O attract H?
+(function() {
+  var gridN = 200, scr = 10, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  // O as single atom: Z=2, r_c=0.8 (like Li and C)
+  var sep = 0.97 * A;
+  addAtom(-sep/2, 0, 0, 2, 'O');               // 0: O (Z=2, centered)
+  addAtom(sep/2, 0, 0, 1, 'H');                // 1: H (centered)
+
+  console.log('O-H test: O(Z=2) + H at ' + (sep*0.529177).toFixed(2) + ' Å');
+
+  window.USER_BOND_PAIRS = [
+    [0, 1, "O-H:"],
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: { "O-H": "0.96" },
+    energy: "Does O attract H?",
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;
+  window.USER_N_MOVE = 50;
+  window.USER_Z = [2, 1];
+  window.USER_RC = [0.8, 0];
+  window.INIT_ZEFF = 2;
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

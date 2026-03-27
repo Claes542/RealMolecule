@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// Single water molecule H2O — basic test
+(function() {
+  var gridN = 200, scr = 10, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  // Water: O at center, 2 H at 104.5° angle, O-H = 0.96 Å
+  var bOH = 1.0 * A;  // start at 1.0 Å
+  var angle = 104.5 * Math.PI / 180;
+  // 90° H-O-H: O at center, H1 right, H2 above
+  addAtom(0, 0, 0, 2, 'O');                     // 0: O
+  addAtom(bOH, 0, 0, 1, 'H');                   // 1: H1 (right)
+  addAtom(0, -bOH, 0, 1, 'H');                  // 2: H2 (above, 90° from H1)
+
+  console.log('Single H2O: 3 atoms, O-H=' + (bOH*0.529177).toFixed(3) + ' Å');
+
+  window.USER_BOND_PAIRS = [
+    [0, 1, "O-H1:"],
+    [0, 2, "O-H2:"],
+    [1, 2, "H1-H2:"],
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: {
+      "O-H": "0.96",
+      "H-H": "1.51",
+      "angle": "104.5°"
+    },
+    energy: "H2O ground state",
+    binding: "Does O-H bond stay at 0.96 Å?"
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;  // converge first, press D
+  window.INIT_ZEFF = 2;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;
+  window.USER_N_MOVE = 50;
+  window.USER_Z = [2, 1, 1];
+  window.USER_RC = [0.5, 0, 0];
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onerror = function() { document.body.innerHTML = '<pre style="color:red">Failed to load</pre>'; };
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

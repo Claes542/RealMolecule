@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// HeH+ electron capture: bare proton approaches He (2 split electrons)
+// Does H+ steal one electron from He?
+(function() {
+  var gridN = 200, scr = 10, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  // H+ proton on left, He on right
+  // Split plane orthogonal to H+--He axis (vertical plane through He)
+  // Axis is along x, split is along y
+  var sep = 3.0;  // H+ to He distance in au
+  addAtom(-sep, 0, 0, 0, 'H');    // 0: H+ bare proton (Z=0, Z_nuc=1)
+  addAtom(0, h*0.529177, 0, 1, 'H');   // 1: He electron-a (above axis)
+  addAtom(0, -h*0.529177, 0, 1, 'H');  // 2: He electron-b (below axis)
+
+  console.log('H+(left,-3au) ... He(right,0): split plane ⊥ to axis');
+  console.log('H+: Z=0 bare proton. He: 2×Z=1 split by vertical plane');
+
+  window.USER_BOND_PAIRS = [
+    [0, 1, "H+-ea:"],    // proton to He electron-a
+    [0, 2, "H+-eb:"],    // proton to He electron-b
+    [1, 2, "ea-eb:"],    // electron split distance
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: {
+      "He-H+": "0.77 Å (HeH+ bond length)",
+    },
+    energy: "HeH+ E = -2.978 Ha",
+    binding: "Does H+ capture one electron from He?"
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;   // converge first, press D
+  window.USER_DAMPING = 0.9;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_N_MOVE = 50;
+  window.USER_Z = [0, 1, 1];
+  window.USER_RC = [0, 0, 0];
+  window.INIT_ZEFF = 2;
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule_old.js?t=' + Date.now();
+s.onerror = function() { document.body.innerHTML = '<pre style="color:red">Failed to load</pre>'; };
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

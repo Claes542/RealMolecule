@@ -145,12 +145,9 @@ window.onerror = function(msg, url, line) {
 
     pushAtom(Cp[0], Cp[1], Cp[2], 'C', 4);
 
-    // Split-electron O
-    var oPos = [Cp[0] + perp[0]*bCO, Cp[1] + perp[1]*bCO, Cp[2] + perp[2]*bCO];
+    // Carbonyl O: Z=2, r_c=0.8
     carbonylOIdx.push(atoms.length);
-    pushAtom(oPos[0], oPos[1], oPos[2], 'O', 0);
-    pushAtom(oPos[0] + perp2[0]*h, oPos[1] + perp2[1]*h, oPos[2] + perp2[2]*h, 'O', 1);
-    pushAtom(oPos[0] - perp2[0]*h, oPos[1] - perp2[1]*h, oPos[2] - perp2[2]*h, 'O', 1);
+    pushAtom(Cp[0] + perp[0]*bCO, Cp[1] + perp[1]*bCO, Cp[2] + perp[2]*bCO, 'O', 2);
 
     resEndIdx.push(atoms.length);
   }
@@ -159,9 +156,7 @@ window.onerror = function(msg, url, line) {
   var lastC = bb[nRes - 1].C, lastCa = bb[nRes - 1].Ca;
   var lc = normalize([lastC[0]-lastCa[0], lastC[1]-lastCa[1], lastC[2]-lastCa[2]]);
   var ctOx = lastC[0] + lc[0]*1.34*A, ctOy = lastC[1] + lc[1]*1.34*A, ctOz = lastC[2] + lc[2]*1.34*A;
-  pushAtom(ctOx, ctOy, ctOz, 'O', 0);
-  pushAtom(ctOx + h, ctOy, ctOz, 'O', 1);
-  pushAtom(ctOx - h, ctOy, ctOz, 'O', 1);
+  pushAtom(ctOx, ctOy, ctOz, 'O', 2);
   pushAtom(lastC[0] + lc[0]*(1.34*A+bOH), lastC[1] + lc[1]*(1.34*A+bOH), lastC[2] + lc[2]*(1.34*A+bOH), 'H', 1);
 
   var nProtein = atoms.length;
@@ -261,6 +256,26 @@ window.onerror = function(msg, url, line) {
     targetCaCa: 3.8 * A
   };
 
+  // Initial inward velocities — kick protein atoms toward center of mass
+  var initVel = [];
+  var cmx2 = 0, cmy2 = 0, cmz2 = 0;
+  for (var r = 0; r < nRes; r++) { cmx2 += caPos[r][0]; cmy2 += caPos[r][1]; cmz2 += caPos[r][2]; }
+  cmx2 /= nRes; cmy2 /= nRes; cmz2 /= nRes;
+  var vInward = 0.02;  // gentle inward nudge
+  for (var a = 0; a < atoms.length; a++) {
+    if (a < nProtein) {
+      // Protein atom: velocity toward center of mass
+      var ax = (atoms[a].i - N2) * h - cmx2;
+      var ay = (atoms[a].j - N2) * h - cmy2;
+      var az = (atoms[a].k - N2) * h - cmz2;
+      var ar = Math.sqrt(ax*ax + ay*ay + az*az) + 1e-10;
+      initVel.push([-ax/ar * vInward, -ay/ar * vInward, -az/ar * vInward]);
+    } else {
+      initVel.push([0, 0, 0]);  // water: no initial velocity
+    }
+  }
+  window.USER_INIT_VEL = initVel;
+
   window.USER_PROTEIN_COUNT = nProtein;
   window.USER_NN = gridN;
   window.USER_ATOMS = atoms;
@@ -272,17 +287,11 @@ window.onerror = function(msg, url, line) {
   window.USER_N_MOVE = 15;
   window.USER_DAMPING = 0.9;
   window.USER_Z = zList;
-  window.USER_Z_NUC = atoms.map(function(a) {
-    if (a.Z === 0 && a.el === 'O') return 2;  // O kernel: Z_nuc=2
-    if (a.Z === 1 && a.el === 'O') return 0;
-    return a.Z;
-  });
-  window.USER_RC = atoms.map(function(a) {
-    if (a.el === 'H') return 0;
-    if (a.el === 'C') return 0.3;
-    if (a.el === 'N') return 0.3;
-    if (a.el === 'O' && a.Z === 0) return 0.5;
-    if (a.el === 'O') return 0;
+  window.USER_RC = elList.map(function(el) {
+    if (el === 'H') return 0;
+    if (el === 'C') return 0.3;
+    if (el === 'N') return 0.3;
+    if (el === 'O') return 0.8;
     return 0;
   });
 })();

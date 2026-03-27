@@ -1076,13 +1076,14 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
 
 // === Nuclear dynamics shaders ===
 
-// Direct Coulomb force on nuclei from electron density:
-// F_A = Z_A * ∫ ρ(r) * (r - R_A) / |r - R_A|³ dV  (Hellmann-Feynman)
+// Force on nuclei: averaged gradient of electron potential in sphere around nucleus
+// F_A = 2 * Z_A * <∇P>_R  (finite difference, averaged over FORCE_RADIUS sphere)
+const FORCE_RADIUS = Math.max(3, Math.round(1.0 / hGrid));
 const gradPtotal_WGSL = `
 ${paramStructWGSL}
 ${atomStructWGSL}
 @group(0) @binding(0) var<uniform> p: P;
-@group(0) @binding(1) var<storage, read> U: array<f32>;
+@group(0) @binding(1) var<storage, read> Pt: array<f32>;
 @group(0) @binding(2) var<storage, read_write> forceSums: array<f32>;
 @group(0) @binding(3) var<storage, read> atoms: array<Atom>;
 
@@ -1099,42 +1100,52 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     return;
   }
 
-  let Ri = f32(atoms[atom].posI) * p.h;
-  let Rj = f32(atoms[atom].posJ) * p.h;
-  let Rk = f32(atoms[atom].posK) * p.h;
-  let h3 = p.h * p.h * p.h;
-  let soft = p.h2;  // Coulomb softening ~ h²
+  let ci = i32(atoms[atom].posI);
+  let cj = i32(atoms[atom].posJ);
+  let ck = i32(atoms[atom].posK);
+  let R = ${FORCE_RADIUS}i;
+  let R2f = f32(R * R);
+  let inv2h = 0.5 * p.inv_h;
+  let S = i32(p.S);
 
-  var fi: f32 = 0.0;
-  var fj: f32 = 0.0;
-  var fk: f32 = 0.0;
+  var sumFi: f32 = 0.0;
+  var sumFj: f32 = 0.0;
+  var sumFk: f32 = 0.0;
+  var count: f32 = 0.0;
 
-  let NM = i32(p.NN) - 1;
-  for (var i: i32 = 1; i <= NM; i++) {
-    let xi = f32(i) * p.h;
-    let di = xi - Ri;
-    for (var j: i32 = 1; j <= NM; j++) {
-      let yj = f32(j) * p.h;
-      let dj = yj - Rj;
-      for (var k: i32 = 1; k <= NM; k++) {
-        let zk = f32(k) * p.h;
-        let dk = zk - Rk;
-        let r2 = di*di + dj*dj + dk*dk + soft;
-        let r = sqrt(r2);
-        let inv_r3 = 1.0 / (r * r2);
-        let id = u32(i) * p.S2 + u32(j) * p.S + u32(k);
-        let rho = U[id] * U[id];  // ρ = U²
-        let w = rho * inv_r3 * h3;
-        fi += di * w;
-        fj += dj * w;
-        fk += dk * w;
+  for (var di: i32 = -R; di <= R; di++) {
+    let ii = ci + di;
+    if (ii < 1 || ii >= S - 1) { continue; }
+    for (var dj: i32 = -R; dj <= R; dj++) {
+      let jj = cj + dj;
+      if (jj < 1 || jj >= S - 1) { continue; }
+      for (var dk: i32 = -R; dk <= R; dk++) {
+        let kk = ck + dk;
+        if (kk < 1 || kk >= S - 1) { continue; }
+        let r2 = f32(di*di + dj*dj + dk*dk);
+        if (r2 > R2f) { continue; }
+
+        let ui = u32(ii); let uj = u32(jj); let uk = u32(kk);
+        let gI = (Pt[(ui+1u)*p.S2 + uj*p.S + uk] - Pt[(ui-1u)*p.S2 + uj*p.S + uk]) * inv2h;
+        let gJ = (Pt[ui*p.S2 + (uj+1u)*p.S + uk] - Pt[ui*p.S2 + (uj-1u)*p.S + uk]) * inv2h;
+        let gK = (Pt[ui*p.S2 + uj*p.S + (uk+1u)] - Pt[ui*p.S2 + uj*p.S + (uk-1u)]) * inv2h;
+        sumFi += gI;
+        sumFj += gJ;
+        sumFk += gK;
+        count += 1.0;
       }
     }
   }
 
-  forceSums[atom * 3u]      = ZA * fi;
-  forceSums[atom * 3u + 1u] = ZA * fj;
-  forceSums[atom * 3u + 2u] = ZA * fk;
+  if (count > 0.0) {
+    sumFi /= count;
+    sumFj /= count;
+    sumFk /= count;
+  }
+
+  forceSums[atom * 3u]      = 2.0 * ZA * sumFi;
+  forceSums[atom * 3u + 1u] = 2.0 * ZA * sumFj;
+  forceSums[atom * 3u + 2u] = 2.0 * ZA * sumFk;
 }
 `;
 
@@ -2442,9 +2453,13 @@ async function initGPU() {
     // Nuclear dynamics bind groups
     // gradPtotal: direct Coulomb force from U² density on nuclei
     for (let c = 0; c < 2; c++) {
+      // Bind to correct potential buffer:
+      // NELEC ≤ 5: PotherBuf (direct per-electron Poisson)
+      // NELEC > 5: P_buf[0] (total Poisson from multigrid)
+      const forcePotBuf = USE_DIRECT_POTHER ? PotherBuf : P_buf[0];
       gradPtotalBG[c] = device.createBindGroup({ layout: gradPtotalPL.getBindGroupLayout(0), entries: [
         { binding: 0, resource: { buffer: paramsBuf } },
-        { binding: 1, resource: { buffer: U_buf[c] } },
+        { binding: 1, resource: { buffer: forcePotBuf } },
         { binding: 2, resource: { buffer: forceSumsBuf } },
         { binding: 3, resource: { buffer: atomBuf } },
       ]});
