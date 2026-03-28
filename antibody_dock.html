@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<pre id="log">Building antibody-peptide docking...</pre>
+<script>
+var log = document.getElementById('log');
+window.onerror = function(msg, url, line) {
+  log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
+};
+
+// Antibody-peptide blind docking
+// "Antibody": 25-residue β-sheet domain (two strands + CDR3 loop)
+//   - mimics nanobody binding surface
+// "Antigen": 10-residue peptide
+// Intra-domain biases maintain β-sheet, NO inter-chain biases
+// Water between them mediates docking
+(function() {
+  var gridN = 300, scr = 70;
+  var h = scr / gridN;
+  var N2 = Math.round(gridN / 2);
+  var A = 1.8897;
+
+  // Antibody domain: β1(1-8) + CDR3 loop(9-17) + β2(18-25)
+  // Designed to create a concave binding surface
+  var seqAb = ['V','Q','L','V','E','S','G','G',   // β1 strand
+               'G','L','V','K','P','G','G','S','L',  // CDR3 loop (9 res)
+               'R','L','S','C','A','A','S','G'];      // β2 strand
+  var nResAb = seqAb.length;  // 25
+
+  // Antigen peptide: charged + hydrophobic, should complement CDR3
+  var seqAg = ['E','F','L','K','A','Y','D','L','R','K'];  // 10 res
+  var nResAg = seqAg.length;  // 10
+
+  var nRes = nResAb + nResAg;  // 35
+  var seq = seqAb.concat(seqAg);
+
+  var atoms = [];
+  var elList = [];
+  var zList = [];
+
+  function pushAtom(x, y, z, el, Z) {
+    var gi = Math.round(N2 + x / h);
+    var gj = Math.round(N2 + y / h);
+    var gk = Math.round(N2 + z / h);
+    gi = Math.max(3, Math.min(gridN - 3, gi));
+    gj = Math.max(3, Math.min(gridN - 3, gj));
+    gk = Math.max(3, Math.min(gridN - 3, gk));
+    atoms.push({ i: gi, j: gj, k: gk, Z: Z, el: el });
+    elList.push(el);
+    zList.push(Z);
+  }
+
+  var bNH = 1.01 * A;
+  var bCH = 1.09 * A;
+  var bCO = 1.24 * A;
+  var bOH = 0.97 * A;
+  var bCaCb = 1.52 * A;
+  var resAdv = 3.8 * A;
+
+  function cross(a, b) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+  function normalize(v) { var l = Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2])+1e-10; return [v[0]/l,v[1]/l,v[2]/l]; }
+
+  // Build antibody as a hairpin: β1 going up, loop at top, β2 going down
+  // This creates a concave surface at the CDR3 loop facing +x
+  var bb = [];
+  var chainIdx = [];
+
+  var strandRise = 3.3 * A;  // β-strand: 3.3 Å per residue
+  var strandSep = 4.8 * A;   // distance between antiparallel strands
+
+  // β1 strand: residues 0-7, going up along z, at x = -strandSep/2
+  for (var r = 0; r < 8; r++) {
+    var cx = -strandSep / 2;
+    var cy = 0;
+    var cz = -4 * strandRise + r * strandRise;
+    var tx = 0, ty = 0, tz = 1;  // tangent along z
+    var spread = resAdv * 0.35;
+    bb.push({
+      N:  [cx - spread * tx, cy - spread * ty, cz - spread * tz],
+      Ca: [cx, cy, cz],
+      C:  [cx + spread * tx, cy + spread * ty, cz + spread * tz]
+    });
+    chainIdx.push(0);
+  }
+
+  // CDR3 loop: residues 8-16, semicircle connecting β1 top to β2 top
+  var loopCenter = [0, 0, bb[7].Ca[2]];
+  var loopRadius = strandSep / 2 + 2 * A;  // bulges outward in +x
+  for (var r = 0; r < 9; r++) {
+    var angle = Math.PI * r / 8;  // 0 to π
+    var cx = loopCenter[0] + loopRadius * Math.sin(angle);  // bulges in +x
+    var cy = 0;
+    var cz = loopCenter[2] + loopRadius * Math.cos(angle) * (strandSep / loopRadius);
+    // tangent
+    var tx = loopRadius * Math.cos(angle);
+    var ty = 0;
+    var tz = -loopRadius * Math.sin(angle) * (strandSep / loopRadius);
+    var tl = Math.sqrt(tx*tx + ty*ty + tz*tz) + 1e-10;
+    tx /= tl; ty /= tl; tz /= tl;
+    var spread = resAdv * 0.35;
+    bb.push({
+      N:  [cx - spread * tx, cy - spread * ty, cz - spread * tz],
+      Ca: [cx, cy, cz],
+      C:  [cx + spread * tx, cy + spread * ty, cz + spread * tz]
+    });
+    chainIdx.push(0);
+  }
+
+  // β2 strand: residues 17-24, going down along z, at x = +strandSep/2
+  for (var r = 0; r < 8; r++) {
+    var cx = strandSep / 2;
+    var cy = 0;
+    var cz = bb[7].Ca[2] - r * strandRise;  // going down
+    var tx = 0, ty = 0, tz = -1;  // tangent downward
+    var spread = resAdv * 0.35;
+    bb.push({
+      N:  [cx - spread * tx, cy - spread * ty, cz - spread * tz],
+      Ca: [cx, cy, cz],
+      C:  [cx + spread * tx, cy + spread * ty, cz + spread * tz]
+    });
+    chainIdx.push(0);
+  }
+
+  // Antigen peptide: extended, placed at +x from CDR3 loop, separated by gap
+  var gapDist = 5.0 * A;  // 5 Å gap — within quantum force range
+  var agX0 = loopRadius + gapDist;
+  var agZ0 = loopCenter[2];
+  var helixAngle = 2 * Math.PI / 3.6;
+  var helixRise = 1.5 * A;
+  var helixRad = 2.3 * A;
+
+  for (var r = 0; r < nResAg; r++) {
+    // Small helix for antigen
+    var angle = r * helixAngle;
+    var cx = agX0 + helixRad * Math.cos(angle);
+    var cy = helixRad * Math.sin(angle);
+    var cz = agZ0 - (nResAg - 1) * helixRise / 2 + r * helixRise;
+    var tx = -helixRad * Math.sin(angle) * helixAngle;
+    var ty = helixRad * Math.cos(angle) * helixAngle;
+    var tz = helixRise;
+    var tl = Math.sqrt(tx*tx + ty*ty + tz*tz);
+    tx /= tl; ty /= tl; tz /= tl;
+    var spread = resAdv * 0.35;
+    bb.push({
+      N:  [cx - spread * tx, cy - spread * ty, cz - spread * tz],
+      Ca: [cx, cy, cz],
+      C:  [cx + spread * tx, cy + spread * ty, cz + spread * tz]
+    });
+    chainIdx.push(1);
+  }
+
+  // Build all backbone atoms
+  var resStartIdx = [];
+  var resEndIdx = [];
+  var caIndices = [];
+  var carbonylOIdx = [];
+  var amideHIdx = [];
+
+  for (var r = 0; r < nRes; r++) {
+    resStartIdx.push(atoms.length);
+    var res = bb[r];
+    var Np = res.N, Cap = res.Ca, Cp = res.C;
+    var aa = seq[r];
+    var isPro = (aa === 'P');
+    var isGly = (aa === 'G');
+
+    var nca = [Cap[0]-Np[0], Cap[1]-Np[1], Cap[2]-Np[2]];
+    var nca_n = normalize(nca);
+    var cac = [Cp[0]-Cap[0], Cp[1]-Cap[1], Cp[2]-Cap[2]];
+    var cac_n = normalize(cac);
+    var perp = normalize(cross(nca_n, cac_n));
+    if (Math.abs(perp[0])+Math.abs(perp[1])+Math.abs(perp[2]) < 0.01) perp = normalize(cross(nca_n, [0,0,1]));
+    if (Math.abs(perp[0])+Math.abs(perp[1])+Math.abs(perp[2]) < 0.01) perp = normalize(cross(nca_n, [0,1,0]));
+    var perp2 = normalize(cross(nca_n, perp));
+
+    pushAtom(Np[0], Np[1], Np[2], 'N', 3);
+
+    if (!isPro) {
+      amideHIdx.push(atoms.length);
+      pushAtom(Np[0] + perp[0]*bNH, Np[1] + perp[1]*bNH, Np[2] + perp[2]*bNH, 'H', 1);
+    } else {
+      amideHIdx.push(-1);
+    }
+
+    if (r === 0 || r === nResAb) {
+      pushAtom(Np[0] - perp[0]*bNH, Np[1] - perp[1]*bNH, Np[2] - perp[2]*bNH, 'H', 1);
+    }
+
+    caIndices.push(atoms.length);
+    pushAtom(Cap[0], Cap[1], Cap[2], 'C', 4);
+
+    if (isGly) {
+      pushAtom(Cap[0] + perp[0]*bCH, Cap[1] + perp[1]*bCH, Cap[2] + perp[2]*bCH, 'H', 1);
+      pushAtom(Cap[0] - perp[0]*bCH, Cap[1] - perp[1]*bCH, Cap[2] - perp[2]*bCH, 'H', 1);
+    } else {
+      pushAtom(Cap[0] + perp[0]*bCH*0.7 + perp2[0]*bCH*0.7,
+               Cap[1] + perp[1]*bCH*0.7 + perp2[1]*bCH*0.7,
+               Cap[2] + perp[2]*bCH*0.7 + perp2[2]*bCH*0.7, 'H', 1);
+      var cbX = Cap[0] - perp[0]*bCaCb*0.8;
+      var cbY = Cap[1] - perp[1]*bCaCb*0.8;
+      var cbZ = Cap[2] - perp[2]*bCaCb*0.8;
+      pushAtom(cbX, cbY, cbZ, 'C', 4);
+      for (var hh = 0; hh < 3; hh++) {
+        var phi = hh * 2.094 + r * 1.2;
+        var hx2 = perp[0]*Math.cos(phi) + perp2[0]*Math.sin(phi);
+        var hy2 = perp[1]*Math.cos(phi) + perp2[1]*Math.sin(phi);
+        var hz2 = perp[2]*Math.cos(phi) + perp2[2]*Math.sin(phi);
+        pushAtom(cbX + hx2*bCH*0.8, cbY + hy2*bCH*0.8, cbZ + hz2*bCH*0.8, 'H', 1);
+      }
+    }
+
+    pushAtom(Cp[0], Cp[1], Cp[2], 'C', 4);
+    carbonylOIdx.push(atoms.length);
+    pushAtom(Cp[0] + perp[0]*bCO, Cp[1] + perp[1]*bCO, Cp[2] + perp[2]*bCO, 'O', 2);
+
+    resEndIdx.push(atoms.length);
+  }
+
+  // C-terminal OH for each chain
+  for (var ch = 0; ch < 2; ch++) {
+    var lastR = (ch === 0) ? nResAb - 1 : nRes - 1;
+    var lastC = bb[lastR].C, lastCa = bb[lastR].Ca;
+    var lc = normalize([lastC[0]-lastCa[0], lastC[1]-lastCa[1], lastC[2]-lastCa[2]]);
+    pushAtom(lastC[0] + lc[0]*1.34*A, lastC[1] + lc[1]*1.34*A, lastC[2] + lc[2]*1.34*A, 'O', 2);
+    pushAtom(lastC[0] + lc[0]*(1.34*A+bOH), lastC[1] + lc[1]*(1.34*A+bOH), lastC[2] + lc[2]*(1.34*A+bOH), 'H', 1);
+  }
+
+  var nProtein = atoms.length;
+
+  // Add water between antibody CDR3 and antigen
+  var bOHw = 0.96 * A;
+  var angW = 104.5 * Math.PI / 180;
+  var nWater = 0;
+  var waterSpacing = 3.0 * A;
+  // Water in the gap region
+  var wxMin = loopRadius + 1 * A;
+  var wxMax = agX0 - 2 * A;
+  var wzMin = agZ0 - 6 * A;
+  var wzMax = agZ0 + 6 * A;
+
+  for (var wx = wxMin; wx <= wxMax; wx += waterSpacing) {
+    for (var wy = -waterSpacing; wy <= waterSpacing; wy += waterSpacing) {
+      for (var wz = wzMin; wz <= wzMax; wz += waterSpacing) {
+        var ox = wx, oy = wy, oz = wz;
+        var halfScr = scr / 2 - 3 * h;
+        if (Math.abs(ox) > halfScr || Math.abs(oy) > halfScr || Math.abs(oz) > halfScr) continue;
+
+        var tooClose = false;
+        for (var a = 0; a < nProtein; a++) {
+          var dx = (atoms[a].i - N2) * h - ox;
+          var dy = (atoms[a].j - N2) * h - oy;
+          var dz = (atoms[a].k - N2) * h - oz;
+          if (dx*dx + dy*dy + dz*dz < (2.5*A)*(2.5*A)) { tooClose = true; break; }
+        }
+        if (tooClose) continue;
+
+        pushAtom(ox, oy, oz, 'O', 2);
+        pushAtom(ox + bOHw*Math.sin(angW/2), oy + bOHw*Math.cos(angW/2), oz, 'H', 1);
+        pushAtom(ox - bOHw*Math.sin(angW/2), oy + bOHw*Math.cos(angW/2), oz, 'H', 1);
+        nWater++;
+      }
+    }
+  }
+
+  log.textContent = 'Antibody-peptide docking: Ab(' + nResAb + ') + Ag(' + nResAg + ') = ' + nRes + ' residues';
+  log.textContent += '\nProtein: ' + nProtein + ' atoms, Water: ' + nWater + ' molecules';
+  log.textContent += '\nTotal: ' + atoms.length + ' atoms on ' + gridN + '^3 grid';
+  log.textContent += '\nAb: β-hairpin + CDR3 loop. Ag: helical peptide at ' + (gapDist/A).toFixed(0) + ' Å gap';
+  log.textContent += '\nNO inter-chain biases — quantum forces + water only';
+
+  window.USER_FOLD_ATOMS = [caIndices[0], caIndices[12], caIndices[nRes-1]];
+
+  // Residue groups
+  var resGroups = [];
+  for (var r = 0; r < nRes; r++) {
+    var group = [];
+    for (var a = resStartIdx[r]; a < resEndIdx[r]; a++) group.push(a);
+    resGroups.push(group);
+  }
+  resGroups.push([nProtein - 4, nProtein - 3]);
+  resGroups.push([nProtein - 2, nProtein - 1]);
+
+  // Bond pairs: inter-chain distances
+  var bAg = nResAb;  // antigen chain offset
+  // CDR3 loop tip (res 12) to antigen middle (res bAg+5)
+  bondPairs = [];
+  bondPairs.push([caIndices[12], caIndices[bAg+4], "CDR3tip-Ag5:"]);
+  bondPairs.push([caIndices[10], caIndices[bAg+2], "CDR3-Ag3:"]);
+  bondPairs.push([caIndices[14], caIndices[bAg+7], "CDR3-Ag8:"]);
+  // Framework-antigen
+  bondPairs.push([caIndices[3], caIndices[bAg+0], "β1-Ag1:"]);
+  bondPairs.push([caIndices[20], caIndices[bAg+9], "β2-Ag10:"]);
+  // Intra antibody: β-sheet H-bond
+  bondPairs.push([carbonylOIdx[2], amideHIdx[22], "Ab:β1-β2:"]);
+  // Intra antigen: helix H-bond
+  if (amideHIdx[bAg+4] >= 0) bondPairs.push([carbonylOIdx[bAg], amideHIdx[bAg+4], "Ag:O1···H5:"]);
+
+  window.USER_BOND_PAIRS = bondPairs;
+
+  window.USER_REFERENCE = {
+    bonds: {
+      "CDR3-Ag": "~5-8 Å (bound complex)",
+      "β-sheet": "2.0 Å (H-bond)",
+      "helix": "2.0 Å (H-bond)"
+    },
+    energy: "Antibody-peptide: CDR3 loop captures antigen",
+    binding: "Does the antigen peptide dock into the CDR3 binding groove?"
+  };
+
+  // Intra-chain biases only
+  var hbonds = [];
+  // Antibody β-sheet: antiparallel β1(0-7) ↔ β2(17-24)
+  var betaPairs = [[1,23],[2,22],[3,21],[4,20],[5,19],[6,18]];
+  for (var b = 0; b < betaPairs.length; b++) {
+    var bi = betaPairs[b][0], bj = betaPairs[b][1];
+    if (amideHIdx[bj] >= 0) hbonds.push({ a: carbonylOIdx[bi], b: amideHIdx[bj], target: 2.0 * A, label: "β:O"+bi+"···H"+bj });
+    if (amideHIdx[bi] >= 0) hbonds.push({ a: carbonylOIdx[bj], b: amideHIdx[bi], target: 2.0 * A, label: "β:O"+bj+"···H"+bi });
+  }
+  // Antigen helix: i→i+4
+  for (var i = bAg; i + 4 < bAg + nResAg; i++) {
+    if (amideHIdx[i+4] >= 0) hbonds.push({ a: carbonylOIdx[i], b: amideHIdx[i+4], target: 2.0 * A, label: "Ag:O"+(i-bAg)+"···H"+(i+4-bAg) });
+  }
+
+  window.USER_CLASSICAL_MD = {
+    mode: 'translate',
+    pinEnds: false,
+    caIndices: caIndices,
+    groups: resGroups,
+    offsets: null,
+    mdSteps: 50,
+    mdDt: 0.01,
+    targetCaCa: 3.8 * A,
+    contactBias: {
+      hbonds: hbonds,
+      contacts: [],  // NO inter-chain contacts — blind docking
+      hbondStrength: 0.8,
+      contactStrength: 1.5
+    }
+  };
+
+  window.USER_PROTEIN_COUNT = nProtein;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;
+  window.USER_GRADP_FORCE = true;
+  window.USER_FORCE_SCALE = 100.0;
+  window.USER_ARROW_SCALE = 0.2;
+  window.USER_N_MOVE = 15;
+  window.USER_DAMPING = 0.9;
+  window.USER_Z = zList;
+  window.USER_RC = elList.map(function(el) {
+    if (el === 'H') return 0;
+    if (el === 'C') return 0.3;
+    if (el === 'N') return 0.3;
+    if (el === 'O') return 0.8;
+    return 0;
+  });
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p5s.onload = function() {
+    setTimeout(function() { window._view3D = true; }, 5000);
+  };
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
