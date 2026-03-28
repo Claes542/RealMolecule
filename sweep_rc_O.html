@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<pre id="log">Sweep r_c for O: formamide dimer at each r_c value</pre>
+<div id="results" style="padding:20px;font-size:14px"></div>
+<script>
+// Sweep O r_c: run formamide dimer for each r_c, measure key distances
+// Uses adaptive convergence: run until energy stable, then measure
+
+var log = document.getElementById('log');
+var results = document.getElementById('results');
+var A = 1.8897;
+
+// r_c values to sweep
+var rcValues = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.2];
+var currentIdx = 0;
+var sweepResults = [];
+
+function setupFormamide(rcO) {
+  var gridN = 200, scr = 16;
+  var h = scr / gridN;
+  var N2 = 100;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  var csep = 5.5 * A;
+  var x1 = -csep / 2;
+  addAtom(x1, 0, 0, 4, 'C');
+  addAtom(x1 - 1.22*A, 0, 0, 2, 'O');
+  addAtom(x1, 0, 1.09*A, 1, 'H');
+  addAtom(x1 + 1.34*A, 0.3*A, 0, 3, 'N');
+  addAtom(x1 + 1.34*A + 0.87*A, -0.2*A, 0, 1, 'H');   // 4: HN1a (donor)
+  addAtom(x1 + 1.34*A + 0.3*A, 1.2*A, 0, 1, 'H');
+
+  var x2 = csep / 2;
+  addAtom(x2, 0, 0, 4, 'C');
+  addAtom(x2 - 1.22*A, 0, 0, 2, 'O');                   // 7: O2 (acceptor)
+  addAtom(x2, 0, -1.09*A, 1, 'H');
+  addAtom(x2 + 1.34*A, -0.3*A, 0, 3, 'N');
+  addAtom(x2 + 1.34*A + 0.87*A, 0.2*A, 0, 1, 'H');
+  addAtom(x2 + 1.34*A + 0.3*A, -1.2*A, 0, 1, 'H');
+
+  // Bond pairs: C=O(0-1), C-N(0-3), N-H(3-4), H···O(4-7), N···O(3-7)
+  window.USER_BOND_PAIRS = [
+    [0, 1, "C=O:"],
+    [0, 3, "C-N:"],
+    [3, 4, "N-H:"],
+    [4, 7, "H···O:"],
+    [3, 7, "N···O:"],
+  ];
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 20000;
+  window.USER_DYNAMICS = true;
+  window.USER_FORCE_SCALE = 5.0;
+  window.USER_DAMPING = 0.85;  // stronger damping to settle
+  window.USER_N_MOVE = 50;
+  // Auto-measure after fixed number of steps instead of convergence
+  window.CONVERGENCE_THRESHOLD = null;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'C') return 0.3;
+    if (a.el === 'N') return 0.3;
+    if (a.el === 'O') return rcO;
+    return 0;
+  });
+  window.CONVERGENCE_THRESHOLD = 0.001;
+
+  // Measure after enough steps (check periodically from draw hook)
+  window._sweepMeasureAt = 15000;  // measure at step 15000
+  window.onSweepDone = function(E, steps) {
+    // Measure distances from nuclear positions
+    var pos = window._nucPos || [];
+    if (pos.length < 12) return;
+    var hGrid = scr / gridN;
+    function dist(a, b) {
+      var dx = (pos[a][0]-pos[b][0])*hGrid;
+      var dy = (pos[a][1]-pos[b][1])*hGrid;
+      var dz = (pos[a][2]-pos[b][2])*hGrid;
+      return Math.sqrt(dx*dx+dy*dy+dz*dz) * 0.529177; // au to Å
+    }
+    var result = {
+      rc: rcO,
+      E: E,
+      CO: dist(0,1),
+      CN: dist(0,3),
+      NH: dist(3,4),
+      HO: dist(4,7),
+      NO: dist(3,7)
+    };
+    sweepResults.push(result);
+    showResults();
+
+    // Next r_c
+    currentIdx++;
+    if (currentIdx < rcValues.length) {
+      log.textContent = 'Running r_c=' + rcValues[currentIdx].toFixed(1) + ' (' + (currentIdx+1) + '/' + rcValues.length + ')';
+      // Reload with next r_c — store results in sessionStorage
+      sessionStorage.setItem('sweepResults', JSON.stringify(sweepResults));
+      sessionStorage.setItem('sweepIdx', currentIdx);
+      location.reload();
+    } else {
+      log.textContent = 'SWEEP COMPLETE!';
+    }
+  };
+}
+
+function showResults() {
+  var html = '<table border=1 cellpadding=4 style="border-collapse:collapse;color:#fff">';
+  html += '<tr style="background:#333"><th>O r_c</th><th>C=O</th><th>C-N</th><th>N-H</th><th>H···O</th><th>N···O</th><th>E (Ha)</th></tr>';
+  html += '<tr style="background:#222;color:#888"><td>Expt</td><td>1.22</td><td>1.34</td><td>1.01</td><td>1.90</td><td>2.90</td><td>—</td></tr>';
+  for (var i = 0; i < sweepResults.length; i++) {
+    var r = sweepResults[i];
+    html += '<tr><td>' + r.rc.toFixed(1) + '</td>';
+    html += '<td>' + r.CO.toFixed(2) + '</td>';
+    html += '<td>' + r.CN.toFixed(2) + '</td>';
+    html += '<td style="color:' + (Math.abs(r.NH-1.01)<0.1?'#0f0':'#f00') + '">' + r.NH.toFixed(2) + '</td>';
+    html += '<td style="color:' + (Math.abs(r.HO-1.90)<0.2?'#0f0':'#f00') + '">' + r.HO.toFixed(2) + '</td>';
+    html += '<td style="color:' + (Math.abs(r.NO-2.90)<0.2?'#0f0':'#f00') + '">' + r.NO.toFixed(2) + '</td>';
+    html += '<td>' + r.E.toFixed(4) + '</td></tr>';
+  }
+  html += '</table>';
+  results.innerHTML = html;
+}
+
+// Restore state from previous reload
+var saved = sessionStorage.getItem('sweepResults');
+if (saved) {
+  sweepResults = JSON.parse(saved);
+  currentIdx = parseInt(sessionStorage.getItem('sweepIdx')) || 0;
+  showResults();
+}
+
+// Expose nuclear positions for measurement
+var origDraw;
+function hookDraw() {
+  if (window.draw && !origDraw) {
+    origDraw = window.draw;
+    window.draw = function() {
+      origDraw();
+      if (window.nucPos) window._nucPos = window.nucPos.map(function(p) { return [p[0],p[1],p[2]]; });
+      // Auto-advance sweep after enough steps
+      if (window.phaseSteps && window.phaseSteps >= window._sweepMeasureAt && !window._sweepDone) {
+        window._sweepDone = true;
+        var E = window.E || 0;
+        window.onSweepDone(E, window.phaseSteps);
+      }
+    };
+  }
+}
+
+// Setup current r_c
+log.textContent = 'Sweep r_c=' + rcValues[currentIdx].toFixed(1) + ' (' + (currentIdx+1) + '/' + rcValues.length + ')';
+setupFormamide(rcValues[currentIdx]);
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p5s.onload = function() { setInterval(hookDraw, 1000); };
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

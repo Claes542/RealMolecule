@@ -4,7 +4,7 @@
 // Two water molecules — do they form an H-bond?
 // H2O ... H2O on 100^3
 (function() {
-  var gridN = 100, scr = 10, N2 = 50;
+  var gridN = 200, scr = 20, N2 = 100;
   var h = scr / gridN;
   var A = 1.8897;
   var atoms = [];
@@ -18,30 +18,26 @@
     });
   }
 
-  // Water 1 (left): split-electron O (kernel + 2 electrons) + two H
-  var sep = 3.0 * A;  // O-O separation ~3 Å
-  var ox1 = -sep/2;
-  addAtom(ox1, 0, 0, 0, 'O');                       // 0: O1 kernel
-  addAtom(ox1 + h*0.529177, 0, 0, 1, 'O');          // 1: O1 electron-a (along axis)
-  addAtom(ox1 - h*0.529177, 0, 0, 1, 'O');          // 2: O1 electron-b (along axis)
-  addAtom(ox1 + 0.76*A, -0.59*A, 0, 1, 'H');       // 3: H1a (pointing toward O2)
-  addAtom(ox1 - 0.76*A, -0.59*A, 0, 1, 'H');       // 4: H1b
+  // Water 1 (donor): O1 with H1a pointing right toward O2
+  var sep = 3.0 * A;  // O-O separation
+  var bOH = 0.96 * A;
+  var ang = 104.5 * Math.PI / 180;
+  addAtom(-sep/2, 0, 0, 2, 'O');                                    // 0: O1
+  addAtom(-sep/2 + bOH, 0, 0, 1, 'H');                             // 1: H1a (along axis → O2)
+  addAtom(-sep/2 - bOH*Math.cos(ang), bOH*Math.sin(ang), 0, 1, 'H'); // 2: H1b (angled away)
 
-  // Water 2 (right): split-electron O + two H
-  var ox2 = sep/2;
-  addAtom(ox2, 0, 0, 0, 'O');                       // 5: O2 kernel
-  addAtom(ox2 + h*0.529177, 0, 0, 1, 'O');          // 6: O2 electron-a (along axis)
-  addAtom(ox2 - h*0.529177, 0, 0, 1, 'O');          // 7: O2 electron-b (along axis)
-  addAtom(ox2 + 0.76*A, 0.59*A, 0, 1, 'H');        // 8: H2a
-  addAtom(ox2 - 0.76*A, 0.59*A, 0, 1, 'H');        // 9: H2b (pointing toward O1)
+  // Water 2 (acceptor): O2 with both H pointing away
+  addAtom(sep/2, 0, 0, 2, 'O');                                    // 3: O2
+  addAtom(sep/2 + bOH*Math.sin(ang/2), bOH*Math.cos(ang/2), 0, 1, 'H');  // 4: H2a
+  addAtom(sep/2 + bOH*Math.sin(ang/2), -bOH*Math.cos(ang/2), 0, 1, 'H'); // 5: H2b
 
   console.log('2 water molecules, O-O separation: ' + (sep*0.529177).toFixed(2) + ' Å');
 
   window.USER_BOND_PAIRS = [
-    [0, 5, "O1-O2:"],    // O-O kernel distance
-    [3, 5, "H1a-O2:"],   // H-bond: H of water1 → O2 kernel
-    [9, 0, "H2b-O1:"],   // H-bond: H of water2 → O1 kernel
-    [0, 3, "O1-H1a:"],   // intramolecular
+    [0, 3, "O1-O2:"],
+    [1, 3, "H1a-O2:"],   // H-bond
+    [5, 0, "H2b-O1:"],   // H-bond
+    [0, 1, "O1-H1a:"],   // intramolecular
   ];
 
   window.USER_REFERENCE = {
@@ -64,15 +60,9 @@
   window.USER_DAMPING = 0.9;
   window.USER_N_MOVE = 50;
   window.USER_Z = atoms.map(function(a) { return a.Z; });
-  window.USER_Z_NUC = atoms.map(function(a) {
-    if (a.Z === 0 && a.el === 'O') return 2;  // O kernel
-    if (a.Z === 1 && a.el === 'O') return 0;  // O electron
-    return a.Z;
-  });
   window.USER_RC = atoms.map(function(a) {
     if (a.el === 'H') return 0;
-    if (a.el === 'O' && a.Z === 0) return 1.0;  // O kernel
-    if (a.el === 'O') return 0;                   // O electron
+    if (a.el === 'O') return 0.8;
     return 0;
   });
 })();

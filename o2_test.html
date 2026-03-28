@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// O2 molecule: two O atoms
+// Bond length: 1.21 Å experimental
+(function() {
+  var gridN = 200, scr = 10, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  // Each O: +2 bare kernel + 2 split electrons
+  var sep = 1.50 * A;
+  // Split perpendicular to O-O axis (y), split plane ∥ to axis
+  addAtom(-sep/2, 0, 0, 0, 'O');            // 0: O1 kernel
+  addAtom(-sep/2, h, 0, 1, 'O');            // 1: O1 electron-a (above)
+  addAtom(-sep/2, -h, 0, 1, 'O');           // 2: O1 electron-b (below)
+  addAtom(sep/2, 0, 0, 0, 'O');             // 3: O2 kernel
+  addAtom(sep/2, h, 0, 1, 'O');             // 4: O2 electron-a (above)
+  addAtom(sep/2, -h, 0, 1, 'O');            // 5: O2 electron-b (below)
+
+  console.log('O2: 2×O(Z=2) at ' + (sep*0.529177).toFixed(2) + ' Å');
+
+  window.USER_BOND_PAIRS = [
+    [0, 3, "O1-O2:"],   // kernel to kernel
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: { "O-O": "1.21" },
+    energy: "O2 bond test",
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;
+  window.USER_N_MOVE = 200;  // more ITP steps for bonding density to converge
+  window.USER_Z = [0, 1, 1, 0, 1, 1];
+  window.USER_Z_NUC = [2, 0, 0, 2, 0, 0];  // kernels +2, electrons 0
+  window.USER_RC = [0.5, 0, 0, 0.5, 0, 0]; // r_c on kernels only
+  window.INIT_ZEFF = 2;
+  // all free
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

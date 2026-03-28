@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// CO molecule: C(Z=4, r_c=0.3) + O(Z=2, r_c=0.8)
+// Bond length: 1.13 Å experimental
+(function() {
+  var gridN = 200, scr = 10, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  var sep = 0.8 * A;
+  addAtom(-sep/2, 0, 0, 4, 'C');      // 0: C
+  addAtom(sep/2, 0, 0, 2, 'O');       // 1: O
+
+  console.log('CO: C(Z=4) + O(Z=2) at ' + (sep*0.529177).toFixed(2) + ' Å');
+
+  window.USER_BOND_PAIRS = [
+    [0, 1, "C-O:"],
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: { "C-O": "1.13" },
+    energy: "CO bond test",
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;
+  window.USER_N_MOVE = 50;
+  window.USER_Z = [4, 2];
+  window.USER_RC = [0.4, 0.8];
+  window.INIT_ZEFF = 2;
+  window.USER_FROZEN_ATOMS = [0];  // fix C
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

@@ -3027,6 +3027,7 @@ async function doSteps(n) {
       nucForceNuc[a] = [0, 0, 0];
     }
 
+
     // Compute nuclear-nuclear Coulomb repulsion forces
     if (!addNucRepulsion) {
       // Skip nuc-nuc forces (e.g. He internal entries)
@@ -4557,7 +4558,8 @@ function draw() {
     if (Z_nuc[n] > 0) {  // draw all kernels (including bare nuclei)
       const nx = nucPos[n][0] * PX, ny = nucPos[n][1] * PX;
       circle(nx, ny, 6);
-      if (nucForceTotal[n]) {
+      const _frozen = window.USER_FROZEN_ATOMS || [];
+      if (nucForceTotal[n] && _frozen.indexOf(n) < 0) {
         const arrowScale = (window.USER_ARROW_SCALE || 250) * forceScale;
         const fx = nucForceTotal[n][0], fy = nucForceTotal[n][1];
         if (fx*fx + fy*fy > 1e-16) {
