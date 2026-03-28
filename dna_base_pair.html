@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// DNA base pairing: Guanine···Cytosine (Watson-Crick)
+// 3 H-bonds: G(O6)···H-N4(C), G(N1-H)···N3(C), G(N2-H)···O2(C)
+// H-bond driven — should work like formamide dimer
+// Something AlphaFold2 cannot do (protein-only, no nucleic acids from physics)
+(function() {
+  var gridN = 200, scr = 25, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  // Guanine (left) and Cytosine (right) in Watson-Crick geometry
+  // All coordinates in Angstroms, converted to bohr
+  // Standard base pair geometry from crystallography
+
+  // Use PDB-quality coordinates for G:C Watson-Crick pair
+  // Guanine on the left (negative x), Cytosine on the right (positive x)
+  // H-bond axis along x, bases in xy plane
+  // Coordinates from standard WC geometry (Saenger, Principles of Nucleic Acid Structure)
+  // All in Angstroms, then multiply by A to get bohr
+
+  // === GUANINE ===
+  // Ring atoms (standard orientation: H-bond edge faces +x)
+  var gN9x=-2.48, gN9y= 0.22;
+  var gC4x=-1.29, gC4y=-0.41;
+  var gN3x=-1.40, gN3y=-1.76;
+  var gC2x=-0.30, gC2y=-2.46;
+  var gN2x=-0.44, gN2y=-3.80;  // H-bond DONOR → C(O2)
+  var gN1x= 0.88, gN1y=-1.81;  // H-bond DONOR → C(N3)
+  var gC6x= 1.05, gC6y=-0.42;
+  var gO6x= 2.12, gO6y= 0.19;  // H-bond ACCEPTOR ← C(N4-H)
+  var gC5x=-0.10, gC5y= 0.30;
+  var gN7x=-0.08, gN7y= 1.63;
+  var gC8x=-1.29, gC8y= 1.99;
+
+  addAtom(gN9x*A, gN9y*A, 0, 3, 'N');   // 0
+  addAtom(gC4x*A, gC4y*A, 0, 4, 'C');   // 1
+  addAtom(gN3x*A, gN3y*A, 0, 3, 'N');   // 2
+  addAtom(gC2x*A, gC2y*A, 0, 4, 'C');   // 3
+  addAtom(gN2x*A, gN2y*A, 0, 3, 'N');   // 4  N2 donor
+  addAtom(gN1x*A, gN1y*A, 0, 3, 'N');   // 5  N1 donor
+  addAtom(gC6x*A, gC6y*A, 0, 4, 'C');   // 6
+  var gO6idx = atoms.length;
+  addAtom(gO6x*A, gO6y*A, 0, 2, 'O');   // 7  O6 acceptor
+  addAtom(gC5x*A, gC5y*A, 0, 4, 'C');   // 8
+  addAtom(gN7x*A, gN7y*A, 0, 3, 'N');   // 9
+  addAtom(gC8x*A, gC8y*A, 0, 4, 'C');   // 10
+
+  // H on guanine
+  addAtom(gC8x*A-0.6*A, gC8y*A+0.8*A, 0, 1, 'H');     // H8
+  addAtom(gN9x*A-0.9*A, gN9y*A-0.4*A, 0, 1, 'H');     // H-N9 (replacing sugar)
+  var gN1Hidx = atoms.length;
+  addAtom((gN1x+0.86)*A, (gN1y-0.50)*A, 0, 1, 'H');   // H-N1 → DONOR
+  var gN2Hidx = atoms.length;
+  addAtom((gN2x+0.86)*A, (gN2y-0.50)*A, 0, 1, 'H');   // H-N2 → DONOR (toward C-O2)
+  addAtom((gN2x-0.50)*A, (gN2y-0.86)*A, 0, 1, 'H');   // second H-N2
+
+  // === CYTOSINE ===
+  // Mirror image, H-bond edge faces -x toward guanine
+  // Native H-bond distances: ~2.9 Å between heavy atoms
+  var cOff = 2.9;  // heavy atom separation (native WC distance)
+
+  var cN1x= 2.56+cOff, cN1y= 0.20;
+  var cC6x= 1.45+cOff, cC6y= 1.00;
+  var cC5x= 0.22+cOff, cC5y= 0.46;
+  var cC4x= 0.10+cOff, cC4y=-0.92;
+  var cN4x=-1.05+cOff, cN4y=-1.51;  // H-bond DONOR → G(O6)
+  var cN3x= 1.13+cOff, cN3y=-1.68;  // H-bond ACCEPTOR ← G(N1-H)
+  var cC2x= 2.33+cOff, cC2y=-1.16;
+  var cO2x= 3.32+cOff, cO2y=-1.87;  // H-bond ACCEPTOR ← G(N2-H)
+
+  var cBaseStart = atoms.length;
+  addAtom(cN1x*A, cN1y*A, 0, 3, 'N');   // cBase+0  N1
+  addAtom(cC6x*A, cC6y*A, 0, 4, 'C');   // cBase+1
+  addAtom(cC5x*A, cC5y*A, 0, 4, 'C');   // cBase+2
+  addAtom(cC4x*A, cC4y*A, 0, 4, 'C');   // cBase+3
+  addAtom(cN4x*A, cN4y*A, 0, 3, 'N');   // cBase+4  N4 donor
+  var cN3idx = atoms.length;
+  addAtom(cN3x*A, cN3y*A, 0, 3, 'N');   // cBase+5  N3 acceptor
+  addAtom(cC2x*A, cC2y*A, 0, 4, 'C');   // cBase+6
+  var cO2idx = atoms.length;
+  addAtom(cO2x*A, cO2y*A, 0, 2, 'O');   // cBase+7  O2 acceptor
+
+  // H on cytosine
+  addAtom((cN1x+0.9)*A, (cN1y-0.4)*A, 0, 1, 'H');     // H-N1 (replacing sugar)
+  addAtom((cC6x+0.4)*A, (cC6y+0.9)*A, 0, 1, 'H');     // H-C6
+  addAtom((cC5x-0.5)*A, (cC5y+0.9)*A, 0, 1, 'H');     // H-C5
+  var cN4Hidx = atoms.length;
+  addAtom((cN4x-0.86)*A, (cN4y+0.50)*A, 0, 1, 'H');   // H-N4 → DONOR (toward G-O6)
+  addAtom((cN4x-0.50)*A, (cN4y-0.86)*A, 0, 1, 'H');   // second H-N4
+
+  console.log('G:C base pair: ' + atoms.length + ' atoms, native WC geometry');
+
+  // Monitor the 3 Watson-Crick H-bonds
+  window.USER_BOND_PAIRS = [
+    [gO6idx, cN4Hidx, "G(O6)···H-N4(C):"],      // H-bond 1
+    [gN1Hidx, cN3idx, "G(N1-H)···N3(C):"],       // H-bond 2
+    [gN2Hidx, cO2idx, "G(N2-H)···O2(C):"],       // H-bond 3
+    [gO6idx, cO2idx, "G(O6)···C(O2):"],           // overall width
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: {
+      "G(O6)···H-N4(C)": "1.91 Å",
+      "G(N1-H)···N3(C)": "1.90 Å",
+      "G(N2-H)···O2(C)": "1.86 Å",
+    },
+    energy: "Watson-Crick G:C base pair — 3 H-bonds",
+    binding: "Do all 3 H-bonds form at correct distances?"
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;  // converge first, press D for dynamics
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;
+  window.USER_N_MOVE = 50;
+  window.USER_GRADP_FORCE = true;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'C') return 0.3;
+    if (a.el === 'N') return 0.3;
+    if (a.el === 'O') return 0.8;
+    return 0;
+  });
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
