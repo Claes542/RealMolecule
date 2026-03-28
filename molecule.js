@@ -41,7 +41,7 @@ const _atoms = window.USER_ATOMS || [
 while (_atoms.length < MAX_ATOMS) _atoms.push({ i: N2, j: N2, Z: 0, el: '' });
 const atomLabels = _atoms.map(a => a.el);
 // Build unique nucleus list for V_KK (electrons on same nucleus share position)
-// Each nucleus gets Z_eff = sum of Z over its electrons
+// Z_eff = valence charge (core electrons screen full nuclear charge)
 const _nucMap = new Map(); // key "i,j,k" -> { idx, Z_eff, elecIndices }
 for (let e = 0; e < _atoms.length; e++) {
   const zEl = _atoms[e].Z;
@@ -50,7 +50,7 @@ for (let e = 0; e < _atoms.length; e++) {
   const a = _atoms[e];
   const k = a.k !== undefined ? a.k : N2;
   const key = a.i + "," + a.j + "," + k;
-  // Z_eff for nuclear repulsion uses Z_nuc (actual nuclear charge)
+  // Z_eff for nuclear repulsion uses Z_nuc (screened by core electrons in r_c)
   if (_nucMap.has(key)) { _nucMap.get(key).Z_eff += zNucVal || zEl; _nucMap.get(key).elecIndices.push(e); }
   else _nucMap.set(key, { idx: _nucMap.size, Z_eff: zNucVal || zEl, elecIndices: [e] });
 }
