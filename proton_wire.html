@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// Proton wire: Grotthuss mechanism
+// Chain of water molecules — proton hops along H-bond network
+// Fundamental to ATP synthase, bacteriorhodopsin, fuel cells
+// Neither AlphaFold2 nor classical MD can do this — requires quantum mechanics
+(function() {
+  var gridN = 200, scr = 30, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  // Line of water molecules along x-axis
+  // O-O spacing: 2.8 Å (liquid water H-bond distance)
+  // Each water: O with 2 H, one H pointing toward next O (H-bond chain)
+  var nWater = 8;
+  var spacing = 2.8 * A;
+  var bOH = 0.96 * A;
+  var ang = 104.5 * Math.PI / 180;
+  var x0 = -(nWater - 1) * spacing / 2;
+
+  var oIndices = [];
+  var hIndices = [];  // H atoms pointing along the chain (+x direction)
+
+  for (var w = 0; w < nWater; w++) {
+    var ox = x0 + w * spacing;
+
+    oIndices.push(atoms.length);
+    addAtom(ox, 0, 0, 2, 'O');
+
+    // H1: points toward next water (+x direction) — the proton wire H
+    hIndices.push(atoms.length);
+    addAtom(ox + bOH, 0, 0, 1, 'H');
+
+    // H2: points perpendicular (out of chain)
+    var hAngle = (w % 2 === 0) ? Math.PI/2 : -Math.PI/2;  // alternate up/down
+    addAtom(ox - bOH * Math.cos(ang), bOH * Math.sin(ang) * Math.cos(hAngle),
+            bOH * Math.sin(ang) * Math.sin(hAngle), 1, 'H');
+  }
+
+  // Extra proton at the left end — this is the proton to be transferred
+  // Place it between the first O and a position to the left
+  var extraHidx = atoms.length;
+  addAtom(x0 - bOH * 0.8, 0, 0, 1, 'H');  // extra H on the donor side
+
+  console.log('Proton wire: ' + nWater + ' waters + 1 extra proton, ' + atoms.length + ' atoms');
+
+  // Monitor H-bond distances along the chain
+  // O(i)···H(i)···O(i+1) for each link
+  var bondPairs = [];
+  for (var w = 0; w < nWater - 1; w++) {
+    bondPairs.push([hIndices[w], oIndices[w+1], "H" + w + "···O" + (w+1) + ":"]);
+  }
+  // Extra proton to first O
+  bondPairs.push([extraHidx, oIndices[0], "H+···O0:"]);
+  // First and last O-O (chain length)
+  bondPairs.push([oIndices[0], oIndices[nWater-1], "O0-O" + (nWater-1) + ":"]);
+
+  window.USER_BOND_PAIRS = bondPairs;
+
+  window.USER_REFERENCE = {
+    bonds: {
+      "H···O": "1.8-2.0 Å (H-bond)",
+      "O-H": "0.96 Å (covalent)",
+      "O···O": "2.8 Å (water chain)"
+    },
+    energy: "Grotthuss mechanism: proton relay along water chain",
+    binding: "Does the extra proton hop from water to water along the chain?"
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;   // dynamics on — watch proton transfer
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.95;
+  window.USER_N_MOVE = 30;
+  window.USER_GRADP_FORCE = true;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'O') return 0.8;
+    return 0;
+  });
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
