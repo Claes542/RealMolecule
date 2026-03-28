@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// Ice Ih hexagonal structure
+// O-O distance: 2.76 Å, tetrahedral coordination
+// Each O: 2 covalent O-H + 2 H-bond acceptors
+(function() {
+  var gridN = 200, scr = 60, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  // Ice Ic: cubic diamond structure — perfect tetrahedral coordination
+  // a = 6.36 Å so nearest neighbor = a√3/4 = 2.75 Å ≈ 2.76 Å
+  var aCube = 6.36 * A;
+  var dOO = aCube * Math.sqrt(3) / 4;  // 2.75 Å
+  var bOH = 0.96 * A;
+
+  // 8 O atoms per cubic unit cell (diamond structure)
+  // FCC: (0,0,0), (0,½,½), (½,0,½), (½,½,0)
+  // + offset (¼,¼,¼): (¼,¼,¼), (¼,¾,¾), (¾,¼,¾), (¾,¾,¼)
+  var basis = [
+    [0, 0, 0], [0, 0.5, 0.5], [0.5, 0, 0.5], [0.5, 0.5, 0],
+    [0.25, 0.25, 0.25], [0.25, 0.75, 0.75], [0.75, 0.25, 0.75], [0.75, 0.75, 0.25]
+  ];
+
+  var oPositions = [];
+  var nc = 3;  // 3×3×3 unit cells = 216 O atoms
+
+  var x0 = -(nc * aCube) / 2;
+  var y0 = -(nc * aCube) / 2;
+  var z0 = -(nc * aCube) / 2;
+
+  for (var iz = 0; iz < nc; iz++) {
+    for (var iy = 0; iy < nc; iy++) {
+      for (var ix = 0; ix < nc; ix++) {
+        for (var b = 0; b < basis.length; b++) {
+          oPositions.push([
+            x0 + (ix + basis[b][0]) * aCube,
+            y0 + (iy + basis[b][1]) * aCube,
+            z0 + (iz + basis[b][2]) * aCube
+          ]);
+        }
+      }
+    }
+  }
+
+  // Center all positions
+  var cx = 0, cy = 0, cz = 0;
+  for (var i = 0; i < oPositions.length; i++) {
+    cx += oPositions[i][0]; cy += oPositions[i][1]; cz += oPositions[i][2];
+  }
+  cx /= oPositions.length; cy /= oPositions.length; cz /= oPositions.length;
+  for (var i = 0; i < oPositions.length; i++) {
+    oPositions[i][0] -= cx; oPositions[i][1] -= cy; oPositions[i][2] -= cz;
+  }
+
+  // Remove O atoms outside the box
+  var halfScr = scr / 2 - 3 * h;
+  var validO = oPositions.filter(function(p) {
+    return Math.abs(p[0]) < halfScr && Math.abs(p[1]) < halfScr && Math.abs(p[2]) < halfScr;
+  });
+
+  // Place O atoms and find nearest neighbors for H placement
+  var oIndices = [];
+  for (var i = 0; i < validO.length; i++) {
+    oIndices.push(atoms.length);
+    addAtom(validO[i][0], validO[i][1], validO[i][2], 2, 'O');
+  }
+
+  // For each O, find 4 nearest O neighbors, place H toward 2 of them (ice rules)
+  // Simple rule: donate H to the 2 nearest neighbors with higher index
+  for (var i = 0; i < validO.length; i++) {
+    // Find distances to all other O
+    var dists = [];
+    for (var j = 0; j < validO.length; j++) {
+      if (j === i) continue;
+      var dx = validO[j][0] - validO[i][0];
+      var dy = validO[j][1] - validO[i][1];
+      var dz = validO[j][2] - validO[i][2];
+      var d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      dists.push({ j: j, d: d, dx: dx, dy: dy, dz: dz });
+    }
+    dists.sort(function(a, b) { return a.d - b.d; });
+
+    // Place H toward the 2 nearest neighbors (donate)
+    var nH = 0;
+    for (var k = 0; k < dists.length && nH < 2; k++) {
+      if (dists[k].d > dOO * 1.2) break;  // only nearest neighbors
+      // Donate to higher-index neighbor (simple ice rule)
+      if (dists[k].j > i) {
+        var scale = bOH / dists[k].d;
+        addAtom(validO[i][0] + dists[k].dx * scale,
+                validO[i][1] + dists[k].dy * scale,
+                validO[i][2] + dists[k].dz * scale, 1, 'H');
+        nH++;
+      }
+    }
+    // If not enough neighbors with higher index, donate to lower index
+    for (var k = 0; k < dists.length && nH < 2; k++) {
+      if (dists[k].d > dOO * 1.2) break;
+      if (dists[k].j <= i) {
+        var scale = bOH / dists[k].d;
+        addAtom(validO[i][0] + dists[k].dx * scale,
+                validO[i][1] + dists[k].dy * scale,
+                validO[i][2] + dists[k].dz * scale, 1, 'H');
+        nH++;
+      }
+    }
+  }
+
+  var nWater = validO.length;
+  console.log('Ice Ic: ' + nWater + ' water molecules, ' + atoms.length + ' atoms');
+
+  // Freeze surface atoms (fewer than 4 neighbors) — only inner atoms move
+  var frozen = [];
+  for (var i = 0; i < validO.length; i++) {
+    var nNeighbors = 0;
+    for (var j = 0; j < validO.length; j++) {
+      if (j === i) continue;
+      var dx = validO[j][0]-validO[i][0], dy = validO[j][1]-validO[i][1], dz = validO[j][2]-validO[i][2];
+      if (Math.sqrt(dx*dx+dy*dy+dz*dz) < dOO * 1.2) nNeighbors++;
+    }
+    if (nNeighbors < 4) {
+      // Freeze this O and its H atoms
+      frozen.push(oIndices[i]);
+      for (var a = oIndices[i]+1; a < (oIndices[i+1] || atoms.length); a++) {
+        if (atoms[a].Z === 1) frozen.push(a);
+      }
+    }
+  }
+  window.USER_FROZEN_ATOMS = frozen;
+  console.log('Frozen: ' + frozen.length + ' surface atoms, ' + (atoms.length - frozen.length) + ' free');
+
+  // Sample H-bonds
+  var bondPairs = [];
+  if (validO.length > 1) {
+    // Find nearest O-O pair
+    var bestD = Infinity, bestI = 0, bestJ = 1;
+    for (var i = 0; i < Math.min(validO.length, 10); i++) {
+      for (var j = i+1; j < Math.min(validO.length, 10); j++) {
+        var dx = validO[j][0]-validO[i][0], dy = validO[j][1]-validO[i][1], dz = validO[j][2]-validO[i][2];
+        var d = Math.sqrt(dx*dx+dy*dy+dz*dz);
+        if (d < bestD) { bestD = d; bestI = i; bestJ = j; }
+      }
+    }
+    bondPairs.push([oIndices[bestI], oIndices[bestJ], "O-O:"]);
+    // Find H between them
+    for (var a = oIndices[bestI]+1; a < (oIndices[bestI+1] || atoms.length); a++) {
+      if (atoms[a].Z === 1) {
+        bondPairs.push([a, oIndices[bestJ], "H···O:"]);
+        break;
+      }
+    }
+  }
+
+  window.USER_BOND_PAIRS = bondPairs;
+  window.USER_REFERENCE = {
+    bonds: { "O-O": "2.76 (ice Ih)", "H···O": "1.80 (ice)" },
+    energy: "Ice Ih hexagonal structure",
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;
+  window.USER_N_MOVE = 50;
+  window.USER_GRADP_FORCE = true;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'O') return 0.8;
+    return 0;
+  });
+  window.INIT_ZEFF = 2;
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

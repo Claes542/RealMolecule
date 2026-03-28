@@ -4,7 +4,7 @@
 // Water layer: grid of water molecules connected by H-bonds
 // Each water donates one H to its neighbor's O — chain of H-bonds
 (function() {
-  var gridN = 200, scr = 30, N2 = 100;
+  var gridN = 200, scr = 40, N2 = 100;
   var h = scr / gridN;
   var A = 1.8897;
   var atoms = [];
@@ -21,7 +21,7 @@
   // 3D grid of water molecules: 3x3x3 = 27 molecules
   // Each water: O at grid position, H1→x, H2→y (H-bonds in x and y)
   // Third H-bond direction (z) handled by neighbor attraction
-  var nx = 3, ny = 3, nz = 3;
+  var nx = 5, ny = 5, nz = 5;
   var spacing = 2.95 * A;  // O-O distance
   var bOH = 0.96 * A;
   var x0 = -(nx - 1) * spacing / 2;
@@ -63,17 +63,15 @@
   // Bond pairs: H-bonds between neighbors
   // Sample H-bonds: x, y, and z directions
   var bondPairs = [];
-  // x-direction (all sites donate H1 in x)
-  bondPairs.push([oIndices[1][1][0] + 1, oIndices[1][1][1], "x-bond:"]);
-  // y-direction (even site: ix+iy+iz even → H2 points in y)
-  // (0,0,0) is even: ix=0,iy=0,iz=0
-  bondPairs.push([oIndices[0][0][0] + 2, oIndices[0][1][0], "y-bond:"]);
-  // z-direction (odd sites donate H2 in z)
-  bondPairs.push([oIndices[0][0][1] + 2, oIndices[1][0][1], "z-bond:"]);
-  // O-O distances
-  bondPairs.push([oIndices[1][1][0], oIndices[1][1][1], "O-O(x):"]);
-  bondPairs.push([oIndices[1][0][0], oIndices[1][1][0], "O-O(y):"]);
-  bondPairs.push([oIndices[0][1][1], oIndices[1][1][1], "O-O(z):"]);
+  // x-direction H-bond
+  bondPairs.push([oIndices[0][0][0] + 1, oIndices[0][0][1], "x-bond:"]);
+  // y-direction H-bond (even site: H2 points in y)
+  if (ny > 1) bondPairs.push([oIndices[0][0][0] + 2, oIndices[0][1][0], "y-bond:"]);
+  // z-direction (only if 3D)
+  if (nz > 1) bondPairs.push([oIndices[0][0][1] + 2, oIndices[1][0][1], "z-bond:"]);
+  // O-O
+  bondPairs.push([oIndices[0][0][0], oIndices[0][0][1], "O-O(x):"]);
+  if (ny > 1) bondPairs.push([oIndices[0][0][0], oIndices[0][1][0], "O-O(y):"]);
 
 
   window.USER_BOND_PAIRS = bondPairs;
@@ -93,6 +91,7 @@
   window.USER_STEPS = 1000000;
   window.USER_DYNAMICS = false;  // converge first
   window.USER_FORCE_SCALE = 1.0;
+  window.USER_GRADP_FORCE = true;
   window.USER_ARROW_SCALE = 200.0;
   window.USER_DAMPING = 0.9;
   window.USER_N_MOVE = 50;

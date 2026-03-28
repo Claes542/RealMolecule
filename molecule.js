@@ -4561,10 +4561,10 @@ function draw() {
       const _frozen = window.USER_FROZEN_ATOMS || [];
       if (nucForceTotal[n] && _frozen.indexOf(n) < 0) {
         const arrowScale = (window.USER_ARROW_SCALE || 250) * forceScale;
-        const fx = nucForceTotal[n][0], fy = nucForceTotal[n][1];
+        const ft = nucForceTotal[n];
+        const fx = ft[0], fy = ft[1];
         if (fx*fx + fy*fy > 1e-16) {
-          if (n < PROTEIN_COUNT) { stroke(255, 255, 0); } else { stroke(0, 220, 255); }
-          strokeWeight(3);
+          stroke(255, 255, 0); strokeWeight(2);
           line(nx, ny, nx + fx * arrowScale, ny + fy * arrowScale);
         }
         stroke(255); strokeWeight(1);
@@ -4583,7 +4583,7 @@ function draw() {
   const pLabel = phase === 0 ? "running" : "DONE";
   text("Molecule: " + labels + " | " + screenAu + " au | " + pLabel + " | " + NN + "^3", 5, 20);
   text("step " + tStep + " (" + phaseSteps + "/" + TOTAL_STEPS + ")  E=" + (E_T + E_eK + E_ee + E_KK).toFixed(6) + "  E_min=" + E_min.toFixed(6), 5, 35);
-  if (lastMs > 0) text((lastMs / STEPS_PER_FRAME).toFixed(1) + "ms/step", 300, 35);
+  if (lastMs > 0) text((lastMs / STEPS_PER_FRAME).toFixed(1) + "ms/step", CANVAS_SIZE - 120, 35);
 
   fill(200);
   text("T=" + E_T.toFixed(4) + " V_eK=" + E_eK.toFixed(4) + " V_ee=" + E_ee.toFixed(4) + " V_KK=" + E_KK.toFixed(4) + "  Dipole=" + dipole_D.toFixed(3) + " D  E_bind=" + E_bind.toFixed(4) + " Ha", 5, 50);
