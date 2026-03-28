@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// RNA hairpin: short sequence folds back on itself via Watson-Crick base pairing
+// GCGCUUCGGCGC — stem (GCGC:GCGC) + tetraloop (UUCG)
+// 12 nucleotides, 4 base pairs in stem, 4 bases in loop
+// Self-assembly from H-bonds — AF2 cannot do nucleic acids from physics
+(function() {
+  var gridN = 200, scr = 40, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  // Simplified RNA: represent each nucleotide as backbone (P, C4', C1') + base
+  // Base = N-H···O/N H-bond groups only (skip full ring for speed)
+  // Focus on the H-bond forming atoms
+
+  // Geometry: start as extended chain, let it fold
+  // Each nucleotide spaced 5.9 Å along backbone (A-form RNA rise ~2.8 Å per bp)
+  var nNuc = 12;
+  var seq = ['G','C','G','C','U','U','C','G','G','C','G','C'];
+  // Pairing: 0-11(G:C), 1-10(C:G), 2-9(G:C), 3-8(C:G), loop=4,5,6,7
+
+  var nucSpacing = 3.5 * A;  // along backbone
+  var bNH = 1.01 * A;
+  var bCO = 1.24 * A;
+  var bCH = 1.09 * A;
+  var bCC = 1.40 * A;
+
+  // Start as a U-shape: stem 1 going up, loop at top, stem 2 going down
+  // This puts paired bases face-to-face
+  var strandSep = 4.5 * A;   // close enough for H-bonds to form directly
+  var risePerNuc = 3.0 * A;  // vertical rise per nucleotide
+
+  var nucPos = [];    // position of each nucleotide center
+  var baseDir = [];   // direction base points (toward partner)
+
+  // Strand 1: nucleotides 0-3, going up on left side
+  for (var i = 0; i < 4; i++) {
+    nucPos.push([-strandSep/2, 0, -1.5 * risePerNuc + i * risePerNuc]);
+    baseDir.push([1, 0, 0]);  // bases point right toward strand 2
+  }
+
+  // Loop: nucleotides 4-7, semicircle at top
+  var loopTop = nucPos[3][2] + risePerNuc;
+  for (var i = 0; i < 4; i++) {
+    var angle = Math.PI * (i + 0.5) / 4;
+    nucPos.push([
+      -strandSep/2 + strandSep * (0.5 - 0.5 * Math.cos(angle)),
+      0,
+      loopTop + 2 * A * Math.sin(angle)
+    ]);
+    baseDir.push([Math.sin(angle), 0, Math.cos(angle)]);
+  }
+
+  // Strand 2: nucleotides 8-11, going down on right side
+  for (var i = 0; i < 4; i++) {
+    nucPos.push([strandSep/2, 0, nucPos[3][2] - i * risePerNuc]);
+    baseDir.push([-1, 0, 0]);  // bases point left toward strand 1
+  }
+
+  // Build atoms for each nucleotide
+  // Minimal representation: backbone C (phosphate surrogate) + base H-bond atoms
+  var bbIndices = [];     // backbone C atom for each nucleotide
+  var donorHIdx = [];     // H-bond donor H index (or -1)
+  var acceptorIdx = [];   // H-bond acceptor O/N index (or -1)
+
+  for (var n = 0; n < nNuc; n++) {
+    var px = nucPos[n][0], py = nucPos[n][1], pz = nucPos[n][2];
+    var dx = baseDir[n][0], dy = baseDir[n][1], dz = baseDir[n][2];
+
+    // Backbone: C4' surrogate
+    bbIndices.push(atoms.length);
+    addAtom(px, py, pz, 4, 'C');
+    // H on backbone
+    addAtom(px - dx * bCH, py - dy * bCH, pz + bCH * 0.5, 1, 'H');
+
+    // Base H-bond atoms (pointing in baseDir direction)
+    var base = seq[n];
+
+    if (base === 'G') {
+      // Guanine: donor N-H + acceptor O
+      // H-bond donor (N-H pointing toward partner)
+      donorHIdx.push(atoms.length + 2);  // the H
+      addAtom(px + dx * 2.0 * A, py, pz + 0.6 * A, 3, 'N');  // N1
+      addAtom(px + dx * 2.0 * A + dx * bNH, py, pz + 0.6 * A, 1, 'H');  // H on N1
+      // Acceptor O6
+      acceptorIdx.push(atoms.length);
+      addAtom(px + dx * 2.0 * A, py, pz - 0.6 * A, 2, 'O');  // O6
+      // N2-H (second donor)
+      addAtom(px + dx * 1.5 * A, py, pz + 1.8 * A, 3, 'N');  // N2
+      addAtom(px + dx * 1.5 * A + dx * bNH, py, pz + 1.8 * A, 1, 'H');
+    } else if (base === 'C') {
+      // Cytosine: donor N4-H + acceptor O2, N3
+      donorHIdx.push(atoms.length + 2);
+      addAtom(px + dx * 2.0 * A, py, pz - 0.6 * A, 3, 'N');  // N4
+      addAtom(px + dx * 2.0 * A + dx * bNH, py, pz - 0.6 * A, 1, 'H');  // H on N4
+      // Acceptor O2
+      acceptorIdx.push(atoms.length);
+      addAtom(px + dx * 2.0 * A, py, pz + 0.6 * A, 2, 'O');  // O2
+      // N3 acceptor
+      addAtom(px + dx * 1.5 * A, py, pz + 1.5 * A, 3, 'N');  // N3
+    } else if (base === 'U') {
+      // Uracil (loop): acceptor O + weak donor
+      donorHIdx.push(atoms.length + 2);
+      addAtom(px + dx * 2.0 * A, py, pz, 3, 'N');  // N3
+      addAtom(px + dx * 2.0 * A + dx * bNH, py, pz, 1, 'H');  // H
+      acceptorIdx.push(atoms.length);
+      addAtom(px + dx * 1.5 * A, py, pz + 1.0 * A, 2, 'O');  // O4
+    }
+  }
+
+  console.log('RNA hairpin: ' + nNuc + ' nucleotides, ' + atoms.length + ' atoms');
+
+  // Monitor base pair H-bonds in the stem
+  // Pairs: 0-11, 1-10, 2-9, 3-8
+  var bondPairs = [];
+  var pairs = [[0,11],[1,10],[2,9],[3,8]];
+  for (var p = 0; p < pairs.length; p++) {
+    var a = pairs[p][0], b = pairs[p][1];
+    // Donor H of one base to acceptor of partner
+    if (donorHIdx[a] >= 0 && acceptorIdx[b] >= 0) {
+      bondPairs.push([donorHIdx[a], acceptorIdx[b],
+        seq[a] + (a+1) + "-" + seq[b] + (b+1) + ":"]);
+    }
+  }
+  // Loop closure: distance between nuc 4 and nuc 7 backbones
+  bondPairs.push([bbIndices[4], bbIndices[7], "loop(U5-G8):"]);
+  // End-to-end
+  bondPairs.push([bbIndices[0], bbIndices[11], "end(G1-C12):"]);
+
+  window.USER_BOND_PAIRS = bondPairs;
+
+  window.USER_REFERENCE = {
+    bonds: {
+      "G:C H-bond": "~2.0 Å",
+      "stem bp": "2.8 Å rise",
+      "loop": "UUCG tetraloop"
+    },
+    energy: "RNA hairpin: GCGC-UUCG-GCGC stem-loop",
+    binding: "Do stem base pairs form H-bonds while loop stays open?"
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;  // converge first
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;
+  window.USER_N_MOVE = 50;
+  window.USER_GRADP_FORCE = true;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'C') return 0.3;
+    if (a.el === 'N') return 0.3;
+    if (a.el === 'O') return 0.8;
+    return 0;
+  });
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
