@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// Water layer: grid of water molecules connected by H-bonds
+// Each water donates one H to its neighbor's O — chain of H-bonds
+(function() {
+  var gridN = 200, scr = 30, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  // 3D grid of water molecules: 3x3x3 = 27 molecules
+  // Each water: O at grid position, H1→x, H2→y (H-bonds in x and y)
+  // Third H-bond direction (z) handled by neighbor attraction
+  var nx = 3, ny = 3, nz = 3;
+  var spacing = 2.95 * A;  // O-O distance
+  var bOH = 0.96 * A;
+  var x0 = -(nx - 1) * spacing / 2;
+  var y0 = -(ny - 1) * spacing / 2;
+  var z0 = -(nz - 1) * spacing / 2;
+
+  var oIndices = [];  // [iz][iy][ix] → atom index of O
+
+  for (var iz = 0; iz < nz; iz++) {
+    oIndices.push([]);
+    for (var iy = 0; iy < ny; iy++) {
+      oIndices[iz].push([]);
+      for (var ix = 0; ix < nx; ix++) {
+        var ox = x0 + ix * spacing;
+        var oy = y0 + iy * spacing;
+        var oz = z0 + iz * spacing;
+
+        var oIdx = atoms.length;
+        oIndices[iz][iy].push(oIdx);
+        addAtom(ox, oy, oz, 2, 'O');
+
+        // Alternate H-bond directions: checkerboard pattern
+        // Even sites (ix+iy+iz even): H1→x, H2→y
+        // Odd sites (ix+iy+iz odd): H1→x, H2→z (connects layers)
+        var even = (ix + iy + iz) % 2 === 0;
+        if (even) {
+          addAtom(ox + bOH, oy, oz, 1, 'H');         // H1→x
+          addAtom(ox, oy + bOH, oz, 1, 'H');         // H2→y
+        } else {
+          addAtom(ox + bOH, oy, oz, 1, 'H');         // H1→x
+          addAtom(ox, oy, oz + bOH, 1, 'H');         // H2→z (up)
+        }
+      }
+    }
+  }
+
+  console.log('Water layer: ' + nx + 'x' + ny + ' = ' + (nx*ny) + ' molecules, ' + atoms.length + ' atoms');
+
+  // Bond pairs: H-bonds between neighbors
+  // Sample H-bonds: x, y, and z directions
+  var bondPairs = [];
+  // x-direction (all sites donate H1 in x)
+  bondPairs.push([oIndices[1][1][0] + 1, oIndices[1][1][1], "x-bond:"]);
+  // y-direction (even site: ix+iy+iz even → H2 points in y)
+  // (0,0,0) is even: ix=0,iy=0,iz=0
+  bondPairs.push([oIndices[0][0][0] + 2, oIndices[0][1][0], "y-bond:"]);
+  // z-direction (odd sites donate H2 in z)
+  bondPairs.push([oIndices[0][0][1] + 2, oIndices[1][0][1], "z-bond:"]);
+  // O-O distances
+  bondPairs.push([oIndices[1][1][0], oIndices[1][1][1], "O-O(x):"]);
+  bondPairs.push([oIndices[1][0][0], oIndices[1][1][0], "O-O(y):"]);
+  bondPairs.push([oIndices[0][1][1], oIndices[1][1][1], "O-O(z):"]);
+
+
+  window.USER_BOND_PAIRS = bondPairs;
+
+  window.USER_REFERENCE = {
+    bonds: {
+      "H···O": "1.87-1.90 (H-bond)",
+      "O-O": "2.95 (dimer distance)"
+    },
+    energy: "Water layer: H-bond network",
+    binding: "Does a 2D H-bond network form?"
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;  // converge first
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;
+  window.USER_N_MOVE = 50;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'O') return 0.8;
+    return 0;
+  });
+  window.INIT_ZEFF = 2;
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
