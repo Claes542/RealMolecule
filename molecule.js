@@ -93,7 +93,7 @@ function dispatchLinear(pass, totalCells) {
   }
 }
 
-const STEPS_PER_FRAME = NELEC <= 5 ? 50 : NELEC <= 15 ? 50 : NELEC <= 30 ? 50 : NELEC <= 100 ? 5 : 2;
+const STEPS_PER_FRAME = window.USER_STEPS_PER_FRAME || (NELEC <= 5 ? 50 : NELEC <= 15 ? 50 : NELEC <= 30 ? 50 : NELEC <= 100 ? 5 : 2);
 const W_STEPS_PER_FRAME = Math.max(1, STEPS_PER_FRAME);  // match U steps per frame
 const BOUNDARY_INTERVAL = 20;
 const NORM_INTERVAL = 20;
@@ -1107,7 +1107,7 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
 
 // Two force methods: HF integral (small systems) and gradient-of-P (large systems)
 const USE_GRADP_FORCE = window.USER_GRADP_FORCE !== undefined ? window.USER_GRADP_FORCE : true;  // default on
-const FORCE_RADIUS = USE_GRADP_FORCE ? Math.max(5, Math.round(3.0 / hGrid)) : 0;  // 3 au sphere to capture water forces
+const FORCE_RADIUS = USE_GRADP_FORCE ? Math.max(5, Math.round(3.0 / hGrid)) : 0;  // 3 au local sphere
 
 const gradPtotal_WGSL = USE_GRADP_FORCE ? `
 // Averaged gradient of total electron potential P in sphere around nucleus
@@ -2088,6 +2088,10 @@ async function initGPU() {
     }
 
     const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) {
+      gpuError = "No WebGPU adapter found. Check GPU drivers or try Chrome 113+.";
+      return;
+    }
 
     try {
       const info = await adapter.requestAdapterInfo();
