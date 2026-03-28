@@ -1074,15 +1074,29 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
   // Pack both Z and domain label: Z + label/1000 (label recoverable as fract * 1000)
   out[SS * SS + i * SS + j] = f32(lbl) + Zlbl * 1000.0;
 
-  // Boundary: only where density exists (skip empty Voronoi regions)
+  // Boundary detection: 1.0 = active (density present), 2.0 = broken (density ~zero both sides)
   let dens = u * u;
   var bnd = 0.0;
-  if (dens > 1e-6) {
-    if (i > 1u && i < p.NN - 1u) {
-      if (lbl != label[idx + p.S2]) { bnd = 1.0; }
+  if (i > 1u && i < p.NN - 1u) {
+    let nbIdx = idx + p.S2;
+    if (lbl != label[nbIdx]) {
+      let nbDens = U[nbIdx] * U[nbIdx];
+      if (dens > 1e-6 || nbDens > 1e-6) {
+        bnd = 1.0;  // active boundary — bond exists
+      } else {
+        bnd = 2.0;  // broken boundary — no density on either side
+      }
     }
-    if (j > 1u && j < p.NN - 1u) {
-      if (lbl != label[idx + p.S]) { bnd = 1.0; }
+  }
+  if (bnd < 1.5 && j > 1u && j < p.NN - 1u) {
+    let nbIdx = idx + p.S;
+    if (lbl != label[nbIdx]) {
+      let nbDens = U[nbIdx] * U[nbIdx];
+      if (dens > 1e-6 || nbDens > 1e-6) {
+        bnd = max(bnd, 1.0);
+      } else {
+        bnd = 2.0;
+      }
     }
   }
   out[2u * SS * SS + i * SS + j] = bnd;
@@ -1092,7 +1106,7 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
 // === Nuclear dynamics shaders ===
 
 // Two force methods: HF integral (small systems) and gradient-of-P (large systems)
-const USE_GRADP_FORCE = window.USER_GRADP_FORCE || false;  // opt-in via USER_GRADP_FORCE
+const USE_GRADP_FORCE = window.USER_GRADP_FORCE !== undefined ? window.USER_GRADP_FORCE : true;  // default on
 const FORCE_RADIUS = USE_GRADP_FORCE ? Math.max(5, Math.round(3.0 / hGrid)) : 0;  // 3 au sphere to capture water forces
 
 const gradPtotal_WGSL = USE_GRADP_FORCE ? `
@@ -4255,8 +4269,12 @@ function draw() {
         let ri = Math.min(255, Math.floor(brightness * rgb[0]));
         let gi = Math.min(255, Math.floor(brightness * rgb[1]));
         let bi = Math.min(255, Math.floor(brightness * rgb[2]));
-        // Dim boundary overlay (don't replace density, just brighten slightly)
-        if (bnd > 0.5) {
+        // Boundary overlay: active=brighten, broken=bright white
+        if (bnd > 1.5) {
+          // Broken boundary — no density on either side — bright white
+          ri = 255; gi = 255; bi = 255;
+        } else if (bnd > 0.5) {
+          // Active boundary — density present — brighten slightly
           ri = Math.min(255, ri + 40);
           gi = Math.min(255, gi + 40);
           bi = Math.min(255, bi + 40);
@@ -4351,8 +4369,15 @@ function draw() {
     // Element colors
     const elCol = {1:[255,255,255], 2:[255,50,50], 3:[50,50,255], 4:[100,255,100]};
 
-    // Draw bonds between close atoms
-    stroke(80); strokeWeight(1);
+    // Draw bonds: covalent (solid) and H-bonds (colored by distance)
+    // Helper to project a point
+    function proj3D(n) {
+      let ax = nucPos[n][0]-cx3, ay = nucPos[n][1]-cy3, az = nucPos[n][2]-cz3;
+      let rx = ax*cosT + az*sinT, rz = -ax*sinT + az*cosT;
+      let ry = ay*cosT2 - rz*sinT2;
+      return { x: canvMid + rx*scale3, y: canvMid + ry*scale3 };
+    }
+    const ANG = 0.529177;  // bohr to angstrom
     for (let a = 0; a < NELEC; a++) {
       if (Z[a] === 0) continue;
       for (let b = a+1; b < NELEC; b++) {
@@ -4361,17 +4386,34 @@ function draw() {
         const dy = (nucPos[a][1]-nucPos[b][1])*hGrid;
         const dz = (nucPos[a][2]-nucPos[b][2])*hGrid;
         const d = Math.sqrt(dx*dx+dy*dy+dz*dz);
-        if (d < 5.5) { // bond threshold in au (covers C-N peptide ~2.5, Ca-Ca ~3.8)
-          // Project both points
-          let ax = nucPos[a][0]-cx3, ay = nucPos[a][1]-cy3, az = nucPos[a][2]-cz3;
-          let bx3 = nucPos[b][0]-cx3, by3 = nucPos[b][1]-cy3, bz3 = nucPos[b][2]-cz3;
-          // Rotate around y-axis
-          let rax = ax*cosT + az*sinT, raz = -ax*sinT + az*cosT;
-          let rbx = bx3*cosT + bz3*sinT, rbz = -bx3*sinT + bz3*cosT;
-          // Tilt
-          let ray = ay*cosT2 - raz*sinT2, raz2 = ay*sinT2 + raz*cosT2;
-          let rby = by3*cosT2 - rbz*sinT2, rbz2 = by3*sinT2 + rbz*cosT2;
-          line(canvMid + rax*scale3, canvMid + ray*scale3, canvMid + rbx*scale3, canvMid + rby*scale3);
+        const dAng = d * ANG;
+        // Classify bond type
+        const isHO = (Z[a] === 1 && Z[b] === 2) || (Z[a] === 2 && Z[b] === 1);
+        const isOO = (Z[a] === 2 && Z[b] === 2);
+        if (isHO && dAng < 1.3) {
+          // Covalent O-H bond — solid white
+          stroke(200); strokeWeight(2);
+          const pa = proj3D(a), pb = proj3D(b);
+          line(pa.x, pa.y, pb.x, pb.y);
+        } else if (isHO && dAng >= 1.3 && dAng < 2.8) {
+          // H-bond: green < 2.2, yellow 2.2-2.5, red > 2.5
+          let r, g, bl;
+          if (dAng < 2.2) { r = 0; g = 255; bl = 100; }        // intact — green
+          else if (dAng < 2.5) { r = 255; g = 255; bl = 0; }    // stretched — yellow
+          else { r = 255; g = 60; bl = 60; }                     // breaking — red
+          stroke(r, g, bl, 180); strokeWeight(1);
+          const pa = proj3D(a), pb = proj3D(b);
+          // Dashed appearance: draw shorter line
+          const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
+          line(pa.x, pa.y, mx, my);
+          // gap then second half
+          const qx = (mx + pb.x) / 2, qy = (my + pb.y) / 2;
+          line(qx, qy, pb.x, pb.y);
+        } else if (!isHO && !isOO && d < 5.5) {
+          // Other covalent bonds (C-N, C-C, N-H etc)
+          stroke(80); strokeWeight(1);
+          const pa = proj3D(a), pb = proj3D(b);
+          line(pa.x, pa.y, pb.x, pb.y);
         }
       }
     }

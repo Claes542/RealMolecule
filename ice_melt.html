@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// Ice melting simulation
+// Start from Ice Ic diamond cubic, add thermal energy → watch crystal disorder
+// Smaller system (2×2×2) with thermal kick on all atoms
+(function() {
+  var gridN = 200, scr = 50, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  // Ice Ic: diamond cubic, a = 6.36 Å, O-O = 2.75 Å
+  var aCube = 6.36 * A;
+  var dOO = aCube * Math.sqrt(3) / 4;
+  var bOH = 0.96 * A;
+
+  var basis = [
+    [0, 0, 0], [0, 0.5, 0.5], [0.5, 0, 0.5], [0.5, 0.5, 0],
+    [0.25, 0.25, 0.25], [0.25, 0.75, 0.75], [0.75, 0.25, 0.75], [0.75, 0.75, 0.25]
+  ];
+
+  var oPositions = [];
+  var nc = 2;  // 2×2×2 = 64 O atoms (smaller for dynamics speed)
+
+  var x0 = -(nc * aCube) / 2;
+  var y0 = -(nc * aCube) / 2;
+  var z0 = -(nc * aCube) / 2;
+
+  for (var iz = 0; iz < nc; iz++) {
+    for (var iy = 0; iy < nc; iy++) {
+      for (var ix = 0; ix < nc; ix++) {
+        for (var b = 0; b < basis.length; b++) {
+          oPositions.push([
+            x0 + (ix + basis[b][0]) * aCube,
+            y0 + (iy + basis[b][1]) * aCube,
+            z0 + (iz + basis[b][2]) * aCube
+          ]);
+        }
+      }
+    }
+  }
+
+  // Center
+  var cx = 0, cy = 0, cz = 0;
+  for (var i = 0; i < oPositions.length; i++) {
+    cx += oPositions[i][0]; cy += oPositions[i][1]; cz += oPositions[i][2];
+  }
+  cx /= oPositions.length; cy /= oPositions.length; cz /= oPositions.length;
+  for (var i = 0; i < oPositions.length; i++) {
+    oPositions[i][0] -= cx; oPositions[i][1] -= cy; oPositions[i][2] -= cz;
+  }
+
+  // Remove O atoms outside box
+  var halfScr = scr / 2 - 3 * h;
+  var validO = oPositions.filter(function(p) {
+    return Math.abs(p[0]) < halfScr && Math.abs(p[1]) < halfScr && Math.abs(p[2]) < halfScr;
+  });
+
+  // Place O atoms
+  var oIndices = [];
+  for (var i = 0; i < validO.length; i++) {
+    oIndices.push(atoms.length);
+    addAtom(validO[i][0], validO[i][1], validO[i][2], 2, 'O');
+  }
+
+  // Place H toward 2 nearest O neighbors (ice rules)
+  for (var i = 0; i < validO.length; i++) {
+    var dists = [];
+    for (var j = 0; j < validO.length; j++) {
+      if (j === i) continue;
+      var dx = validO[j][0] - validO[i][0];
+      var dy = validO[j][1] - validO[i][1];
+      var dz = validO[j][2] - validO[i][2];
+      var d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      dists.push({ j: j, d: d, dx: dx, dy: dy, dz: dz });
+    }
+    dists.sort(function(a, b) { return a.d - b.d; });
+
+    var nH = 0;
+    for (var k = 0; k < dists.length && nH < 2; k++) {
+      if (dists[k].d > dOO * 1.2) break;
+      if (dists[k].j > i) {
+        var scale = bOH / dists[k].d;
+        addAtom(validO[i][0] + dists[k].dx * scale,
+                validO[i][1] + dists[k].dy * scale,
+                validO[i][2] + dists[k].dz * scale, 1, 'H');
+        nH++;
+      }
+    }
+    for (var k = 0; k < dists.length && nH < 2; k++) {
+      if (dists[k].d > dOO * 1.2) break;
+      if (dists[k].j <= i) {
+        var scale = bOH / dists[k].d;
+        addAtom(validO[i][0] + dists[k].dx * scale,
+                validO[i][1] + dists[k].dy * scale,
+                validO[i][2] + dists[k].dz * scale, 1, 'H');
+        nH++;
+      }
+    }
+  }
+
+  var nWater = validO.length;
+  console.log('Ice melt: ' + nWater + ' water molecules, ' + atoms.length + ' atoms');
+
+  // Count neighbors for each O
+  var nNeighbors = [];
+  for (var i = 0; i < validO.length; i++) {
+    var nn = 0;
+    for (var j = 0; j < validO.length; j++) {
+      if (j === i) continue;
+      var dx = validO[j][0]-validO[i][0], dy = validO[j][1]-validO[i][1], dz = validO[j][2]-validO[i][2];
+      if (Math.sqrt(dx*dx+dy*dy+dz*dz) < dOO * 1.2) nn++;
+    }
+    nNeighbors.push(nn);
+  }
+
+  // Only freeze corner atoms (1 or 2 neighbors) to contain the system
+  // Let surface atoms (3 neighbors) be free — they melt first
+  var frozen = [];
+  for (var i = 0; i < validO.length; i++) {
+    if (nNeighbors[i] <= 2) {
+      frozen.push(oIndices[i]);
+      for (var a = oIndices[i]+1; a < (oIndices[i+1] || atoms.length); a++) {
+        if (atoms[a].Z === 1) frozen.push(a);
+      }
+    }
+  }
+  window.USER_FROZEN_ATOMS = frozen;
+
+  var nFree = atoms.length - frozen.length;
+  console.log('Frozen: ' + frozen.length + ' corner atoms, ' + nFree + ' free (will melt)');
+
+  // Random thermal velocities for free atoms
+  var initVel = [];
+  var thermalKick = 0.8;  // au — enough to break H-bonds but not eject atoms
+  for (var i = 0; i < atoms.length; i++) {
+    if (frozen.indexOf(i) >= 0) {
+      initVel.push([0, 0, 0]);
+    } else {
+      initVel.push([
+        (Math.random() - 0.5) * thermalKick,
+        (Math.random() - 0.5) * thermalKick,
+        (Math.random() - 0.5) * thermalKick
+      ]);
+    }
+  }
+  window.USER_INIT_VEL = initVel;
+
+  // Monitor several O-O distances across the crystal
+  var bondPairs = [];
+  // Find inner O-O pairs (both with 4 neighbors)
+  var innerO = [];
+  for (var i = 0; i < validO.length; i++) {
+    if (nNeighbors[i] >= 4) innerO.push(i);
+  }
+  // Sample up to 4 inner O-O pairs
+  var nPairs = 0;
+  for (var i = 0; i < innerO.length && nPairs < 4; i++) {
+    for (var j = i + 1; j < innerO.length && nPairs < 4; j++) {
+      var dx = validO[innerO[j]][0]-validO[innerO[i]][0];
+      var dy = validO[innerO[j]][1]-validO[innerO[i]][1];
+      var dz = validO[innerO[j]][2]-validO[innerO[i]][2];
+      var d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      if (d < dOO * 1.2) {
+        bondPairs.push([oIndices[innerO[i]], oIndices[innerO[j]], "O-O(" + nPairs + "):"]);
+        nPairs++;
+      }
+    }
+  }
+  // Also some surface O-O pairs
+  var surfO = [];
+  for (var i = 0; i < validO.length; i++) {
+    if (nNeighbors[i] === 3) surfO.push(i);
+  }
+  var nSurf = 0;
+  for (var i = 0; i < surfO.length && nSurf < 2; i++) {
+    for (var j = i + 1; j < surfO.length && nSurf < 2; j++) {
+      var dx = validO[surfO[j]][0]-validO[surfO[i]][0];
+      var dy = validO[surfO[j]][1]-validO[surfO[i]][1];
+      var dz = validO[surfO[j]][2]-validO[surfO[i]][2];
+      var d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      if (d < dOO * 1.2) {
+        bondPairs.push([oIndices[surfO[i]], oIndices[surfO[j]], "surf-OO(" + nSurf + "):"]);
+        nSurf++;
+      }
+    }
+  }
+
+  window.USER_BOND_PAIRS = bondPairs;
+  window.USER_REFERENCE = {
+    bonds: { "O-O": "2.76 (ice)", "O-O(liquid)": "2.8-3.5 (disordered)" },
+    energy: "Ice melting: crystal → liquid",
+    binding: "Do O-O distances increase and disorder as thermal energy breaks H-bonds?"
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;   // start with dynamics ON
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.98;    // slight damping — prevents atom ejection
+  window.USER_N_MOVE = 30;
+  window.USER_GRADP_FORCE = true;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'O') return 0.8;
+    return 0;
+  });
+  window.INIT_ZEFF = 2;
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
