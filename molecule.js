@@ -97,7 +97,7 @@ const STEPS_PER_FRAME = window.USER_STEPS_PER_FRAME || (NELEC <= 5 ? 50 : NELEC 
 const W_STEPS_PER_FRAME = Math.max(1, STEPS_PER_FRAME);  // match U steps per frame
 const BOUNDARY_INTERVAL = 20;
 const NORM_INTERVAL = 20;
-const POISSON_INTERVAL = 50;
+const POISSON_INTERVAL = window.USER_POISSON_INTERVAL || 50;
 const USE_DIRECT_POTHER = NELEC <= 5;  // direct per-electron Poisson solve (no SIC needed)
 const SIC_INTERVAL = NELEC <= 15 ? 1 : NELEC <= 30 ? 5 : 999999;  // SIC in dynamics to remove self-interaction from wavefunction evolution
 const SIC_JACOBI = NELEC <= 15 ? 50 : 10;
@@ -2719,7 +2719,7 @@ async function doSteps(n) {
     dispatchLinear(vp, INTERIOR);
     vp.end();
     // Jacobi smooth P every step
-    const JACOBI_PER_STEP = 2;
+    const JACOBI_PER_STEP = window.USER_JACOBI_PER_STEP || 2;
     for (let js = 0; js < JACOBI_PER_STEP; js++) {
       vp = enc.beginComputePass();
       vp.setPipeline(jacobiSmoothPL);
