@@ -19,6 +19,11 @@ const N_ELECTRONS = _uz.reduce((s, z) => s + z, 0);  // total valence electrons
 const NRED_E = 6;  // Energy reduce: T + V_eK + V_ee + dipole(x,y,z)
 const r_cut = window.USER_RC || [0, 0, 0, 0, 0];
 while (r_cut.length < MAX_ATOMS) r_cut.push(0);
+// Per-domain mass (default 1 = electron mass) and charge sign (default -1 = electron)
+const domainMass = window.USER_MASS || [];
+while (domainMass.length < MAX_ATOMS) domainMass.push(1);
+const domainCharge = window.USER_CHARGE || [];
+while (domainCharge.length < MAX_ATOMS) domainCharge.push(-1);
 // Z_nuc: nuclear charge for K potential (defaults to Z if not set)
 // Allows bare protons (Z=0 no electron, Z_nuc=1 contributes to K)
 const Z_nuc = window.USER_Z_NUC || _uz.map(z => z);
@@ -153,12 +158,12 @@ struct P {
   dt: f32, half_d: f32, h3: f32, sliceK: u32,
 }`;
 
-const ATOM_STRIDE = 8; // 8 f32s per atom (posI, posJ, posK, Z, rc, Z_nuc, pad, pad)
+const ATOM_STRIDE = 8; // 8 f32s per atom (posI, posJ, posK, Z, rc, Z_nuc, mass, charge)
 const ATOM_BUF_BYTES = MAX_ATOMS * ATOM_STRIDE * 4;
 const atomStructWGSL = `
 struct Atom {
   posI: u32, posJ: u32, posK: u32, Z: f32,
-  rc: f32, Z_nuc: f32, _p1: f32, _p2: f32,
+  rc: f32, Z_nuc: f32, mass: f32, charge: f32,
 }`;
 
 // U update — label-based domains, Neumann BC at domain boundaries and r_c surfaces
@@ -274,7 +279,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let lap = u_ip + u_im + u_jp + u_jm + u_kp + u_km - 6.0 * uc;
 
   // Full nuclear potential (all nuclei) minus other-electron repulsion (no self-repulsion)
-  Uo[id] = uc + p.half_d * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;
+  let inv_mass = 1.0 / atoms[lbl].mass;  // kinetic energy scales as 1/(2m)
+  Uo[id] = uc + p.half_d * inv_mass * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;
 }
 `;
 
@@ -351,7 +357,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   let lap = u_ip + u_im + u_jp + u_jm + u_kp + u_km - 6.0 * uc;
 
-  let itpStep = uc + p.half_d * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;
+  let inv_mass = 1.0 / atoms[lbl].mass;
+  let itpStep = uc + p.half_d * inv_mass * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;
 
   Uo[id] = cheb.omega * itpStep + (1.0 - cheb.omega) * Uprev[id];
 }
@@ -1756,6 +1763,8 @@ function fillAtomBuf() {
     af[off + 3] = Z[n];
     af[off + 4] = r_cut[n];
     af[off + 5] = Z_nuc[n]; // nuclear charge (may differ from Z for bare protons)
+    af[off + 6] = domainMass[n];   // mass (1 = electron, 1836 = proton)
+    af[off + 7] = domainCharge[n]; // charge sign (-1 = electron, +1 = proton)
   }
   device.queue.writeBuffer(atomBuf, 0, ab);
 }

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// RealNucleus: Deuterium (2H)
+// 1 electron kernel (charge -1, mass 1) surrounded by 2 proton wave functions (charge +1, mass 1836)
+// No strong force — only Coulomb potentials
+// Same domain decomposition as RealQM for atoms, but with roles switched
+//
+// This requires molecule.js modifications for:
+// 1. USER_CHARGE per domain (+1 or -1)
+// 2. USER_MASS per domain (1 or 1836)
+// 3. No point nuclei (all Z_nuc = 0)
+// 4. Poisson source: rho = sum(charge_j * psi_j^2) — signed charge density
+//
+// For now: use molecule.js with split-electron-like setup
+// Electron kernel = bare negative charge at center
+// 2 proton domains = positive charge densities surrounding it
+//
+// Scale: nuclear size ~1 fm = 10^-15 m, atomic unit = 0.53×10^-10 m
+// Scale factor S = 4e5, so 1 nuclear unit = S atomic units
+
+(function() {
+  // Nuclear scale: we work in "nuclear atomic units"
+  // where distances are ~10^-5 au and energies are ~10^5 au (= MeV scale)
+  var gridN = 100, scr = 10, N2 = 50;
+  var h = scr / gridN;
+  var atoms = [];
+
+  // Deuterium: 2 protons surrounding 1 electron kernel
+  // In molecule.js terms:
+  // - Electron kernel at center: we represent it as a bare nucleus with Z_nuc = -1
+  //   (negative charge, attracting protons)
+  // - 2 proton domains: Z = 1 each (positive charge density)
+  //   placed on opposite sides of the kernel
+
+  // Actually, molecule.js can handle this if we think of it as:
+  // "2 particles (protons) around a central charge (electron kernel)"
+  // This is exactly like 2 electrons around a nucleus, but with:
+  // - Central charge = -1 (instead of +Z)
+  // - Domain charge = +1 (instead of -1)
+  // - Domain mass = 1836 (instead of 1)
+
+  // For a first test: use molecule.js as-is with Z_nuc = 1 for "protons"
+  // and a central "nucleus" that is actually the electron kernel
+  // The signs are the same (+ center attracting - domains)
+  // We just need to remember the physical interpretation is reversed
+
+  // Place 2 "electron" domains (which are actually protons) around a +1 nucleus
+  // The +1 nucleus represents the electron kernel
+
+  var sep = 2.0;  // initial proton separation in grid units
+
+  // Proton 1 (represented as electron domain in molecule.js)
+  atoms.push({
+    i: N2 - Math.round(sep/2/h),
+    j: N2,
+    k: N2,
+    Z: 1,  // This is the "electron charge" in molecule.js = proton in RealNucleus
+    el: 'P'
+  });
+
+  // Proton 2
+  atoms.push({
+    i: N2 + Math.round(sep/2/h),
+    j: N2,
+    k: N2,
+    Z: 1,
+    el: 'P'
+  });
+
+  console.log('RealNucleus 2H: 2 proton domains + electron kernel');
+  console.log('Grid: ' + gridN + '^3, screen=' + scr + ' au');
+  console.log('This is a proof-of-concept using molecule.js with reversed roles');
+
+  window.USER_BOND_PAIRS = [
+    [0, 1, "P1-P2:"]
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: { "P1-P2": "nuclear scale" },
+    energy: "RealNucleus: Deuterium (2H) — 2 protons + 1 electron kernel",
+    binding: "Do 2 protons bind around the electron kernel via Coulomb alone?"
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;
+  window.USER_N_MOVE = 50;
+  window.USER_Z = [1, 1];
+  window.USER_RC = [0, 0];  // no pseudopotential — bare Coulomb
+  // The "nucleus" is the electron kernel with charge +1 (attracts both proton domains)
+  // In molecule.js this is Z_nuc on one of the atoms
+  // But we need a central charge... molecule.js places nucleus at atom position
+  // For deuterium the electron kernel IS the nucleus — it sits between the protons
+
+  // Note: This is a simplified test. Full RealNucleus needs:
+  // 1. Electron kernel as its own wave function domain (not a point charge)
+  // 2. Proton domains with mass = 1836
+  // 3. Signed charges in the Poisson solver
+  // These require molecule.js modifications marked below.
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
