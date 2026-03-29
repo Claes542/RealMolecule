@@ -295,50 +295,59 @@ s.onload = function() {
   var p5s = document.createElement('script');
   p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
   p5s.onload = function() {
-    var recorder = null, chunks = [], recording = false;
+    var chunks = [], recording = false;
     window._toggleRecording = function() {
       var canvas = document.querySelector('canvas');
       if (!canvas) return;
       if (!recording) {
+        window._snapshots = [];
+        var recFrameCount = 0;
+        var origDraw = window.draw;
+        window._recOrigDraw = origDraw;
+        window.draw = function() { if (origDraw) origDraw(); recFrameCount++; if (recFrameCount % 100 === 0) { window._snapshots.push(canvas.toDataURL('image/jpeg', 0.8)); } };
+        recording = true;
+        var dot = document.createElement('div');
+        dot.id = 'rec-indicator';
+        dot.style.cssText = 'position:fixed;top:10px;right:10px;background:red;color:#fff;padding:4px 10px;border-radius:4px;font:bold 14px monospace;z-index:9999;';
+        dot.textContent = '\u25CF REC';
+        document.body.appendChild(dot);
+      } else {
+        if (window._recOrigDraw) { window.draw = window._recOrigDraw; window._recOrigDraw = null; }
+        recording = false;
+        var ind = document.getElementById('rec-indicator');
+        if (ind) ind.textContent = 'Encoding ' + window._snapshots.length + ' frames...';
+        var snaps = window._snapshots;
+        var tmpCanvas = document.createElement('canvas');
+        tmpCanvas.width = canvas.width; tmpCanvas.height = canvas.height;
+        var tmpCtx = tmpCanvas.getContext('2d');
+        var stream2 = tmpCanvas.captureStream(0);
+        var track2 = stream2.getVideoTracks()[0];
+        var mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9') ? 'video/webm; codecs=vp9' : 'video/webm';
         chunks = [];
-        var stream = canvas.captureStream(30);  // 30fps playback
-        var track = stream.getVideoTracks()[0];
-        window._recStreamTrack = track;
-        var mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9')
-          ? 'video/webm; codecs=vp9' : 'video/webm';
-        recorder = new MediaRecorder(stream, { mimeType: mimeType });
-        recorder.ondataavailable = function(ev) { if (ev.data.size > 0) chunks.push(ev.data); };
-        recorder.onstop = function() {
+        var rec2 = new MediaRecorder(stream2, { mimeType: mimeType });
+        rec2.ondataavailable = function(ev) { if (ev.data.size > 0) chunks.push(ev.data); };
+        rec2.onstop = function() {
           var blob = new Blob(chunks, { type: mimeType });
           var url = URL.createObjectURL(blob);
           var a = document.createElement('a');
           a.href = url; a.download = 'ubiquitin_fold.webm'; a.click();
           URL.revokeObjectURL(url);
+          if (ind) ind.remove();
         };
-        recorder.start(1000);
-        var origDraw = window.draw;
-        window._recOrigDraw = origDraw;
-        var frameCount = 0;
-        window.draw = function() { if (origDraw) origDraw(); try { track.requestFrame(); frameCount++; } catch(e) {} if (dot) dot.textContent = '\u25CF REC ' + frameCount; };
-        recording = true;
-        var dot = document.createElement('div');
-        dot.id = 'rec-indicator';
-        dot.style.cssText = 'position:fixed;top:10px;left:10px;background:red;color:#fff;padding:4px 10px;border-radius:4px;font:bold 14px monospace;z-index:9999;animation:blink 1s infinite;';
-        dot.textContent = '\u25CF REC 0';
-        var style = document.createElement('style');
-        style.textContent = '@keyframes blink { 0%,100% { opacity:1 } 50% { opacity:0.4 } }';
-        document.head.appendChild(style);
-        document.body.appendChild(dot);
-      } else {
-        if (window._recOrigDraw) { window.draw = window._recOrigDraw; window._recOrigDraw = null; }
-        recorder.stop(); recording = false;
-        window._recStreamTrack = null;
-        var ind = document.getElementById('rec-indicator');
-        if (ind) ind.remove();
+        rec2.start();
+        var fi = 0;
+        var playback = setInterval(function() {
+          if (fi >= snaps.length) { clearInterval(playback); rec2.stop(); return; }
+          var img = new Image();
+          img.onload = function() { tmpCtx.drawImage(img, 0, 0); try { track2.requestFrame(); } catch(e) {} };
+          img.src = snaps[fi++];
+        }, 33);
       }
     };
-    // Auto-start 3D view; press R to record
-    setTimeout(function() { window._view3D = true; }, 5000);
+    // Auto-start 3D fixed + recording
+    window._view3D = true;
+    window._view3D_fixed = true;
+    setTimeout(function() { window._toggleRecording(); }, 2000);
   };
   document.body.appendChild(p5s);
 };
