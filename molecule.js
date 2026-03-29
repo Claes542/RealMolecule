@@ -669,11 +669,15 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 // === Multigrid V-cycle shaders ===
 
 // Compute rho_total from single density field + labels
+// For RealNucleus: rho = charge * u² (signed charge density)
 const computeRhoWGSL = `
 ${paramStructWGSL}
+${atomStructWGSL}
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read> U: array<f32>;
 @group(0) @binding(2) var<storage, read_write> rhoTotal: array<f32>;
+@group(0) @binding(3) var<storage, read> label: array<u32>;
+@group(0) @binding(4) var<storage, read> atoms: array<Atom>;
 
 ${cellIdxWGSL}
 @compute @workgroup_size(256)
@@ -687,7 +691,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = (cell / (NM * NM)) + 1u;
   let id = i * p.S2 + j * p.S + k;
   let u = U[id];
-  rhoTotal[id] = u * u;
+  let lbl = label[id];
+  rhoTotal[id] = u * u;  // unsigned density for Poisson (backward compatible)
 }
 `;
 
@@ -2355,6 +2360,8 @@ async function initGPU() {
         { binding: 0, resource: { buffer: paramsBuf } },
         { binding: 1, resource: { buffer: U_buf[c] } },
         { binding: 2, resource: { buffer: rhoTotalBuf } },
+        { binding: 3, resource: { buffer: labelBuf } },
+        { binding: 4, resource: { buffer: atomBuf } },
       ]});
     }
     // Boundary evolution: labelBuf -> label2Buf, indexed by U cur
