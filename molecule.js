@@ -6,7 +6,7 @@ const S = NN + 1;
 const S2 = S * S;
 const S3 = S * S * S;
 const N2 = Math.round(NN / 2);
-const MAX_ATOMS = 4096;
+const MAX_ATOMS = window.USER_MAX_ATOMS || 2048;
 const _uz = window.USER_Z || [2, 3, 1, 0, 0];
 while (_uz.length < MAX_ATOMS) _uz.push(0);
 const NELEC = (function() {
