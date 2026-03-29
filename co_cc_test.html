@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// C-O and C-C bond tests side by side
+// Both at r_c=0.1 (like CN test) and r_c=0.3 (protein value)
+// Three molecules placed vertically:
+//   Top: C-O (r_c=0.1)
+//   Middle: C-C (r_c=0.1)
+//   Bottom: C-O (r_c=0.3) for comparison
+//
+// Experimental references:
+//   C-O: single 1.43, double 1.20 (C=O carbonyl), triple 1.13
+//   C-C: single 1.54, double 1.34, triple 1.20
+(function() {
+  var gridN = 200, scr = 20, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+  var rcList = [];
+
+  function addAtom(x, y, z, Z, el, rc) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+    rcList.push(rc);
+  }
+
+  var sep = 1.3 * A;  // start at ~double bond distance
+  var spread = 4.0 * A;  // vertical spacing between molecules
+
+  // === C-O with r_c=0.1 (top) ===
+  var co1C = atoms.length;
+  addAtom(-sep/2, spread, 0, 4, 'C', 0.1);
+  var co1O = atoms.length;
+  addAtom(sep/2, spread, 0, 2, 'O', 0.1);  // O with r_c=0.1 (not 0.8!)
+
+  // === C-C with r_c=0.1 (middle) ===
+  var cc1A = atoms.length;
+  addAtom(-sep/2, 0, 0, 4, 'C', 0.1);
+  var cc1B = atoms.length;
+  addAtom(sep/2, 0, 0, 4, 'C', 0.1);
+
+  // === C-O with r_c=0.3/0.8 protein values (bottom) ===
+  var co2C = atoms.length;
+  addAtom(-sep/2, -spread, 0, 4, 'C', 0.3);
+  var co2O = atoms.length;
+  addAtom(sep/2, -spread, 0, 2, 'O', 0.8);
+
+  // === C-C with r_c=0.3 protein values (bottom-bottom) ===
+  var cc2A = atoms.length;
+  addAtom(-sep/2, -2*spread, 0, 4, 'C', 0.3);
+  var cc2B = atoms.length;
+  addAtom(sep/2, -2*spread, 0, 4, 'C', 0.3);
+
+  console.log('C-O and C-C tests: ' + atoms.length + ' atoms');
+
+  window.USER_BOND_PAIRS = [
+    [co1C, co1O, "C-O(0.1):"],     // C-O with small r_c
+    [cc1A, cc1B, "C-C(0.1):"],     // C-C with small r_c
+    [co2C, co2O, "C-O(0.3/0.8):"], // C-O with protein r_c
+    [cc2A, cc2B, "C-C(0.3):"],     // C-C with protein r_c
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: {
+      "C≡O": "1.13 Å", "C=O": "1.20 Å", "C-O": "1.43 Å",
+      "C≡C": "1.20 Å", "C=C": "1.34 Å", "C-C": "1.54 Å"
+    },
+    energy: "Diatomic bond length vs r_c calibration",
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;
+  window.USER_N_MOVE = 50;
+  window.USER_GRADP_FORCE = true;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = rcList;
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

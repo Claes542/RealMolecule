@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// Dipeptide: two peptide bonds with full backbone context
+// N-Ca1-C(=O)-N(-H)-Ca2-C(=O)-N(-H)-Ca3
+// Tests bond lengths in protein-like environment
+(function() {
+  var gridN = 200, scr = 20, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  var bCaCo = 1.52 * A;   // Ca-C(=O) bond
+  var bCO   = 1.24 * A;   // C=O carbonyl
+  var bCN   = 1.33 * A;   // C-N peptide bond
+  var bNH   = 1.01 * A;   // N-H amide
+  var bNCa  = 1.46 * A;   // N-Ca bond
+  var bCH   = 1.09 * A;
+
+  // Layout: N-term H, Ca1, C1=O1, N2-H2, Ca2, C2=O2, N3-H3, Ca3, C-term
+  // Zigzag: alternate O up / H down for each peptide bond
+
+  var x0 = -4.0 * A;  // start left
+
+  // N-terminus: N + H
+  addAtom(x0, 0, 0, 3, 'N');                          // 0: N-term N
+  addAtom(x0 - bNH, 0, 0, 1, 'H');                    // 1: H on N-term
+  addAtom(x0, bNH, 0, 1, 'H');                        // 2: H on N-term
+
+  x0 += bNCa;
+
+  // Ca1
+  var ca1Idx = atoms.length;
+  addAtom(x0, 0, 0, 4, 'C');                          // 3: Ca1
+  addAtom(x0, 0, bCH, 1, 'H');                        // 4: Ha
+  addAtom(x0, 0, -bCH, 1, 'H');                       // 5: Ha
+
+  x0 += bCaCo;
+
+  // C1=O1 (first peptide bond)
+  var c1Idx = atoms.length;
+  addAtom(x0, 0, 0, 4, 'C');                          // 6: C1
+  var o1Idx = atoms.length;
+  addAtom(x0, bCO, 0, 2, 'O');                        // 7: O1 (up)
+
+  x0 += bCN;
+
+  // N2-H2
+  var n2Idx = atoms.length;
+  addAtom(x0, 0, 0, 3, 'N');                          // 8: N2
+  var h2Idx = atoms.length;
+  addAtom(x0, -bNH, 0, 1, 'H');                       // 9: H2 (down)
+
+  x0 += bNCa;
+
+  // Ca2
+  var ca2Idx = atoms.length;
+  addAtom(x0, 0, 0, 4, 'C');                          // 10: Ca2
+  addAtom(x0, 0, bCH, 1, 'H');                        // 11: Ha
+  addAtom(x0, 0, -bCH, 1, 'H');                       // 12: Ha
+
+  x0 += bCaCo;
+
+  // C2=O2 (second peptide bond)
+  var c2Idx = atoms.length;
+  addAtom(x0, 0, 0, 4, 'C');                          // 13: C2
+  var o2Idx = atoms.length;
+  addAtom(x0, bCO, 0, 2, 'O');                        // 14: O2 (up)
+
+  x0 += bCN;
+
+  // N3-H3
+  var n3Idx = atoms.length;
+  addAtom(x0, 0, 0, 3, 'N');                          // 15: N3
+  var h3Idx = atoms.length;
+  addAtom(x0, -bNH, 0, 1, 'H');                       // 16: H3 (down)
+
+  x0 += bNCa;
+
+  // Ca3 (C-terminal)
+  var ca3Idx = atoms.length;
+  addAtom(x0, 0, 0, 4, 'C');                          // 17: Ca3
+  addAtom(x0, 0, bCH, 1, 'H');                        // 18: Ha
+  addAtom(x0 + bCH, 0, 0, 1, 'H');                    // 19: H (C-term)
+
+  console.log('Dipeptide: ' + atoms.length + ' atoms, 2 peptide bonds');
+
+  window.USER_BOND_PAIRS = [
+    // First peptide bond
+    [c1Idx, o1Idx, "C1=O1:"],        // target 1.24 Å
+    [c1Idx, n2Idx, "C1-N2:"],        // target 1.33 Å
+    [n2Idx, h2Idx, "N2-H2:"],        // target 1.01 Å
+    // Second peptide bond
+    [c2Idx, o2Idx, "C2=O2:"],        // target 1.24 Å
+    [c2Idx, n3Idx, "C2-N3:"],        // target 1.33 Å
+    [n3Idx, h3Idx, "N3-H3:"],        // target 1.01 Å
+    // Backbone
+    [ca1Idx, ca2Idx, "Ca1-Ca2:"],    // target 3.8 Å
+    [ca2Idx, ca3Idx, "Ca2-Ca3:"],    // target 3.8 Å
+    // Cross: O1 to H3 (would be H-bond in helix if i→i+4)
+    [o1Idx, h3Idx, "O1···H3:"],      // not bonded here, just distance
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: {
+      "C=O": "1.24 Å",
+      "C-N": "1.33 Å (partial double bond)",
+      "N-H": "1.01 Å",
+      "Ca-Ca": "3.8 Å"
+    },
+    energy: "Dipeptide: two peptide bonds in backbone context",
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;  // converge first
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;
+  window.USER_N_MOVE = 50;
+  window.USER_GRADP_FORCE = true;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'C') return 0.3;
+    if (a.el === 'N') return 0.5;
+    if (a.el === 'O') return 0.8;
+    return 0;
+  });
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
