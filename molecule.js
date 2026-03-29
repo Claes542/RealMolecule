@@ -4363,9 +4363,10 @@ function draw() {
   if (window._view3D) {
     background(0); // clear to black — no 2D heatmap underneath
     // Draw all atoms as 3D projection with auto-rotation
-    const t3d = (frameCount || 0) * 0.02; // rotation angle
+    const t3d = window._view3D_fixed ? Math.PI/2 : (frameCount || 0) * 0.02; // fixed: side view of z-axis
+    const tilt = window._view3D_fixed ? Math.PI/4 : 0.3;  // fixed: 45° tilt for depth
     const cosT = Math.cos(t3d), sinT = Math.sin(t3d);
-    const cosT2 = Math.cos(0.3), sinT2 = Math.sin(0.3); // slight tilt
+    const cosT2 = Math.cos(tilt), sinT2 = Math.sin(tilt); // tilt
     const cx3 = NN / 2, cy3 = NN / 2, cz3 = NN / 2;
     const scale3 = PX * 0.8;
     const canvMid = CANVAS_SIZE / 2;
@@ -4832,6 +4833,10 @@ function keyPressed() {
   if (key === '3') {
     window._view3D = !window._view3D;
     console.log("3D view " + (window._view3D ? "ON" : "OFF"));
+  }
+  if (key === 'f' || key === 'F') {
+    window._view3D_fixed = !window._view3D_fixed;
+    console.log("3D rotation " + (window._view3D_fixed ? "FIXED" : "rotating"));
   }
   if (key === 'v' || key === 'V') {
     vcycleEnabled = !vcycleEnabled;
