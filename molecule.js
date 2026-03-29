@@ -4363,8 +4363,10 @@ function draw() {
   if (window._view3D) {
     background(0); // clear to black — no 2D heatmap underneath
     // Draw all atoms as 3D projection with auto-rotation
-    const t3d = window._view3D_fixed ? Math.PI/2 : (frameCount || 0) * 0.02; // fixed: side view of z-axis
-    const tilt = window._view3D_fixed ? Math.PI/4 : 0.3;  // fixed: 45° tilt for depth
+    const fixedYrot = window.USER_VIEW_YROT !== undefined ? window.USER_VIEW_YROT : Math.PI/2;
+    const fixedTilt = window.USER_VIEW_TILT !== undefined ? window.USER_VIEW_TILT : Math.PI/4;
+    const t3d = window._view3D_fixed ? fixedYrot : (frameCount || 0) * 0.02;
+    const tilt = window._view3D_fixed ? fixedTilt : 0.3;
     const cosT = Math.cos(t3d), sinT = Math.sin(t3d);
     const cosT2 = Math.cos(tilt), sinT2 = Math.sin(tilt); // tilt
     const cx3 = NN / 2, cy3 = NN / 2, cz3 = NN / 2;
