@@ -265,13 +265,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   // Blend neighbors toward uc where w < 1 (smooth Neumann at cutoff)
-  // ${NUCLEUS_MODE ? 'NUCLEUS: Dirichlet BC — use actual neighbor value for continuity across boundary' : 'Neumann BC — replace cross-boundary neighbor with uc'}
-  let u_raw_ip = select(${NUCLEUS_MODE ? 'Ui[id + p.S2]' : 'uc'}, Ui[id + p.S2], l_ip == myL && !excl_ip);
-  let u_raw_im = select(${NUCLEUS_MODE ? 'Ui[id - p.S2]' : 'uc'}, Ui[id - p.S2], l_im == myL && !excl_im);
-  let u_raw_jp = select(${NUCLEUS_MODE ? 'Ui[id + p.S]' : 'uc'},  Ui[id + p.S],  l_jp == myL && !excl_jp);
-  let u_raw_jm = select(${NUCLEUS_MODE ? 'Ui[id - p.S]' : 'uc'},  Ui[id - p.S],  l_jm == myL && !excl_jm);
-  let u_raw_kp = select(${NUCLEUS_MODE ? 'Ui[id + 1u]' : 'uc'},   Ui[id + 1u],   l_kp == myL && !excl_kp);
-  let u_raw_km = select(${NUCLEUS_MODE ? 'Ui[id - 1u]' : 'uc'},   Ui[id - 1u],   l_km == myL && !excl_km);
+  // Neumann BC at domain boundaries
+  let u_raw_ip = select(uc, Ui[id + p.S2], l_ip == myL && !excl_ip);
+  let u_raw_im = select(uc, Ui[id - p.S2], l_im == myL && !excl_im);
+  let u_raw_jp = select(uc, Ui[id + p.S],  l_jp == myL && !excl_jp);
+  let u_raw_jm = select(uc, Ui[id - p.S],  l_jm == myL && !excl_jm);
+  let u_raw_kp = select(uc, Ui[id + 1u],   l_kp == myL && !excl_kp);
+  let u_raw_km = select(uc, Ui[id - 1u],   l_km == myL && !excl_km);
 
   let u_ip = mix(uc, u_raw_ip, w_ip);
   let u_im = mix(uc, u_raw_im, w_im);
@@ -283,10 +283,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let lap = u_ip + u_im + u_jp + u_jm + u_kp + u_km - 6.0 * uc;
 
   // Full nuclear potential (all nuclei) minus other-electron repulsion (no self-repulsion)
-  let inv_mass = 1.0 / atoms[myL].mass;  // kinetic energy scales as 1/(2m)
-${NUCLEUS_MODE ?
-  '  let Psign = -atoms[myL].charge;  // electron(charge=-1)→+1→repel from e-density, attract to p-density\n  Uo[id] = uc + p.half_d * inv_mass * lap + p.dt * (K[id] + 2.0 * Psign * Pi[id]) * uc;'
-  : '  Uo[id] = uc + p.half_d * inv_mass * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;'}
+  // ITP: kinetic + potential. PotherBuf has charge-weighted potential in NUCLEUS_MODE.
+  Uo[id] = uc + p.half_d * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;
 }
 `;
 
@@ -363,10 +361,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   let lap = u_ip + u_im + u_jp + u_jm + u_kp + u_km - 6.0 * uc;
 
-  let inv_mass = 1.0 / atoms[myL].mass;
-${NUCLEUS_MODE ?
-  '  let Psign = -atoms[myL].charge;\n  let itpStep = uc + p.half_d * inv_mass * lap + p.dt * (K[id] + 2.0 * Psign * Pi[id]) * uc;'
-  : '  let itpStep = uc + p.half_d * inv_mass * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;'}
+  let itpStep = uc + p.half_d * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;
 
   Uo[id] = cheb.omega * itpStep + (1.0 - cheb.omega) * Uprev[id];
 }
