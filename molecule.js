@@ -704,7 +704,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
-// Compute rho for electrons only (charge < 0) — for per-domain Poisson display
+// Compute rho for a SINGLE domain — uses sliceK as domain filter index
 const computeRhoElecWGSL = NUCLEUS_MODE ? `
 ${paramStructWGSL}
 ${atomStructWGSL}
@@ -728,7 +728,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let u = U[id];
   let lbl = label[id];
   let ch = atoms[lbl].charge;
-  rhoTotal[id] = select(0.0, ch * u * u, ch < 0.0);  // electrons only
+  // sliceK used as domain filter: only include this domain's density
+  rhoTotal[id] = select(0.0, ch * u * u, lbl == p.sliceK);
 }
 ` : '';
 
@@ -2434,6 +2435,16 @@ async function initGPU() {
         { binding: 3, resource: { buffer: labelBuf } },
         { binding: 4, resource: { buffer: atomBuf } },
       ]});
+      if (NUCLEUS_MODE && window._computeRhoElecPL) {
+        if (!window._computeRhoElecBG) window._computeRhoElecBG = [];
+        window._computeRhoElecBG[c] = device.createBindGroup({ layout: window._computeRhoElecPL.getBindGroupLayout(0), entries: [
+          { binding: 0, resource: { buffer: paramsBuf } },
+          { binding: 1, resource: { buffer: U_buf[c] } },
+          { binding: 2, resource: { buffer: window._P_elecBuf } },  // write electron rho here (reuse as temp)
+          { binding: 3, resource: { buffer: labelBuf } },
+          { binding: 4, resource: { buffer: atomBuf } },
+        ]});
+      }
     }
     // Boundary evolution: labelBuf -> label2Buf, indexed by U cur
     for (let u = 0; u < 2; u++) {
@@ -3055,6 +3066,68 @@ async function doSteps(n) {
     enc.copyBufferToBuffer(forceSumsBuf, 0, forceSumsReadBuf, 0, NELEC * 3 * 4);
   }
   device.queue.submit([enc.finish()]);
+
+  // --- Per-domain Poisson solve for display (NUCLEUS_MODE only) ---
+  if (NUCLEUS_MODE && window._computeRhoElecPL && window._P_elecBuf && tStep % 50 === 0) {
+    if (!window._elecReadBuf) {
+      window._elecReadBuf = device.createBuffer({ size: SLICE_SIZE, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+    }
+    if (!window._perDomainP) window._perDomainP = [];
+    const _SS = S;
+    const pBase = 3 * _SS * _SS + 2 * _SS;
+    const savedSliceK = sliceK;
+
+    for (let dom = 0; dom < NELEC; dom++) {
+      if (Z[dom] === 0 && Z_nuc[dom] === 0) continue;
+      // Set sliceK = domain index as filter for computeRhoElec
+      const pf = new Float32Array(1);
+      pf[0] = dom;
+      // Write domain index into sliceK slot of params
+      device.queue.writeBuffer(paramsBuf, 15 * 4, new Uint32Array([dom]));  // sliceK is at offset 15
+
+      const enc2 = device.createCommandEncoder();
+      // Backup P and rho
+      enc2.copyBufferToBuffer(P_buf[0], 0, window._P_elecBuf, 0, S3 * 4);
+      enc2.copyBufferToBuffer(rhoTotalBuf, 0, PotherBuf, 0, S3 * 4);
+      // Compute single-domain rho
+      let vp2 = enc2.beginComputePass();
+      vp2.setPipeline(window._computeRhoElecPL);
+      vp2.setBindGroup(0, window._computeRhoElecBG[cur]);
+      dispatchLinear(vp2, INTERIOR);
+      vp2.end();
+      // Solve Poisson
+      enc2.clearBuffer(P_buf[0]);
+      for (let js = 0; js < 20; js++) {
+        vp2 = enc2.beginComputePass();
+        vp2.setPipeline(jacobiSmoothPL);
+        vp2.setBindGroup(0, jacobiFineBG[js % 2]);
+        dispatchLinear(vp2, INTERIOR);
+        vp2.end();
+      }
+      // Extract P line
+      vp2 = enc2.beginComputePass();
+      vp2.setPipeline(extractPL);
+      vp2.setBindGroup(0, extractBG[cur]);
+      vp2.dispatchWorkgroups(WG_EXTRACT, WG_EXTRACT);
+      vp2.end();
+      enc2.copyBufferToBuffer(sliceBuf, 0, window._elecReadBuf, 0, SLICE_SIZE);
+      // Restore
+      enc2.copyBufferToBuffer(window._P_elecBuf, 0, P_buf[0], 0, S3 * 4);
+      enc2.copyBufferToBuffer(PotherBuf, 0, rhoTotalBuf, 0, S3 * 4);
+      device.queue.submit([enc2.finish()]);
+      try {
+        await window._elecReadBuf.mapAsync(GPUMapMode.READ);
+        const domSlice = new Float32Array(window._elecReadBuf.getMappedRange().slice(0));
+        window._elecReadBuf.unmap();
+        window._perDomainP[dom] = new Float32Array(NN + 1);
+        for (let i = 0; i <= NN; i++) {
+          window._perDomainP[dom][i] = domSlice[pBase + i];
+        }
+      } catch(e) { console.warn("Domain " + dom + " P readback failed:", e); }
+    }
+    // Restore sliceK
+    device.queue.writeBuffer(paramsBuf, 15 * 4, new Uint32Array([savedSliceK]));
+  }
 
   const oomErr = await device.popErrorScope();
   const valErr = await device.popErrorScope();
@@ -4462,40 +4535,19 @@ function draw() {
             const p2 = sliceData[pBase + i + 1];
             line(PX * i, pPlotY - p1 * pScale, PX * (i+1), pPlotY - p2 * pScale);
           }
-          // Per-domain potentials: 2D Coulomb sum from density on slice
-          // V_n(x,y) = 2π * charge * Σ ψ²(x',y') * h² / |r-r'|
-          // Computed from each domain's actual density positions
+          // Per-domain potentials from 3D Poisson (computed on GPU)
           const vElec = [];
           const vProtonSum = new Float32Array(NN + 1);
-          // Collect density per domain on the slice
-          const domPts = {};
-          for (let i = 1; i < NN; i++) {
-            const b = i * SS + sliceK;
-            const dens = sliceData[b];
-            if (dens < 1e-12) continue;
-            const packed = sliceData[SS2 + b];
-            const domLabel = Math.round(packed % 1000);
-            if (!domPts[domLabel]) domPts[domLabel] = [];
-            domPts[domLabel].push({ gi: i, dens: dens });
-          }
-          // Compute potential from each domain along the slice midline
-          for (let n = 0; n < NELEC; n++) {
-            if (Z[n] === 0 && Z_nuc[n] === 0) continue;
-            const ch = domainCharge[n] || -1;
-            const isElectron = ch < 0;
-            const vals = new Float32Array(NN + 1);
-            const pts = domPts[n] || [];
-            for (let i = 1; i < NN; i++) {
-              let v = 0;
-              for (const src of pts) {
-                const dr = Math.abs(i - src.gi) * hGrid;
-                const r = Math.max(dr, hGrid);
-                v += src.dens * hGrid / r;
+          if (window._perDomainP) {
+            for (let n = 0; n < NELEC; n++) {
+              if (!window._perDomainP[n]) continue;
+              const ch = domainCharge[n] || -1;
+              if (ch < 0) {
+                vElec.push({ n: n, vals: window._perDomainP[n] });
+              } else {
+                for (let i = 0; i <= NN; i++) vProtonSum[i] += window._perDomainP[n][i];
               }
-              vals[i] = 2 * Math.PI * ch * v;
             }
-            if (isElectron) vElec.push({ n: n, vals: vals });
-            else { for (let i = 0; i <= NN; i++) vProtonSum[i] += vals[i]; }
           }
           // Show potentials as seen by protons:
           // - electron potential on protons: ×2 (4π cross-type)
