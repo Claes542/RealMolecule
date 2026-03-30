@@ -102,7 +102,8 @@ function dispatchLinear(pass, totalCells) {
 
 const STEPS_PER_FRAME = window.USER_STEPS_PER_FRAME || (NELEC <= 5 ? 50 : NELEC <= 15 ? 50 : NELEC <= 30 ? 50 : NELEC <= 100 ? 5 : 2);
 const W_STEPS_PER_FRAME = Math.max(1, STEPS_PER_FRAME);  // match U steps per frame
-const BOUNDARY_INTERVAL = 20;
+const BOUNDARY_INTERVAL = window.USER_BOUNDARY_INTERVAL || 20;
+const BOUNDARY_STEPS_PER_ITP = window.USER_BOUNDARY_STEPS || 1;
 const NORM_INTERVAL = 20;
 const POISSON_INTERVAL = window.USER_POISSON_INTERVAL || 50;
 const USE_DIRECT_POTHER = NELEC <= 5;  // direct per-electron Poisson solve (no SIC needed)
@@ -703,6 +704,34 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
+// Compute rho for electrons only (charge < 0) — for per-domain Poisson display
+const computeRhoElecWGSL = NUCLEUS_MODE ? `
+${paramStructWGSL}
+${atomStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> U: array<f32>;
+@group(0) @binding(2) var<storage, read_write> rhoTotal: array<f32>;
+@group(0) @binding(3) var<storage, read> label: array<u32>;
+@group(0) @binding(4) var<storage, read> atoms: array<Atom>;
+
+${cellIdxWGSL}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let NM = p.NN - 1u;
+  let tot = NM * NM * NM;
+  let cell = cellIdx(gid);
+  if (cell >= tot) { return; }
+  let k = (cell % NM) + 1u;
+  let j = ((cell / NM) % NM) + 1u;
+  let i = (cell / (NM * NM)) + 1u;
+  let id = i * p.S2 + j * p.S + k;
+  let u = U[id];
+  let lbl = label[id];
+  let ch = atoms[lbl].charge;
+  rhoTotal[id] = select(0.0, ch * u * u, ch < 0.0);  // electrons only
+}
+` : '';
+
 // Compute residual: r = -2*pi*rho - lap(P)
 const computeResidualWGSL = `
 ${paramStructWGSL}
@@ -1045,6 +1074,7 @@ ${atomStructWGSL}
 @group(0) @binding(3) var<storage, read> K: array<f32>;
 @group(0) @binding(4) var<storage, read_write> out: array<f32>;
 @group(0) @binding(5) var<storage, read> atoms: array<Atom>;
+@group(0) @binding(6) var<storage, read> Pot: array<f32>;
 
 @compute @workgroup_size(16, 16)
 fn main(@builtin(global_invocation_id) g: vec3<u32>) {
@@ -1059,6 +1089,7 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
   if (j == 0u) {
     let lineIdx = i * p.S2 + sk * p.S + sk;
     out[3u * SS * SS + i] = K[lineIdx];
+    out[3u * SS * SS + 2u * SS + i] = Pot[lineIdx];  // P line
     // Compute w(r) cutoff analytically
     let w_c = ${W_CUTOFF.toFixed(6)};
     var wVal: f32 = 1.0;
@@ -1372,7 +1403,7 @@ ${(function() {
     var bestInnerD: f32 = 1e10;
     ${si.map((idx, ii) => `{ let di${ii}x = f32(i) - f32(atoms[${idx}u].posI); let di${ii}y = f32(j) - f32(atoms[${idx}u].posJ); let di${ii}z = f32(kk) - f32(atoms[${idx}u].posK); let di${ii}d = sqrt(di${ii}x*di${ii}x+di${ii}y*di${ii}y+di${ii}z*di${ii}z); if (di${ii}d < bestInnerD) { bestInnerD = di${ii}d; bestInner = ${idx}u; } }`).join('\n    ')}
     label[id] = bestInner;
-    bestU[id] = exp(rDist) - 1.0;  // increasing outward: 0 at center, grows to shell boundary
+    bestU[id] = 1.0;  // constant electron density inside
   } else {
     // Outer shell: assign to closest outer atom
     var bestOuter: u32 = ${so[0]}u;
@@ -1768,7 +1799,7 @@ let addNucRepulsion = window.NO_NUC_REPULSION ? false : true;
 let vcycleEnabled = true;
 let vcycleCount = 0;
 
-const SLICE_SIZE = (3 * S * S + 2 * S) * 4;  // 3 image slices (density, Z, boundary) + K line + W line
+const SLICE_SIZE = (3 * S * S + 3 * S) * 4;  // 3 image slices (density, Z, boundary) + K line + W line + P line
 const WG_UPDATE = Math.ceil(INTERIOR / 256);
 const WG_REDUCE = Math.min(MAX_REDUCE_WG, Math.ceil(INTERIOR / REDUCE_WG));
 const WG_NORM = Math.ceil(INTERIOR / 256);
@@ -2173,6 +2204,9 @@ async function initGPU() {
     label2Buf = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST });
     W_buf = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     PotherBuf = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    if (NUCLEUS_MODE) {
+      window._P_elecBuf = device.createBuffer({ size: bs, usage: usage | GPUBufferUsage.COPY_SRC });
+    }
     PselfScratchBuf = device.createBuffer({ size: bs, usage });
     sicBuf = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     sicResidualBuf = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
@@ -2268,6 +2302,7 @@ async function initGPU() {
     const evolveBoundaryMod = await compileShader('evolveBoundary', evolveBoundaryWGSL);
     const jacobiSmoothMod = await compileShader('jacobiSmooth', jacobiSmoothWGSL);
     const computeRhoMod = await compileShader('computeRho', computeRhoWGSL);
+    const computeRhoElecMod = NUCLEUS_MODE ? await compileShader('computeRhoElec', computeRhoElecWGSL) : null;
     const computeResidualMod = await compileShader('computeResidual', computeResidualWGSL);
     const restrictMod = await compileShader('restrict', restrictWGSL);
     const coarseSmoothMod = await compileShader('coarseSmooth', coarseSmoothWGSL);
@@ -2310,6 +2345,9 @@ async function initGPU() {
     }
     jacobiSmoothPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: jacobiSmoothMod, entryPoint: 'main' } });
     computeRhoPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: computeRhoMod, entryPoint: 'main' } });
+    if (NUCLEUS_MODE && computeRhoElecMod) {
+      window._computeRhoElecPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: computeRhoElecMod, entryPoint: 'main' } });
+    }
     computeResidualPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: computeResidualMod, entryPoint: 'main' } });
     restrictPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: restrictMod, entryPoint: 'main' } });
     coarseSmoothPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: coarseSmoothMod, entryPoint: 'main' } });
@@ -2386,6 +2424,7 @@ async function initGPU() {
         { binding: 3, resource: { buffer: K_buf } },
         { binding: 4, resource: { buffer: sliceBuf } },
         { binding: 5, resource: { buffer: atomBuf } },
+        { binding: 6, resource: { buffer: P_buf[0] } },
       ]});
       // Multigrid bind groups (per cur for U dependency)
       computeRhoBG[c] = device.createBindGroup({ layout: computeRhoPL.getBindGroupLayout(0), entries: [
@@ -2994,7 +3033,7 @@ async function doSteps(n) {
   // --- Evolve level set W + flip labels where W < 0 ---
   frameCount++;
   if (window.FREEZE_BOUNDARY) { /* skip boundary evolution */ }
-  else for (let s = 0; s < W_STEPS_PER_FRAME; s++) {
+  else for (let s = 0; s < W_STEPS_PER_FRAME * BOUNDARY_STEPS_PER_ITP; s++) {
     let bp = enc.beginComputePass();
     bp.setPipeline(evolveBoundaryPL);
     bp.setBindGroup(0, evolveBoundaryBG[cur]);
@@ -4403,6 +4442,90 @@ function draw() {
       }
       fill(0, 255, 255); noStroke(); textSize(10);
       text("W (domain weight)", 5, wPlotY - wPlotH - 2);
+
+      // Plot P (electronic potential) as yellow line
+      const pBase = kBase + 2 * SS;
+      if (sliceData.length > pBase + NN) {
+        const pPlotY = CANVAS_SIZE - 150;
+        const pPlotH = 50;
+        let pMax = 0;
+        for (let i = 1; i < NN; i++) {
+          const pv = Math.abs(sliceData[pBase + i]);
+          if (pv > pMax) pMax = pv;
+        }
+        if (pMax > 0) {
+          const pScale = pPlotH / pMax;
+          // Total P in yellow
+          stroke(255, 255, 0, 180); strokeWeight(2); noFill();
+          for (let i = 1; i < NN - 1; i++) {
+            const p1 = sliceData[pBase + i];
+            const p2 = sliceData[pBase + i + 1];
+            line(PX * i, pPlotY - p1 * pScale, PX * (i+1), pPlotY - p2 * pScale);
+          }
+          // Per-domain potentials: 2D Coulomb sum from density on slice
+          // V_n(x,y) = 2π * charge * Σ ψ²(x',y') * h² / |r-r'|
+          // Computed from each domain's actual density positions
+          const vElec = [];
+          const vProtonSum = new Float32Array(NN + 1);
+          // Collect density per domain on the slice
+          const domPts = {};
+          for (let i = 1; i < NN; i++) {
+            const b = i * SS + sliceK;
+            const dens = sliceData[b];
+            if (dens < 1e-12) continue;
+            const packed = sliceData[SS2 + b];
+            const domLabel = Math.round(packed % 1000);
+            if (!domPts[domLabel]) domPts[domLabel] = [];
+            domPts[domLabel].push({ gi: i, dens: dens });
+          }
+          // Compute potential from each domain along the slice midline
+          for (let n = 0; n < NELEC; n++) {
+            if (Z[n] === 0 && Z_nuc[n] === 0) continue;
+            const ch = domainCharge[n] || -1;
+            const isElectron = ch < 0;
+            const vals = new Float32Array(NN + 1);
+            const pts = domPts[n] || [];
+            for (let i = 1; i < NN; i++) {
+              let v = 0;
+              for (const src of pts) {
+                const dr = Math.abs(i - src.gi) * hGrid;
+                const r = Math.max(dr, hGrid);
+                v += src.dens * hGrid / r;
+              }
+              vals[i] = 2 * Math.PI * ch * v;
+            }
+            if (isElectron) vElec.push({ n: n, vals: vals });
+            else { for (let i = 0; i <= NN; i++) vProtonSum[i] += vals[i]; }
+          }
+          // Show potentials as seen by protons:
+          // - electron potential on protons: ×2 (4π cross-type)
+          // - proton potential on protons: ×1 (2π same-type)
+          const ePlotY = pPlotY - pPlotH - 120;
+          const eColors = [[255,80,80],[80,80,255],[255,80,255],[80,255,255]];
+          // Each electron potential with factor 2π (already computed with 2π)
+          for (let e = 0; e < vElec.length; e++) {
+            const col = eColors[e % eColors.length];
+            stroke(col[0], col[1], col[2], 220); strokeWeight(2); noFill();
+            for (let i = 1; i < NN - 1; i++) {
+              line(PX * i, ePlotY - vElec[e].vals[i] * pScale,
+                   PX * (i+1), ePlotY - vElec[e].vals[i+1] * pScale);
+            }
+          }
+          fill(255, 80, 80); noStroke(); textSize(10);
+          text("each electron potential (2pi, red/blue)", 5, ePlotY - pPlotH - 2);
+
+          // Proton self-potential (2π same-type, green)
+          stroke(0, 255, 0, 220); strokeWeight(3); noFill();
+          for (let i = 1; i < NN - 1; i++) {
+            line(PX * i, pPlotY - vProtonSum[i] * pScale,
+                 PX * (i+1), pPlotY - vProtonSum[i+1] * pScale);
+          }
+          fill(0, 255, 0); noStroke(); textSize(10);
+          text("proton self-pot (2pi, green)", 5, pPlotY + 12);
+          fill(255, 255, 0); noStroke(); textSize(10);
+          text("yellow:P total  red/blue:electrons  green:protons", 5, pPlotY - pPlotH - 2);
+        }
+      }
     }
   }
   } // end skip 2D when _view3D
