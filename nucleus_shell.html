@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// RealNucleus: pure shell model — NO point charges
+// Inner: 2 electron domains (charge -1) = kernel
+// Outer: 4 proton domains (charge +1) = shell
+// Stability from mutual Coulomb attraction between opposite-charge shells
+// NUCLEUS_MODE: signed rho in Poisson, +2P in ITP (attraction from opposite charges)
+
+(function() {
+  var gridN = 100, scr = 10, N2 = 50;
+  var h = scr / gridN;
+  var atoms = [];
+
+  // Dummy center atom (Z=0, no electron) claims inner Voronoi region → empty
+  atoms.push({ i: N2, j: N2, k: N2, Z: 0, el: 'X' });  // 0: empty center
+
+  // 4 protons outside
+  var Rout = 1.5;
+  var s = Rout / Math.sqrt(3);
+  atoms.push({ i: Math.round(N2 + s/h), j: Math.round(N2 + s/h), k: Math.round(N2 + s/h), Z: 1, el: 'P' });  // 0
+  atoms.push({ i: Math.round(N2 + s/h), j: Math.round(N2 - s/h), k: Math.round(N2 - s/h), Z: 1, el: 'P' });  // 1
+  atoms.push({ i: Math.round(N2 - s/h), j: Math.round(N2 + s/h), k: Math.round(N2 - s/h), Z: 1, el: 'P' });  // 2
+  atoms.push({ i: Math.round(N2 - s/h), j: Math.round(N2 - s/h), k: Math.round(N2 + s/h), Z: 1, el: 'P' });  // 3
+
+  console.log('RealNucleus: 4 protons, empty interior r<0.5');
+
+  window.USER_BOND_PAIRS = [
+    [1, 2, "P1-P2:"],
+    [1, 3, "P1-P3:"],
+    [1, 4, "P1-P4:"],
+    [0, 1, "center-P1:"],
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: { "P-P": "proton separation" },
+    energy: "4 protons, empty interior — should expand (no binding)",
+    binding: "Unstable without electron kernel?"
+  };
+
+  window.USER_NUCLEUS_MODE = false;  // standard mode for proton-only test
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;
+  window.USER_N_MOVE = 50;
+  window.USER_Z = [1, 1, 1, 1, 1];       // center domain exists but represents empty space
+  window.USER_Z_NUC = [0, 0, 0, 0, 0];
+  window.USER_RC = [0, 0, 0, 0, 0];
+  window.USER_MASS = [1, 1, 1, 1, 1];
+  window.USER_CHARGE = [0, 1, 1, 1, 1];  // center neutral, protons positive
+  // Spherical split for INITIAL assignment only — then free boundary evolution
+  window.USER_SHELL_RADIUS = 1.0;
+  // Lock only center-proton boundary, proton-proton boundaries free
+  window.USER_LOCKED_GROUPS = [[0, 1], [0, 2], [0, 3], [0, 4]];
+  window.USER_SHELL_RADIUS = 0.5;
+  window.USER_SHELL_INNER = [0];
+  window.USER_SHELL_OUTER = [1, 2, 3, 4];
+  window.USER_CURV_REG = 0.02;
+  window.INIT_ZEFF = 2;
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

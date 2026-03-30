@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#111;color:#fff;font-family:monospace;padding:20px">
+<h2 style="color:#0cf">RealNucleus: Energy vs Inner Shell Radius</h2>
+<p>Toy model from paper: 2 electrons (kernel) + 4 protons (shell)</p>
+<p>Point charge calculation — Coulomb potential energy for different inner radii</p>
+<pre id="out"></pre>
+<canvas id="plot" width="600" height="400" style="border:1px solid #333;margin-top:20px"></canvas>
+<script>
+// Analytical toy model: 2 electrons at ±d/2 inside sphere of radius R_in
+// 4 protons on tetrahedron at radius R_out
+// Compute total Coulomb potential energy as function of R_in
+// (kinetic energy not included — this is just the potential landscape)
+
+var out = document.getElementById('out');
+var canvas = document.getElementById('plot');
+var ctx = canvas.getContext('2d');
+
+// Tetrahedral vertices (unit radius)
+var tet = [
+  [1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]
+];
+var tetNorm = Math.sqrt(3);
+// Normalize
+for (var t = 0; t < 4; t++) {
+  tet[t] = [tet[t][0]/tetNorm, tet[t][1]/tetNorm, tet[t][2]/tetNorm];
+}
+
+function dist(a, b) {
+  var dx = a[0]-b[0], dy = a[1]-b[1], dz = a[2]-b[2];
+  return Math.sqrt(dx*dx + dy*dy + dz*dz);
+}
+
+function computeEnergy(Rin, Rout) {
+  // 2 electrons at (±Rin/2, 0, 0) — half-sphere split
+  var e1 = [-Rin/2, 0, 0];
+  var e2 = [Rin/2, 0, 0];
+
+  // 4 protons at tetrahedral positions, radius Rout
+  var protons = [];
+  for (var t = 0; t < 4; t++) {
+    protons.push([tet[t][0]*Rout, tet[t][1]*Rout, tet[t][2]*Rout]);
+  }
+
+  var Vee = 0;  // electron-electron repulsion
+  var Vpp = 0;  // proton-proton repulsion
+  var Vep = 0;  // electron-proton attraction
+
+  // e-e repulsion (1 pair)
+  Vee = 1.0 / dist(e1, e2);
+
+  // p-p repulsion (6 pairs)
+  for (var i = 0; i < 4; i++) {
+    for (var j = i+1; j < 4; j++) {
+      Vpp += 1.0 / dist(protons[i], protons[j]);
+    }
+  }
+
+  // e-p attraction (8 pairs, negative)
+  for (var e = 0; e < 2; e++) {
+    var elec = (e === 0) ? e1 : e2;
+    for (var p = 0; p < 4; p++) {
+      Vep -= 1.0 / dist(elec, protons[p]);
+    }
+  }
+
+  var Vtotal = Vee + Vpp + Vep;
+  // Total energy = Vtotal / 2 (virial theorem for Coulomb)
+  return { Vee: Vee, Vpp: Vpp, Vep: Vep, Vtotal: Vtotal, E: Vtotal/2 };
+}
+
+// Sweep R_in from 0.1 to 2.0, with R_out fixed
+var Rout = 1.5;
+var results = [];
+var txt = 'R_out = ' + Rout.toFixed(2) + ' (proton shell radius)\n\n';
+txt += 'R_in     E_total    V_ee      V_pp      V_ep      V_total\n';
+txt += '----------------------------------------------------------------\n';
+
+var bestE = Infinity, bestRin = 0;
+
+for (var Rin = 0.05; Rin <= 2.5; Rin += 0.05) {
+  var res = computeEnergy(Rin, Rout);
+  results.push({ Rin: Rin, E: res.E });
+  txt += Rin.toFixed(2).padStart(5) + '    ' +
+         res.E.toFixed(4).padStart(8) + '   ' +
+         res.Vee.toFixed(3).padStart(8) + '   ' +
+         res.Vpp.toFixed(3).padStart(8) + '   ' +
+         res.Vep.toFixed(3).padStart(8) + '   ' +
+         res.Vtotal.toFixed(4).padStart(8) + '\n';
+  if (res.E < bestE) { bestE = res.E; bestRin = Rin; }
+}
+
+txt += '----------------------------------------------------------------\n';
+txt += 'Minimum energy: E = ' + bestE.toFixed(4) + ' at R_in = ' + bestRin.toFixed(2) + '\n';
+txt += 'Negative energy → STABLE nucleus (Coulomb binding alone)\n';
+
+// Also sweep R_out
+txt += '\n\nSweep R_out (with R_in at optimal for each):\n';
+txt += 'R_out    R_in_opt   E_min\n';
+txt += '----------------------------\n';
+for (var Ro = 0.5; Ro <= 3.0; Ro += 0.25) {
+  var bE = Infinity, bRi = 0;
+  for (var Ri = 0.05; Ri <= Ro - 0.05; Ri += 0.02) {
+    var r = computeEnergy(Ri, Ro);
+    if (r.E < bE) { bE = r.E; bRi = Ri; }
+  }
+  txt += Ro.toFixed(2).padStart(5) + '    ' + bRi.toFixed(2).padStart(6) + '    ' + bE.toFixed(4).padStart(8) + '\n';
+}
+
+out.textContent = txt;
+
+// Plot E vs R_in
+ctx.fillStyle = '#111';
+ctx.fillRect(0, 0, 600, 400);
+
+var minE = -5, maxE = 2;
+var minR = 0, maxR = 2.5;
+
+function px(r) { return 50 + (r - minR) / (maxR - minR) * 500; }
+function py(e) { return 380 - (e - minE) / (maxE - minE) * 350; }
+
+// Axes
+ctx.strokeStyle = '#444';
+ctx.beginPath();
+ctx.moveTo(50, 30); ctx.lineTo(50, 380); ctx.lineTo(550, 380);
+ctx.stroke();
+
+// Zero line
+ctx.strokeStyle = '#333';
+ctx.beginPath(); ctx.moveTo(50, py(0)); ctx.lineTo(550, py(0)); ctx.stroke();
+
+// Labels
+ctx.fillStyle = '#888';
+ctx.font = '12px monospace';
+ctx.fillText('E (Coulomb units)', 60, 25);
+ctx.fillText('R_in', 520, 395);
+ctx.fillText('0', 35, py(0) + 4);
+for (var e = -4; e <= 2; e++) {
+  ctx.fillText(e.toString(), 25, py(e) + 4);
+  ctx.beginPath(); ctx.moveTo(45, py(e)); ctx.lineTo(50, py(e)); ctx.stroke();
+}
+
+// Plot curve
+ctx.strokeStyle = '#0cf';
+ctx.lineWidth = 2;
+ctx.beginPath();
+for (var i = 0; i < results.length; i++) {
+  var x = px(results[i].Rin), y = py(results[i].E);
+  if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+}
+ctx.stroke();
+
+// Mark minimum
+ctx.fillStyle = '#f44';
+ctx.beginPath();
+ctx.arc(px(bestRin), py(bestE), 5, 0, 2*Math.PI);
+ctx.fill();
+ctx.fillStyle = '#f44';
+ctx.fillText('min: R_in=' + bestRin.toFixed(2) + ', E=' + bestE.toFixed(3), px(bestRin) + 10, py(bestE) - 5);
+
+ctx.fillStyle = '#0cf';
+ctx.font = '14px monospace';
+ctx.fillText('R_out = ' + Rout.toFixed(1) + '  (4 protons, tetrahedral)', 200, 25);
+</script>
+</body></html>

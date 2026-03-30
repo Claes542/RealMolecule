@@ -24,12 +24,14 @@ const domainMass = window.USER_MASS || [];
 while (domainMass.length < MAX_ATOMS) domainMass.push(1);
 const domainCharge = window.USER_CHARGE || [];
 while (domainCharge.length < MAX_ATOMS) domainCharge.push(-1);
+// Nuclear mode: signed charge density in Poisson, no point nuclei
+const NUCLEUS_MODE = window.USER_NUCLEUS_MODE || false;
 // Z_nuc: nuclear charge for K potential (defaults to Z if not set)
 // Allows bare protons (Z=0 no electron, Z_nuc=1 contributes to K)
 const Z_nuc = window.USER_Z_NUC || _uz.map(z => z);
 while (Z_nuc.length < MAX_ATOMS) Z_nuc.push(0);
 let R_out = 0.5;   // au, unused legacy
-let curvReg = 0.15;  // curvature regularization for free boundary
+let curvReg = window.USER_CURV_REG !== undefined ? window.USER_CURV_REG : 0.15;
 let Z = [..._uz];
 let Ne = [..._uz];
 const Z_orig = [..._uz];
@@ -262,12 +264,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   // Blend neighbors toward uc where w < 1 (smooth Neumann at cutoff)
-  let u_raw_ip = select(uc, Ui[id + p.S2], l_ip == myL && !excl_ip);
-  let u_raw_im = select(uc, Ui[id - p.S2], l_im == myL && !excl_im);
-  let u_raw_jp = select(uc, Ui[id + p.S],  l_jp == myL && !excl_jp);
-  let u_raw_jm = select(uc, Ui[id - p.S],  l_jm == myL && !excl_jm);
-  let u_raw_kp = select(uc, Ui[id + 1u],   l_kp == myL && !excl_kp);
-  let u_raw_km = select(uc, Ui[id - 1u],   l_km == myL && !excl_km);
+  // ${NUCLEUS_MODE ? 'NUCLEUS: Dirichlet BC — use actual neighbor value for continuity across boundary' : 'Neumann BC — replace cross-boundary neighbor with uc'}
+  let u_raw_ip = select(${NUCLEUS_MODE ? 'Ui[id + p.S2]' : 'uc'}, Ui[id + p.S2], l_ip == myL && !excl_ip);
+  let u_raw_im = select(${NUCLEUS_MODE ? 'Ui[id - p.S2]' : 'uc'}, Ui[id - p.S2], l_im == myL && !excl_im);
+  let u_raw_jp = select(${NUCLEUS_MODE ? 'Ui[id + p.S]' : 'uc'},  Ui[id + p.S],  l_jp == myL && !excl_jp);
+  let u_raw_jm = select(${NUCLEUS_MODE ? 'Ui[id - p.S]' : 'uc'},  Ui[id - p.S],  l_jm == myL && !excl_jm);
+  let u_raw_kp = select(${NUCLEUS_MODE ? 'Ui[id + 1u]' : 'uc'},   Ui[id + 1u],   l_kp == myL && !excl_kp);
+  let u_raw_km = select(${NUCLEUS_MODE ? 'Ui[id - 1u]' : 'uc'},   Ui[id - 1u],   l_km == myL && !excl_km);
 
   let u_ip = mix(uc, u_raw_ip, w_ip);
   let u_im = mix(uc, u_raw_im, w_im);
@@ -279,8 +282,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let lap = u_ip + u_im + u_jp + u_jm + u_kp + u_km - 6.0 * uc;
 
   // Full nuclear potential (all nuclei) minus other-electron repulsion (no self-repulsion)
-  let inv_mass = 1.0 / atoms[lbl].mass;  // kinetic energy scales as 1/(2m)
-  Uo[id] = uc + p.half_d * inv_mass * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;
+  let inv_mass = 1.0 / atoms[myL].mass;  // kinetic energy scales as 1/(2m)
+${NUCLEUS_MODE ?
+  '  let Psign = -atoms[myL].charge;  // electron(charge=-1)→+1→repel from e-density, attract to p-density\n  Uo[id] = uc + p.half_d * inv_mass * lap + p.dt * (K[id] + 2.0 * Psign * Pi[id]) * uc;'
+  : '  Uo[id] = uc + p.half_d * inv_mass * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;'}
 }
 `;
 
@@ -357,8 +362,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   let lap = u_ip + u_im + u_jp + u_jm + u_kp + u_km - 6.0 * uc;
 
-  let inv_mass = 1.0 / atoms[lbl].mass;
-  let itpStep = uc + p.half_d * inv_mass * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;
+  let inv_mass = 1.0 / atoms[myL].mass;
+${NUCLEUS_MODE ?
+  '  let Psign = -atoms[myL].charge;\n  let itpStep = uc + p.half_d * inv_mass * lap + p.dt * (K[id] + 2.0 * Psign * Pi[id]) * uc;'
+  : '  let itpStep = uc + p.half_d * inv_mass * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;'}
 
   Uo[id] = cheb.omega * itpStep + (1.0 - cheb.omega) * Uprev[id];
 }
@@ -692,7 +699,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let id = i * p.S2 + j * p.S + k;
   let u = U[id];
   let lbl = label[id];
-  rhoTotal[id] = u * u;  // unsigned density for Poisson (backward compatible)
+  rhoTotal[id] = ${NUCLEUS_MODE ? 'atoms[lbl].charge *' : ''} u * u;  // ${NUCLEUS_MODE ? 'signed (nucleus)' : 'unsigned (molecular)'}
 }
 `;
 
@@ -1348,8 +1355,33 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   K[id] = Kval;
-  bestU[id] = bU;
-  label[id] = bestN;
+  ${NUCLEUS_MODE ? '// skip Voronoi bestU — shell split sets it below' : 'bestU[id] = bU;'}
+${(function() {
+    var sr = window.USER_SHELL_RADIUS;
+    var si = window.USER_SHELL_INNER;  // array of inner domain indices
+    var so = window.USER_SHELL_OUTER;  // array of outer domain indices
+    if (!sr || !si || !so) return '  label[id] = bestN;';
+    // Spherical split: r < shell_radius → inner, r >= shell_radius → outer
+    return `
+  let cx = f32(${Math.round(NN/2)}u); let cy = cx; let cz = cx;
+  let rx = f32(i) - cx; let ry = f32(j) - cy; let rz = f32(kk) - cz;
+  let rDist = sqrt(rx*rx + ry*ry + rz*rz) * p.h;
+  if (rDist < ${sr.toFixed(4)}) {
+    // Inner shell: assign to closest inner atom
+    var bestInner: u32 = ${si[0]}u;
+    var bestInnerD: f32 = 1e10;
+    ${si.map((idx, ii) => `{ let di${ii}x = f32(i) - f32(atoms[${idx}u].posI); let di${ii}y = f32(j) - f32(atoms[${idx}u].posJ); let di${ii}z = f32(kk) - f32(atoms[${idx}u].posK); let di${ii}d = sqrt(di${ii}x*di${ii}x+di${ii}y*di${ii}y+di${ii}z*di${ii}z); if (di${ii}d < bestInnerD) { bestInnerD = di${ii}d; bestInner = ${idx}u; } }`).join('\n    ')}
+    label[id] = bestInner;
+    bestU[id] = exp(rDist) - 1.0;  // increasing outward: 0 at center, grows to shell boundary
+  } else {
+    // Outer shell: assign to closest outer atom
+    var bestOuter: u32 = ${so[0]}u;
+    var bestOuterD: f32 = 1e10;
+    ${so.map((idx, oi) => `{ let ou${oi}x = f32(i) - f32(atoms[${idx}u].posI); let ou${oi}y = f32(j) - f32(atoms[${idx}u].posJ); let ou${oi}z = f32(kk) - f32(atoms[${idx}u].posK); let ou${oi}d = sqrt(ou${oi}x*ou${oi}x+ou${oi}y*ou${oi}y+ou${oi}z*ou${oi}z); if (ou${oi}d < bestOuterD) { bestOuterD = ou${oi}d; bestOuter = ${idx}u; } }`).join('\n    ')}
+    label[id] = bestOuter;
+    bestU[id] = exp(-rDist);  // exp(-r) for outer protons
+  }`;
+  })()}
 }
 `;
 
