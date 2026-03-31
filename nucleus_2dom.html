@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// RealNucleus: 2 electrons (-1 each) inner + 1 proton domain (Z=4, charge +4) outer
+// Electrons split into half-spheres, proton is single spherical shell
+
+(function() {
+  var gridN = 200, scr = 10, N2 = 100;
+  var h = scr / gridN;
+  var atoms = [];
+
+  // 2 electrons in half-spheres
+  var Rin = 0.25;
+  atoms.push({ i: Math.round(N2 - Rin/h), j: N2, k: N2, Z: 1, el: 'e' });  // 0
+  atoms.push({ i: Math.round(N2 + Rin/h), j: N2, k: N2, Z: 1, el: 'e' });  // 1
+
+  // 1 proton domain (Z=4, charge +4), centered
+  atoms.push({ i: N2 + 1, j: N2, k: N2, Z: 4, el: 'P' });  // 2
+
+  console.log('RealNucleus: 2e(-1) + 1P(+4)');
+
+  window.USER_BOND_PAIRS = [
+    [0, 1, "e1-e2:"],
+    [0, 2, "e1-P:"],
+  ];
+
+  window.USER_REFERENCE = {
+    energy: "RealNucleus: 2e(-1) + 1P(Z=4,q=+4)",
+    binding: "Split electrons + joint proton shell"
+  };
+
+  window.USER_NUCLEUS_MODE = true;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;
+  window.USER_N_MOVE = 50;
+  window.USER_Z = [1, 1, 4];
+  window.USER_Z_NUC = [0, 0, 0];
+  window.USER_RC = [0, 0, 0];
+  window.USER_MASS = [1, 1, 1];
+  window.USER_CHARGE = [-1, -1, 4];
+  window.USER_SHELL_RADIUS = 0.8;
+  window.USER_SHELL_INNER = [0, 1];
+  window.USER_SHELL_OUTER = [2];
+  window.USER_CURV_REG = 0.5;
+  window.USER_DIRICHLET_EP = 'electron';
+  window.USER_LOCKED_GROUPS = [[0, 2], [1, 2]];
+  window.INIT_ZEFF = 2;
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

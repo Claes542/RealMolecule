@@ -109,7 +109,7 @@ const BOUNDARY_INTERVAL = window.USER_BOUNDARY_INTERVAL || 20;
 const BOUNDARY_STEPS_PER_ITP = window.USER_BOUNDARY_STEPS || 1;
 const NORM_INTERVAL = 20;
 const POISSON_INTERVAL = window.USER_POISSON_INTERVAL || 50;
-const USE_DIRECT_POTHER = NELEC <= 5;  // direct per-electron Poisson solve (no SIC needed)
+const USE_DIRECT_POTHER = NELEC <= 5 && !NUCLEUS_MODE;  // direct Pother doesn't support charge weighting
 const SIC_INTERVAL = NELEC <= 15 ? 1 : NELEC <= 30 ? 5 : 999999;  // SIC in dynamics to remove self-interaction from wavefunction evolution
 const SIC_JACOBI = NELEC <= 15 ? 50 : 10;
 
@@ -1489,7 +1489,7 @@ ${(function() {
     var bestInnerD: f32 = 1e10;
     ${si.map((idx, ii) => `{ let di${ii}x = f32(i) - f32(atoms[${idx}u].posI); let di${ii}y = f32(j) - f32(atoms[${idx}u].posJ); let di${ii}z = f32(kk) - f32(atoms[${idx}u].posK); let di${ii}d = sqrt(di${ii}x*di${ii}x+di${ii}y*di${ii}y+di${ii}z*di${ii}z); if (di${ii}d < bestInnerD) { bestInnerD = di${ii}d; bestInner = ${idx}u; } }`).join('\n    ')}
     label[id] = bestInner;
-    bestU[id] = 1.0;  // constant electron density inside
+    bestU[id] = exp(rDist) - 1.0;  // exp(r)-1: zero at center, increasing to shell boundary
   } else {
     // Outer shell: assign to closest outer atom
     var bestOuter: u32 = ${so[0]}u;

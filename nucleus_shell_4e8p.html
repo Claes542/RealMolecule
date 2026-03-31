@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// RealNucleus: 4 electrons (inner tetrahedra) + 8 protons (outer cube vertices)
+// Total charge: -4 + 8 = +4
+// Larger nucleus model: mutual confinement
+
+(function() {
+  var gridN = 200, scr = 5, N2 = 100;
+  var h = scr / gridN;
+  var atoms = [];
+
+  // 4 electrons in tetrahedral arrangement inside sphere
+  var Rin = 0.3;
+  var si = Rin / Math.sqrt(3);
+  atoms.push({ i: Math.round(N2 + si/h), j: Math.round(N2 + si/h), k: Math.round(N2 + si/h), Z: 1, el: 'e' });  // 0
+  atoms.push({ i: Math.round(N2 + si/h), j: Math.round(N2 - si/h), k: Math.round(N2 - si/h), Z: 1, el: 'e' });  // 1
+  atoms.push({ i: Math.round(N2 - si/h), j: Math.round(N2 + si/h), k: Math.round(N2 - si/h), Z: 1, el: 'e' });  // 2
+  atoms.push({ i: Math.round(N2 - si/h), j: Math.round(N2 - si/h), k: Math.round(N2 + si/h), Z: 1, el: 'e' });  // 3
+
+  // 8 protons at cube vertices outside sphere
+  var Rout = 1.5;
+  var so = Rout / Math.sqrt(3);
+  atoms.push({ i: Math.round(N2 + so/h), j: Math.round(N2 + so/h), k: Math.round(N2 + so/h), Z: 1, el: 'P' });  // 4
+  atoms.push({ i: Math.round(N2 + so/h), j: Math.round(N2 + so/h), k: Math.round(N2 - so/h), Z: 1, el: 'P' });  // 5
+  atoms.push({ i: Math.round(N2 + so/h), j: Math.round(N2 - so/h), k: Math.round(N2 + so/h), Z: 1, el: 'P' });  // 6
+  atoms.push({ i: Math.round(N2 + so/h), j: Math.round(N2 - so/h), k: Math.round(N2 - so/h), Z: 1, el: 'P' });  // 7
+  atoms.push({ i: Math.round(N2 - so/h), j: Math.round(N2 + so/h), k: Math.round(N2 + so/h), Z: 1, el: 'P' });  // 8
+  atoms.push({ i: Math.round(N2 - so/h), j: Math.round(N2 + so/h), k: Math.round(N2 - so/h), Z: 1, el: 'P' });  // 9
+  atoms.push({ i: Math.round(N2 - so/h), j: Math.round(N2 - so/h), k: Math.round(N2 + so/h), Z: 1, el: 'P' });  // 10
+  atoms.push({ i: Math.round(N2 - so/h), j: Math.round(N2 - so/h), k: Math.round(N2 - so/h), Z: 1, el: 'P' });  // 11
+
+  console.log('RealNucleus: 4e(-1) inner tetra + 8p(+1) outer cube');
+
+  window.USER_BOND_PAIRS = [
+    [0, 1, "e1-e2:"],
+    [0, 4, "e1-P1:"],
+    [4, 5, "P1-P2:"],
+  ];
+
+  window.USER_REFERENCE = {
+    energy: "RealNucleus: 4e(-1) + 8p(+1) — charge +4",
+    binding: "4 electrons confine 8 protons?"
+  };
+
+  window.USER_NUCLEUS_MODE = true;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;
+  window.USER_N_MOVE = 50;
+  window.USER_Z =     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+  window.USER_Z_NUC = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  window.USER_RC =    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  window.USER_MASS =  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+  window.USER_CHARGE = [-1, -1, -1, -1, 1, 1, 1, 1, 1, 1, 1, 1];
+  window.USER_SHELL_RADIUS = 1.0;
+  window.USER_SHELL_INNER = [0, 1, 2, 3];
+  window.USER_SHELL_OUTER = [4, 5, 6, 7, 8, 9, 10, 11];
+  window.USER_CURV_REG = 0.5;
+  window.USER_DIRICHLET_EP = 'electron';
+  // Lock e-P and P-P boundaries, unlock e-e
+  window.USER_LOCKED_GROUPS = [
+    [0, 4, 5, 6, 7, 8, 9, 10, 11],
+    [1, 4, 5, 6, 7, 8, 9, 10, 11],
+    [2, 4, 5, 6, 7, 8, 9, 10, 11],
+    [3, 4, 5, 6, 7, 8, 9, 10, 11],
+  ];
+  window.INIT_ZEFF = 2;
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
