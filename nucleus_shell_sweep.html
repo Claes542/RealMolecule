@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<canvas id="plot" width="600" height="400" style="border:1px solid #333;margin-top:20px"></canvas>
+<pre id="log" style="color:#0f0;background:#000;padding:10px;font-size:13px"></pre>
+<script>
+// Sweep R=0.5 to 2.0, step 0.1
+// Electrons: Neumann, Protons: match electron density at boundary
+
+var R_VALUES = [];
+for (var r = 0.5; r <= 2.01; r += 0.1) R_VALUES.push(+r.toFixed(2));
+
+var results = JSON.parse(sessionStorage.getItem('nucleus_sweep6') || '[]');
+var currentIdx = results.length;
+
+function plotResults() {
+  var canvas = document.getElementById('plot');
+  var ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, 600, 400);
+  if (results.length < 2) return;
+
+  var Rs = results.map(function(r) { return r.R; });
+  var Es = results.map(function(r) { return r.E; });
+  var Ts = results.map(function(r) { return r.T; });
+  var Vs = results.map(function(r) { return r.V; });
+
+  var Vees = results.map(function(r) { return r.Vee || 0; });
+  var rMin = Math.min.apply(null, Rs), rMax = Math.max.apply(null, Rs);
+  var allE = Es.concat(Ts).concat(Vs).concat(Vees);
+  var eMin = Math.min.apply(null, allE), eMax = Math.max.apply(null, allE);
+  var pad = 50;
+
+  function toX(r) { return pad + (r - rMin) / (rMax - rMin) * (600 - 2 * pad); }
+  function toY(e) { return 400 - pad - (e - eMin) / (eMax - eMin + 1e-10) * (400 - 2 * pad); }
+
+  ctx.strokeStyle = '#555'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad, pad); ctx.lineTo(pad, 400 - pad); ctx.lineTo(600 - pad, 400 - pad); ctx.stroke();
+
+  if (eMin < 0 && eMax > 0) {
+    ctx.strokeStyle = '#555'; ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(pad, toY(0)); ctx.lineTo(600 - pad, toY(0)); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (var i = 0; i < results.length; i++) { i === 0 ? ctx.moveTo(toX(Rs[i]), toY(Es[i])) : ctx.lineTo(toX(Rs[i]), toY(Es[i])); }
+  ctx.stroke();
+
+  ctx.strokeStyle = '#f80'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (var i = 0; i < results.length; i++) { i === 0 ? ctx.moveTo(toX(Rs[i]), toY(Ts[i])) : ctx.lineTo(toX(Rs[i]), toY(Ts[i])); }
+  ctx.stroke();
+
+  ctx.strokeStyle = '#08f'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (var i = 0; i < results.length; i++) { i === 0 ? ctx.moveTo(toX(Rs[i]), toY(Vs[i])) : ctx.lineTo(toX(Rs[i]), toY(Vs[i])); }
+  ctx.stroke();
+
+  // V_ee (electron-electron repulsion) green
+  ctx.strokeStyle = '#0f0'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (var i = 0; i < results.length; i++) { i === 0 ? ctx.moveTo(toX(Rs[i]), toY(Vees[i])) : ctx.lineTo(toX(Rs[i]), toY(Vees[i])); }
+  ctx.stroke();
+
+  ctx.fillStyle = '#fff'; ctx.font = '11px monospace';
+  for (var i = 0; i < results.length; i++) { ctx.beginPath(); ctx.arc(toX(Rs[i]), toY(Es[i]), 3, 0, 7); ctx.fill(); }
+
+  var minIdx = 0;
+  for (var i = 1; i < Es.length; i++) if (Es[i] < Es[minIdx]) minIdx = i;
+  ctx.fillStyle = '#0f0';
+  ctx.beginPath(); ctx.arc(toX(Rs[minIdx]), toY(Es[minIdx]), 6, 0, 7); ctx.fill();
+  ctx.fillText('MIN R=' + Rs[minIdx].toFixed(2) + ' E=' + Es[minIdx].toFixed(4), toX(Rs[minIdx]) + 10, toY(Es[minIdx]) - 5);
+
+  ctx.fillStyle = '#fff'; ctx.fillText('E(R) white', 460, 25);
+  ctx.fillStyle = '#f80'; ctx.fillText('T(R) orange', 460, 40);
+  ctx.fillStyle = '#08f'; ctx.fillText('V(R) blue', 460, 55);
+  ctx.fillStyle = '#0f0'; ctx.fillText('V_ee green', 460, 70);
+  ctx.fillStyle = '#aaa';
+  ctx.fillText('R (au)', 280, 395);
+  ctx.fillText(eMin.toFixed(2), 2, 400 - pad + 4);
+  ctx.fillText(eMax.toFixed(2), 2, pad + 4);
+  ctx.fillText(rMin.toFixed(1), pad - 5, 400 - pad + 15);
+  ctx.fillText(rMax.toFixed(1), 600 - pad - 10, 400 - pad + 15);
+}
+
+var logEl = document.getElementById('log');
+logEl.textContent = 'Nucleus shell sweep: R=0.5..2.0, electron continuity, screen=10au\n\n';
+for (var i = 0; i < results.length; i++) {
+  var p = results[i];
+  logEl.textContent += 'R=' + p.R.toFixed(2) + '  E=' + p.E.toFixed(4) + '  T=' + p.T.toFixed(4) + '  V=' + p.V.toFixed(4) + '  V_ee=' + (p.Vee||0).toFixed(4) + '\n';
+}
+plotResults();
+
+if (currentIdx >= R_VALUES.length) {
+  logEl.textContent += '\nDONE. To restart: sessionStorage.removeItem("nucleus_sweep6"); location.reload();\n';
+} else {
+  var R = R_VALUES[currentIdx];
+  logEl.textContent += 'Running R=' + R.toFixed(2) + ' ...  (' + (currentIdx + 1) + '/' + R_VALUES.length + ')\n';
+
+  (function() {
+    var gridN = 200, scr = 10, N2 = 100;
+    var h = scr / gridN;
+    var atoms = [];
+    var Rin = 0.25;
+    atoms.push({ i: Math.round(N2 - Rin/h), j: N2, k: N2, Z: 1, el: 'e' });
+    atoms.push({ i: Math.round(N2 + Rin/h), j: N2, k: N2, Z: 1, el: 'e' });
+    var Rout = 1.5;
+    var s = Rout / Math.sqrt(3);
+    atoms.push({ i: Math.round(N2 + s/h), j: Math.round(N2 + s/h), k: Math.round(N2 + s/h), Z: 1, el: 'P' });
+    atoms.push({ i: Math.round(N2 + s/h), j: Math.round(N2 - s/h), k: Math.round(N2 - s/h), Z: 1, el: 'P' });
+    atoms.push({ i: Math.round(N2 - s/h), j: Math.round(N2 + s/h), k: Math.round(N2 - s/h), Z: 1, el: 'P' });
+    atoms.push({ i: Math.round(N2 - s/h), j: Math.round(N2 - s/h), k: Math.round(N2 + s/h), Z: 1, el: 'P' });
+
+    window.USER_NUCLEUS_MODE = true;
+    window.USER_NN = gridN;
+    window.USER_ATOMS = atoms;
+    window.USER_SCREEN = scr;
+    window.USER_STEPS = 20000;
+    window.USER_DYNAMICS = false;
+    window.USER_FORCE_SCALE = 1.0;
+    window.USER_ARROW_SCALE = 200.0;
+    window.USER_DAMPING = 0.9;
+    window.USER_N_MOVE = 50;
+    window.USER_Z = [1, 1, 1, 1, 1, 1];
+    window.USER_Z_NUC = [0, 0, 0, 0, 0, 0];
+    window.USER_RC = [0, 0, 0, 0, 0, 0];
+    window.USER_MASS = [1, 1, 1, 1, 1, 1];
+    window.USER_CHARGE = [-1, -1, 1, 1, 1, 1];
+    window.USER_SHELL_RADIUS = R;
+    window.USER_SHELL_INNER = [0, 1];
+    window.USER_SHELL_OUTER = [2, 3, 4, 5];
+    window.USER_CURV_REG = 0.5;
+    window.USER_DIRICHLET_EP = 'electron';
+    window.USER_LOCKED_GROUPS = [[0, 2, 3, 4, 5], [1, 2, 3, 4, 5]];
+    window.INIT_ZEFF = 2;
+    window.CONVERGENCE_THRESHOLD = 0.1;
+
+    window.onSweepDone = function(E, steps, E_T, E_eK, E_ee, E_KK, V_on_e, V_on_p, V_ee_cross) {
+      results.push({ R: R, E: E, T: E_T, V: E_eK + E_ee + E_KK, Ve: V_on_e, Vp: V_on_p, Vee: V_ee_cross, steps: steps });
+      sessionStorage.setItem('nucleus_sweep6', JSON.stringify(results));
+      location.reload();
+    };
+  })();
+
+  var sc = document.createElement('script');
+  sc.src = 'molecule.js?t=' + Date.now();
+  sc.onload = function() {
+    var p5s = document.createElement('script');
+    p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    document.body.appendChild(p5s);
+  };
+  document.body.appendChild(sc);
+}
+</script>
+</body></html>

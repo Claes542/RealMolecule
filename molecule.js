@@ -16,7 +16,7 @@ const NELEC = (function() {
   return c || 3;
 })();
 const N_ELECTRONS = _uz.reduce((s, z) => s + z, 0);  // total valence electrons
-const NRED_E = 6;  // Energy reduce: T + V_eK + V_ee + dipole(x,y,z)
+const NRED_E = 8;  // Energy reduce: T + V_eK + V_ee + dipole(x,y,z) + V_on_e + V_on_p
 const r_cut = window.USER_RC || [0, 0, 0, 0, 0];
 while (r_cut.length < MAX_ATOMS) r_cut.push(0);
 // Per-domain mass (default 1 = electron mass) and charge sign (default -1 = electron)
@@ -26,6 +26,9 @@ const domainCharge = window.USER_CHARGE || [];
 while (domainCharge.length < MAX_ATOMS) domainCharge.push(-1);
 // Nuclear mode: signed charge density in Poisson, no point nuclei
 const NUCLEUS_MODE = window.USER_NUCLEUS_MODE || false;
+// BC at e-P interface: 'both'/'proton' (Dirichlet ψ=0), 'match' (proton matches electron),
+// 'electron' (electron matches proton, proton Neumann), or false (all Neumann)
+const DIRICHLET_EP = window.USER_DIRICHLET_EP || false;
 // Z_nuc: nuclear charge for K potential (defaults to Z if not set)
 // Allows bare protons (Z=0 no electron, Z_nuc=1 contributes to K)
 const Z_nuc = window.USER_Z_NUC || _uz.map(z => z);
@@ -265,13 +268,20 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   // Blend neighbors toward uc where w < 1 (smooth Neumann at cutoff)
-  // Neumann BC at domain boundaries
-  let u_raw_ip = select(uc, Ui[id + p.S2], l_ip == myL && !excl_ip);
-  let u_raw_im = select(uc, Ui[id - p.S2], l_im == myL && !excl_im);
-  let u_raw_jp = select(uc, Ui[id + p.S],  l_jp == myL && !excl_jp);
-  let u_raw_jm = select(uc, Ui[id - p.S],  l_jm == myL && !excl_jm);
-  let u_raw_kp = select(uc, Ui[id + 1u],   l_kp == myL && !excl_kp);
-  let u_raw_km = select(uc, Ui[id - 1u],   l_km == myL && !excl_km);
+  // Neumann BC at domain boundaries; Dirichlet (ψ=0) at e-P boundaries if enabled
+  ${DIRICHLET_EP ? `let myC = atoms[myL].charge;
+  let bc_ip = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id + p.S2]' : '0.0'}, myC * atoms[l_ip].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});
+  let bc_im = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id - p.S2]' : '0.0'}, myC * atoms[l_im].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});
+  let bc_jp = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id + p.S]' : '0.0'}, myC * atoms[l_jp].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});
+  let bc_jm = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id - p.S]' : '0.0'}, myC * atoms[l_jm].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});
+  let bc_kp = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id + 1u]' : '0.0'}, myC * atoms[l_kp].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});
+  let bc_km = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id - 1u]' : '0.0'}, myC * atoms[l_km].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});` : `let bc_ip = uc; let bc_im = uc; let bc_jp = uc; let bc_jm = uc; let bc_kp = uc; let bc_km = uc;`}
+  let u_raw_ip = select(bc_ip, Ui[id + p.S2], l_ip == myL && !excl_ip);
+  let u_raw_im = select(bc_im, Ui[id - p.S2], l_im == myL && !excl_im);
+  let u_raw_jp = select(bc_jp, Ui[id + p.S],  l_jp == myL && !excl_jp);
+  let u_raw_jm = select(bc_jm, Ui[id - p.S],  l_jm == myL && !excl_jm);
+  let u_raw_kp = select(bc_kp, Ui[id + 1u],   l_kp == myL && !excl_kp);
+  let u_raw_km = select(bc_km, Ui[id - 1u],   l_km == myL && !excl_km);
 
   let u_ip = mix(uc, u_raw_ip, w_ip);
   let u_im = mix(uc, u_raw_im, w_im);
@@ -284,7 +294,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   // Full nuclear potential (all nuclei) minus other-electron repulsion (no self-repulsion)
   // ITP: kinetic + potential. PotherBuf has charge-weighted potential in NUCLEUS_MODE.
-  Uo[id] = uc + p.half_d * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;
+  let hd = p.half_d / atoms[myL].mass;
+  Uo[id] = uc + hd * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;
 }
 `;
 
@@ -352,16 +363,24 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let l_kp = label[id + 1u];   let excl_kp = isInsideRc(i, j, k+1u, l_kp);
   let l_km = label[id - 1u];   let excl_km = isInsideRc(i, j, k-1u, l_km);
 
-  let u_ip = select(uc, Ui[id + p.S2], l_ip == myL && !excl_ip);
-  let u_im = select(uc, Ui[id - p.S2], l_im == myL && !excl_im);
-  let u_jp = select(uc, Ui[id + p.S],  l_jp == myL && !excl_jp);
-  let u_jm = select(uc, Ui[id - p.S],  l_jm == myL && !excl_jm);
-  let u_kp = select(uc, Ui[id + 1u],   l_kp == myL && !excl_kp);
-  let u_km = select(uc, Ui[id - 1u],   l_km == myL && !excl_km);
+  ${DIRICHLET_EP ? `let myC = atoms[myL].charge;
+  let bc_ip = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id + p.S2]' : '0.0'}, myC * atoms[l_ip].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});
+  let bc_im = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id - p.S2]' : '0.0'}, myC * atoms[l_im].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});
+  let bc_jp = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id + p.S]' : '0.0'}, myC * atoms[l_jp].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});
+  let bc_jm = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id - p.S]' : '0.0'}, myC * atoms[l_jm].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});
+  let bc_kp = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id + 1u]' : '0.0'}, myC * atoms[l_kp].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});
+  let bc_km = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id - 1u]' : '0.0'}, myC * atoms[l_km].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});` : `let bc_ip = uc; let bc_im = uc; let bc_jp = uc; let bc_jm = uc; let bc_kp = uc; let bc_km = uc;`}
+  let u_ip = select(bc_ip, Ui[id + p.S2], l_ip == myL && !excl_ip);
+  let u_im = select(bc_im, Ui[id - p.S2], l_im == myL && !excl_im);
+  let u_jp = select(bc_jp, Ui[id + p.S],  l_jp == myL && !excl_jp);
+  let u_jm = select(bc_jm, Ui[id - p.S],  l_jm == myL && !excl_jm);
+  let u_kp = select(bc_kp, Ui[id + 1u],   l_kp == myL && !excl_kp);
+  let u_km = select(bc_km, Ui[id - 1u],   l_km == myL && !excl_km);
 
   let lap = u_ip + u_im + u_jp + u_jm + u_kp + u_km - 6.0 * uc;
 
-  let itpStep = uc + p.half_d * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;
+  let hd = p.half_d / atoms[myL].mass;
+  let itpStep = uc + hd * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;
 
   Uo[id] = cheb.omega * itpStep + (1.0 - cheb.omega) * Uprev[id];
 }
@@ -637,6 +656,71 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let frac = select(1.0, 1.0 / Zeff, Zeff > 1.0);
     Pother[id] -= Pm[id] * frac;
   }
+}
+`;
+
+// NUCLEUS_MODE: accumulate c_i * c_j * P_j into PotherBuf
+const accumulateNucPotherWGSL = `
+${paramStructWGSL}
+${atomStructWGSL}
+struct DomIdx { idx: u32, Zeff_bits: u32, _p1: u32, _p2: u32 }
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> Pm: array<f32>;
+@group(0) @binding(2) var<storage, read_write> Pother: array<f32>;
+@group(0) @binding(3) var<storage, read> label: array<u32>;
+@group(0) @binding(4) var<uniform> dom: DomIdx;
+@group(0) @binding(5) var<storage, read> atoms: array<Atom>;
+
+${cellIdxWGSL}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let NM = p.NN - 1u;
+  let tot = NM * NM * NM;
+  let cell = cellIdx(gid);
+  if (cell >= tot) { return; }
+  let k = (cell % NM) + 1u;
+  let j = ((cell / NM) % NM) + 1u;
+  let i = (cell / (NM * NM)) + 1u;
+  let id = i * p.S2 + j * p.S + k;
+  let myLabel = label[id];
+  if (myLabel == dom.idx) { return; }
+  let ci = atoms[myLabel].charge;
+  let cj = atoms[dom.idx].charge;
+  Pother[id] += ci * cj * Pm[id];
+}
+`;
+
+// V_ee cross: accumulate ∫ρ_other_electron * P_m into atomic i32 buffer
+// For each electron domain m, after solving P_m, sum |ψ|²*P_m*h³ at other electron cells
+const computeVeeCrossWGSL = `
+${paramStructWGSL}
+${atomStructWGSL}
+struct DomIdx { idx: u32, _p0: u32, _p1: u32, _p2: u32 }
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> U: array<f32>;
+@group(0) @binding(2) var<storage, read> Psic: array<f32>;
+@group(0) @binding(3) var<storage, read> label: array<u32>;
+@group(0) @binding(4) var<uniform> dom: DomIdx;
+@group(0) @binding(5) var<storage, read> atoms: array<Atom>;
+@group(0) @binding(6) var<storage, read_write> veeSum: array<atomic<i32>>;
+
+${cellIdxWGSL}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let NM = p.NN - 1u;
+  let tot = NM * NM * NM;
+  let cell = cellIdx(gid);
+  if (cell >= tot) { return; }
+  let k = (cell % NM) + 1u;
+  let j = ((cell / NM) % NM) + 1u;
+  let i = (cell / (NM * NM)) + 1u;
+  let id = i * p.S2 + j * p.S + k;
+  let myL = label[id];
+  if (myL == dom.idx) { return; }
+  if (atoms[myL].charge >= 0.0) { return; }
+  let u = U[id];
+  let val = u * u * Psic[id] * p.h3;
+  atomicAdd(&veeSum[0], i32(val * 1e6));
 }
 `;
 
@@ -957,7 +1041,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
     let a = select(0.0, U[id + p.S2] - v, sameL_ip);
     let b = select(0.0, U[id + p.S]  - v, sameL_jp);
     let c = select(0.0, U[id + 1u]   - v, sameL_kp);
-    sn[lid * NR]        += 0.5 * (a * a + b * b + c * c) * p.h;
+    sn[lid * NR]        += 0.5 * (a * a + b * b + c * c) * p.h / atoms[myL].mass;
     sn[lid * NR + 1u]   += -K[id] * rho * p.h3;
     sn[lid * NR + 2u]   += Pv[id] * rho * p.h3;
 
@@ -968,6 +1052,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
     sn[lid * NR + 3u]   += rho * xi * p.h3;
     sn[lid * NR + 4u]   += rho * yj * p.h3;
     sn[lid * NR + 5u]   += rho * zk * p.h3;
+
+    // Per-group Coulomb: V felt by electrons vs protons
+    let vee = Pv[id] * rho * p.h3;
+    let isElec = atoms[myL].charge < 0.0;
+    sn[lid * NR + 6u]   += select(0.0, vee, isElec);   // V_on_e
+    sn[lid * NR + 7u]   += select(0.0, vee, !isElec);  // V_on_p
 
     cell = cell + stride;
   }
@@ -1491,17 +1581,24 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let l_kp = label[id + 1u];   let excl_kp = isInsideRc(i, j, k+1u, l_kp);
   let l_km = label[id - 1u];   let excl_km = isInsideRc(i, j, k-1u, l_km);
 
-  let u_ip = select(uc, Ui[id + p.S2], l_ip == myL && !excl_ip);
-  let u_im = select(uc, Ui[id - p.S2], l_im == myL && !excl_im);
-  let u_jp = select(uc, Ui[id + p.S],  l_jp == myL && !excl_jp);
-  let u_jm = select(uc, Ui[id - p.S],  l_jm == myL && !excl_jm);
-  let u_kp = select(uc, Ui[id + 1u],   l_kp == myL && !excl_kp);
-  let u_km = select(uc, Ui[id - 1u],   l_km == myL && !excl_km);
+  ${DIRICHLET_EP ? `let myC = atoms[myL].charge;
+  let bc_ip = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id + p.S2]' : '0.0'}, myC * atoms[l_ip].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});
+  let bc_im = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id - p.S2]' : '0.0'}, myC * atoms[l_im].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});
+  let bc_jp = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id + p.S]' : '0.0'}, myC * atoms[l_jp].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});
+  let bc_jm = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id - p.S]' : '0.0'}, myC * atoms[l_jm].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});
+  let bc_kp = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id + 1u]' : '0.0'}, myC * atoms[l_kp].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});
+  let bc_km = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id - 1u]' : '0.0'}, myC * atoms[l_km].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});` : `let bc_ip = uc; let bc_im = uc; let bc_jp = uc; let bc_jm = uc; let bc_kp = uc; let bc_km = uc;`}
+  let u_ip = select(bc_ip, Ui[id + p.S2], l_ip == myL && !excl_ip);
+  let u_im = select(bc_im, Ui[id - p.S2], l_im == myL && !excl_im);
+  let u_jp = select(bc_jp, Ui[id + p.S],  l_jp == myL && !excl_jp);
+  let u_jm = select(bc_jm, Ui[id - p.S],  l_jm == myL && !excl_jm);
+  let u_kp = select(bc_kp, Ui[id + 1u],   l_kp == myL && !excl_kp);
+  let u_km = select(bc_km, Ui[id - 1u],   l_km == myL && !excl_km);
 
   let lap = u_ip + u_im + u_jp + u_jm + u_kp + u_km - 6.0 * uc;
 
   // H·U = -½∇²U + V_eff·U where V_eff = -K + 2P
-  HU[id] = -0.5 * lap * p.inv_h2 + (-K[id] + 2.0 * Pi[id]) * uc;
+  HU[id] = -0.5 * lap * p.inv_h2 / atoms[myL].mass + (-K[id] + 2.0 * Pi[id]) * uc;
 }
 `;
 
@@ -2200,8 +2297,13 @@ async function initGPU() {
     label2Buf = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST });
     W_buf = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     PotherBuf = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    // Per-domain P lines for display (NELEC lines of S floats)
+    window._perDomPBuf = device.createBuffer({ size: NELEC * S * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
+    window._perDomPReadBuf = device.createBuffer({ size: NELEC * S * 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     if (NUCLEUS_MODE) {
       window._P_elecBuf = device.createBuffer({ size: bs, usage: usage | GPUBufferUsage.COPY_SRC });
+      window._veeSumBuf = device.createBuffer({ size: 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST });
+      window._veeSumReadBuf = device.createBuffer({ size: 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     }
     PselfScratchBuf = device.createBuffer({ size: bs, usage });
     sicBuf = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
@@ -2311,6 +2413,8 @@ async function initGPU() {
     const extractMod = await compileShader('extract', extractWGSL);
     const computeRhoSelfMod = await compileShader('computeRhoSelf', computeRhoSelfWGSL);
     const subtractPselfMod = await compileShader('subtractPself', subtractPselfWGSL);
+    const accNucMod = NUCLEUS_MODE ? await compileShader('accumulateNucPother', accumulateNucPotherWGSL) : null;
+    const veeCrossMod = NUCLEUS_MODE ? await compileShader('computeVeeCross', computeVeeCrossWGSL) : null;
     // Nuclear dynamics + GPU init shaders
     const gradPtotalMod = await compileShader('gradPtotal', gradPtotal_WGSL);
     const recomputeK_Mod = await compileShader('recomputeK', recomputeK_WGSL);
@@ -2331,6 +2435,12 @@ async function initGPU() {
     // fixBoundaryUPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: fixBoundaryUMod, entryPoint: 'main' } });
     computeRhoSelfPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: computeRhoSelfMod, entryPoint: 'main' } });
     subtractPselfPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: subtractPselfMod, entryPoint: 'main' } });
+    if (accNucMod) {
+      window._accNucPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: accNucMod, entryPoint: 'main' } });
+    }
+    if (veeCrossMod) {
+      window._veeCrossPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: veeCrossMod, entryPoint: 'main' } });
+    }
     if (USE_DIRECT_POTHER) {
       const computeRhoOtherMod = await compileShader('computeRhoOther', computeRhoOtherWGSL);
       const copyPotherForLabelMod = await compileShader('copyPotherForLabel', copyPotherForLabelWGSL);
@@ -2421,6 +2531,17 @@ async function initGPU() {
         { binding: 4, resource: { buffer: sliceBuf } },
         { binding: 5, resource: { buffer: atomBuf } },
         { binding: 6, resource: { buffer: P_buf[0] } },
+      ]});
+      // Extract bind group using sicBuf for per-domain P display
+      if (!window._extractSicBG) window._extractSicBG = [];
+      window._extractSicBG[c] = device.createBindGroup({ layout: extractPL.getBindGroupLayout(0), entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: U_buf[c] } },
+        { binding: 2, resource: { buffer: labelBuf } },
+        { binding: 3, resource: { buffer: K_buf } },
+        { binding: 4, resource: { buffer: sliceBuf } },
+        { binding: 5, resource: { buffer: atomBuf } },
+        { binding: 6, resource: { buffer: sicBuf } },
       ]});
       // Multigrid bind groups (per cur for U dependency)
       computeRhoBG[c] = device.createBindGroup({ layout: computeRhoPL.getBindGroupLayout(0), entries: [
@@ -2539,6 +2660,31 @@ async function initGPU() {
           { binding: 3, resource: { buffer: labelBuf } },
           { binding: 4, resource: { buffer: domainBufs[m] } },
         ]});
+        if (window._accNucPL) {
+          if (!window._accNucBG) window._accNucBG = [];
+          window._accNucBG[m] = device.createBindGroup({ layout: window._accNucPL.getBindGroupLayout(0), entries: [
+            { binding: 0, resource: { buffer: paramsBuf } },
+            { binding: 1, resource: { buffer: sicBuf } },
+            { binding: 2, resource: { buffer: PotherBuf } },
+            { binding: 3, resource: { buffer: labelBuf } },
+            { binding: 4, resource: { buffer: domainBufs[m] } },
+            { binding: 5, resource: { buffer: atomBuf } },
+          ]});
+        }
+        if (window._veeCrossPL && domainCharge[m] < 0) {
+          if (!window._veeCrossBG) window._veeCrossBG = {};
+          for (let c = 0; c < 2; c++) {
+            window._veeCrossBG[m + '_' + c] = device.createBindGroup({ layout: window._veeCrossPL.getBindGroupLayout(0), entries: [
+              { binding: 0, resource: { buffer: paramsBuf } },
+              { binding: 1, resource: { buffer: U_buf[c] } },
+              { binding: 2, resource: { buffer: sicBuf } },
+              { binding: 3, resource: { buffer: labelBuf } },
+              { binding: 4, resource: { buffer: domainBufs[m] } },
+              { binding: 5, resource: { buffer: atomBuf } },
+              { binding: 6, resource: { buffer: window._veeSumBuf } },
+            ]});
+          }
+        }
       }
     }
     // Jacobi for self-potential: sicBuf <-> PselfScratchBuf (NOT P_buf[1] — that's V-cycle scratch)
@@ -2958,9 +3104,15 @@ async function doSteps(n) {
   } else if (USE_DIRECT_POTHER) {
     // PotherBuf already built per-step in the direct Poisson loop above
   } else {
-  enc.copyBufferToBuffer(P_buf[0], 0, PotherBuf, 0, S3 * 4);
+  if (NUCLEUS_MODE) {
+    enc.clearBuffer(PotherBuf);  // start from zero, accumulate c_i*c_j*P_j
+  } else {
+    enc.copyBufferToBuffer(P_buf[0], 0, PotherBuf, 0, S3 * 4);
+  }
+  // Clear V_ee accumulator
+  if (window._veeSumBuf) enc.clearBuffer(window._veeSumBuf);
   // Only run SIC periodically to avoid GPU timeout with many atoms
-  if (frameCount > 0 && frameCount % SIC_INTERVAL === 0) {
+  if (frameCount % SIC_INTERVAL === 0) {
     for (let m = 0; m < NELEC; m++) {
       if (Z[m] === 0) continue;
       let sp = enc.beginComputePass();
@@ -3012,9 +3164,31 @@ async function doSteps(n) {
         dispatchLinear(sp, INTERIOR);
         sp.end();
       }
+      // V_ee: accumulate cross-term for electron domains
+      if (window._veeCrossPL && window._veeCrossBG && domainCharge[m] < 0) {
+        sp = enc.beginComputePass();
+        sp.setPipeline(window._veeCrossPL);
+        sp.setBindGroup(0, window._veeCrossBG[m + '_' + cur]);
+        dispatchLinear(sp, INTERIOR);
+        sp.end();
+      }
+      // Capture per-domain P line from sicBuf
+      if (window._extractSicBG && window._extractSicBG[cur] && window._perDomPBuf) {
+        sp = enc.beginComputePass();
+        sp.setPipeline(extractPL);
+        sp.setBindGroup(0, window._extractSicBG[cur]);
+        sp.dispatchWorkgroups(WG_EXTRACT, WG_EXTRACT);
+        sp.end();
+        enc.copyBufferToBuffer(sliceBuf, (3 * S * S + 2 * S) * 4, window._perDomPBuf, m * S * 4, S * 4);
+      }
       sp = enc.beginComputePass();
-      sp.setPipeline(subtractPselfPL);
-      sp.setBindGroup(0, subtractPselfBG[m]);
+      if (NUCLEUS_MODE && window._accNucBG && window._accNucBG[m]) {
+        sp.setPipeline(window._accNucPL);
+        sp.setBindGroup(0, window._accNucBG[m]);
+      } else {
+        sp.setPipeline(subtractPselfPL);
+        sp.setBindGroup(0, subtractPselfBG[m]);
+      }
       dispatchLinear(sp, INTERIOR);
       sp.end();
     }
@@ -3060,69 +3234,12 @@ async function doSteps(n) {
   if (needForceReadback) {
     enc.copyBufferToBuffer(forceSumsBuf, 0, forceSumsReadBuf, 0, NELEC * 3 * 4);
   }
+  if (window._veeSumBuf && window._veeSumReadBuf) {
+    enc.copyBufferToBuffer(window._veeSumBuf, 0, window._veeSumReadBuf, 0, 4);
+  }
   device.queue.submit([enc.finish()]);
 
-  // --- Per-domain Poisson solve for display (NUCLEUS_MODE only) ---
-  if (NUCLEUS_MODE && window._computeRhoElecPL && window._P_elecBuf && tStep % 50 === 0) {
-    if (!window._elecReadBuf) {
-      window._elecReadBuf = device.createBuffer({ size: SLICE_SIZE, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
-    }
-    if (!window._perDomainP) window._perDomainP = [];
-    const _SS = S;
-    const pBase = 3 * _SS * _SS + 2 * _SS;
-    const savedSliceK = sliceK;
-
-    for (let dom = 0; dom < NELEC; dom++) {
-      if (Z[dom] === 0 && Z_nuc[dom] === 0) continue;
-      // Set sliceK = domain index as filter for computeRhoElec
-      const pf = new Float32Array(1);
-      pf[0] = dom;
-      // Write domain index into sliceK slot of params
-      device.queue.writeBuffer(paramsBuf, 15 * 4, new Uint32Array([dom]));  // sliceK is at offset 15
-
-      const enc2 = device.createCommandEncoder();
-      // Backup P and rho
-      enc2.copyBufferToBuffer(P_buf[0], 0, window._P_elecBuf, 0, S3 * 4);
-      enc2.copyBufferToBuffer(rhoTotalBuf, 0, PotherBuf, 0, S3 * 4);
-      // Compute single-domain rho
-      let vp2 = enc2.beginComputePass();
-      vp2.setPipeline(window._computeRhoElecPL);
-      vp2.setBindGroup(0, window._computeRhoElecBG[cur]);
-      dispatchLinear(vp2, INTERIOR);
-      vp2.end();
-      // Solve Poisson
-      enc2.clearBuffer(P_buf[0]);
-      for (let js = 0; js < 20; js++) {
-        vp2 = enc2.beginComputePass();
-        vp2.setPipeline(jacobiSmoothPL);
-        vp2.setBindGroup(0, jacobiFineBG[js % 2]);
-        dispatchLinear(vp2, INTERIOR);
-        vp2.end();
-      }
-      // Extract P line
-      vp2 = enc2.beginComputePass();
-      vp2.setPipeline(extractPL);
-      vp2.setBindGroup(0, extractBG[cur]);
-      vp2.dispatchWorkgroups(WG_EXTRACT, WG_EXTRACT);
-      vp2.end();
-      enc2.copyBufferToBuffer(sliceBuf, 0, window._elecReadBuf, 0, SLICE_SIZE);
-      // Restore
-      enc2.copyBufferToBuffer(window._P_elecBuf, 0, P_buf[0], 0, S3 * 4);
-      enc2.copyBufferToBuffer(PotherBuf, 0, rhoTotalBuf, 0, S3 * 4);
-      device.queue.submit([enc2.finish()]);
-      try {
-        await window._elecReadBuf.mapAsync(GPUMapMode.READ);
-        const domSlice = new Float32Array(window._elecReadBuf.getMappedRange().slice(0));
-        window._elecReadBuf.unmap();
-        window._perDomainP[dom] = new Float32Array(NN + 1);
-        for (let i = 0; i <= NN; i++) {
-          window._perDomainP[dom][i] = domSlice[pBase + i];
-        }
-      } catch(e) { console.warn("Domain " + dom + " P readback failed:", e); }
-    }
-    // Restore sliceK
-    device.queue.writeBuffer(paramsBuf, 15 * 4, new Uint32Array([savedSliceK]));
-  }
+  // Per-domain P lines captured in SIC loop via extractSicBG + perDomPBuf
 
   const oomErr = await device.popErrorScope();
   const valErr = await device.popErrorScope();
@@ -3135,7 +3252,37 @@ async function doSteps(n) {
   E_T = sumsData[0];
   E_eK = sumsData[1];
   E_ee = sumsData[2];  // SIC already removed self-interaction from PotherBuf
-  // Per-H correction removed: Coulomb softening handles bare atoms without exclusion sphere
+  window._V_on_e = sumsData[6];  // Coulomb felt by electron domains
+  window._V_on_p = sumsData[7];  // Coulomb felt by proton domains
+
+  // Read V_ee (electron-electron repulsion from atomic accumulator)
+  if (window._veeSumReadBuf) {
+    try {
+      await window._veeSumReadBuf.mapAsync(GPUMapMode.READ);
+      const veeData = new Int32Array(window._veeSumReadBuf.getMappedRange().slice(0));
+      window._veeSumReadBuf.unmap();
+      // P_m from unsigned ρ_m: ∇²P=-2πρ → P≤0, so sum is negative. V_ee = -2 * sum
+      window._V_ee = -2.0 * veeData[0] / 1e6;
+      console.log("V_ee raw i32=" + veeData[0] + " V_ee=" + window._V_ee.toFixed(6));
+    } catch(e) { /* mapping may fail if already mapped */ }
+  }
+
+  // Read per-domain P lines
+  if (window._perDomPBuf && window._perDomPReadBuf && frameCount % 20 === 0) {
+    try {
+      const enc3 = device.createCommandEncoder();
+      enc3.copyBufferToBuffer(window._perDomPBuf, 0, window._perDomPReadBuf, 0, NELEC * S * 4);
+      device.queue.submit([enc3.finish()]);
+      await window._perDomPReadBuf.mapAsync(GPUMapMode.READ);
+      const allP = new Float32Array(window._perDomPReadBuf.getMappedRange().slice(0));
+      window._perDomPReadBuf.unmap();
+      window._perDomainP = [];
+      for (let m = 0; m < NELEC; m++) window._perDomainP[m] = allP.slice(m * S, m * S + S);
+      let maxV = 0;
+      for (let i = 0; i < allP.length; i++) if (Math.abs(allP[i]) > maxV) maxV = Math.abs(allP[i]);
+      console.log("perDomP max=" + maxV.toExponential(2));
+    } catch(e) { console.error("PERDOMP ERROR:", e); }
+  }
 
   // Dipole moment: μ = Σ Z_a·R_a - ∫ ρ(r)·r dV
   // sumsData[3..5] = electronic part ∫ ρ·r dV (positive, negate for electron charge)
@@ -3661,6 +3808,9 @@ async function doLOBPCGStep() {
   E_T = sumsData[0];
   E_eK = sumsData[1];
   E_ee = sumsData[2];
+  window._V_on_e = sumsData[6];
+  window._V_on_p = sumsData[7];
+  // V_ee readback handled in main doSteps path
   {
     let dip_x = 0, dip_y = 0, dip_z = 0;
     for (let a = 0; a < NELEC; a++) {
@@ -4338,7 +4488,7 @@ function draw() {
             console.log("=== CONVERGED at step " + phaseSteps + ": E=" + E.toFixed(6) + " (dE=" + Math.abs(E - window._prevE).toFixed(6) + ") ===");
             phase = 1;
             window._convCount = 0;
-            if (window.onSweepDone) window.onSweepDone(E, phaseSteps, E_T, E_eK, E_ee, E_KK);
+            if (window.onSweepDone) window.onSweepDone(E, phaseSteps, E_T, E_eK, E_ee, E_KK, window._V_on_e||0, window._V_on_p||0, window._V_ee||0);
           }
         } else {
           window._convCount = 0;
@@ -4349,7 +4499,7 @@ function draw() {
       if (!dynamicsEnabled && phaseSteps >= TOTAL_STEPS) {
         console.log("=== DONE: E=" + E.toFixed(6) + " ===");
         phase = 1;  // done
-        if (window.onSweepDone) window.onSweepDone(E, phaseSteps, E_T, E_eK, E_ee, E_KK);
+        if (window.onSweepDone) window.onSweepDone(E, phaseSteps, E_T, E_eK, E_ee, E_KK, window._V_on_e||0, window._V_on_p||0, window._V_ee||0);
       }
     }).catch((e) => {
       gpuError = e.message || String(e);
@@ -4853,7 +5003,12 @@ function draw() {
   if (lastMs > 0) text((lastMs / STEPS_PER_FRAME).toFixed(1) + "ms/step", CANVAS_SIZE - 120, 35);
 
   fill(200);
-  text("T=" + E_T.toFixed(4) + " V_eK=" + E_eK.toFixed(4) + " V_ee=" + E_ee.toFixed(4) + " V_KK=" + E_KK.toFixed(4) + "  Dipole=" + dipole_D.toFixed(3) + " D  E_bind=" + E_bind.toFixed(4) + " Ha", 5, 50);
+  if (NUCLEUS_MODE) {
+    var V_pot = E_eK + E_ee + E_KK;
+    text("T=" + E_T.toFixed(4) + " V_pot=" + V_pot.toFixed(4) + " V_ee=" + (window._V_ee||0).toFixed(4) + " E=" + (E_T + V_pot).toFixed(4), 5, 50);
+  } else {
+    text("T=" + E_T.toFixed(4) + " V_eK=" + E_eK.toFixed(4) + " V_ee=" + E_ee.toFixed(4) + " V_KK=" + E_KK.toFixed(4) + "  Dipole=" + dipole_D.toFixed(3) + " D  E_bind=" + E_bind.toFixed(4) + " Ha", 5, 50);
+  }
   fill(vcycleEnabled ? [0,255,0] : [255,100,0]);
   const solverName = useLOBPCG ? "LOBPCG" : useCheb ? "Chebyshev" : "ITP";
   text("V-cycle: " + (vcycleEnabled ? "ON" : "OFF") + " (" + vcycleCount + ")  Solver: " + solverName + " [L=LOBPCG C=Cheb]", 5, 65);
