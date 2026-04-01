@@ -29,6 +29,8 @@ const NUCLEUS_MODE = window.USER_NUCLEUS_MODE || false;
 // BC at e-P interface: 'both'/'proton' (Dirichlet ψ=0), 'match' (proton matches electron),
 // 'electron' (electron matches proton, proton Neumann), or false (all Neumann)
 const DIRICHLET_EP = window.USER_DIRICHLET_EP || false;
+// Neumann BC at screen boundary for proton domains (charge > 0)
+const NEUMANN_SCREEN = window.USER_NEUMANN_SCREEN || false;
 // Z_nuc: nuclear charge for K potential (defaults to Z if not set)
 // Allows bare protons (Z=0 no electron, Z_nuc=1 contributes to K)
 const Z_nuc = window.USER_Z_NUC || _uz.map(z => z);
@@ -276,12 +278,20 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let bc_jm = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id - p.S]' : '0.0'}, myC * atoms[l_jm].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});
   let bc_kp = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id + 1u]' : '0.0'}, myC * atoms[l_kp].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});
   let bc_km = select(uc, ${DIRICHLET_EP === 'match' || DIRICHLET_EP === 'electron' ? 'Ui[id - 1u]' : '0.0'}, myC * atoms[l_km].charge < 0.0 && ${DIRICHLET_EP === 'both' ? 'true' : DIRICHLET_EP === 'electron' ? 'myC < 0.0' : 'myC > 0.0'});` : `let bc_ip = uc; let bc_im = uc; let bc_jp = uc; let bc_jm = uc; let bc_kp = uc; let bc_km = uc;`}
-  let u_raw_ip = select(bc_ip, Ui[id + p.S2], l_ip == myL && !excl_ip);
-  let u_raw_im = select(bc_im, Ui[id - p.S2], l_im == myL && !excl_im);
-  let u_raw_jp = select(bc_jp, Ui[id + p.S],  l_jp == myL && !excl_jp);
-  let u_raw_jm = select(bc_jm, Ui[id - p.S],  l_jm == myL && !excl_jm);
-  let u_raw_kp = select(bc_kp, Ui[id + 1u],   l_kp == myL && !excl_kp);
-  let u_raw_km = select(bc_km, Ui[id - 1u],   l_km == myL && !excl_km);
+  var u_raw_ip = select(bc_ip, Ui[id + p.S2], l_ip == myL && !excl_ip);
+  var u_raw_im = select(bc_im, Ui[id - p.S2], l_im == myL && !excl_im);
+  var u_raw_jp = select(bc_jp, Ui[id + p.S],  l_jp == myL && !excl_jp);
+  var u_raw_jm = select(bc_jm, Ui[id - p.S],  l_jm == myL && !excl_jm);
+  var u_raw_kp = select(bc_kp, Ui[id + 1u],   l_kp == myL && !excl_kp);
+  var u_raw_km = select(bc_km, Ui[id - 1u],   l_km == myL && !excl_km);
+  ${NEUMANN_SCREEN ? `// Neumann at screen boundary for protons
+  let isP = atoms[myL].charge > 0.0;
+  if (isP && i >= NM) { u_raw_ip = uc; }
+  if (isP && i <= 1u) { u_raw_im = uc; }
+  if (isP && j >= NM) { u_raw_jp = uc; }
+  if (isP && j <= 1u) { u_raw_jm = uc; }
+  if (isP && k >= NM) { u_raw_kp = uc; }
+  if (isP && k <= 1u) { u_raw_km = uc; }` : ''}
 
   let u_ip = mix(uc, u_raw_ip, w_ip);
   let u_im = mix(uc, u_raw_im, w_im);
@@ -2306,8 +2316,13 @@ async function initGPU() {
       window._veeSumReadBuf = device.createBuffer({ size: 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     }
     PselfScratchBuf = device.createBuffer({ size: bs, usage });
-    sicBuf = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    sicBuf = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
     sicResidualBuf = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    // Per-domain persistent P buffers for converged Poisson solutions
+    window._perDomPSolveBuf = [];
+    for (let m = 0; m < NELEC; m++) {
+      window._perDomPSolveBuf[m] = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
+    }
     // Domain index uniform buffers (needed for SIC and direct Pother)
     for (let m = 0; m < NELEC; m++) {
       if (!domainBufs[m]) {
@@ -3120,49 +3135,59 @@ async function doSteps(n) {
       sp.setBindGroup(0, computeRhoSelfBG[m][cur]);
       dispatchLinear(sp, INTERIOR);
       sp.end();
-      enc.clearBuffer(sicBuf);
-      // SIC V-cycle: pre-smooth, restrict, coarse solve, prolongate, post-smooth
-      for (let js = 0; js < 4; js++) {
+      // Warm start from previous frame or clear
+      const hasWarm = window._perDomPSolveBuf && window._perDomPSolveBuf[m] && frameCount > 0;
+      if (hasWarm) {
+        enc.copyBufferToBuffer(window._perDomPSolveBuf[m], 0, sicBuf, 0, S3 * 4);
+      } else {
+        enc.clearBuffer(sicBuf);
+      }
+      // Warm start: Jacobi only (no V-cycle, previous solution is close)
+      // Cold start: full V-cycle
+      const SIC_SMOOTH = hasWarm ? 8 : 4;
+      for (let js = 0; js < SIC_SMOOTH; js++) {
         sp = enc.beginComputePass();
         sp.setPipeline(jacobiSmoothPL);
         sp.setBindGroup(0, jacobiSelfBG[js % 2]);
         dispatchLinear(sp, INTERIOR);
         sp.end();
       }
-      // Compute residual of SIC Poisson
-      sp = enc.beginComputePass();
-      sp.setPipeline(computeResidualPL);
-      sp.setBindGroup(0, sicResidualBG);
-      dispatchLinear(sp, INTERIOR);
-      sp.end();
-      // Restrict residual to coarse grid
-      sp = enc.beginComputePass();
-      sp.setPipeline(restrictPL);
-      sp.setBindGroup(0, sicRestrictBG);
-      sp.dispatchWorkgroups(WG_COARSE);
-      sp.end();
-      // Coarse solve (10 Jacobi sweeps)
-      enc.clearBuffer(Pc_buf[0]);
-      for (let cs = 0; cs < 10; cs++) {
+      if (!hasWarm) {
+        // V-cycle: residual, restrict, coarse solve, prolongate, post-smooth
         sp = enc.beginComputePass();
-        sp.setPipeline(coarseSmoothPL);
-        sp.setBindGroup(0, coarseSmoothBG[cs % 2]);
+        sp.setPipeline(computeResidualPL);
+        sp.setBindGroup(0, sicResidualBG);
+        dispatchLinear(sp, INTERIOR);
+        sp.end();
+        sp = enc.beginComputePass();
+        sp.setPipeline(restrictPL);
+        sp.setBindGroup(0, sicRestrictBG);
         sp.dispatchWorkgroups(WG_COARSE);
         sp.end();
-      }
-      // Prolongate correction back to sicBuf
-      sp = enc.beginComputePass();
-      sp.setPipeline(prolongCorrectPL);
-      sp.setBindGroup(0, sicProlongBG);
-      dispatchLinear(sp, INTERIOR);
-      sp.end();
-      // Post-smooth
-      for (let js = 0; js < 4; js++) {
+        enc.clearBuffer(Pc_buf[0]);
+        for (let cs = 0; cs < 10; cs++) {
+          sp = enc.beginComputePass();
+          sp.setPipeline(coarseSmoothPL);
+          sp.setBindGroup(0, coarseSmoothBG[cs % 2]);
+          sp.dispatchWorkgroups(WG_COARSE);
+          sp.end();
+        }
         sp = enc.beginComputePass();
-        sp.setPipeline(jacobiSmoothPL);
-        sp.setBindGroup(0, jacobiSelfBG[js % 2]);
+        sp.setPipeline(prolongCorrectPL);
+        sp.setBindGroup(0, sicProlongBG);
         dispatchLinear(sp, INTERIOR);
         sp.end();
+        for (let js = 0; js < 4; js++) {
+          sp = enc.beginComputePass();
+          sp.setPipeline(jacobiSmoothPL);
+          sp.setBindGroup(0, jacobiSelfBG[js % 2]);
+          dispatchLinear(sp, INTERIOR);
+          sp.end();
+        }
+      }
+      // Save P to persistent buffer for next frame's warm start
+      if (window._perDomPSolveBuf && window._perDomPSolveBuf[m]) {
+        enc.copyBufferToBuffer(sicBuf, 0, window._perDomPSolveBuf[m], 0, S3 * 4);
       }
       // V_ee: accumulate cross-term for electron domains
       if (window._veeCrossPL && window._veeCrossBG && domainCharge[m] < 0) {
@@ -4648,8 +4673,8 @@ function draw() {
     // W line plot along the slice axis (through nuclei)
     const kBase = 3 * SS * SS;
     const wBase = kBase + SS;
-    if (sliceData.length > wBase + NN) {
-      // Plot W as cyan line at bottom
+    if (sliceData.length > wBase + NN && !NUCLEUS_MODE) {
+      // Plot W as cyan line at bottom (not needed in nucleus mode)
       const wPlotY = CANVAS_SIZE - 80;
       const wPlotH = 60;
       stroke(0, 255, 255, 180); strokeWeight(2); noFill();
@@ -4660,68 +4685,47 @@ function draw() {
       }
       fill(0, 255, 255); noStroke(); textSize(10);
       text("W (domain weight)", 5, wPlotY - wPlotH - 2);
+    }
 
-      // Plot P (electronic potential) as yellow line
-      const pBase = kBase + 2 * SS;
-      if (sliceData.length > pBase + NN) {
-        const pPlotY = CANVAS_SIZE - 150;
-        const pPlotH = 50;
-        let pMax = 0;
-        for (let i = 1; i < NN; i++) {
-          const pv = Math.abs(sliceData[pBase + i]);
-          if (pv > pMax) pMax = pv;
-        }
-        if (pMax > 0) {
-          const pScale = pPlotH / pMax;
-          // Total P in yellow
-          stroke(255, 255, 0, 180); strokeWeight(2); noFill();
-          for (let i = 1; i < NN - 1; i++) {
-            const p1 = sliceData[pBase + i];
-            const p2 = sliceData[pBase + i + 1];
-            line(PX * i, pPlotY - p1 * pScale, PX * (i+1), pPlotY - p2 * pScale);
-          }
-          // Per-domain potentials from 3D Poisson (computed on GPU)
-          const vElec = [];
-          const vProtonSum = new Float32Array(NN + 1);
-          if (window._perDomainP) {
-            for (let n = 0; n < NELEC; n++) {
-              if (!window._perDomainP[n]) continue;
-              const ch = domainCharge[n] || -1;
-              if (ch < 0) {
-                vElec.push({ n: n, vals: window._perDomainP[n] });
-              } else {
-                for (let i = 0; i <= NN; i++) vProtonSum[i] += window._perDomainP[n][i];
-              }
+    // Plot per-domain potentials: V from electrons (red) and V from protons (green)
+    const pBase = kBase + 2 * SS;
+    if (sliceData.length > pBase + NN) {
+      const pPlotY = CANVAS_SIZE - 150;
+      const pPlotH = 50;
+      let pMax = 0;
+      for (let i = 1; i < NN; i++) {
+        const pv = Math.abs(sliceData[pBase + i]);
+        if (pv > pMax) pMax = pv;
+      }
+      if (pMax > 0) {
+        const pScale = pPlotH / pMax;
+        // Sum converged per-domain Poisson potentials by source charge type
+        const vFromE = new Float32Array(NN + 1);
+        const vFromP = new Float32Array(NN + 1);
+        if (window._perDomainP) {
+          for (let n = 0; n < NELEC; n++) {
+            if (!window._perDomainP[n]) continue;
+            const ch = domainCharge[n] || -1;
+            for (let i = 0; i <= NN; i++) {
+              if (ch < 0) { vFromE[i] += window._perDomainP[n][i]; }
+              else { vFromP[i] += window._perDomainP[n][i]; }
             }
           }
-          // Show potentials as seen by protons:
-          // - electron potential on protons: ×2 (4π cross-type)
-          // - proton potential on protons: ×1 (2π same-type)
-          const ePlotY = pPlotY - pPlotH - 120;
-          const eColors = [[255,80,80],[80,80,255],[255,80,255],[80,255,255]];
-          // Each electron potential with factor 2π (already computed with 2π)
-          for (let e = 0; e < vElec.length; e++) {
-            const col = eColors[e % eColors.length];
-            stroke(col[0], col[1], col[2], 220); strokeWeight(2); noFill();
-            for (let i = 1; i < NN - 1; i++) {
-              line(PX * i, ePlotY - vElec[e].vals[i] * pScale,
-                   PX * (i+1), ePlotY - vElec[e].vals[i+1] * pScale);
-            }
-          }
-          fill(255, 80, 80); noStroke(); textSize(10);
-          text("each electron potential (2pi, red/blue)", 5, ePlotY - pPlotH - 2);
-
-          // Proton self-potential (2π same-type, green)
-          stroke(0, 255, 0, 220); strokeWeight(3); noFill();
-          for (let i = 1; i < NN - 1; i++) {
-            line(PX * i, pPlotY - vProtonSum[i] * pScale,
-                 PX * (i+1), pPlotY - vProtonSum[i+1] * pScale);
-          }
-          fill(0, 255, 0); noStroke(); textSize(10);
-          text("proton self-pot (2pi, green)", 5, pPlotY + 12);
-          fill(255, 255, 0); noStroke(); textSize(10);
-          text("yellow:P total  red/blue:electrons  green:protons", 5, pPlotY - pPlotH - 2);
         }
+        // V from electrons (red) — negated for display
+        stroke(255, 80, 80, 220); strokeWeight(2); noFill();
+        for (let i = 1; i < NN - 1; i++) {
+          line(PX * i, pPlotY + vFromE[i] * pScale,
+               PX * (i+1), pPlotY + vFromE[i+1] * pScale);
+        }
+        // V from protons (green) — negated for display
+        stroke(0, 255, 0, 220); strokeWeight(2); noFill();
+        for (let i = 1; i < NN - 1; i++) {
+          line(PX * i, pPlotY + vFromP[i] * pScale,
+               PX * (i+1), pPlotY + vFromP[i+1] * pScale);
+        }
+        fill(200); noStroke(); textSize(10);
+        text("red: V from electrons  green: V from protons", 5, pPlotY - pPlotH - 2);
       }
     }
   }
@@ -5005,7 +5009,7 @@ function draw() {
   fill(200);
   if (NUCLEUS_MODE) {
     var V_pot = E_eK + E_ee + E_KK;
-    text("T=" + E_T.toFixed(4) + " V_pot=" + V_pot.toFixed(4) + " V_ee=" + (window._V_ee||0).toFixed(4) + " E=" + (E_T + V_pot).toFixed(4), 5, 50);
+    text("T=" + E_T.toFixed(4) + " V_pot=" + V_pot.toFixed(4) + " V_on_e=" + (window._V_on_e||0).toFixed(4) + " V_on_p=" + (window._V_on_p||0).toFixed(4) + " E=" + (E_T + V_pot).toFixed(4), 5, 50);
   } else {
     text("T=" + E_T.toFixed(4) + " V_eK=" + E_eK.toFixed(4) + " V_ee=" + E_ee.toFixed(4) + " V_KK=" + E_KK.toFixed(4) + "  Dipole=" + dipole_D.toFixed(3) + " D  E_bind=" + E_bind.toFixed(4) + " Ha", 5, 50);
   }
