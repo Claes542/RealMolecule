@@ -1,17 +1,16 @@
 <!DOCTYPE html>
 <html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
-<pre id="log">Building Myoglobin...</pre>
+<pre id="log">Building Myoglobin (1MBN, blind fold)...</pre>
 <script>
 var log = document.getElementById('log');
 window.onerror = function(msg, url, line) {
   log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
 };
 
-// Sperm whale myoglobin (1MBN): 153 residues, all-α globin fold
-// 8 helices (A-H) folded around a heme-binding pocket
-// Sequence (1MBN):
-// VLSEGEWQLVLHVWAKVEADVAGHGQDILIRLFKSHPETLEKFDRFKHLKTEAEMKASEDLKKHGVTVLTALGAILKKKGH
-// HEAELKPLAQSHATKHKIPIKYLEFISEAIIHVLHSRHPGDFGADAQGAMNKALELFRKDIAAKYKELGYQG
+// MYOGLOBIN (1MBN) BLIND FOLD
+// 153 residues, all-alpha globin fold, 8 helices (A-H)
+// NO contact biases — water drives everything
+// Heme cofactor omitted
 (function() {
   var gridN = 250, scr = 100;
   var h = scr / gridN;
@@ -53,29 +52,42 @@ window.onerror = function(msg, url, line) {
   var bOH = 0.97 * A;
   var bCaCb = 1.52 * A;
 
-  // Compact spiral — 153 residues need tight packing
+  // Compact random coil — no structural bias
   var resAdv = 3.8 * A;
-  var helixRadius = 20.0;
-  var helixRise = 0.7;     // tight rise to fit in box
-  var helixAngle = 2 * Math.PI / 5.0;
-  var z0 = -(nRes - 1) * helixRise / 2;
+  var seed = 42;
+  function rand() { seed = (seed * 16807 + 7) % 2147483647; return seed / 2147483647; }
+
+  var caPos = [[0, 0, 0]];
+  for (var r = 1; r < nRes; r++) {
+    var theta = Math.acos(2 * rand() - 1);
+    var phi = 2 * Math.PI * rand();
+    var dx = resAdv * Math.sin(theta) * Math.cos(phi);
+    var dy = resAdv * Math.sin(theta) * Math.sin(phi);
+    var dz = resAdv * Math.cos(theta);
+    var prev = caPos[r - 1];
+    caPos.push([prev[0] + dx, prev[1] + dy, prev[2] + dz]);
+  }
+  var cx = 0, cy = 0, cz = 0;
+  for (var r = 0; r < nRes; r++) { cx += caPos[r][0]; cy += caPos[r][1]; cz += caPos[r][2]; }
+  cx /= nRes; cy /= nRes; cz /= nRes;
+  for (var r = 0; r < nRes; r++) { caPos[r][0] -= cx; caPos[r][1] -= cy; caPos[r][2] -= cz; }
 
   var bb = [];
   for (var r = 0; r < nRes; r++) {
-    var angle = r * helixAngle;
-    var cx = helixRadius * Math.cos(angle);
-    var cy = helixRadius * Math.sin(angle);
-    var cz = z0 + r * helixRise;
-    var tx = -helixRadius * Math.sin(angle) * helixAngle;
-    var ty =  helixRadius * Math.cos(angle) * helixAngle;
-    var tz = helixRise;
-    var tl = Math.sqrt(tx*tx + ty*ty + tz*tz);
+    var ca = caPos[r];
+    var tx, ty, tz;
+    if (r < nRes - 1) {
+      tx = caPos[r+1][0] - ca[0]; ty = caPos[r+1][1] - ca[1]; tz = caPos[r+1][2] - ca[2];
+    } else {
+      tx = ca[0] - caPos[r-1][0]; ty = ca[1] - caPos[r-1][1]; tz = ca[2] - caPos[r-1][2];
+    }
+    var tl = Math.sqrt(tx*tx + ty*ty + tz*tz) + 1e-10;
     tx /= tl; ty /= tl; tz /= tl;
     var spread = resAdv * 0.35;
     bb.push({
-      N:  [cx - spread * tx, cy - spread * ty, cz - spread * tz],
-      Ca: [cx, cy, cz],
-      C:  [cx + spread * tx, cy + spread * ty, cz + spread * tz]
+      N:  [ca[0] - spread * tx, ca[1] - spread * ty, ca[2] - spread * tz],
+      Ca: ca,
+      C:  [ca[0] + spread * tx, ca[1] + spread * ty, ca[2] + spread * tz]
     });
   }
 
@@ -99,14 +111,15 @@ window.onerror = function(msg, url, line) {
     var nca = [Cap[0]-Np[0], Cap[1]-Np[1], Cap[2]-Np[2]];
     var nca_n = normalize(nca);
     var cac = [Cp[0]-Cap[0], Cp[1]-Cap[1], Cp[2]-Cap[2]];
-    var cac_n = normalize(cac);
-    var perp = normalize(cross(nca_n, cac_n));
+    var perp = normalize(cross(nca_n, cac));
     if (Math.abs(perp[0])+Math.abs(perp[1])+Math.abs(perp[2]) < 0.01) perp = normalize(cross(nca_n, [0,0,1]));
     if (Math.abs(perp[0])+Math.abs(perp[1])+Math.abs(perp[2]) < 0.01) perp = normalize(cross(nca_n, [0,1,0]));
     var perp2 = normalize(cross(nca_n, perp));
 
+    // N
     pushAtom(Np[0], Np[1], Np[2], 'N', 3);
 
+    // Amide H (not for Pro)
     if (!isPro) {
       amideHIdx.push(atoms.length);
       pushAtom(Np[0] + perp[0]*bNH, Np[1] + perp[1]*bNH, Np[2] + perp[2]*bNH, 'H', 1);
@@ -114,13 +127,16 @@ window.onerror = function(msg, url, line) {
       amideHIdx.push(-1);
     }
 
+    // Extra H on N-terminal
     if (r === 0) {
       pushAtom(Np[0] - perp[0]*bNH, Np[1] - perp[1]*bNH, Np[2] - perp[2]*bNH, 'H', 1);
     }
 
+    // Ca
     caIndices.push(atoms.length);
     pushAtom(Cap[0], Cap[1], Cap[2], 'C', 4);
 
+    // Side chain
     if (isGly) {
       pushAtom(Cap[0] + perp[0]*bCH, Cap[1] + perp[1]*bCH, Cap[2] + perp[2]*bCH, 'H', 1);
       pushAtom(Cap[0] - perp[0]*bCH, Cap[1] - perp[1]*bCH, Cap[2] - perp[2]*bCH, 'H', 1);
@@ -141,8 +157,10 @@ window.onerror = function(msg, url, line) {
       }
     }
 
+    // Carbonyl C
     pushAtom(Cp[0], Cp[1], Cp[2], 'C', 4);
 
+    // Carbonyl O
     carbonylOIdx.push(atoms.length);
     pushAtom(Cp[0] + perp[0]*bCO, Cp[1] + perp[1]*bCO, Cp[2] + perp[2]*bCO, 'O', 2);
 
@@ -152,54 +170,80 @@ window.onerror = function(msg, url, line) {
   // C-terminal OH
   var lastC = bb[nRes - 1].C, lastCa = bb[nRes - 1].Ca;
   var lc = normalize([lastC[0]-lastCa[0], lastC[1]-lastCa[1], lastC[2]-lastCa[2]]);
-  pushAtom(lastC[0] + lc[0]*1.34*A, lastC[1] + lc[1]*1.34*A, lastC[2] + lc[2]*1.34*A, 'O', 2);
+  var ctOx = lastC[0] + lc[0]*1.34*A, ctOy = lastC[1] + lc[1]*1.34*A, ctOz = lastC[2] + lc[2]*1.34*A;
+  pushAtom(ctOx, ctOy, ctOz, 'O', 2);
   pushAtom(lastC[0] + lc[0]*(1.34*A+bOH), lastC[1] + lc[1]*(1.34*A+bOH), lastC[2] + lc[2]*(1.34*A+bOH), 'H', 1);
 
   var nProtein = atoms.length;
+  log.textContent = 'Protein: ' + nProtein + ' atoms (' + nRes + ' residues)';
 
-  // Helix definitions (1MBN numbering, 0-indexed):
-  // A: 3-18    B: 20-35    C: 36-42    D: 51-57
-  // E: 58-77   F: 86-94    G: 100-118  H: 124-148
-  var helices = [
-    { name: 'A', start: 3,   end: 18  },
-    { name: 'B', start: 20,  end: 35  },
-    { name: 'C', start: 36,  end: 42  },
-    { name: 'D', start: 51,  end: 57  },
-    { name: 'E', start: 58,  end: 77  },
-    { name: 'F', start: 86,  end: 94  },
-    { name: 'G', start: 100, end: 118 },
-    { name: 'H', start: 124, end: 148 }
-  ];
-
-  log.textContent = 'Myoglobin 1MBN (spiral start): ' + atoms.length + ' atoms, ' + nRes + ' residues';
-  log.textContent += '\n8 helices: ' + helices.map(function(h) { return h.name + '(' + h.start + '-' + h.end + ')'; }).join(' ');
-  log.textContent += '\n' + gridN + '^3 grid, screen=' + scr.toFixed(1) + ' au';
-
-  window.USER_FOLD_ATOMS = [caIndices[0], caIndices[76], caIndices[152]];
-
-  var resGroups = [];
+  // ===== WATER SHELL =====
+  var minX = Infinity, maxX = -Infinity;
+  var minY = Infinity, maxY = -Infinity;
+  var minZ = Infinity, maxZ = -Infinity;
   for (var r = 0; r < nRes; r++) {
-    var group = [];
-    for (var a = resStartIdx[r]; a < resEndIdx[r]; a++) group.push(a);
-    resGroups.push(group);
+    if (caPos[r][0] < minX) minX = caPos[r][0]; if (caPos[r][0] > maxX) maxX = caPos[r][0];
+    if (caPos[r][1] < minY) minY = caPos[r][1]; if (caPos[r][1] > maxY) maxY = caPos[r][1];
+    if (caPos[r][2] < minZ) minZ = caPos[r][2]; if (caPos[r][2] > maxZ) maxZ = caPos[r][2];
   }
-  resGroups.push([nProtein - 2, nProtein - 1]);
 
-  // Display bond pairs — sample from each helix + key contacts
-  var bondPairs = [];
-  for (var hi = 0; hi < helices.length; hi++) {
-    var hx = helices[hi];
-    var mid = Math.floor((hx.start + hx.end) / 2);
-    if (mid + 4 <= hx.end && amideHIdx[mid+4] >= 0) {
-      bondPairs.push([carbonylOIdx[mid], amideHIdx[mid+4], hx.name + ":O" + mid + "···H" + (mid+4) + ":"]);
+  var waterSpacing = 2.8 * A;
+  var shellInner = 3.0 * A;
+  var shellOuter = 6.0 * A;
+  var pad = shellOuter;
+  var halfScr = scr / 2 - 2 * h;
+  var nWater = 0;
+  var maxWater = 100;
+
+  for (var wx = minX - pad; wx <= maxX + pad && nWater < maxWater; wx += waterSpacing) {
+    for (var wy = minY - pad; wy <= maxY + pad && nWater < maxWater; wy += waterSpacing) {
+      for (var wz = minZ - pad; wz <= maxZ + pad && nWater < maxWater; wz += waterSpacing) {
+        var ox = wx + (rand()-0.5)*waterSpacing*0.4;
+        var oy = wy + (rand()-0.5)*waterSpacing*0.4;
+        var oz = wz + (rand()-0.5)*waterSpacing*0.4;
+
+        if (Math.abs(ox) > halfScr || Math.abs(oy) > halfScr || Math.abs(oz) > halfScr) continue;
+
+        var minDist2 = Infinity;
+        for (var c = 0; c < nRes; c++) {
+          var ddx = ox-caPos[c][0], ddy = oy-caPos[c][1], ddz = oz-caPos[c][2];
+          var d2 = ddx*ddx + ddy*ddy + ddz*ddz;
+          if (d2 < minDist2) minDist2 = d2;
+        }
+        var minDist = Math.sqrt(minDist2);
+
+        if (minDist >= shellInner && minDist <= shellOuter) {
+          pushAtom(ox, oy, oz, 'O', 2);
+          pushAtom(ox - 0.76*A, oy - 0.59*A, oz, 'H', 1);
+          pushAtom(ox + 0.76*A, oy - 0.59*A, oz, 'H', 1);
+          nWater++;
+        }
+      }
     }
   }
-  // Heme pocket contacts (His64 distal, His93 proximal — pack near each other)
+
+  log.textContent += '\nWater: ' + nWater + ' molecules';
+  log.textContent += '\nTotal: ' + atoms.length + ' atoms on ' + gridN + '^3 grid';
+  log.textContent += '\nBLIND FOLD: NO biases — water drives folding';
+
+  // Fold monitoring: N-terminal, mid-chain, C-terminal
+  window.USER_FOLD_ATOMS = [caIndices[0], caIndices[76], caIndices[152]];
+
+  // Monitor key distances (display only, NO bias)
+  var bondPairs = [];
+  // Sample helix H-bonds from known native helices — monitoring only
+  // Helix A region (3-18): i->i+4
+  if (amideHIdx[7] >= 0) bondPairs.push([carbonylOIdx[3], amideHIdx[7], "A:O3···H7:"]);
+  if (amideHIdx[14] >= 0) bondPairs.push([carbonylOIdx[10], amideHIdx[14], "A:O10···H14:"]);
+  // Helix E region (58-77)
+  if (amideHIdx[62] >= 0) bondPairs.push([carbonylOIdx[58], amideHIdx[62], "E:O58···H62:"]);
+  // Helix H region (124-148)
+  if (amideHIdx[132] >= 0) bondPairs.push([carbonylOIdx[128], amideHIdx[132], "H:O128···H132:"]);
+  // Heme pocket: His64 (distal) — His93 (proximal)
   bondPairs.push([caIndices[63], caIndices[92], "H64-H93(heme):"]);
-  // Inter-helix core
+  // Inter-helix packing
   bondPairs.push([caIndices[10], caIndices[110], "L11-L111(A-G):"]);
   bondPairs.push([caIndices[32], caIndices[68], "F33-I69(B-E):"]);
-  bondPairs.push([caIndices[6], caIndices[137], "W7-F138(A-H):"]);
   // End-to-end
   bondPairs.push([caIndices[0], caIndices[152], "Ca0-Ca152:"]);
 
@@ -207,15 +251,27 @@ window.onerror = function(msg, url, line) {
 
   window.USER_REFERENCE = {
     bonds: {
-      "H64-H93": "~10",
-      "L11-L111": "~10",
-      "F33-I69": "~9",
-      "W7-F138": "~12",
-      "Ca0-Ca152": "~15"
+      "A:O3···H7": "~2.0 (helix A H-bond)",
+      "E:O58···H62": "~2.0 (helix E H-bond)",
+      "H:O128···H132": "~2.0 (helix H H-bond)",
+      "H64-H93(heme)": "~10 (heme pocket)",
+      "L11-L111(A-G)": "~10 (inter-helix)",
+      "F33-I69(B-E)": "~9 (inter-helix)",
+      "Ca0-Ca152": "~15 (end-to-end)"
     },
-    energy: "Myoglobin 1MBN: 8-helix globin fold",
-    binding: "Native: 8 α-helices packed around heme pocket"
+    energy: "Myoglobin 1MBN BLIND — 153 res, water drives 8-helix globin fold",
+    binding: "No biases. Will 8 helices form and pack from water alone?"
   };
+
+  // Residue groups for MD
+  var resGroups = [];
+  for (var r = 0; r < nRes; r++) {
+    var group = [];
+    for (var a = resStartIdx[r]; a < resEndIdx[r]; a++) group.push(a);
+    resGroups.push(group);
+  }
+  // C-terminal OH group
+  resGroups.push([nProtein - 2, nProtein - 1]);
 
   window.USER_CLASSICAL_MD = {
     mode: 'translate',
@@ -225,61 +281,27 @@ window.onerror = function(msg, url, line) {
     offsets: null,
     mdSteps: 50,
     mdDt: 0.01,
-    targetCaCa: 3.8 * A,
-    contactBias: {
-      // All 8 helix H-bonds (i→i+4)
-      hbonds: (function() {
-        var hb = [];
-        for (var hi = 0; hi < helices.length; hi++) {
-          var hx = helices[hi];
-          for (var i = hx.start; i + 4 <= hx.end; i++) {
-            if (amideHIdx[i+4] >= 0) {
-              hb.push({ a: carbonylOIdx[i], b: amideHIdx[i+4], target: 2.0 * A, label: hx.name + ":O" + i + "···H" + (i+4) });
-            }
-          }
-        }
-        return hb;
-      })(),
-      contacts: [
-        // Heme pocket: His64 (distal) ↔ His93 (proximal)
-        { a: caIndices[63], b: caIndices[92], target: 10.0 * A, label: "H64-H93(heme)" },
-
-        // Inter-helix packing (globin fold core)
-        // A-B contact
-        { a: caIndices[10], b: caIndices[28], target: 9.0 * A, label: "A-B:L11-I29" },
-        // A-E contact
-        { a: caIndices[14], b: caIndices[68], target: 10.0 * A, label: "A-E:A15-I69" },
-        // A-G contact
-        { a: caIndices[10], b: caIndices[110], target: 10.0 * A, label: "A-G:L11-L111" },
-        // A-H contact
-        { a: caIndices[6], b: caIndices[137], target: 12.0 * A, label: "A-H:W7-F138" },
-        // B-E contact
-        { a: caIndices[32], b: caIndices[68], target: 9.0 * A, label: "B-E:F33-I69" },
-        // B-G contact
-        { a: caIndices[28], b: caIndices[104], target: 10.0 * A, label: "B-G:I29-Y103" },
-        // E-F contact
-        { a: caIndices[72], b: caIndices[90], target: 9.0 * A, label: "E-F:I73-L91" },
-        // E-H contact
-        { a: caIndices[68], b: caIndices[132], target: 10.0 * A, label: "E-H:I69-A133" },
-        // F-G contact
-        { a: caIndices[90], b: caIndices[108], target: 9.0 * A, label: "F-G:L91-F109" },
-        // G-H contact
-        { a: caIndices[110], b: caIndices[140], target: 9.0 * A, label: "G-H:L111-K141" },
-
-        // Turn/loop contacts between consecutive helices
-        { a: caIndices[18], b: caIndices[20], target: 6.0 * A, label: "AB-turn" },
-        { a: caIndices[42], b: caIndices[51], target: 8.0 * A, label: "CD-loop" },
-        { a: caIndices[77], b: caIndices[86], target: 8.0 * A, label: "EF-loop" },
-        { a: caIndices[94], b: caIndices[100], target: 7.0 * A, label: "FG-loop" },
-        { a: caIndices[118], b: caIndices[124], target: 7.0 * A, label: "GH-loop" },
-
-        // End-to-end
-        { a: caIndices[0], b: caIndices[152], target: 15.0 * A, label: "Ca0-Ca152" }
-      ],
-      hbondStrength: 0.8,
-      contactStrength: 1.5
-    }
+    targetCaCa: 3.8 * A
   };
+
+  // Initial inward velocities to start compaction
+  var initVel = [];
+  var cmx2 = 0, cmy2 = 0, cmz2 = 0;
+  for (var r = 0; r < nRes; r++) { cmx2 += caPos[r][0]; cmy2 += caPos[r][1]; cmz2 += caPos[r][2]; }
+  cmx2 /= nRes; cmy2 /= nRes; cmz2 /= nRes;
+  var vInward = 0.15;
+  for (var a = 0; a < atoms.length; a++) {
+    if (a < nProtein) {
+      var ax = (atoms[a].i - N2) * h - cmx2;
+      var ay = (atoms[a].j - N2) * h - cmy2;
+      var az = (atoms[a].k - N2) * h - cmz2;
+      var ar = Math.sqrt(ax*ax + ay*ay + az*az) + 1e-10;
+      initVel.push([-ax/ar * vInward, -ay/ar * vInward, -az/ar * vInward]);
+    } else {
+      initVel.push([0, 0, 0]);
+    }
+  }
+  window.USER_INIT_VEL = initVel;
 
   window.USER_PROTEIN_COUNT = nProtein;
   window.USER_NN = gridN;
@@ -290,8 +312,8 @@ window.onerror = function(msg, url, line) {
   window.USER_FORCE_SCALE = 100.0;
   window.USER_ARROW_SCALE = 0.2;
   window.USER_N_MOVE = 15;
-  window.USER_GRADP_FORCE = true;
   window.USER_DAMPING = 0.9;
+  window.USER_GRADP_FORCE = false;
   window.USER_Z = zList;
   window.USER_RC = elList.map(function(el) {
     if (el === 'H') return 0;
@@ -314,7 +336,7 @@ s.onload = function() {
       if (!canvas) return;
       if (!recording) {
         chunks = [];
-        var stream = canvas.captureStream(30);  // 30fps playback
+        var stream = canvas.captureStream(30);
         var track = stream.getVideoTracks()[0];
         window._recStreamTrack = track;
         var mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9')
@@ -325,7 +347,7 @@ s.onload = function() {
           var blob = new Blob(chunks, { type: mimeType });
           var url = URL.createObjectURL(blob);
           var a = document.createElement('a');
-          a.href = url; a.download = 'myoglobin_fold.webm'; a.click();
+          a.href = url; a.download = 'myoglobin_blind.webm'; a.click();
           URL.revokeObjectURL(url);
         };
         recorder.start(1000);
@@ -350,7 +372,11 @@ s.onload = function() {
         if (ind) ind.remove();
       }
     };
-    setTimeout(function() { window._view3D = true; }, 5000);
+    setTimeout(function() {
+      window._view3D = true;
+      setTimeout(function() { window._toggleRecording(); }, 2000);
+      setTimeout(function() { if (document.getElementById('rec-indicator')) window._toggleRecording(); }, 30 * 60 * 1000);
+    }, 5000);
   };
   document.body.appendChild(p5s);
 };

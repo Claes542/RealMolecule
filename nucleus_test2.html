@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// RealNucleus: 2 inner (+1) half-spheres + 4 outer (-1) quadrants
+// No point charges. NUCLEUS_MODE: per-domain charge-weighted Poisson.
+(function() {
+  var gridN = 200, scr = 5, N2 = 100;
+  var h = scr / gridN;
+  var d = Math.round(1.0 / h);  // ~40 grid points
+
+  window.USER_NUCLEUS_MODE = true;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = [
+    { i: N2 - 1, j: N2, k: N2, Z: 1, el: 'K' },  // 0: inner left
+    { i: N2 + 1, j: N2, k: N2, Z: 1, el: 'K' },  // 1: inner right
+    { i: N2 + d, j: N2, k: N2, Z: 1, el: 'e' },   // 2: outer +x
+    { i: N2 - d, j: N2, k: N2, Z: 1, el: 'e' },   // 3: outer -x
+    { i: N2, j: N2 + d, k: N2, Z: 1, el: 'e' },   // 4: outer +y
+    { i: N2, j: N2 - d, k: N2, Z: 1, el: 'e' }    // 5: outer -y
+  ];
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_Z = [1, 1, 1, 1, 1, 1];
+  window.USER_Z_NUC = [0, 0, 0, 0, 0, 0];  // NO point charges
+  window.USER_RC = [0, 0, 0, 0, 0, 0];
+  window.USER_CHARGE = [1, 1, -1, -1, -1, -1];  // inner +1, outer -1
+  window.USER_SHELL_RADIUS = 0.5;
+  window.USER_SHELL_INNER = [0, 1];
+  window.USER_SHELL_OUTER = [2, 3, 4, 5];
+  window.INIT_ZEFF = 2;
+  window.USER_BOND_PAIRS = [[0,1,"K1-K2:"],[0,2,"K-e1:"],[2,3,"e1-e2:"],[4,5,"e3-e4:"]];
+  window.USER_REFERENCE = { bonds: {}, energy: "RealNucleus: 2(+1) + 4(-1), no point charges" };
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule_nucleus.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
