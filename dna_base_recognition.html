@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<pre id="log">Building base pair recognition...</pre>
+<script>
+var log = document.getElementById('log');
+window.onerror = function(msg, url, line) {
+  log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
+};
+
+// DNA base pair recognition: free Cytosine approaches template Guanine
+// Does the free base find the correct Watson-Crick orientation from QM alone?
+// This is the atomic mechanism of DNA replication fidelity
+(function() {
+  var gridN = 200, scr = 25;
+  var h = scr / gridN;
+  var N2 = Math.round(gridN / 2);
+  var A = 1.8897;
+
+  var atoms = [];
+  var elList = [];
+  var zList = [];
+
+  function addAtom(x, y, z, Z, el) {
+    var gi = Math.round(N2 + x / h);
+    var gj = Math.round(N2 + y / h);
+    var gk = Math.round(N2 + z / h);
+    gi = Math.max(3, Math.min(gridN - 3, gi));
+    gj = Math.max(3, Math.min(gridN - 3, gj));
+    gk = Math.max(3, Math.min(gridN - 3, gk));
+    atoms.push({ i: gi, j: gj, k: gk, Z: Z, el: el });
+    elList.push(el);
+    zList.push(Z);
+    return atoms.length - 1;
+  }
+
+  // === TEMPLATE GUANINE (fixed on left) ===
+  // Standard orientation: H-bond edge faces +x
+  // Coordinates from Saenger (Å)
+  var gN9x=-2.48, gN9y= 0.22;
+  var gC4x=-1.29, gC4y=-0.41;
+  var gN3x=-1.40, gN3y=-1.76;
+  var gC2x=-0.30, gC2y=-2.46;
+  var gN2x=-0.44, gN2y=-3.80;
+  var gN1x= 0.88, gN1y=-1.81;
+  var gC6x= 1.05, gC6y=-0.42;
+  var gO6x= 2.12, gO6y= 0.19;
+  var gC5x=-0.10, gC5y= 0.30;
+  var gN7x=-0.08, gN7y= 1.63;
+  var gC8x=-1.29, gC8y= 1.99;
+
+  addAtom(gN9x*A, gN9y*A, 0, 3, 'N');
+  addAtom(gC4x*A, gC4y*A, 0, 4, 'C');
+  addAtom(gN3x*A, gN3y*A, 0, 3, 'N');
+  addAtom(gC2x*A, gC2y*A, 0, 4, 'C');
+  addAtom(gN2x*A, gN2y*A, 0, 3, 'N');
+  addAtom(gN1x*A, gN1y*A, 0, 3, 'N');
+  addAtom(gC6x*A, gC6y*A, 0, 4, 'C');
+  var gO6idx = addAtom(gO6x*A, gO6y*A, 0, 2, 'O');
+  addAtom(gC5x*A, gC5y*A, 0, 4, 'C');
+  addAtom(gN7x*A, gN7y*A, 0, 3, 'N');
+  addAtom(gC8x*A, gC8y*A, 0, 4, 'C');
+
+  // H on guanine
+  addAtom(gC8x*A-0.6*A, gC8y*A+0.8*A, 0, 1, 'H');
+  addAtom(gN9x*A-0.9*A, gN9y*A-0.4*A, 0, 1, 'H');
+  var gN1Hidx = addAtom((gN1x+0.86)*A, (gN1y-0.50)*A, 0, 1, 'H');
+  var gN2Hidx = addAtom((gN2x+0.86)*A, (gN2y-0.50)*A, 0, 1, 'H');
+  addAtom((gN2x-0.50)*A, (gN2y-0.86)*A, 0, 1, 'H');
+
+  var nTemplate = atoms.length;
+
+  // === FREE CYTOSINE (approaching from right, offset) ===
+  // Start 5 Å away from Watson-Crick position, slightly rotated
+  // Native WC position would be at cOff=2.9 along x
+  var startDist = 6.0;  // start 6 Å from G edge (native is 2.9)
+  var cOff = startDist;
+  var cRotate = 0.15;  // slight misalignment — must rotate into correct orientation
+
+  var cr = Math.cos(cRotate), sr = Math.sin(cRotate);
+  function rotC(x, y) { return [x*cr - y*sr, x*sr + y*cr]; }
+
+  var cN1x= 2.56+cOff, cN1y= 0.20;
+  var cC6x= 1.45+cOff, cC6y= 1.00;
+  var cC5x= 0.22+cOff, cC5y= 0.46;
+  var cC4x= 0.10+cOff, cC4y=-0.92;
+  var cN4x=-1.05+cOff, cN4y=-1.51;
+  var cN3x= 1.13+cOff, cN3y=-1.68;
+  var cC2x= 2.33+cOff, cC2y=-1.16;
+  var cO2x= 3.32+cOff, cO2y=-1.87;
+
+  // Apply slight rotation around center of cytosine
+  var ccx = (cN1x+cC4x)/2, ccy = (cN1y+cN3y)/2;
+  function placeC(x, y) {
+    var dx = x - ccx, dy = y - ccy;
+    var r = rotC(dx, dy);
+    return [r[0] + ccx, r[1] + ccy];
+  }
+
+  var p;
+  p = placeC(cN1x, cN1y); addAtom(p[0]*A, p[1]*A, 0, 3, 'N');
+  p = placeC(cC6x, cC6y); addAtom(p[0]*A, p[1]*A, 0, 4, 'C');
+  p = placeC(cC5x, cC5y); addAtom(p[0]*A, p[1]*A, 0, 4, 'C');
+  p = placeC(cC4x, cC4y); addAtom(p[0]*A, p[1]*A, 0, 4, 'C');
+  p = placeC(cN4x, cN4y); addAtom(p[0]*A, p[1]*A, 0, 3, 'N');
+  p = placeC(cN3x, cN3y); var cN3idx = addAtom(p[0]*A, p[1]*A, 0, 3, 'N');
+  p = placeC(cC2x, cC2y); addAtom(p[0]*A, p[1]*A, 0, 4, 'C');
+  p = placeC(cO2x, cO2y); var cO2idx = addAtom(p[0]*A, p[1]*A, 0, 2, 'O');
+
+  // H on cytosine
+  p = placeC(cN1x+0.9, cN1y-0.4); addAtom(p[0]*A, p[1]*A, 0, 1, 'H');
+  p = placeC(cC6x+0.4, cC6y+0.9); addAtom(p[0]*A, p[1]*A, 0, 1, 'H');
+  p = placeC(cC5x-0.5, cC5y+0.9); addAtom(p[0]*A, p[1]*A, 0, 1, 'H');
+  p = placeC(cN4x-0.86, cN4y+0.50); var cN4Hidx = addAtom(p[0]*A, p[1]*A, 0, 1, 'H');
+  p = placeC(cN4x-0.50, cN4y-0.86); addAtom(p[0]*A, p[1]*A, 0, 1, 'H');
+
+  log.textContent = 'Base pair recognition: free C approaches template G';
+  log.textContent += '\n' + atoms.length + ' atoms (' + nTemplate + ' template G + ' + (atoms.length - nTemplate) + ' free C)';
+  log.textContent += '\nStart: C offset ' + startDist.toFixed(1) + ' Å from WC position, slightly rotated';
+  log.textContent += '\nNO biases — does C find G through quantum H-bonds?';
+  log.textContent += '\n' + gridN + '^3 grid, screen=' + scr + ' au';
+
+  // Monitor the 3 Watson-Crick H-bonds
+  window.USER_BOND_PAIRS = [
+    [gO6idx, cN4Hidx, "G(O6)···H-N4(C):"],
+    [gN1Hidx, cN3idx, "G(N1-H)···N3(C):"],
+    [gN2Hidx, cO2idx, "G(N2-H)···O2(C):"],
+    [gO6idx, cO2idx, "G-C width:"],
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: {
+      "G(O6)···H-N4(C)": "~1.9",
+      "G(N1-H)···N3(C)": "~1.9",
+      "G(N2-H)···O2(C)": "~1.9",
+    },
+    energy: "Base recognition: free C finds template G via Watson-Crick H-bonds",
+    binding: "Does C dock onto G from 6Å away with correct orientation?"
+  };
+
+  // Group: template G is fixed-ish, free C moves as one unit
+  var templateGroup = [];
+  for (var a = 0; a < nTemplate; a++) templateGroup.push(a);
+  var freeGroup = [];
+  for (var a = nTemplate; a < atoms.length; a++) freeGroup.push(a);
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;
+  window.USER_FORCE_SCALE = 50.0;
+  window.USER_ARROW_SCALE = 0.5;
+  window.USER_DAMPING = 0.9;
+  window.USER_N_MOVE = 50;
+  window.USER_Z = zList;
+  window.USER_RC = elList.map(function(el) {
+    if (el === 'H') return 0;
+    if (el === 'C') return 0.3;
+    if (el === 'N') return 0.3;
+    if (el === 'O') return 0.8;
+    return 0;
+  });
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p5s.onload = function() {
+    // Face-on view of the planar base pair
+    window.USER_VIEW_YROT = 0;
+    window.USER_VIEW_TILT = 0;
+    window._view3D = true;
+    window._view3D_fixed = true;
+  };
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
