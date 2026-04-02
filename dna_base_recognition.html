@@ -11,7 +11,7 @@ window.onerror = function(msg, url, line) {
 // Does the free base find the correct Watson-Crick orientation from QM alone?
 // This is the atomic mechanism of DNA replication fidelity
 (function() {
-  var gridN = 200, scr = 25;
+  var gridN = 200, scr = 30;
   var h = scr / gridN;
   var N2 = Math.round(gridN / 2);
   var A = 1.8897;
@@ -72,21 +72,22 @@ window.onerror = function(msg, url, line) {
   // === FREE CYTOSINE (approaching from right, offset) ===
   // Start 5 Å away from Watson-Crick position, slightly rotated
   // Native WC position would be at cOff=2.9 along x
-  var startDist = 6.0;  // start 6 Å from G edge (native is 2.9)
+  var startDist = 7.0;  // start 7 Å from G edge (native is 2.9)
   var cOff = startDist;
-  var cRotate = 0.15;  // slight misalignment — must rotate into correct orientation
+  var cRotate = 0.0;  // co-planar start — test pure approach
 
   var cr = Math.cos(cRotate), sr = Math.sin(cRotate);
   function rotC(x, y) { return [x*cr - y*sr, x*sr + y*cr]; }
 
-  var cN1x= 2.56+cOff, cN1y= 0.20;
-  var cC6x= 1.45+cOff, cC6y= 1.00;
-  var cC5x= 0.22+cOff, cC5y= 0.46;
-  var cC4x= 0.10+cOff, cC4y=-0.92;
-  var cN4x=-1.05+cOff, cN4y=-1.51;
-  var cN3x= 1.13+cOff, cN3y=-1.68;
-  var cC2x= 2.33+cOff, cC2y=-1.16;
-  var cO2x= 3.32+cOff, cO2y=-1.87;
+  var yOff = -3.0;  // shift down to equalize starting H-bond distances
+  var cN1x= 2.56+cOff, cN1y= 0.20+yOff;
+  var cC6x= 1.45+cOff, cC6y= 1.00+yOff;
+  var cC5x= 0.22+cOff, cC5y= 0.46+yOff;
+  var cC4x= 0.10+cOff, cC4y=-0.92+yOff;
+  var cN4x=-1.05+cOff, cN4y=-1.51+yOff;
+  var cN3x= 1.13+cOff, cN3y=-1.68+yOff;
+  var cC2x= 2.33+cOff, cC2y=-1.16+yOff;
+  var cO2x= 3.32+cOff, cO2y=-1.87+yOff;
 
   // Apply slight rotation around center of cytosine
   var ccx = (cN1x+cC4x)/2, ccy = (cN1y+cN3y)/2;

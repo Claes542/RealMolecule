@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<pre id="log">Building DNA mismatch comparison...</pre>
+<script>
+var log = document.getElementById('log');
+window.onerror = function(msg, url, line) {
+  log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
+};
+
+// DNA mismatch: correct G:C vs mismatched G:T
+// G:C has 3 Watson-Crick H-bonds (strong)
+// G:T has 2 wobble H-bonds (weak, different geometry)
+// Can RealQM distinguish correct from incorrect base pairing?
+(function() {
+  var gridN = 200, scr = 35;
+  var h = scr / gridN;
+  var N2 = Math.round(gridN / 2);
+  var A = 1.8897;
+
+  var atoms = [];
+  var elList = [];
+  var zList = [];
+
+  function addAtom(x, y, z, Z, el) {
+    var gi = Math.round(N2 + x / h);
+    var gj = Math.round(N2 + y / h);
+    var gk = Math.round(N2 + z / h);
+    gi = Math.max(3, Math.min(gridN - 3, gi));
+    gj = Math.max(3, Math.min(gridN - 3, gj));
+    gk = Math.max(3, Math.min(gridN - 3, gk));
+    atoms.push({ i: gi, j: gj, k: gk, Z: Z, el: el });
+    elList.push(el);
+    zList.push(Z);
+    return atoms.length - 1;
+  }
+
+  // Separation between the two base pairs (in y)
+  var pairSep = 8.0 * A;
+
+  // ============================================
+  // PAIR 1: CORRECT G:C (top, y > 0)
+  // ============================================
+  var yShift1 = pairSep / 2;
+
+  // Guanine (left)
+  var gN9x=-2.48, gN9y= 0.22;
+  var gC4x=-1.29, gC4y=-0.41;
+  var gN3x=-1.40, gN3y=-1.76;
+  var gC2x=-0.30, gC2y=-2.46;
+  var gN2x=-0.44, gN2y=-3.80;
+  var gN1x= 0.88, gN1y=-1.81;
+  var gC6x= 1.05, gC6y=-0.42;
+  var gO6x= 2.12, gO6y= 0.19;
+  var gC5x=-0.10, gC5y= 0.30;
+  var gN7x=-0.08, gN7y= 1.63;
+  var gC8x=-1.29, gC8y= 1.99;
+
+  addAtom(gN9x*A, gN9y*A+yShift1, 0, 3, 'N');
+  addAtom(gC4x*A, gC4y*A+yShift1, 0, 4, 'C');
+  addAtom(gN3x*A, gN3y*A+yShift1, 0, 3, 'N');
+  addAtom(gC2x*A, gC2y*A+yShift1, 0, 4, 'C');
+  addAtom(gN2x*A, gN2y*A+yShift1, 0, 3, 'N');
+  addAtom(gN1x*A, gN1y*A+yShift1, 0, 3, 'N');
+  addAtom(gC6x*A, gC6y*A+yShift1, 0, 4, 'C');
+  var gc_gO6 = addAtom(gO6x*A, gO6y*A+yShift1, 0, 2, 'O');
+  addAtom(gC5x*A, gC5y*A+yShift1, 0, 4, 'C');
+  addAtom(gN7x*A, gN7y*A+yShift1, 0, 3, 'N');
+  addAtom(gC8x*A, gC8y*A+yShift1, 0, 4, 'C');
+
+  addAtom(gC8x*A-0.6*A, gC8y*A+0.8*A+yShift1, 0, 1, 'H');
+  addAtom(gN9x*A-0.9*A, gN9y*A-0.4*A+yShift1, 0, 1, 'H');
+  var gc_gN1H = addAtom((gN1x+0.86)*A, (gN1y-0.50)*A+yShift1, 0, 1, 'H');
+  var gc_gN2H = addAtom((gN2x+0.86)*A, (gN2y-0.50)*A+yShift1, 0, 1, 'H');
+  addAtom((gN2x-0.50)*A, (gN2y-0.86)*A+yShift1, 0, 1, 'H');
+
+  // Cytosine (right) — native WC distance
+  var cOff = 2.9;
+  var cN1x= 2.56+cOff, cN1y= 0.20;
+  var cC6x= 1.45+cOff, cC6y= 1.00;
+  var cC5x= 0.22+cOff, cC5y= 0.46;
+  var cC4x= 0.10+cOff, cC4y=-0.92;
+  var cN4x=-1.05+cOff, cN4y=-1.51;
+  var cN3x= 1.13+cOff, cN3y=-1.68;
+  var cC2x= 2.33+cOff, cC2y=-1.16;
+  var cO2x= 3.32+cOff, cO2y=-1.87;
+
+  addAtom(cN1x*A, cN1y*A+yShift1, 0, 3, 'N');
+  addAtom(cC6x*A, cC6y*A+yShift1, 0, 4, 'C');
+  addAtom(cC5x*A, cC5y*A+yShift1, 0, 4, 'C');
+  addAtom(cC4x*A, cC4y*A+yShift1, 0, 4, 'C');
+  addAtom(cN4x*A, cN4y*A+yShift1, 0, 3, 'N');
+  var gc_cN3 = addAtom(cN3x*A, cN3y*A+yShift1, 0, 3, 'N');
+  addAtom(cC2x*A, cC2y*A+yShift1, 0, 4, 'C');
+  var gc_cO2 = addAtom(cO2x*A, cO2y*A+yShift1, 0, 2, 'O');
+
+  addAtom((cN1x+0.9)*A, (cN1y-0.4)*A+yShift1, 0, 1, 'H');
+  addAtom((cC6x+0.4)*A, (cC6y+0.9)*A+yShift1, 0, 1, 'H');
+  addAtom((cC5x-0.5)*A, (cC5y+0.9)*A+yShift1, 0, 1, 'H');
+  var gc_cN4H = addAtom((cN4x-0.86)*A, (cN4y+0.50)*A+yShift1, 0, 1, 'H');
+  addAtom((cN4x-0.50)*A, (cN4y-0.86)*A+yShift1, 0, 1, 'H');
+
+  // ============================================
+  // PAIR 2: MISMATCH G:T (bottom, y < 0)
+  // ============================================
+  var yShift2 = -pairSep / 2;
+
+  // Guanine (left) — same geometry
+  addAtom(gN9x*A, gN9y*A+yShift2, 0, 3, 'N');
+  addAtom(gC4x*A, gC4y*A+yShift2, 0, 4, 'C');
+  addAtom(gN3x*A, gN3y*A+yShift2, 0, 3, 'N');
+  addAtom(gC2x*A, gC2y*A+yShift2, 0, 4, 'C');
+  addAtom(gN2x*A, gN2y*A+yShift2, 0, 3, 'N');
+  addAtom(gN1x*A, gN1y*A+yShift2, 0, 3, 'N');
+  addAtom(gC6x*A, gC6y*A+yShift2, 0, 4, 'C');
+  var gt_gO6 = addAtom(gO6x*A, gO6y*A+yShift2, 0, 2, 'O');
+  addAtom(gC5x*A, gC5y*A+yShift2, 0, 4, 'C');
+  addAtom(gN7x*A, gN7y*A+yShift2, 0, 3, 'N');
+  addAtom(gC8x*A, gC8y*A+yShift2, 0, 4, 'C');
+
+  addAtom(gC8x*A-0.6*A, gC8y*A+0.8*A+yShift2, 0, 1, 'H');
+  addAtom(gN9x*A-0.9*A, gN9y*A-0.4*A+yShift2, 0, 1, 'H');
+  var gt_gN1H = addAtom((gN1x+0.86)*A, (gN1y-0.50)*A+yShift2, 0, 1, 'H');
+  var gt_gN2H = addAtom((gN2x+0.86)*A, (gN2y-0.50)*A+yShift2, 0, 1, 'H');
+  addAtom((gN2x-0.50)*A, (gN2y-0.86)*A+yShift2, 0, 1, 'H');
+
+  // Thymine (right) — wobble pair geometry
+  // T is bigger than C, different H-bond pattern
+  // G:T wobble: G(O6)···H-N3(T) and G(N1-H)···O2(T) — only 2 H-bonds
+  var tOff = 3.2;  // slightly wider than WC (wobble)
+  var tN1x= 2.40+tOff, tN1y= 0.20;
+  var tC6x= 1.35+tOff, tC6y= 1.10;
+  var tC5x= 0.10+tOff, tC5y= 0.60;
+  var tC5Mx=-0.50+tOff, tC5My= 1.70;  // methyl on C5
+  var tC4x= 0.00+tOff, tC4y=-0.80;
+  var tO4x=-0.90+tOff, tO4y=-1.45;  // O4 carbonyl
+  var tN3x= 1.10+tOff, tN3y=-1.55;  // H-bond DONOR → G(O6) in wobble
+  var tC2x= 2.30+tOff, tC2y=-1.00;
+  var tO2x= 3.30+tOff, tO2y=-1.60;  // H-bond ACCEPTOR ← G(N1-H) in wobble
+
+  addAtom(tN1x*A, tN1y*A+yShift2, 0, 3, 'N');
+  addAtom(tC6x*A, tC6y*A+yShift2, 0, 4, 'C');
+  addAtom(tC5x*A, tC5y*A+yShift2, 0, 4, 'C');
+  addAtom(tC5Mx*A, tC5My*A+yShift2, 0, 4, 'C');  // methyl C
+  addAtom(tC5Mx*A-0.5*A, tC5My*A+0.8*A+yShift2, 0, 1, 'H');
+  addAtom(tC5Mx*A-0.9*A, tC5My*A-0.3*A+yShift2, 0, 1, 'H');
+  addAtom(tC5Mx*A+0.3*A, tC5My*A+0.9*A+yShift2, 0, 1, 'H');
+  addAtom(tC4x*A, tC4y*A+yShift2, 0, 4, 'C');
+  var gt_tO4 = addAtom(tO4x*A, tO4y*A+yShift2, 0, 2, 'O');
+  addAtom(tN3x*A, tN3y*A+yShift2, 0, 3, 'N');
+  var gt_tN3H = addAtom((tN3x-0.86)*A, (tN3y+0.30)*A+yShift2, 0, 1, 'H');  // H-N3 donor → G(O6)
+  addAtom(tC2x*A, tC2y*A+yShift2, 0, 4, 'C');
+  var gt_tO2 = addAtom(tO2x*A, tO2y*A+yShift2, 0, 2, 'O');
+
+  addAtom((tN1x+0.9)*A, (tN1y-0.4)*A+yShift2, 0, 1, 'H');
+  addAtom((tC6x+0.4)*A, (tC6y+0.9)*A+yShift2, 0, 1, 'H');
+
+  log.textContent = 'DNA mismatch: correct G:C (top) vs mismatched G:T (bottom)';
+  log.textContent += '\n' + atoms.length + ' atoms on ' + gridN + '^3 grid';
+  log.textContent += '\nG:C: 3 Watson-Crick H-bonds (strong)';
+  log.textContent += '\nG:T: 2 wobble H-bonds (weak)';
+  log.textContent += '\nCan RealQM distinguish correct from incorrect pairing?';
+
+  // Monitor H-bonds
+  window.USER_BOND_PAIRS = [
+    // G:C correct pair (3 H-bonds)
+    [gc_gO6, gc_cN4H, "G:C O6···H-N4:"],
+    [gc_gN1H, gc_cN3, "G:C N1-H···N3:"],
+    [gc_gN2H, gc_cO2, "G:C N2-H···O2:"],
+    // G:T mismatch (2 wobble H-bonds)
+    [gt_gO6, gt_tN3H, "G:T O6···H-N3:"],
+    [gt_gN1H, gt_tO2, "G:T N1-H···O2:"],
+    // Non-bond: G(N2-H) has no partner in T
+    [gt_gN2H, gt_tO4, "G:T N2-H···O4:"],
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: {
+      "G:C H-bonds": "~1.9 Å (3 bonds, strong)",
+      "G:T wobble": "~2.0 Å (2 bonds, weaker)",
+    },
+    energy: "Mismatch detection: G:C correct vs G:T wobble",
+    binding: "G:C should be tighter (3 H-bonds) than G:T (2 wobble)"
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;
+  window.USER_N_MOVE = 50;
+  window.USER_Z = zList;
+  window.USER_RC = elList.map(function(el) {
+    if (el === 'H') return 0;
+    if (el === 'C') return 0.3;
+    if (el === 'N') return 0.3;
+    if (el === 'O') return 0.8;
+    return 0;
+  });
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p5s.onload = function() {
+    window.USER_VIEW_YROT = 0;
+    window.USER_VIEW_TILT = 0;
+    window._view3D = true;
+    window._view3D_fixed = true;
+  };
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
