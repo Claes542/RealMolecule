@@ -7,12 +7,11 @@ window.onerror = function(msg, url, line) {
   log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
 };
 
-// DNA double helix: 6 base pairs, B-DNA geometry
-// Sequence: GATTAC (strand 1) : GTAATC (strand 2, antiparallel)
-// B-DNA: 3.4 Å rise, 36° twist per step, ~10 Å diameter
-// Watson-Crick H-bonds: G:C (3 H-bonds), A:T (2 H-bonds)
+// DNA double helix: 10 base pairs (one full turn), B-DNA geometry
+// Sequence: GATTACGATT (strand 1) : AATCGTAATC (strand 2, antiparallel)
+// B-DNA: 3.4 Å rise, 36° twist per step, 10 bp per turn
 (function() {
-  var gridN = 200, scr = 40;
+  var gridN = 200, scr = 55;
   var h = scr / gridN;
   var N2 = Math.round(gridN / 2);
   var A = 1.8897;
@@ -35,191 +34,177 @@ window.onerror = function(msg, url, line) {
   }
 
   // B-DNA parameters
-  var rise = 3.4 * A;       // 3.4 Å per base pair
-  var twist = 36 * Math.PI / 180;  // 36° per step
-  var radius = 4.5 * A;     // distance from helix axis to base center
-  var bpSep = 2.8 * A;      // heavy atom separation across H-bond
+  var rise = 3.4 * A;
+  var twist = 36 * Math.PI / 180;
+  var bpSep = 2.8 * A;
 
-  // Sequence and complement (antiparallel)
-  var seq1 = ['G','A','T','T','A','C'];
-  var seq2 = ['C','T','A','A','T','G'];  // complement, same direction for pairing
-  var nBP = 6;
+  var seq1 = ['G','A','T','T','A','C','G','A','T','T'];
+  var seq2 = ['C','T','A','A','T','G','C','T','A','A'];
+  var nBP = 10;
 
-  // H-bond atom indices for monitoring
   var hbondPairs = [];
   var hbondLabels = [];
 
-  // Build each base pair along the helix axis (z)
-  // Center the helix at z=0
   var zOff = -(nBP - 1) * rise / 2;
 
+  // Build backbone + bases for each base pair
   for (var bp = 0; bp < nBP; bp++) {
     var z = zOff + bp * rise;
     var angle = bp * twist;
 
-    // Direction vectors for this base pair
     var cx = Math.cos(angle);
     var cy = Math.sin(angle);
-    // Perpendicular in-plane
     var px = -Math.sin(angle);
     var py = Math.cos(angle);
 
     var b1 = seq1[bp];
     var b2 = seq2[bp];
 
-    // Strand 1 base center (along +radius direction)
-    var s1x = radius * cx;
-    var s1y = radius * cy;
-    // Strand 2 base center (along -radius direction)
-    var s2x = -radius * cx;
-    var s2y = -radius * cy;
+    // === BACKBONE: sugar-phosphate chain along helical path ===
+    // Strand 1: backbone at radius ~9.5 Å, with P-O-C sugar atoms
+    var bbR = 5.0 * A;
+    var bbAng1 = angle + 0.5;
+    var bbAng2 = angle + Math.PI - 0.5;  // opposite strand
 
-    // Simplified backbone: one P (phosphorus as N, Z=3) per nucleotide per strand
-    // Backbone spirals around helix axis
-    var bbR = 6.0 * A;  // backbone radius
-    var bbAng1 = angle + 0.6;  // offset from base direction
-    var bbAng2 = angle + Math.PI - 0.6;  // opposite strand
-    addAtom(bbR * Math.cos(bbAng1), bbR * Math.sin(bbAng1), z, 3, 'N');  // P as N(Z=3)
-    addAtom(bbR * Math.cos(bbAng2), bbR * Math.sin(bbAng2), z, 3, 'N');  // P as N(Z=3)
+    // Strand 1 backbone: P + 2 O + C (phosphate-sugar)
+    var bb1x = bbR * Math.cos(bbAng1);
+    var bb1y = bbR * Math.sin(bbAng1);
+    addAtom(bb1x, bb1y, z, 3, 'N');  // P (as N, Z=3)
+    addAtom(bb1x + 0.8*A*Math.cos(bbAng1+0.5), bb1y + 0.8*A*Math.sin(bbAng1+0.5), z + 0.3*A, 2, 'O');
+    addAtom(bb1x + 0.8*A*Math.cos(bbAng1-0.5), bb1y + 0.8*A*Math.sin(bbAng1-0.5), z - 0.3*A, 2, 'O');
+    addAtom(bb1x - 0.7*A*Math.cos(bbAng1), bb1y - 0.7*A*Math.sin(bbAng1), z, 4, 'C');  // C1'
+    // Connector atoms between base pairs (bridge the backbone)
+    if (bp < nBP - 1) {
+      var zMid = z + rise * 0.5;
+      var angMid = angle + twist * 0.5;
+      var bbMid = bbR * 0.95;
+      addAtom(bbMid * Math.cos(angMid + 0.5), bbMid * Math.sin(angMid + 0.5), zMid, 4, 'C');
+      addAtom(bbMid * Math.cos(angMid + 0.5) + 0.5*A*Math.cos(angMid+1.0),
+              bbMid * Math.sin(angMid + 0.5) + 0.5*A*Math.sin(angMid+1.0), zMid, 2, 'O');
+    }
 
-    // Build base pair H-bonding atoms
-    // G:C pair: 3 H-bonds
-    // A:T pair: 2 H-bonds
-    // Place H-bond donors/acceptors along the cx,cy axis
+    // Strand 2 backbone
+    var bb2x = bbR * Math.cos(bbAng2);
+    var bb2y = bbR * Math.sin(bbAng2);
+    addAtom(bb2x, bb2y, z, 3, 'N');  // P
+    addAtom(bb2x + 0.8*A*Math.cos(bbAng2+0.5), bb2y + 0.8*A*Math.sin(bbAng2+0.5), z + 0.3*A, 2, 'O');
+    addAtom(bb2x + 0.8*A*Math.cos(bbAng2-0.5), bb2y + 0.8*A*Math.sin(bbAng2-0.5), z - 0.3*A, 2, 'O');
+    addAtom(bb2x - 0.7*A*Math.cos(bbAng2), bb2y - 0.7*A*Math.sin(bbAng2), z, 4, 'C');
+    if (bp < nBP - 1) {
+      var zMid = z + rise * 0.5;
+      var angMid = angle + twist * 0.5;
+      var bbMid2 = bbR * 0.95;
+      addAtom(bbMid2 * Math.cos(angMid + Math.PI - 0.5), bbMid2 * Math.sin(angMid + Math.PI - 0.5), zMid, 4, 'C');
+      addAtom(bbMid2 * Math.cos(angMid + Math.PI - 0.5) + 0.5*A*Math.cos(angMid+Math.PI-1.0),
+              bbMid2 * Math.sin(angMid + Math.PI - 0.5) + 0.5*A*Math.sin(angMid+Math.PI-1.0), zMid, 2, 'O');
+    }
 
+    // === BASE PAIR H-BONDING ATOMS ===
     if ((b1 === 'G' && b2 === 'C') || (b1 === 'C' && b2 === 'G')) {
-      // G:C — 3 H-bonds
-      var isGC = (b1 === 'G');  // G on strand 1
+      var isGC = (b1 === 'G');
       var gSide = isGC ? 1 : -1;
 
-      // G side: O6 (acceptor), N1-H (donor), N2-H (donor)
-      // C side: N4-H (donor), N3 (acceptor), O2 (acceptor)
-      // H-bond 1: G(O6)···H-N4(C) — top
-      var o6 = addAtom(
-        (gSide * (bpSep/2 + 0.5*A)) * cx + 1.5*A * px,
-        (gSide * (bpSep/2 + 0.5*A)) * cy + 1.5*A * py,
-        z, 2, 'O');
-      var hn4 = addAtom(
-        (-gSide * (bpSep/2 - 0.2*A)) * cx + 1.5*A * px,
-        (-gSide * (bpSep/2 - 0.2*A)) * cy + 1.5*A * py,
-        z, 1, 'H');
-      var n4 = addAtom(
-        (-gSide * (bpSep/2 + 0.5*A)) * cx + 1.5*A * px,
-        (-gSide * (bpSep/2 + 0.5*A)) * cy + 1.5*A * py,
-        z, 3, 'N');
-      hbondPairs.push([o6, hn4]);
-      hbondLabels.push("bp" + (bp+1) + " G(O6)···H-N4(C):");
-
-      // H-bond 2: G(N1-H)···N3(C) — middle
-      var hn1 = addAtom(
-        (gSide * (bpSep/2 - 0.2*A)) * cx,
-        (gSide * (bpSep/2 - 0.2*A)) * cy,
-        z, 1, 'H');
-      var n1 = addAtom(
-        (gSide * (bpSep/2 + 0.5*A)) * cx,
-        (gSide * (bpSep/2 + 0.5*A)) * cy,
-        z, 3, 'N');
-      var n3 = addAtom(
-        (-gSide * (bpSep/2 + 0.5*A)) * cx,
-        (-gSide * (bpSep/2 + 0.5*A)) * cy,
-        z, 3, 'N');
-      hbondPairs.push([hn1, n3]);
-      hbondLabels.push("bp" + (bp+1) + " G(N1-H)···N3(C):");
-
-      // H-bond 3: G(N2-H)···O2(C) — bottom
-      var hn2 = addAtom(
-        (gSide * (bpSep/2 - 0.2*A)) * cx - 1.5*A * px,
-        (gSide * (bpSep/2 - 0.2*A)) * cy - 1.5*A * py,
-        z, 1, 'H');
-      var n2g = addAtom(
-        (gSide * (bpSep/2 + 0.5*A)) * cx - 1.5*A * px,
-        (gSide * (bpSep/2 + 0.5*A)) * cy - 1.5*A * py,
-        z, 3, 'N');
-      var o2c = addAtom(
-        (-gSide * (bpSep/2 + 0.5*A)) * cx - 1.5*A * px,
-        (-gSide * (bpSep/2 + 0.5*A)) * cy - 1.5*A * py,
-        z, 2, 'O');
-      hbondPairs.push([hn2, o2c]);
-      hbondLabels.push("bp" + (bp+1) + " G(N2-H)···O2(C):");
-
-      // Fill ring carbons (simplified purine + pyrimidine)
-      for (var rc = 0; rc < 3; rc++) {
-        var rAng = rc * 2.094;
-        addAtom(gSide * 2.0*A * cx + 1.2*A*(Math.cos(rAng)*px + Math.sin(rAng)*cx),
-                gSide * 2.0*A * cy + 1.2*A*(Math.cos(rAng)*py + Math.sin(rAng)*cy),
-                z, 4, 'C');
-        addAtom(-gSide * 2.0*A * cx + 0.9*A*(Math.cos(rAng)*px + Math.sin(rAng)*cx),
-                -gSide * 2.0*A * cy + 0.9*A*(Math.cos(rAng)*py + Math.sin(rAng)*cy),
+      // G side ring (purine — larger)
+      for (var rc = 0; rc < 5; rc++) {
+        var rAng = rc * 2 * Math.PI / 5;
+        addAtom(gSide * 2.2*A * cx + 1.3*A*(Math.cos(rAng)*px + Math.sin(rAng)*cy*0.3),
+                gSide * 2.2*A * cy + 1.3*A*(Math.cos(rAng)*py + Math.sin(rAng)*cx*0.3),
                 z, 4, 'C');
       }
+      // C side ring (pyrimidine — smaller)
+      for (var rc = 0; rc < 4; rc++) {
+        var rAng = rc * 2 * Math.PI / 4;
+        addAtom(-gSide * 2.0*A * cx + 1.0*A*(Math.cos(rAng)*px + Math.sin(rAng)*cy*0.3),
+                -gSide * 2.0*A * cy + 1.0*A*(Math.cos(rAng)*py + Math.sin(rAng)*cx*0.3),
+                z, 4, 'C');
+      }
+
+      // H-bond 1: G(O6)···H-N4(C)
+      var o6 = addAtom(gSide * (bpSep/2 + 0.5*A) * cx + 1.5*A * px,
+                       gSide * (bpSep/2 + 0.5*A) * cy + 1.5*A * py, z, 2, 'O');
+      var hn4 = addAtom(-gSide * (bpSep/2 - 0.2*A) * cx + 1.5*A * px,
+                        -gSide * (bpSep/2 - 0.2*A) * cy + 1.5*A * py, z, 1, 'H');
+      addAtom(-gSide * (bpSep/2 + 0.5*A) * cx + 1.5*A * px,
+              -gSide * (bpSep/2 + 0.5*A) * cy + 1.5*A * py, z, 3, 'N');
+      hbondPairs.push([o6, hn4]);
+      hbondLabels.push("bp" + (bp+1) + " G(O6)···H(C):");
+
+      // H-bond 2: G(N1-H)···N3(C)
+      var hn1 = addAtom(gSide * (bpSep/2 - 0.2*A) * cx,
+                        gSide * (bpSep/2 - 0.2*A) * cy, z, 1, 'H');
+      addAtom(gSide * (bpSep/2 + 0.5*A) * cx,
+              gSide * (bpSep/2 + 0.5*A) * cy, z, 3, 'N');
+      var n3 = addAtom(-gSide * (bpSep/2 + 0.5*A) * cx,
+                       -gSide * (bpSep/2 + 0.5*A) * cy, z, 3, 'N');
+      hbondPairs.push([hn1, n3]);
+      hbondLabels.push("bp" + (bp+1) + " G(H)···N3(C):");
+
+      // H-bond 3: G(N2-H)···O2(C)
+      var hn2 = addAtom(gSide * (bpSep/2 - 0.2*A) * cx - 1.5*A * px,
+                        gSide * (bpSep/2 - 0.2*A) * cy - 1.5*A * py, z, 1, 'H');
+      addAtom(gSide * (bpSep/2 + 0.5*A) * cx - 1.5*A * px,
+              gSide * (bpSep/2 + 0.5*A) * cy - 1.5*A * py, z, 3, 'N');
+      var o2c = addAtom(-gSide * (bpSep/2 + 0.5*A) * cx - 1.5*A * px,
+                        -gSide * (bpSep/2 + 0.5*A) * cy - 1.5*A * py, z, 2, 'O');
+      hbondPairs.push([hn2, o2c]);
+      hbondLabels.push("bp" + (bp+1) + " G(H)···O2(C):");
 
     } else {
       // A:T — 2 H-bonds
       var isAT = (b1 === 'A');
       var aSide = isAT ? 1 : -1;
 
-      // H-bond 1: A(N6-H)···O4(T) — top
-      var hn6 = addAtom(
-        (aSide * (bpSep/2 - 0.2*A)) * cx + 1.2*A * px,
-        (aSide * (bpSep/2 - 0.2*A)) * cy + 1.2*A * py,
-        z, 1, 'H');
-      var n6 = addAtom(
-        (aSide * (bpSep/2 + 0.5*A)) * cx + 1.2*A * px,
-        (aSide * (bpSep/2 + 0.5*A)) * cy + 1.2*A * py,
-        z, 3, 'N');
-      var o4t = addAtom(
-        (-aSide * (bpSep/2 + 0.5*A)) * cx + 1.2*A * px,
-        (-aSide * (bpSep/2 + 0.5*A)) * cy + 1.2*A * py,
-        z, 2, 'O');
-      hbondPairs.push([hn6, o4t]);
-      hbondLabels.push("bp" + (bp+1) + " A(N6-H)···O4(T):");
-
-      // H-bond 2: T(N3-H)···N1(A) — bottom
-      var hn3t = addAtom(
-        (-aSide * (bpSep/2 - 0.2*A)) * cx - 1.2*A * px,
-        (-aSide * (bpSep/2 - 0.2*A)) * cy - 1.2*A * py,
-        z, 1, 'H');
-      var n3t = addAtom(
-        (-aSide * (bpSep/2 + 0.5*A)) * cx - 1.2*A * px,
-        (-aSide * (bpSep/2 + 0.5*A)) * cy - 1.2*A * py,
-        z, 3, 'N');
-      var n1a = addAtom(
-        (aSide * (bpSep/2 + 0.5*A)) * cx - 1.2*A * px,
-        (aSide * (bpSep/2 + 0.5*A)) * cy - 1.2*A * py,
-        z, 3, 'N');
-      hbondPairs.push([hn3t, n1a]);
-      hbondLabels.push("bp" + (bp+1) + " T(N3-H)···N1(A):");
-
-      // Fill ring carbons
-      for (var rc = 0; rc < 3; rc++) {
-        var rAng = rc * 2.094;
-        addAtom(aSide * 2.0*A * cx + 1.2*A*(Math.cos(rAng)*px + Math.sin(rAng)*cx),
-                aSide * 2.0*A * cy + 1.2*A*(Math.cos(rAng)*py + Math.sin(rAng)*cy),
-                z, 4, 'C');
-        addAtom(-aSide * 2.0*A * cx + 0.9*A*(Math.cos(rAng)*px + Math.sin(rAng)*cx),
-                -aSide * 2.0*A * cy + 0.9*A*(Math.cos(rAng)*py + Math.sin(rAng)*cy),
+      // A side ring (purine)
+      for (var rc = 0; rc < 5; rc++) {
+        var rAng = rc * 2 * Math.PI / 5;
+        addAtom(aSide * 2.2*A * cx + 1.3*A*(Math.cos(rAng)*px + Math.sin(rAng)*cy*0.3),
+                aSide * 2.2*A * cy + 1.3*A*(Math.cos(rAng)*py + Math.sin(rAng)*cx*0.3),
                 z, 4, 'C');
       }
+      // T side ring (pyrimidine) + methyl
+      for (var rc = 0; rc < 4; rc++) {
+        var rAng = rc * 2 * Math.PI / 4;
+        addAtom(-aSide * 2.0*A * cx + 1.0*A*(Math.cos(rAng)*px + Math.sin(rAng)*cy*0.3),
+                -aSide * 2.0*A * cy + 1.0*A*(Math.cos(rAng)*py + Math.sin(rAng)*cx*0.3),
+                z, 4, 'C');
+      }
+      // T methyl
+      addAtom(-aSide * 3.2*A * cx + 1.5*A * px,
+              -aSide * 3.2*A * cy + 1.5*A * py, z, 4, 'C');
+      addAtom(-aSide * 3.7*A * cx + 2.0*A * px,
+              -aSide * 3.7*A * cy + 2.0*A * py, z + 0.5*A, 1, 'H');
+      addAtom(-aSide * 3.7*A * cx + 2.0*A * px,
+              -aSide * 3.7*A * cy + 2.0*A * py, z - 0.5*A, 1, 'H');
+      addAtom(-aSide * 3.7*A * cx + 1.0*A * px,
+              -aSide * 3.7*A * cy + 1.0*A * py, z, 1, 'H');
 
-      // T methyl group
-      addAtom(-aSide * 3.0*A * cx + 1.5*A * px,
-              -aSide * 3.0*A * cy + 1.5*A * py,
-              z, 4, 'C');
-      addAtom(-aSide * 3.5*A * cx + 2.0*A * px,
-              -aSide * 3.5*A * cy + 2.0*A * py,
-              z + 0.5*A, 1, 'H');
-      addAtom(-aSide * 3.5*A * cx + 2.0*A * px,
-              -aSide * 3.5*A * cy + 2.0*A * py,
-              z - 0.5*A, 1, 'H');
+      // H-bond 1: A(N6-H)···O4(T)
+      var hn6 = addAtom(aSide * (bpSep/2 - 0.2*A) * cx + 1.2*A * px,
+                        aSide * (bpSep/2 - 0.2*A) * cy + 1.2*A * py, z, 1, 'H');
+      addAtom(aSide * (bpSep/2 + 0.5*A) * cx + 1.2*A * px,
+              aSide * (bpSep/2 + 0.5*A) * cy + 1.2*A * py, z, 3, 'N');
+      var o4t = addAtom(-aSide * (bpSep/2 + 0.5*A) * cx + 1.2*A * px,
+                        -aSide * (bpSep/2 + 0.5*A) * cy + 1.2*A * py, z, 2, 'O');
+      hbondPairs.push([hn6, o4t]);
+      hbondLabels.push("bp" + (bp+1) + " A(H)···O4(T):");
+
+      // H-bond 2: T(N3-H)···N1(A)
+      var hn3t = addAtom(-aSide * (bpSep/2 - 0.2*A) * cx - 1.2*A * px,
+                         -aSide * (bpSep/2 - 0.2*A) * cy - 1.2*A * py, z, 1, 'H');
+      addAtom(-aSide * (bpSep/2 + 0.5*A) * cx - 1.2*A * px,
+              -aSide * (bpSep/2 + 0.5*A) * cy - 1.2*A * py, z, 3, 'N');
+      var n1a = addAtom(aSide * (bpSep/2 + 0.5*A) * cx - 1.2*A * px,
+                        aSide * (bpSep/2 + 0.5*A) * cy - 1.2*A * py, z, 3, 'N');
+      hbondPairs.push([hn3t, n1a]);
+      hbondLabels.push("bp" + (bp+1) + " T(H)···N1(A):");
     }
   }
 
-  log.textContent = 'DNA double helix: ' + atoms.length + ' atoms, ' + nBP + ' base pairs';
-  log.textContent += '\nSequence: GATTAC:GTAATC (B-DNA geometry)';
-  log.textContent += '\nG:C = 3 H-bonds, A:T = 2 H-bonds, total = 14 H-bonds';
+  log.textContent = 'DNA double helix: ' + atoms.length + ' atoms, ' + nBP + ' base pairs (1 full turn)';
+  log.textContent += '\nSequence: GATTACGATT : AATCGTAATC';
+  log.textContent += '\nB-DNA: 3.4A rise, 36° twist. G:C=3, A:T=2 H-bonds';
   log.textContent += '\n' + gridN + '^3 grid, screen=' + scr + ' au';
 
-  // Monitor all H-bonds
   var bondPairs = [];
   for (var i = 0; i < hbondPairs.length; i++) {
     bondPairs.push([hbondPairs[i][0], hbondPairs[i][1], hbondLabels[i]]);
@@ -227,12 +212,9 @@ window.onerror = function(msg, url, line) {
   window.USER_BOND_PAIRS = bondPairs;
 
   window.USER_REFERENCE = {
-    bonds: {
-      "G:C H-bond": "~1.9 Å",
-      "A:T H-bond": "~1.9 Å"
-    },
-    energy: "DNA double helix — 6 bp, B-DNA geometry",
-    binding: "Do all 14 Watson-Crick H-bonds hold at correct distances?"
+    bonds: { "G:C H-bond": "~1.9", "A:T H-bond": "~1.9" },
+    energy: "DNA double helix — 10 bp, one full B-DNA turn",
+    binding: "Do all Watson-Crick H-bonds hold? Is the helix stable?"
   };
 
   window.USER_NN = gridN;
