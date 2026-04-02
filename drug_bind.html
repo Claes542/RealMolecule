@@ -198,10 +198,12 @@ window.onerror = function(msg, url, line) {
   // C8H9NO2: phenol ring + amide group + methyl
   // HO-C6H4-NH-CO-CH3
   //
-  // Place it between the two helices, 5 Å from the groove center
-  var drugX = 0;  // between helices
-  var drugY = 5.0 * A;  // offset in y so it approaches from the side
-  var drugZ = 0;  // centered vertically
+  // Place drug with OH pointing at helix 1 carbonyl O (res 4)
+  // Drug OH needs to be ~3 Å from protein C=O for H-bond
+  var targetO = [bb[4].C[0] + 1.24*A, bb[4].C[1], bb[4].C[2]];  // approx carbonyl O position
+  var drugX = targetO[0] + 4.0 * A;  // approach from +x
+  var drugY = targetO[1];
+  var drugZ = targetO[2];
 
   // Phenol ring (6 carbons in hexagon, 1.4 Å C-C)
   var bCC = 1.40 * A;
@@ -300,17 +302,15 @@ window.onerror = function(msg, url, line) {
   for (var a = drugAtomStart; a < drugAtomEnd; a++) drugGroup.push(a);
   resGroups.push(drugGroup);
 
-  // Bond pairs: drug-pocket distances
+  // Bond pairs: drug H-bond + pocket distances
   var bondPairs = [];
-  // Drug OH to nearest pocket residue (helix 1 mid)
-  bondPairs.push([drugOHidx, caIndices[4], "drug-OH→L5:"]);
-  // Drug NH to pocket
-  bondPairs.push([drugNHidx, caIndices[14], "drug-NH→L15:"]);
-  // Drug C=O to pocket
-  bondPairs.push([drugCOidx, caIndices[16], "drug-CO→L17:"]);
-  // Drug ring center (C0) to groove center
-  bondPairs.push([drugAtomStart, caIndices[4], "ring→H1-L5:"]);
-  bondPairs.push([drugAtomStart, caIndices[14], "ring→H2-L15:"]);
+  // Key: drug OH → protein carbonyl O (H-bond target ~2.0 Å)
+  bondPairs.push([drugOHidx, carbonylOIdx[4], "drug-OH···O=C4:"]);
+  // Drug NH to protein
+  bondPairs.push([drugNHidx, carbonylOIdx[3], "drug-NH···O=C3:"]);
+  // Drug ring to pocket
+  bondPairs.push([drugAtomStart, caIndices[4], "ring→Ca5:"]);
+  bondPairs.push([drugAtomStart, caIndices[14], "ring→Ca15:"]);
   // Intra-protein helix H-bonds
   if (amideHIdx[4] >= 0) bondPairs.push([carbonylOIdx[0], amideHIdx[4], "H1:O0···H4:"]);
   if (amideHIdx[16] >= 0) bondPairs.push([carbonylOIdx[12], amideHIdx[16], "H2:O12···H16:"]);
@@ -348,7 +348,9 @@ window.onerror = function(msg, url, line) {
     targetCaCa: 3.8 * A,
     contactBias: {
       hbonds: hbonds,
-      contacts: [],
+      contacts: [
+        { a: drugOHidx, b: carbonylOIdx[4], target: 2.0 * A, label: "drug-OH···O=C4" }
+      ],
       hbondStrength: 0.8,
       contactStrength: 1.5
     }
