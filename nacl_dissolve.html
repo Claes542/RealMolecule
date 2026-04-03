@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// NaCl dissolution in water: NaCl + H2O → Na+(aq) + Cl-(aq)
+// Ionic decomposition: Na+ (Z=0, Z_nuc=1) + Cl- (Z=2 split, Z_nuc=1)
+// Water pulls the ions apart via electron density forces
+(function() {
+  var gridN = 200, scr = 25, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  var bNaCl = 2.36 * A;  // Na-Cl bond length 2.36 Å
+  var bOH = 0.96 * A;
+  var ang = 104.5 * Math.PI / 180;
+  var sep = 2.0 * A;     // distance from Na to water O
+
+  // Cl⁻: 2 electrons split into half-spaces (x-offset for perpendicular split)
+  var clOff = 0.05 * A;
+  addAtom(-bNaCl/2 - clOff, 0, 0, 1, 'Cl');                             // 0: Cl⁻ outer half
+  addAtom(-bNaCl/2 + clOff, 0, 0, 1, 'Cl');                             // 1: Cl⁻ inner half
+
+  // Na⁺: bare ion, no electrons
+  addAtom(bNaCl/2, 0, 0, 0, 'Na');                                      // 2: Na⁺
+
+  // H2O on the Na+ side (O's lone pair faces Na+)
+  var waterX = bNaCl/2 + sep;
+  addAtom(waterX, 0, 0, 2, 'O');                                        // 3: O
+  addAtom(waterX + bOH*Math.sin(ang/2), bOH*Math.cos(ang/2), 0, 1, 'H');   // 4: Ha
+  addAtom(waterX + bOH*Math.sin(ang/2), -bOH*Math.cos(ang/2), 0, 1, 'H');  // 5: Hb
+
+  console.log('NaCl + H2O dissolution');
+  console.log('Na-Cl: ' + (bNaCl/A).toFixed(2) + ' Å');
+  console.log('Na-O: ' + (sep/A).toFixed(2) + ' Å');
+  console.log('6 atoms: Cl⁻(0-1) + Na⁺(2) + H2O(3-5)');
+
+  // Z controls electron count, Z_nuc controls kernel potential
+  window.USER_Z =     [1, 1, 0, 2, 1, 1];  // Cl½=1, Cl½=1, Na⁺=0, O=2, Ha=1, Hb=1
+  window.USER_Z_NUC = [1, 0, 1, 2, 1, 1];  // Cl=1, 0, Na=1, O=2, Ha=1, Hb=1
+
+  window.USER_BOND_PAIRS = [
+    [0, 2, "Cl-Na:"],    // ionic bond (should stretch as water pulls Na away)
+    [2, 3, "Na-O:"],     // Na⁺ attracted to O lone pair (should shrink)
+    [0, 3, "Cl-O:"],     // total span
+    [3, 4, "O-Ha:"],     // reference O-H
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: {
+      "Cl-Na": "2.36 Å (crystal) → should grow as water dissolves",
+      "Na-O": "2.8 Å → should shrink (Na⁺ solvation)",
+      "O-Ha": "0.96 Å (reference)"
+    },
+    energy: "NaCl lattice energy: 786 kJ/mol. Water solvation overcomes this.",
+    binding: "Does water pull Na⁺ away from Cl⁻?"
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;   // converge first, press D
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.95;
+  window.USER_N_MOVE = 30;
+  window.USER_GRADP_FORCE = true;
+  window.USER_RC = [1.0, 1.0, 0, 0.8, 0, 0];  // Cl⁻ rc=1.0, Na⁺ bare, O rc=0.8, H bare
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onerror = function() { document.body.innerHTML = '<pre style="color:red">Failed to load</pre>'; };
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

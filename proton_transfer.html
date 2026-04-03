@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// Test 1: Acid dissociation — HF + H2O → F⁻ + H3O+
+// Electronegativity-driven proton release
+// F grips electrons so tightly that H is pushed toward water's lone pair
+// pKa(HF) = 3.2 — thermodynamically favored
+(function() {
+  var gridN = 200, scr = 15, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  var bHF = 0.92 * A;   // H-F bond length 0.92 Å
+  var bOH = 0.96 * A;   // O-H bond length 0.96 Å
+  var ang = 104.5 * Math.PI / 180;
+  var sep = 2.4 * A;    // F-O separation
+
+  // HF (acid): F on left, H pointing right toward water
+  addAtom(-sep/2, 0, 0, 3, 'F');                                        // 0: F
+  addAtom(-sep/2 + bHF, 0, 0, 1, 'H');                                 // 1: H_transfer
+
+  // H2O (base): O on right, both H pointing away
+  addAtom(sep/2, 0, 0, 2, 'O');                                        // 2: O
+  addAtom(sep/2 + bOH*Math.sin(ang/2), bOH*Math.cos(ang/2), 0, 1, 'H');   // 3: Ha
+  addAtom(sep/2 + bOH*Math.sin(ang/2), -bOH*Math.cos(ang/2), 0, 1, 'H');  // 4: Hb
+
+  console.log('Test 1: HF + H2O — acid pushes proton away');
+  console.log('F-O separation: ' + (sep/A).toFixed(2) + ' Å');
+
+  window.USER_BOND_PAIRS = [
+    [0, 1, "F-Ht:"],     // should stretch (proton leaving F)
+    [1, 2, "Ht-O:"],     // should shrink to ~0.96 Å (proton arriving at O)
+    [0, 2, "F···O:"],    // F-O distance
+    [2, 3, "O-Ha:"],     // reference O-H
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: {
+      "F-Ht": "0.92 → should grow (proton leaves F)",
+      "Ht-O": "~2.1 → should shrink to 0.96 (proton bonds to O)",
+      "F···O": "3.0 Å",
+      "O-Ha": "0.96 Å (reference)"
+    },
+    energy: "HF pKa = 3.2. Proton should clearly prefer O over F.",
+    binding: "Acid dissociation: does F push the proton to water?"
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;   // converge first, press D
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.95;
+  window.USER_N_MOVE = 30;
+  window.USER_GRADP_FORCE = true;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'F') return 1.0;
+    if (a.el === 'O') return 0.5;
+    return 0;
+  });
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onerror = function() { document.body.innerHTML = '<pre style="color:red">Failed to load</pre>'; };
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
