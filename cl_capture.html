@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// Cl atom captures electron → Cl⁻
+// +1 kernel at origin, 2 electrons split into half-spaces but decentered
+// Does the electron pair settle around the kernel?
+(function() {
+  var gridN = 150, scr = 15, N2 = 75;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  // +1 kernel at origin
+  // 2 electrons split in y (half-spaces), decentered 1 Å to the right in x
+  var decenter = 1.0 * A;  // electrons start 1 Å away from kernel
+  var splitOff = 0.1 * A;  // small y-offset for half-space split
+
+  addAtom(decenter, splitOff, 0, 1, 'Cl');    // 0: electron upper half
+  addAtom(decenter, -splitOff, 0, 1, 'Cl');   // 1: electron lower half
+
+  console.log('Cl⁻ formation: +1 kernel at origin, 2 electrons decentered by ' + (decenter/A).toFixed(2) + ' Å');
+
+  window.USER_Z =     [1, 1];    // 1 electron each half
+  window.USER_Z_NUC = [1, 0];    // kernel on atom 0 only
+
+  // But kernel should be at origin, not at atom 0 position
+  // We need the kernel at (0,0,0) and electrons at (decenter, ±splitOff, 0)
+  // Use atom 0 for kernel position — but then atom 0 electron is at the kernel
+  // Instead: put a bare kernel at origin, electrons decentered
+
+  // Redo: 3 atoms — kernel at origin (Z=0, Z_nuc=1), two electrons decentered
+  atoms = [];
+  addAtom(0, 0, 0, 0, 'Cl');                              // 0: +1 kernel, no electron
+  addAtom(0, 0, 0, 1, 'e');                               // 1: electron at kernel (Cl's electron)
+  addAtom(decenter, 0, 0, 1, 'e');                        // 2: free electron approaching
+
+  window.USER_Z =     [0, 1, 1];    // kernel=0e, e1=1, e2=1
+  window.USER_Z_NUC = [1, 0, 0];    // kernel=+1, electrons have no kernel
+
+  window.USER_BOND_PAIRS = [
+    [0, 1, "Cl-e1:"],   // should shrink as electron is captured
+    [0, 2, "Cl-e2:"],   // should shrink
+    [1, 2, "e1-e2:"],   // electron separation
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: {
+      "Cl-e": "should shrink → electrons settle around kernel"
+    },
+    binding: "Do decentered electrons get pulled to the +1 kernel?"
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;   // converge first, press D
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.95;
+  window.USER_N_MOVE = 30;
+  window.USER_GRADP_FORCE = false;
+  window.USER_RC = [0.8, 0, 0];  // kernel rc=0.8, electrons bare
+  window.USER_HINGE_ATOMS = [0];  // fix kernel position
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onerror = function() { document.body.innerHTML = '<pre style="color:red">Failed to load</pre>'; };
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
