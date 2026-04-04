@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <html><body style="margin:0;background:#000">
 <script>
-// Test 1: Acid dissociation — HF + H2O → F⁻ + H3O+
-// Electronegativity-driven proton release
-// F grips electrons so tightly that H is pushed toward water's lone pair
-// pKa(HF) = 3.2 — thermodynamically favored
+// Proton transfer: HF + H2O → F⁻ + H3O+
+// HF decomposed as: F⁻ (Z_nuc=3, 4 electrons split into 2 half-spaces) + H⁺ (Z_nuc=1, 0 electrons)
+// H2O: O (Z=2, Z_nuc=2) + 2×H (Z=1, Z_nuc=1)
+// Total electrons = 2+2+0+2+1+1 = 8, total Z_nuc = 3+0+1+2+1+1 = 8 → neutral
 (function() {
-  var gridN = 200, scr = 15, N2 = 100;
+  var gridN = 150, scr = 15, N2 = 75;
   var h = scr / gridN;
   var A = 1.8897;
   var atoms = [];
@@ -25,34 +25,43 @@
   var ang = 104.5 * Math.PI / 180;
   var sep = 2.4 * A;    // F-O separation
 
-  // HF (acid): F on left, H pointing right toward water
-  addAtom(-sep/2, 0, 0, 3, 'F');                                        // 0: F
-  addAtom(-sep/2 + bHF, 0, 0, 1, 'H');                                 // 1: H_transfer
+  // F⁻: kernel charge 3, 4 electrons split into 2 half-spaces (2 each)
+  var fOff = 0.1 * A;   // small x-offset for perpendicular split
+  addAtom(-sep/2 - fOff, 0, 0, 2, 'F');                                 // 0: F⁻ outer half (2 electrons)
+  addAtom(-sep/2 + fOff, 0, 0, 2, 'F');                                 // 1: F⁻ inner half (2 electrons)
+
+  // H⁺: bare proton, no electron
+  addAtom(-sep/2 + bHF, 0, 0, 0, 'H');                                  // 2: H⁺
 
   // H2O (base): O on right, both H pointing away
-  addAtom(sep/2, 0, 0, 2, 'O');                                        // 2: O
-  addAtom(sep/2 + bOH*Math.sin(ang/2), bOH*Math.cos(ang/2), 0, 1, 'H');   // 3: Ha
-  addAtom(sep/2 + bOH*Math.sin(ang/2), -bOH*Math.cos(ang/2), 0, 1, 'H');  // 4: Hb
+  addAtom(sep/2, 0, 0, 2, 'O');                                         // 3: O
+  addAtom(sep/2 + bOH*Math.sin(ang/2), bOH*Math.cos(ang/2), 0, 1, 'H');    // 4: Ha
+  addAtom(sep/2 + bOH*Math.sin(ang/2), -bOH*Math.cos(ang/2), 0, 1, 'H');   // 5: Hb
 
-  console.log('Test 1: HF + H2O — acid pushes proton away');
+  console.log('HF + H2O proton transfer (ionic decomposition)');
+  console.log('F⁻(2×2e split) + H⁺(0e) + H2O');
   console.log('F-O separation: ' + (sep/A).toFixed(2) + ' Å');
 
+  // Z controls electron count, Z_nuc controls kernel potential
+  window.USER_Z =     [2, 2, 0, 2, 1, 1];  // F½=2, F½=2, H⁺=0, O=2, Ha=1, Hb=1
+  window.USER_Z_NUC = [3, 0, 1, 2, 1, 1];  // F=3, ghost=0, H=1, O=2, Ha=1, Hb=1
+
   window.USER_BOND_PAIRS = [
-    [0, 1, "F-Ht:"],     // should stretch (proton leaving F)
-    [1, 2, "Ht-O:"],     // should shrink to ~0.96 Å (proton arriving at O)
-    [0, 2, "F···O:"],    // F-O distance
-    [2, 3, "O-Ha:"],     // reference O-H
+    [0, 2, "F-Ht:"],     // should stay large (F⁻ releases H⁺)
+    [2, 3, "Ht-O:"],     // should shrink to ~0.96 Å (proton bonds to O)
+    [0, 3, "F···O:"],    // F-O distance
+    [3, 4, "O-Ha:"],     // reference O-H
   ];
 
   window.USER_REFERENCE = {
     bonds: {
-      "F-Ht": "0.92 → should grow (proton leaves F)",
-      "Ht-O": "~2.1 → should shrink to 0.96 (proton bonds to O)",
-      "F···O": "3.0 Å",
+      "F-Ht": "H⁺ has no electron — released by F⁻",
+      "Ht-O": "should shrink to 0.96 (proton bonds to O)",
+      "F···O": "2.4 Å",
       "O-Ha": "0.96 Å (reference)"
     },
-    energy: "HF pKa = 3.2. Proton should clearly prefer O over F.",
-    binding: "Acid dissociation: does F push the proton to water?"
+    energy: "HF pKa = 3.2. Ionic decomposition: F⁻ + H⁺ + H2O",
+    binding: "Does the bare proton bond to O?"
   };
 
   window.USER_NN = gridN;
@@ -64,14 +73,8 @@
   window.USER_ARROW_SCALE = 200.0;
   window.USER_DAMPING = 0.95;
   window.USER_N_MOVE = 30;
-  window.USER_GRADP_FORCE = true;
-  window.USER_Z = atoms.map(function(a) { return a.Z; });
-  window.USER_RC = atoms.map(function(a) {
-    if (a.el === 'H') return 0;
-    if (a.el === 'F') return 1.0;
-    if (a.el === 'O') return 0.5;
-    return 0;
-  });
+  window.USER_GRADP_FORCE = false;  // direct Coulomb for bare H atoms
+  window.USER_RC = [1.0, 1.0, 0, 0.8, 0, 0];  // F⁻=1.0, ghost=1.0, H⁺ bare, O=0.8, H bare
 })();
 
 var s = document.createElement('script');
