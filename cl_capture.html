@@ -39,17 +39,22 @@
 
   // Redo: 3 atoms — kernel at origin (Z=0, Z_nuc=1), two electrons decentered
   atoms = [];
-  addAtom(0, 0, 0, 0, 'Cl');                              // 0: +1 kernel, no electron
-  addAtom(0, 0, 0, 1, 'e');                               // 1: electron at kernel (Cl's electron)
-  addAtom(decenter, 0, 0, 1, 'e');                        // 2: free electron approaching
+  // 4 quadrants in the xy-plane around +3 kernel
+  // 3 electrons centered at kernel (in quadrants 1,2,3), 1 incoming (quadrant 4)
+  var qOff = 0.5 * A;  // offset to seed quadrant Voronoi domains
+  addAtom(0, 0, 0, 0, 'Cl');                              // 0: +3 kernel
+  addAtom(qOff, qOff, 0, 1, 'e');                         // 1: quadrant 1 (upper right)
+  addAtom(-qOff, qOff, 0, 1, 'e');                        // 2: quadrant 2 (upper left)
+  addAtom(-qOff, -qOff, 0, 1, 'e');                       // 3: quadrant 3 (lower left)
+  addAtom(decenter, -qOff, 0, 1, 'e');                    // 4: incoming electron (quadrant 4, decentered)
 
-  window.USER_Z =     [0, 1, 1];    // kernel=0e, e1=1, e2=1
-  window.USER_Z_NUC = [1, 0, 0];    // kernel=+1, electrons have no kernel
+  window.USER_Z =     [0, 1, 1, 1, 1];    // kernel=0e, 3 Cl electrons + 1 free
+  window.USER_Z_NUC = [3, 0, 0, 0, 0];   // +3 kernel, electrons have no kernel
 
   window.USER_BOND_PAIRS = [
-    [0, 1, "Cl-e1:"],   // should shrink as electron is captured
-    [0, 2, "Cl-e2:"],   // should shrink
-    [1, 2, "e1-e2:"],   // electron separation
+    [0, 4, "Cl-e:"],     // should shrink as free electron is captured
+    [0, 1, "Cl-e1:"],   // Cl's own electron
+    [0, 2, "Cl-e2:"],   // Cl's own electron
   ];
 
   window.USER_REFERENCE = {
@@ -69,8 +74,8 @@
   window.USER_DAMPING = 0.95;
   window.USER_N_MOVE = 30;
   window.USER_GRADP_FORCE = false;
-  window.USER_RC = [0.8, 0, 0];  // kernel rc=0.8, electrons bare
-  window.USER_HINGE_ATOMS = [0];  // fix kernel position
+  window.USER_RC = [0.8, 0, 0, 0, 0];  // kernel rc=0.8, electrons bare
+  window.USER_HINGE_ATOMS = [0, 1, 2, 3];  // fix kernel and its 3 electrons
 })();
 
 var s = document.createElement('script');
