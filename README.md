@@ -168,6 +168,14 @@ Tested on **Villin HP35** (35 residues, 3-helix bundle): 7/9 helix H-bonds form 
 | Villin | 35 | Universal i→i+4 | SASA | 7/9 H-bonds, core at target |
 | Crambin | 46 | Helix + sheet | SASA | 3/5 H-bonds, disulfides approach |
 
+#### How this differs from existing approaches
+
+Protein folding methods typically fall into two categories: (1) classical MD with empirical force fields (AMBER, CHARMM — thousands of fitted parameters) plus implicit or explicit solvent, or (2) ML-based prediction (AlphaFold, ESMFold — no physics). Quantum mechanical methods (FMO, DFTB) have been applied to protein energetics but not to folding dynamics due to computational cost.
+
+This solver occupies a gap: **ab initio quantum forces + one implicit solvent parameter → folding**. The electronic structure is solved from the Schrödinger equation on a real-space grid — no empirical force field, no fitted Lennard-Jones or torsion parameters. SASA adds a single surface-tension coefficient (γ) to approximate the hydrophobic effect. Universal i→i+4 H-bond biases require no knowledge of the native structure.
+
+**Caveats**: The H-bond biases are empirical steering forces (not fully ab initio). Grid resolution limits quantitative accuracy. Folding rates and free energies have not been validated against experiment. Beta-sheet formation still requires specifying strand pairings. This is a proof of concept, not a production tool.
+
 #### Validation suite
 
 | Test | Atoms | Result |

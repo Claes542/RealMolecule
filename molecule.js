@@ -4874,6 +4874,74 @@ function draw() {
   }
 }
 
+// Auto-video: set window.USER_AUTO_VIDEO = { steps: 5000, interval: 200, fps: 15, filename: 'fold.webm' }
+// Captures snapshots during dynamics, stitches video when step limit reached
+(function() {
+  var av = window.USER_AUTO_VIDEO;
+  if (!av) return;
+  var interval = av.interval || 200;
+  var fps = av.fps || 15;
+  var maxSteps = av.steps || 5000;
+  var filename = av.filename || 'fold.webm';
+  var frames = [];
+  var done = false;
+  var dynamicsStartStep = -1;
+
+  setInterval(function() {
+    if (done) return;
+    var canvas = document.querySelector('canvas');
+    if (!canvas || typeof phaseSteps === 'undefined' || typeof dynamicsEnabled === 'undefined') return;
+    if (!dynamicsEnabled) return;
+    if (dynamicsStartStep < 0) {
+      dynamicsStartStep = phaseSteps;
+      console.log('AUTO-VIDEO: recording started at step ' + phaseSteps);
+    }
+    var dynSteps = phaseSteps - dynamicsStartStep;
+    if (dynSteps > 0 && dynSteps % interval === 0) {
+      canvas.toBlob(function(blob) {
+        if (blob) frames.push(blob);
+      }, 'image/webp', 0.85);
+    }
+    if (dynSteps >= maxSteps && frames.length > 0) {
+      done = true;
+      console.log('AUTO-VIDEO: stitching ' + frames.length + ' frames...');
+      var w = canvas.width, h = canvas.height;
+      var off = document.createElement('canvas');
+      off.width = w; off.height = h;
+      var ctx = off.getContext('2d');
+      var stream = off.captureStream(0);
+      var track = stream.getVideoTracks()[0];
+      var mime = MediaRecorder.isTypeSupported('video/webm; codecs=vp9')
+        ? 'video/webm; codecs=vp9' : 'video/webm';
+      var rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 5000000 });
+      var chunks = [];
+      rec.ondataavailable = function(ev) { if (ev.data.size > 0) chunks.push(ev.data); };
+      rec.onstop = function() {
+        var blob = new Blob(chunks, { type: mime });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = filename; a.click();
+        URL.revokeObjectURL(url);
+        console.log('AUTO-VIDEO: saved ' + filename + ' (' + frames.length + ' frames)');
+      };
+      rec.start();
+      var idx = 0;
+      var frameDur = 1000 / fps;
+      (function drawNext() {
+        if (idx >= frames.length) { rec.stop(); return; }
+        var img = new Image();
+        img.onload = function() {
+          ctx.drawImage(img, 0, 0, w, h);
+          if (track.requestFrame) track.requestFrame();
+          idx++;
+          setTimeout(drawNext, frameDur);
+        };
+        img.src = URL.createObjectURL(frames[idx]);
+      })();
+    }
+  }, 100);
+})();
+
 function keyPressed() {
   if (key === '3') {
     window._view3D = !window._view3D;
