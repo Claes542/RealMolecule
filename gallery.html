@@ -62,7 +62,7 @@ footer a { color: #4fc3f7; text-decoration: none; }
         &bull; Handle drug&ndash;protein binding (no concept of non-protein molecules)<br>
         &bull; Model chemical reactions (bond breaking/forming)<br>
         &bull; Simulate phase changes (ice melting, water dynamics)<br>
-        &bull; Account for solvent effects (water driving folding and binding)<br>
+        &bull; Account for solvent effects (explicit water molecules in the simulation)<br>
         &bull; Work with non-standard chemistry (metals, modified residues, novel molecules)<br><br>
 
         <b style="color:#66bb6a">RealQM evidence so far:</b><br>
@@ -236,27 +236,56 @@ footer a { color: #4fc3f7; text-decoration: none; }
       <div class="desc">Phase change: H-bond breaking</div>
       <span class="tag tag-dyn">dynamics</span>
     </a>
-    <div class="card" style="border-color:#ef5350;background:#1a0a0a">
-      <h3 style="color:#ef5350">Hairpin Folding (solvated)</h3>
-      <div class="desc">12-residue &beta;-hairpin folds fully with water driving the closure.</div>
-      <div style="margin-top:6px"><a href="hairpin_bent_solvated.html" style="color:#66bb6a">&#9654; Run</a> &middot; <a href="hairpin_fold.webm" style="color:#ef5350">&#9654; Video</a></div>
-      <span class="tag tag-protein">protein</span><span class="tag tag-water">water</span>
+    <!-- Folding physics: H-bonds vs hydrophobic effect -->
+    <div style="grid-column:1/-1;background:#111;border:1px solid #444;border-radius:8px;padding:16px 20px;margin:8px 0">
+      <h3 style="color:#ff7043;margin:0 0 8px">What drives folding? H-bonds vs water</h3>
+      <div style="color:#ccc;font-size:13px;line-height:1.6">
+        <b>Polyglycine hairpin</b> (no side chains): folds from 150&deg; &rarr; 105&deg; in vacuum via quantum N&ndash;H&middot;&middot;&middot;O=C hydrogen bonds alone.
+        Adding explicit water does not improve folding &mdash; both dry and solvated converge to the same angle.<br>
+        <b>Chignolin</b> GYDPETGTWG (real side chains): <em>unfolds</em> in vacuum &mdash; side-chain electron repulsion overwhelms backbone H-bonds.
+        Adding implicit hydrophobic pressure (SASA) fixes this: folds from 135&deg; &rarr; 40&deg;.<br><br>
+        <b>Conclusion:</b> Our solver captures H-bond driven secondary structure without empirical force fields.
+        But the hydrophobic effect &mdash; which is entropic (water loses orientational freedom near hydrophobic surfaces) &mdash;
+        cannot emerge from electronic energy alone. For real proteins with side chains, an implicit solvent term (SASA) is needed.<br><br>
+        <b>The working recipe:</b> H-bond biases (i&rarr;i+4 for helices, interstrand for sheets) handle secondary structure.
+        SASA (one parameter: &gamma;=5.0) handles tertiary packing &mdash; replacing all hand-tuned native contacts across every protein below.
+        No explicit water molecules needed.
+        <div style="margin-top:8px">
+          <a href="hairpin_vs_chignolin.html" style="color:#4fc3f7">&#9654; Side-by-side comparison</a>
+        </div>
+      </div>
     </div>
+    <a class="card" href="hairpin_bent_dry.html" style="border-color:#ef5350;background:#1a0a0a">
+      <h3 style="color:#ef5350">Hairpin Folding (dry)</h3>
+      <div class="desc">150&deg; &rarr; 105&deg; via quantum H-bonds alone. Water does not improve folding.</div>
+      <span class="tag tag-protein">protein</span>
+    </a>
+    <div class="card" style="border-color:#ff7043;background:#1a1008">
+      <h3 style="color:#ff7043">Chignolin Folding (SASA)</h3>
+      <div class="desc">GYDPETGTWG 135&deg; &rarr; 40&deg; &mdash; quantum H-bonds + implicit hydrophobic pressure.</div>
+      <div style="margin-top:6px"><a href="chignolin_dry.html" style="color:#66bb6a">&#9654; Run</a> &middot; <a href="chignolin_fold.webm" style="color:#ef5350">&#9654; Video</a></div>
+      <span class="tag tag-protein">protein</span>
+    </div>
+    <a class="card" href="hairpin_vs_chignolin.html" style="border-color:#26c6da;background:#0a1a1a">
+      <h3 style="color:#26c6da">Hairpin vs Chignolin</h3>
+      <div class="desc">Side chains need hydrophobic pressure to fold &mdash; backbone H-bonds alone are not enough.</div>
+      <span class="tag tag-protein">protein</span>
+    </a>
     <div class="card" style="border-color:#ba68c8;background:#1a1a2a">
       <h3 style="color:#ba68c8">Trp-cage (20 res)</h3>
-      <div class="desc">4/5 helix H-bonds, Rg=7.2&nbsp;&Aring;</div>
+      <div class="desc">H-bond biases + SASA packing. Helix forms, Trp6 buries without native contacts.</div>
       <div style="margin-top:6px"><a href="trpcage_fold.html" style="color:#66bb6a">&#9654; Run</a> &middot; <a href="trpcage_fold.webm" style="color:#ef5350">&#9654; Video</a></div>
       <span class="tag tag-protein">protein</span>
     </div>
     <div class="card" style="border-color:#66bb6a;background:#0a1a0a">
       <h3 style="color:#66bb6a">Villin HP35 (35 res)</h3>
-      <div class="desc">3-helix bundle, all H-bonds at 2.0&nbsp;&Aring;</div>
+      <div class="desc">3-helix bundle. H-bond biases + SASA packs 3 helices without native contacts.</div>
       <div style="margin-top:6px"><a href="villin_fold.html" style="color:#66bb6a">&#9654; Run</a> &middot; <a href="villin_fold.webm" style="color:#ef5350">&#9654; Video</a></div>
       <span class="tag tag-protein">protein</span>
     </div>
     <div class="card" style="border-color:#ffd54f;background:#1a1a0a">
       <h3 style="color:#ffd54f">WW Domain 1PIN (34 res)</h3>
-      <div class="desc">All-&beta; fold: 3/4 &beta;-sheet H-bonds &lt;3&nbsp;&Aring; (2.31, 2.41, 2.70). Core packing M10-F20=4.9.</div>
+      <div class="desc">All-&beta; fold. H-bond biases + SASA. No native hydrophobic contacts.</div>
       <div style="margin-top:6px">
         <a href="ww_domain_fold.html" style="color:#66bb6a">&#9654; Run</a> &middot;
         <a href="ww_domain_fold_initial.png" style="color:#90caf9">Initial</a> &middot;
@@ -266,13 +295,13 @@ footer a { color: #4fc3f7; text-decoration: none; }
     </div>
     <div class="card" style="border-color:#ef5350;background:#1a0a0a">
       <h3 style="color:#ef5350">Crambin 1CRN (46 res)</h3>
-      <div class="desc">&alpha;+&beta; fold: 2/3 disulfides at 5.4&ndash;5.6&nbsp;&Aring;, helix=1.89, &beta;-sheet=1.99</div>
+      <div class="desc">&alpha;+&beta; fold. H-bond biases + SASA. 3/5 H-bonds form, disulfides approach target.</div>
       <div style="margin-top:6px"><a href="crambin_fold.html" style="color:#66bb6a">&#9654; Run</a></div>
       <span class="tag tag-protein">protein</span>
     </div>
     <div class="card" style="border-color:#ffb74d;background:#1a1500">
       <h3 style="color:#ffb74d">GB1 (56 res)</h3>
-      <div class="desc">&alpha;+&beta; fold: 4/5 helix H-bonds &lt;3&nbsp;&Aring; (2.34), core+&beta;-sheet at target.</div>
+      <div class="desc">&alpha;+&beta; fold. H-bond biases + SASA. No native hydrophobic contacts.</div>
       <div style="margin-top:6px">
         <a href="gb1_fold.html" style="color:#66bb6a">&#9654; Run</a> &middot;
         <a href="gb1_fold_screenshot.png" style="color:#ef5350">Result</a>
@@ -281,13 +310,13 @@ footer a { color: #4fc3f7; text-decoration: none; }
     </div>
     <div class="card" style="border-color:#4fc3f7;background:#0a1520">
       <h3 style="color:#4fc3f7">Ubiquitin (76 res)</h3>
-      <div class="desc">Helix H-bond at 2.04&nbsp;&Aring;, &beta;-sheet closing</div>
+      <div class="desc">76 residues. H-bond biases + SASA. No native hydrophobic contacts.</div>
       <div style="margin-top:6px"><a href="ubiquitin_fold.html" style="color:#66bb6a">&#9654; Run</a> &middot; <a href="ubiquitin_fold.webm" style="color:#ef5350">&#9654; Video</a></div>
       <span class="tag tag-protein">protein</span>
     </div>
     <div class="card" style="border-color:#ff7043;background:#1a0f0a">
       <h3 style="color:#ff7043">Myoglobin 1MBN (153 res)</h3>
-      <div class="desc">Largest RealQM fold: 5/6 helix H-bonds &lt;3&nbsp;&Aring;, G=1.41, heme pocket=7.4&nbsp;&Aring;. 65% folded.</div>
+      <div class="desc">Largest: 153 residues, 8 helices. H-bond biases + SASA. No native contacts.</div>
       <div style="margin-top:6px">
         <a href="myoglobin_fold.html" style="color:#66bb6a">&#9654; Run</a> &middot;
         <a href="myoglobin_fold_initial.png" style="color:#90caf9">Initial</a> &middot;

@@ -3651,6 +3651,49 @@ async function moveNuclei(gpuForces) {
       }
     }
 
+    // SASA hydrophobic pressure: exposed residues get inward force toward centroid
+    const sasa = window.USER_SASA;
+    if (sasa) {
+      const probeR = sasa.probeRadius || 15.0;  // neighbor cutoff in grid units
+      const gamma = sasa.gamma || 0.5;           // surface tension (force scale)
+      const maxNeighbors = sasa.maxNeighbors || 6; // fully buried threshold
+
+      // Protein centroid (Ca atoms only)
+      let cx = 0, cy = 0, cz = 0;
+      for (let g = 0; g < nRes; g++) {
+        cx += nucPos[caIdx[g]][0];
+        cy += nucPos[caIdx[g]][1];
+        cz += nucPos[caIdx[g]][2];
+      }
+      cx /= nRes; cy /= nRes; cz /= nRes;
+
+      // Per-residue: count neighbors, compute exposure, add inward force
+      for (let g = 0; g < nRes; g++) {
+        let neighbors = 0;
+        const px = nucPos[caIdx[g]][0], py = nucPos[caIdx[g]][1], pz = nucPos[caIdx[g]][2];
+        for (let h = 0; h < nRes; h++) {
+          if (h === g) continue;
+          const dx = nucPos[caIdx[h]][0] - px;
+          const dy = nucPos[caIdx[h]][1] - py;
+          const dz = nucPos[caIdx[h]][2] - pz;
+          if (dx*dx + dy*dy + dz*dz < probeR * probeR) neighbors++;
+        }
+        // Exposure: 1 = fully exposed, 0 = fully buried
+        const exposure = Math.max(0, 1 - neighbors / maxNeighbors);
+        if (exposure > 0) {
+          // Force toward centroid, proportional to exposure
+          const dx = cx - px, dy = cy - py, dz = cz - pz;
+          const d = Math.sqrt(dx*dx + dy*dy + dz*dz) + 0.01;
+          resFx[g] += gamma * exposure * dx / d;
+          resFy[g] += gamma * exposure * dy / d;
+          resFz[g] += gamma * exposure * dz / d;
+        }
+      }
+      if (phaseSteps % 500 === 0) {
+        console.log("SASA: gamma=" + gamma + " probeR=" + probeR);
+      }
+    }
+
     // 2. Move residues — mode-dependent
     if (cmd.mode === 'translate') {
       // Per-residue rigid translation: each residue group moves by its net force (3D)

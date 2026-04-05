@@ -259,6 +259,13 @@ window.onerror = function(msg, url, line) {
     mdDt: 0.01
   };
 
+  // Implicit solvent: SASA hydrophobic pressure
+  window.USER_SASA = {
+    probeRadius: 12.0,   // tighter cutoff — pressure persists at closer range
+    gamma: 5.0,          // stronger surface tension
+    maxNeighbors: 4      // harder to count as buried
+  };
+
   window.USER_PROTEIN_COUNT = nProtein;
   window.USER_NN = gridN;
   window.USER_ATOMS = atoms;
@@ -284,48 +291,90 @@ s.onload = function() {
   var p5s = document.createElement('script');
   p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
   p5s.onload = function() {
-    var recorder = null, chunks = [], recording = false, recInterval = null;
-    window._toggleRecording = function() {
+    // Snapshot-based video: press R to start, R to stop & download
+    var SNAPSHOT_INTERVAL = 200;
+    var PLAYBACK_FPS = 15;
+    var frames = [];
+    var snapshotActive = false;
+    var lastSnapshotStep = -1;
+
+    var _snapCheck = setInterval(function() {
+      if (!snapshotActive) return;
       var canvas = document.querySelector('canvas');
-      if (!canvas) return;
-      if (!recording) {
-        chunks = [];
-        var stream = canvas.captureStream(0);
-        var track = stream.getVideoTracks()[0];
-        window._recStreamTrack = track;
-        var mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9')
-          ? 'video/webm; codecs=vp9' : 'video/webm';
-        recorder = new MediaRecorder(stream, { mimeType: mimeType });
-        recorder.ondataavailable = function(ev) { if (ev.data.size > 0) chunks.push(ev.data); };
-        recorder.onstop = function() {
-          var blob = new Blob(chunks, { type: mimeType });
-          var url = URL.createObjectURL(blob);
-          var a = document.createElement('a');
-          a.href = url; a.download = 'chignolin_dry.webm'; a.click();
-          URL.revokeObjectURL(url);
+      if (!canvas || typeof phaseSteps === 'undefined') return;
+      if (phaseSteps <= lastSnapshotStep) return;
+      if (phaseSteps % SNAPSHOT_INTERVAL !== 0) return;
+      lastSnapshotStep = phaseSteps;
+      canvas.toBlob(function(blob) {
+        if (blob) {
+          frames.push(blob);
+          console.log('Snapshot ' + frames.length + ' at step ' + phaseSteps);
+        }
+      }, 'image/webp', 0.85);
+    }, 100);
+
+    function stitchVideo() {
+      if (frames.length === 0) { console.log('No frames captured'); return; }
+      console.log('Stitching ' + frames.length + ' frames at ' + PLAYBACK_FPS + ' fps...');
+      var canvas = document.querySelector('canvas');
+      var w = canvas.width, h = canvas.height;
+      var offscreen = document.createElement('canvas');
+      offscreen.width = w; offscreen.height = h;
+      var ctx = offscreen.getContext('2d');
+      var stream = offscreen.captureStream(0);
+      var track = stream.getVideoTracks()[0];
+      var mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9')
+        ? 'video/webm; codecs=vp9' : 'video/webm';
+      var recorder = new MediaRecorder(stream, { mimeType: mimeType, videoBitsPerSecond: 5000000 });
+      var chunks = [];
+      recorder.ondataavailable = function(ev) { if (ev.data.size > 0) chunks.push(ev.data); };
+      recorder.onstop = function() {
+        var blob = new Blob(chunks, { type: mimeType });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = 'chignolin_fold.webm'; a.click();
+        URL.revokeObjectURL(url);
+        console.log('Video saved: chignolin_fold.webm (' + frames.length + ' frames)');
+      };
+      recorder.start();
+      var frameDuration = 1000 / PLAYBACK_FPS;
+      var idx = 0;
+      function drawNext() {
+        if (idx >= frames.length) { recorder.stop(); return; }
+        var img = new Image();
+        img.onload = function() {
+          ctx.drawImage(img, 0, 0, w, h);
+          if (track.requestFrame) track.requestFrame();
+          idx++;
+          setTimeout(drawNext, frameDuration);
         };
-        recorder.start(1000);
-        recInterval = setInterval(function() { try { track.requestFrame(); } catch(e) {} }, 20000);
-        recording = true;
+        img.src = URL.createObjectURL(frames[idx]);
+      }
+      drawNext();
+    }
+
+    window._toggleRecording = function() {
+      if (!snapshotActive) {
+        frames = [];
+        lastSnapshotStep = -1;
+        snapshotActive = true;
         var dot = document.createElement('div');
         dot.id = 'rec-indicator';
         dot.style.cssText = 'position:fixed;top:10px;right:10px;background:red;color:#fff;padding:4px 10px;border-radius:4px;font:bold 14px monospace;z-index:9999;';
-        dot.textContent = '\u25CF REC';
+        dot.textContent = '\u25CF SNAP';
         document.body.appendChild(dot);
+        console.log('Snapshot recording started (every ' + SNAPSHOT_INTERVAL + ' steps, press R to stop & save)');
       } else {
-        if (recInterval) { clearInterval(recInterval); recInterval = null; }
-        recorder.stop(); recording = false;
-        window._recStreamTrack = null;
+        snapshotActive = false;
         var ind = document.getElementById('rec-indicator');
         if (ind) ind.remove();
+        console.log('Captured ' + frames.length + ' frames, stitching video...');
+        stitchVideo();
       }
     };
+    // Auto-enable 3D view after init
     setTimeout(function() {
       window._view3D = true;
-      setTimeout(function() {
-        window._toggleRecording();
-        setTimeout(function() { if (recording) window._toggleRecording(); }, 60 * 60 * 1000);
-      }, 3000);
     }, 5000);
   };
   document.body.appendChild(p5s);

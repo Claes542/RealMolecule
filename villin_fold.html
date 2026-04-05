@@ -226,40 +226,24 @@ window.onerror = function(msg, url, line) {
     mdDt: 0.01,
     targetCaCa: 3.8 * A,
     contactBias: {
-      // H-bond attractions for all 3 helices (i→i+4)
+      // Universal i→i+4 bias: apply to ALL residues — no knowledge of which are helical
       hbonds: (function() {
         var hb = [];
-        // Helix 1: res 3-9
-        for (var i = 3; i + 4 <= 9; i++) {
-          if (amideHIdx[i+4] >= 0) hb.push({ a: carbonylOIdx[i], b: amideHIdx[i+4], target: 2.0 * A, label: "H1:O"+i+"···H"+(i+4) });
-        }
-        // Helix 2: res 14-18
-        for (var i = 14; i + 4 <= 18; i++) {
-          if (amideHIdx[i+4] >= 0) hb.push({ a: carbonylOIdx[i], b: amideHIdx[i+4], target: 2.0 * A, label: "H2:O"+i+"···H"+(i+4) });
-        }
-        // Helix 3: res 22-32
-        for (var i = 22; i + 4 <= 32; i++) {
-          if (amideHIdx[i+4] >= 0) hb.push({ a: carbonylOIdx[i], b: amideHIdx[i+4], target: 2.0 * A, label: "H3:O"+i+"···H"+(i+4) });
+        for (var i = 0; i + 4 < nRes; i++) {
+          if (amideHIdx[i+4] >= 0) hb.push({ a: carbonylOIdx[i], b: amideHIdx[i+4], target: 2.0 * A, label: "O"+i+"···H"+(i+4) });
         }
         return hb;
       })(),
-      // Hydrophobic core: Phe6-Phe10-Phe17 triangle
-      // + inter-helix contacts to pack helices together
-      contacts: [
-        // Phe core triangle
-        { a: caIndices[5], b: caIndices[9],  target: 6.0 * A, label: "F6-F10" },
-        { a: caIndices[5], b: caIndices[16], target: 8.0 * A, label: "F6-F17" },
-        { a: caIndices[9], b: caIndices[16], target: 7.0 * A, label: "F10-F17" },
-        // Inter-helix packing: helix1-helix2 turn
-        { a: caIndices[9], b: caIndices[14], target: 8.0 * A, label: "H1end-H2start" },
-        // Inter-helix packing: helix2-helix3 turn
-        { a: caIndices[18], b: caIndices[22], target: 8.0 * A, label: "H2end-H3start" },
-        // End-to-end compaction
-        { a: caIndices[0], b: caIndices[34], target: 12.0 * A, label: "Ca0-Ca34" }
-      ],
+      contacts: [],  // SASA handles hydrophobic packing
       hbondStrength: 0.8,
-      contactStrength: 1.5
+      contactStrength: 0
     }
+  };
+
+  window.USER_SASA = {
+    probeRadius: 12.0,
+    gamma: 5.0,
+    maxNeighbors: 4
   };
 
   window.USER_PROTEIN_COUNT = nProtein;
@@ -358,7 +342,6 @@ s.onload = function() {
     // Auto-start 3D fixed + recording
     window._view3D = true;
     window._view3D_fixed = true;
-    setTimeout(function() { window._toggleRecording(); }, 2000);
   };
   document.body.appendChild(p5s);
 };

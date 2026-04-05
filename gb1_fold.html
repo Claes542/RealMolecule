@@ -238,32 +238,13 @@ window.onerror = function(msg, url, line) {
         return hb;
       })(),
       // Hydrophobic core + inter-element contacts
-      contacts: [
-        // Core: L5, I6, V28, F30 pack together
-        { a: caIndices[4], b: caIndices[29], target: 7.0 * A, label: "L5-F30" },
-        { a: caIndices[5], b: caIndices[28], target: 7.0 * A, label: "I6-V29" },
-        { a: caIndices[2], b: caIndices[42], target: 8.0 * A, label: "Y3-W43" },
-        { a: caIndices[4], b: caIndices[42], target: 8.0 * A, label: "L5-W43" },
-        // β1-β4 strand packing
-        { a: caIndices[3], b: caIndices[53], target: 5.0 * A, label: "β1-β4:K4-V54" },
-        { a: caIndices[6], b: caIndices[51], target: 5.0 * A, label: "β1-β4:L7-T52" },
-        // β2-β3 strand packing
-        { a: caIndices[14], b: caIndices[44], target: 5.0 * A, label: "β2-β3:E15-Y45" },
-        { a: caIndices[16], b: caIndices[42], target: 5.0 * A, label: "β2-β3:T17-W43" },
-        // Helix-sheet packing
-        { a: caIndices[26], b: caIndices[5], target: 9.0 * A, label: "Hx-β1:E27-I6" },
-        { a: caIndices[30], b: caIndices[15], target: 9.0 * A, label: "Hx-β2:K31-T16" },
-        // End-to-end (β1 N-term to β4 C-term, adjacent in sheet)
-        { a: caIndices[0], b: caIndices[55], target: 8.0 * A, label: "Ca0-Ca55" },
-        // Turn contacts
-        { a: caIndices[8], b: caIndices[13], target: 8.0 * A, label: "turn1:N9-G14" },
-        { a: caIndices[36], b: caIndices[42], target: 8.0 * A, label: "turn2:A37-W43" }
-      ],
+      contacts: [],
       hbondStrength: 0.8,
-      contactStrength: 1.5
+      contactStrength: 0
     }
   };
 
+  window.USER_SASA = { probeRadius: 12.0, gamma: 5.0, maxNeighbors: 4 };
   window.USER_PROTEIN_COUNT = nProtein;
   window.USER_NN = gridN;
   window.USER_ATOMS = atoms;
@@ -339,10 +320,9 @@ s.onload = function() {
         }, 33);
       }
     };
-    // Auto-start 3D fixed + recording
+    // Auto-start 3D fixed
     window._view3D = true;
     window._view3D_fixed = true;
-    setTimeout(function() { window._toggleRecording(); }, 2000);
   };
   document.body.appendChild(p5s);
 };

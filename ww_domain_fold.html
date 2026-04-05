@@ -233,22 +233,13 @@ window.onerror = function(msg, url, line) {
         }
         return hb;
       })(),
-      contacts: [
-        // Hydrophobic core: Trp6, Trp29, Phe20
-        { a: caIndices[5], b: caIndices[28], target: 8.0 * A, label: "W6-W29" },
-        { a: caIndices[9], b: caIndices[19], target: 7.0 * A, label: "M10-F20" },
-        { a: caIndices[5], b: caIndices[19], target: 8.0 * A, label: "W6-F20" },
-        // Turn contacts
-        { a: caIndices[10], b: caIndices[17], target: 7.0 * A, label: "turn1:S11-V17" },
-        { a: caIndices[22], b: caIndices[27], target: 7.0 * A, label: "turn2:I23-Q28" },
-        // End-to-end
-        { a: caIndices[0], b: caIndices[33], target: 15.0 * A, label: "Ca0-Ca33" }
-      ],
+      contacts: [],
       hbondStrength: 0.8,
-      contactStrength: 1.5
+      contactStrength: 0
     }
   };
 
+  window.USER_SASA = { probeRadius: 12.0, gamma: 5.0, maxNeighbors: 4 };
   window.USER_PROTEIN_COUNT = nProtein;
   window.USER_NN = gridN;
   window.USER_ATOMS = atoms;
@@ -312,11 +303,9 @@ s.onload = function() {
         if (ind) ind.remove();
       }
     };
-    // Auto-start 3D + recording
+    // Auto-start 3D
     setTimeout(function() {
       window._view3D = true;
-      setTimeout(function() { window._toggleRecording(); }, 2000);
-      setTimeout(function() { if (document.getElementById('rec-indicator')) window._toggleRecording(); }, 30 * 60 * 1000);
     }, 5000);
   };
   document.body.appendChild(p5s);

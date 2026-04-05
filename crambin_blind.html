@@ -261,15 +261,28 @@ window.onerror = function(msg, url, line) {
     mdDt: 0.01,
     targetCaCa: 3.8 * A,
     contactBias: {
-      hbonds: [],
-      contacts: [
-        { a: caIndices[2], b: caIndices[39], target: 5.6 * A, label: "SS:C3-C40" },
-        { a: caIndices[3], b: caIndices[31], target: 5.6 * A, label: "SS:C4-C32" },
-        { a: caIndices[15], b: caIndices[25], target: 5.6 * A, label: "SS:C16-C26" },
-        { a: caIndices[0], b: caIndices[45], target: 12.0 * A, label: "Ca0-Ca45" }
-      ],
-      hbondStrength: 0,
-      contactStrength: 1.5
+      hbonds: (function() {
+        var hb = [];
+        // Helix 1 (res 7-19): i→i+4
+        for (var i = 7; i + 4 <= 19; i++) {
+          if (amideHIdx[i+4] >= 0) hb.push({ a: carbonylOIdx[i], b: amideHIdx[i+4], target: 2.0 * A, label: "H1:O"+i+"···H"+(i+4) });
+        }
+        // Helix 2 (res 23-30): i→i+4
+        for (var i = 23; i + 4 <= 30; i++) {
+          if (amideHIdx[i+4] >= 0) hb.push({ a: carbonylOIdx[i], b: amideHIdx[i+4], target: 2.0 * A, label: "H2:O"+i+"···H"+(i+4) });
+        }
+        // β-sheet: β1(1-4) ↔ β2(32-35) antiparallel
+        var beta = [[1,34],[2,33],[3,32]];
+        for (var b = 0; b < beta.length; b++) {
+          var bi = beta[b][0], bj = beta[b][1];
+          if (amideHIdx[bj] >= 0) hb.push({ a: carbonylOIdx[bi], b: amideHIdx[bj], target: 2.0 * A, label: "β:O"+bi+"···H"+bj });
+          if (amideHIdx[bi] >= 0) hb.push({ a: carbonylOIdx[bj], b: amideHIdx[bi], target: 2.0 * A, label: "β:O"+bj+"···H"+bi });
+        }
+        return hb;
+      })(),
+      contacts: [],  // SASA handles packing
+      hbondStrength: 0.8,
+      contactStrength: 0
     }
   };
 
@@ -292,6 +305,7 @@ window.onerror = function(msg, url, line) {
   }
   window.USER_INIT_VEL = initVel;
 
+  window.USER_SASA = { probeRadius: 12.0, gamma: 5.0, maxNeighbors: 4 };
   window.USER_PROTEIN_COUNT = nProtein;
   window.USER_NN = gridN;
   window.USER_ATOMS = atoms;
@@ -360,11 +374,7 @@ s.onload = function() {
         if (ind) ind.remove();
       }
     };
-    setTimeout(function() {
-      window._view3D = true;
-      setTimeout(function() { window._toggleRecording(); }, 2000);
-      setTimeout(function() { if (document.getElementById('rec-indicator')) window._toggleRecording(); }, 60 * 60 * 1000);
-    }, 5000);
+    setTimeout(function() { window._view3D = true; }, 5000);
   };
   document.body.appendChild(p5s);
 };

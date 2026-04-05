@@ -24,7 +24,7 @@
 
   // Lay out backbone as two straight strands with sharp turn at middle
   // Fold angle = angle between strands at hinge (20°)
-  var openingAngle = 90 * Math.PI / 180; // angle between the two strands — halfway open
+  var openingAngle = 60 * Math.PI / 180; // start beyond where dry stalls — can water complete?
 
   // Place backbone: U-shape with smooth turn at bottom
   var bb = [];
@@ -258,14 +258,14 @@
     (atoms[ca1].j - atoms[ca0].j) * (atoms[ca1].j - atoms[ca0].j)
   );
 
-  window.USER_ELASTIC_BACKBONE = {
-    caIndices: caIndices,         // Ca atom index for each residue
-    groups: elasticGroups,        // atom indices per residue
-    offsets: elasticOffsets,       // initial offsets from Ca per group
-    r0: r0_grid,                  // equilibrium Ca-Ca distance (grid units)
-    springK: 50.0,                // spring constant
-    elasticSteps: 20,             // elastic relaxation steps per quantum force update
-    elasticDt: 0.05              // elastic timestep
+  // Rigid-strand pivot dynamics (like chignolin) — two halves rotate at hinge
+  window.USER_CLASSICAL_MD = {
+    hingeRes: 6,  // hinge between residues 5 and 6 (middle of 12-residue chain)
+    caIndices: caIndices,
+    groups: elasticGroups,
+    offsets: elasticOffsets,
+    mdSteps: 50,
+    mdDt: 0.01
   };
 
   window.USER_VIEW_YROT = 0;
@@ -274,13 +274,11 @@
   window.USER_ATOMS = atoms;
   window.USER_SCREEN = scr;
   window.USER_STEPS = 1000000;
-  window.USER_DYNAMICS = true;      // start with nuclear motion on
-  window.USER_GRADP_FORCE = true;  // try gradP for speed
-  window.USER_FORCE_SCALE = 5.0;  // 5x force for dynamics
-  window.USER_DAMPING = 0.5;  // heavy damping — overdamped regime
-  window.USER_NUC_SUBSTEPS = 10;  // 10 position updates per force computation
-  window.USER_ARROW_SCALE = 10.0;   // arrow display
-  window.USER_PROTEIN_COUNT = nProtein;  // for coloring force arrows
+  window.USER_DYNAMICS = true;
+  window.USER_FORCE_SCALE = 50.0;   // match chignolin (was 5)
+  window.USER_N_MOVE = 15;          // force update every 15 steps (was default 200)
+  window.USER_ARROW_SCALE = 0.2;
+  window.USER_PROTEIN_COUNT = nProtein;
   window.USER_Z = atoms.map(function(a) { return a.Z; });
   window.USER_RC = atoms.map(function(a) {
     if (a.el === 'H') return 0;
@@ -297,48 +295,95 @@ s.onload = function() {
   var p5s = document.createElement('script');
   p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
   p5s.onload = function() {
-    // Video recording: press R to start/stop, auto-downloads webm
-    var recorder = null, chunks = [], recording = false;
-    window._toggleRecording = function() {
+    // Snapshot-based video recording: press R to start capturing frames,
+    // R again to stop and stitch into a video.
+    // Captures one frame every SNAPSHOT_INTERVAL simulation steps.
+    var SNAPSHOT_INTERVAL = 200;  // capture every N steps
+    var PLAYBACK_FPS = 15;       // video playback speed
+    var frames = [];
+    var snapshotActive = false;
+    var lastSnapshotStep = -1;
+
+    // Hook into the draw loop to grab frames at step intervals
+    var _snapCheck = setInterval(function() {
+      if (!snapshotActive) return;
       var canvas = document.querySelector('canvas');
-      if (!canvas) return;
-      if (!recording) {
-        chunks = [];
-        var stream = canvas.captureStream(30);  // 30fps playback
-        var mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9')
-          ? 'video/webm; codecs=vp9'
-          : MediaRecorder.isTypeSupported('video/webm; codecs=vp8')
-          ? 'video/webm; codecs=vp8'
-          : MediaRecorder.isTypeSupported('video/webm')
-          ? 'video/webm'
-          : 'video/mp4';
-        console.log('Recording with: ' + mimeType);
-        recorder = new MediaRecorder(stream, { mimeType: mimeType });
-        recorder.ondataavailable = function(ev) { if (ev.data.size > 0) chunks.push(ev.data); };
-        recorder.onstop = function() {
-          var blob = new Blob(chunks, { type: mimeType });
-          var ext = mimeType.indexOf('mp4') >= 0 ? 'mp4' : 'webm';
-          var url = URL.createObjectURL(blob);
-          var a = document.createElement('a');
-          a.href = url; a.download = 'hairpin_solvated_fold.' + ext; a.click();
-          URL.revokeObjectURL(url);
+      if (!canvas || typeof phaseSteps === 'undefined') return;
+      if (phaseSteps <= lastSnapshotStep) return;
+      if (phaseSteps % SNAPSHOT_INTERVAL !== 0) return;
+      lastSnapshotStep = phaseSteps;
+      // Capture frame as blob
+      canvas.toBlob(function(blob) {
+        if (blob) {
+          frames.push(blob);
+          console.log('Snapshot ' + frames.length + ' at step ' + phaseSteps);
+        }
+      }, 'image/webp', 0.85);
+    }, 100);
+
+    function stitchVideo() {
+      if (frames.length === 0) { console.log('No frames captured'); return; }
+      console.log('Stitching ' + frames.length + ' frames at ' + PLAYBACK_FPS + ' fps...');
+      var canvas = document.querySelector('canvas');
+      var w = canvas.width, h = canvas.height;
+      var offscreen = document.createElement('canvas');
+      offscreen.width = w; offscreen.height = h;
+      var ctx = offscreen.getContext('2d');
+      var stream = offscreen.captureStream(0); // manual frame push
+      var track = stream.getVideoTracks()[0];
+      var mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9')
+        ? 'video/webm; codecs=vp9'
+        : MediaRecorder.isTypeSupported('video/webm; codecs=vp8')
+        ? 'video/webm; codecs=vp8'
+        : 'video/webm';
+      var recorder = new MediaRecorder(stream, { mimeType: mimeType, videoBitsPerSecond: 5000000 });
+      var chunks = [];
+      recorder.ondataavailable = function(ev) { if (ev.data.size > 0) chunks.push(ev.data); };
+      recorder.onstop = function() {
+        var blob = new Blob(chunks, { type: mimeType });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = 'hairpin_solvated.webm'; a.click();
+        URL.revokeObjectURL(url);
+        console.log('Video saved: hairpin_solvated.webm (' + frames.length + ' frames)');
+      };
+      recorder.start();
+      var frameDuration = 1000 / PLAYBACK_FPS;
+      var idx = 0;
+      function drawNext() {
+        if (idx >= frames.length) {
+          recorder.stop();
+          return;
+        }
+        var img = new Image();
+        img.onload = function() {
+          ctx.drawImage(img, 0, 0, w, h);
+          if (track.requestFrame) track.requestFrame();
+          idx++;
+          setTimeout(drawNext, frameDuration);
         };
-        window._recStreamTrack = stream.getVideoTracks()[0];
-        recorder.start();
-        recording = true;
+        img.src = URL.createObjectURL(frames[idx]);
+      }
+      drawNext();
+    }
+
+    window._toggleRecording = function() {
+      if (!snapshotActive) {
+        frames = [];
+        lastSnapshotStep = -1;
+        snapshotActive = true;
         var dot = document.createElement('div');
         dot.id = 'rec-indicator';
         dot.style.cssText = 'position:fixed;top:10px;right:10px;background:red;color:#fff;padding:4px 10px;border-radius:4px;font:bold 14px monospace;z-index:9999;';
-        dot.textContent = '\u25CF REC';
+        dot.textContent = '\u25CF SNAP';
         document.body.appendChild(dot);
-        console.log('Recording started (press R to stop)');
+        console.log('Snapshot recording started (every ' + SNAPSHOT_INTERVAL + ' steps, press R to stop & save)');
       } else {
-        recorder.stop();
-        recording = false;
-        window._recStreamTrack = null;
+        snapshotActive = false;
         var ind = document.getElementById('rec-indicator');
         if (ind) ind.remove();
-        console.log('Recording stopped, saving...');
+        console.log('Captured ' + frames.length + ' frames, stitching video...');
+        stitchVideo();
       }
     };
   };

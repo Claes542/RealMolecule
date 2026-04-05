@@ -220,9 +220,7 @@ window.onerror = function(msg, url, line) {
     mdDt: 0.01,
     targetCaCa: 3.8 * A,
     contactBias: {
-      // H-bond attractions:
-      //   Alpha helix (res 1-9): O[i] → H[i+4]
-      //   3_10 helix (res 11-14): O[i] → H[i+3]
+      // H-bond attractions only — no hydrophobic contacts (SASA handles that)
       hbonds: (function() {
         var hb = [];
         // Alpha helix i→i+4
@@ -239,16 +237,17 @@ window.onerror = function(msg, url, line) {
         }
         return hb;
       })(),
-      // Hydrophobic contacts: Trp6 burial into Pro core
-      contacts: [
-        { a: caIndices[5], b: caIndices[17], target: 6.0 * A, label: "W6-P18" },
-        { a: caIndices[5], b: caIndices[16], target: 7.0 * A, label: "W6-P17" },
-        { a: caIndices[5], b: caIndices[18], target: 7.0 * A, label: "W6-P19" },
-        { a: caIndices[0], b: caIndices[19], target: 10.0 * A, label: "Ca0-Ca19" }
-      ],
-      hbondStrength: 0.8,   // grid cells per step for H-bonds
-      contactStrength: 1.5   // grid cells per step for hydrophobic contacts
+      contacts: [],
+      hbondStrength: 0.8,
+      contactStrength: 0
     }
+  };
+
+  // Implicit solvent: SASA hydrophobic pressure
+  window.USER_SASA = {
+    probeRadius: 12.0,
+    gamma: 5.0,
+    maxNeighbors: 4
   };
 
   window.USER_PROTEIN_COUNT = nProtein;
@@ -316,9 +315,6 @@ s.onload = function() {
     // Auto-start 3D fixed + recording immediately
     window._view3D = true;
     window._view3D_fixed = true;
-    setTimeout(function() {
-      window._toggleRecording();
-    }, 2000);  // small delay for first frame to render
   };
   document.body.appendChild(p5s);
 };

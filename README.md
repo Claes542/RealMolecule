@@ -103,13 +103,9 @@ Watch molecules assemble one atom at a time — heavy skeleton first, then hydro
 
 ### Benchmarks: Protein Folding
 
-#### Hairpin folding from quantum forces alone
+#### Hairpin folding from quantum H-bonds
 
-https://github.com/Claes542/H2O/raw/main/hairpin_fold.webm
-
-> **12-residue polyglycine beta-hairpin** (87 atoms, no solvent) folds from a nearly straight chain (175° opening angle) into a U-shaped hairpin — driven purely by ab initio quantum mechanical forces. No empirical force field (AMBER, CHARMM, etc.) is used. The folding tendency emerges directly from solving the Schrödinger equation: backbone NH and CO groups on opposite strands create favorable electrostatic interactions (quantum hydrogen bonding). [Run it yourself →](hairpin_bent_dry.html)
-
-**Method**: The electronic structure is solved from first principles on a 200³ real-space grid (Born-Oppenheimer approximation). The resulting quantum forces drive coarse-grained rigid-body dynamics where two chain segments pivot at a central hinge. After each geometry update, the electronic structure is re-solved from scratch.
+> **12-residue polyglycine beta-hairpin** folds from 150° to ~105° opening angle driven purely by quantum mechanical forces — interstrand N-H···O=C hydrogen bonds pull the two strands together. No empirical force field is used. The folding stalls at ~105° where H-bond attraction balances backbone repulsion. Adding explicit water does not help: the hydrophobic effect that completes folding in real biology is entropic, which our electronic energy solver cannot capture. [Run dry →](hairpin_bent_dry.html) | [Side by side →](hairpin_sidebyside.html)
 
 #### Alpha-helix formation from near-linear chain
 
@@ -134,28 +130,43 @@ The chain compresses axially and curls outward into near-ideal helical geometry.
 
 https://github.com/Claes542/H2O/raw/main/helix_solvated.webm
 
-> Same 8-residue polyglycine helix formation, now surrounded by a single shell of explicit water molecules (~150 total atoms on 300³ grid). The water provides additional H-bond partners to the backbone C=O and N-H groups. [Run it yourself →](alpha_helix_solvated_dyn.html)
+> Same 8-residue polyglycine helix formation, now surrounded by a single shell of explicit water molecules (~150 total atoms on 300³ grid). [Run it yourself →](alpha_helix_solvated_dyn.html)
 
-#### Chignolin beta-hairpin: solvation effect on protein folding
+#### Polyglycine vs chignolin: the role of side chains
 
-Solvated (folding): https://github.com/Claes542/H2O/raw/main/chignolin_solvated.webm
-
-**Chignolin** (GYDPETGTWG) is a 10-residue mini-protein that folds into a beta-hairpin — the simplest protein fold. Both simulations start from identical geometry: 25% bent (135° fold angle), with rigid-strand pivot dynamics at the turn (residue 5). All forces computed ab initio from the Schrödinger equation on a 300³ grid. No empirical force fields.
-
-| | **Solvated** (water shell) | **Dry** (vacuum) |
+| | **Polyglycine** (no side chains) | **Chignolin** GYDPETGTWG (real side chains) |
 |---|---|---|
-| **Start** | 135° | 135° |
-| **Direction** | → 119° → **folding** | → 145° → **unfolding** |
-| **Atoms** | ~200 (protein + water) | ~90 (protein only) |
-| **Interpretation** | Water H-bonds to backbone, drives compaction | Extended state preferred without solvent |
+| **Start** | 150° | 135° |
+| **Result** | → 105° (**folds**) | → unfolds |
+| **Why** | Backbone H-bonds dominate | Side-chain repulsion overwhelms H-bonds |
 
-**Why this matters** — this is the first demonstration that an ab initio quantum solver correctly predicts the role of water in protein folding:
+[Run side by side →](hairpin_vs_chignolin.html)
 
-1. **Without water**: backbone C=O and N-H groups on opposite strands repel (both carry partial negative charge from electron density). The chain prefers the extended state.
-2. **With water**: water molecules H-bond to the exposed backbone, and the folded state buries backbone groups that would otherwise need to be solvated. The balance of protein-water and protein-protein H-bonds favors the compact hairpin.
-3. **This matches known physics**: experimental studies show that beta-hairpins are stabilized by the hydrophobic effect and interstrand H-bonds, both requiring solvent. The fact that our ab initio solver reproduces this — without any parameterized solvation model — validates the quantum mechanical treatment of protein-water interactions.
+#### What this tells us about water and folding
 
-[Run solvated (folding) →](chignolin_extended.html) | [Run dry (unfolding) →](chignolin_dry.html)
+Our solver computes electronic energy (Coulomb, kinetic, exchange) but not entropy. Testing shows:
+
+1. **Water is not essential for H-bond driven folding** — polyglycine folds to ~105° in vacuum. Adding explicit water does not improve folding; both dry and solvated converge to the same angle.
+2. **Real proteins with side chains need more than H-bonds** — chignolin unfolds in vacuum because side-chain electron repulsion overwhelms backbone attraction. In real biology, the hydrophobic effect (entropic — water molecules lose orientational freedom near hydrophobic surfaces) overcomes this repulsion and drives compact packing. Our solver cannot capture this entropic force.
+3. **SASA implicit solvent solves this** — a single surface-tension parameter (γ=5.0) replaces all hand-tuned native contacts. Exposed residues feel an inward force toward the protein centroid, proportional to their solvent-accessible surface area. No explicit water molecules needed.
+
+#### Near-blind folding: two generic rules
+
+The closest to blind folding we achieve uses **no knowledge of the native 3D structure**:
+
+1. **Universal i→i+4 H-bond bias** — applied to every residue in the chain. Helices form where quantum forces support them, stay open elsewhere. No need to specify which segments are helical.
+2. **SASA hydrophobic pressure** — one parameter (γ=5.0) drives compaction. No native contacts.
+
+Tested on **Villin HP35** (35 residues, 3-helix bundle): 7/9 helix H-bonds form at 2.4–3.2 Å, Phe core packs to 5.6 Å (target 6.0), with zero knowledge of which residues are helical or where the hydrophobic core is.
+
+| Protein | Residues | H-bond biases | Packing | Result |
+|---------|----------|--------------|---------|--------|
+| Polyglycine | 12 | None (quantum only) | None | Folds 150° → 105° |
+| Chignolin | 10 | None | SASA | Folds 135° → 40° |
+| Trp-cage | 20 | Helix i→i+4 | SASA | Helix + core form |
+| BBA5 | 23 | Helix + sheet | SASA | 3/5 H-bonds, core packs |
+| Villin | 35 | Universal i→i+4 | SASA | 7/9 H-bonds, core at target |
+| Crambin | 46 | Helix + sheet | SASA | 3/5 H-bonds, disulfides approach |
 
 #### Validation suite
 
@@ -165,10 +176,10 @@ Solvated (folding): https://github.com/Claes542/H2O/raw/main/chignolin_solvated.
 | [Formamide dimer](formamide_dimer.html) | 12 (3D) | N-H···O=C hydrogen bond geometry correct (H···O ~1.9 Å) |
 | [Alpha-helix stability](alpha_helix.html) | 35 (3D) | 5-residue polyglycine helix stable under quantum dynamics |
 | [Alpha-helix formation](alpha_helix_dry_300.html) | ~50 (3D) | 8-residue near-linear → 67% helix, 2/4 H-bonds ([video](helix_formation.webm)) |
-| [Hairpin folding](hairpin_bent_dry.html) | 87 (2D) | Folds from 175° to U-shape via quantum forces ([video](hairpin_fold.webm)) |
-| [Chignolin folding](chignolin_extended.html) | ~200 (3D) | 10-residue GYDPETGTWG solvated: folds from 135° → 119°+; unfolds in vacuum |
-| [Trp-cage folding](trpcage_fold.html) | ~200 (3D) | 20-residue TC5b extended → native fold, helix + hydrophobic core |
-| [Hairpin solvated](hairpin_bent_solvated.html) | ~200 (2D) | Solvated hairpin with elastic backbone dynamics |
+| [Hairpin folding (dry)](hairpin_bent_dry.html) | 87 (2D) | Folds from 150° → 105° via quantum H-bonds; water does not improve |
+| [Chignolin folding](chignolin_dry.html) | ~90 (3D) | GYDPETGTWG folds 135° → 40° with SASA hydrophobic pressure ([video](chignolin_fold.webm)) |
+| [Trp-cage folding](trpcage_fold.html) | ~200 (3D) | H-bond biases + SASA, no native contacts |
+| [Villin folding](villin_fold.html) | ~350 (3D) | Universal i→i+4 + SASA, 7/9 H-bonds, blind fold |
 | [Phi/psi scan](ala_dipeptide_scan.html) | 22 | Ramachandran energy surface generator |
 
 **Dynamics models** (combined quantum + classical):
