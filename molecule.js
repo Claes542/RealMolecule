@@ -153,12 +153,12 @@ struct P {
   dt: f32, half_d: f32, h3: f32, sliceK: u32,
 }`;
 
-const ATOM_STRIDE = 8; // 8 f32s per atom (posI, posJ, posK, Z, rc, Z_nuc, pad, pad)
+const ATOM_STRIDE = 8; // 8 f32s per atom (posI, posJ, posK, Z, rc, Z_nuc, initZeff, initRcut)
 const ATOM_BUF_BYTES = MAX_ATOMS * ATOM_STRIDE * 4;
 const atomStructWGSL = `
 struct Atom {
   posI: u32, posJ: u32, posK: u32, Z: f32,
-  rc: f32, Z_nuc: f32, _p1: f32, _p2: f32,
+  rc: f32, Z_nuc: f32, initZeff: f32, initRcut: f32,
 }`;
 
 // U update — label-based domains, Neumann BC at domain boundaries and r_c surfaces
@@ -1329,9 +1329,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // Normalized trial: ∫U²dV = Z_eff analytically (U = Zeff²/√π · exp(-Zeff·r))
     // Domains assigned by highest normalized density
     // Skip wavefunction init for bare protons (Za=0): no electron domain
-    let Ze = select(Za, ${(window.INIT_ZEFF || 0).toFixed(1)}, ${window.INIT_ZEFF ? 'true' : 'false'} && Za > 0.0);
+    let Ze = atoms[n].initZeff;
     let rReal = sqrt(r2);
-    let uTrial = select(Ze * Ze * ${(1/Math.sqrt(Math.PI)).toFixed(10)} * exp(-Ze * r), 0.0, rReal > ${(window.INIT_RCUT || 1e6).toFixed(1)} || Za <= 0.0);
+    let rCutInit = atoms[n].initRcut;
+    let uTrial = select(Ze * Ze * ${(1/Math.sqrt(Math.PI)).toFixed(10)} * exp(-Ze * rReal), 0.0, rReal > rCutInit || Za <= 0.0);
     if (uTrial > bU) { bU = uTrial; bestN = n; }
   }
 
@@ -1756,6 +1757,11 @@ function fillAtomBuf() {
     af[off + 3] = Z[n];
     af[off + 4] = r_cut[n];
     af[off + 5] = Z_nuc[n]; // nuclear charge (may differ from Z for bare protons)
+    // Per-atom init: initZeff controls exp(-Zeff*r), initRcut limits domain radius
+    const perZeff = window.USER_INIT_ZEFF;
+    const perRcut = window.USER_INIT_RCUT;
+    af[off + 6] = perZeff ? perZeff[n] || Z[n] : (window.INIT_ZEFF || Z[n]);
+    af[off + 7] = perRcut ? perRcut[n] || 1e6 : (window.INIT_RCUT || 1e6);
   }
   device.queue.writeBuffer(atomBuf, 0, ab);
 }
@@ -1923,6 +1929,10 @@ async function uploadInitialData() {
           }
         }
       }
+    }
+    // Apply custom psi modification if provided
+    if (window.CUSTOM_PSI_INIT) {
+      window.CUSTOM_PSI_INIT(S, hGrid, uData, lData);
     }
     device.queue.writeBuffer(U_buf[0], 0, uData);
     device.queue.writeBuffer(labelBuf, 0, lData);
@@ -3031,7 +3041,7 @@ async function doSteps(n) {
     return;
   }
 
-  console.log("Step " + tStep + ": E=" + E.toFixed(6) + " (" + lastMs.toFixed(0) + "ms/" + n + "steps)");
+  console.log("Step " + tStep + ": E=" + E.toFixed(6) + " T=" + E_T.toFixed(4) + " V_eK=" + E_eK.toFixed(4) + " V_ee=" + E_ee.toFixed(4) + " V_KK=" + E_KK.toFixed(4) + " (" + lastMs.toFixed(0) + "ms/" + n + "steps)");
 
   // Force readback and nuclear dynamics
   if (needForceReadback) {
@@ -4211,8 +4221,27 @@ function draw() {
       phaseSteps += useLOBPCG ? LOBPCG_ITERS : STEPS_PER_FRAME;
       if (isFinite(E) && E < E_min) E_min = E;
 
+
+      // Unfreeze boundary and perturb Z at specified step
+      if (window.FREEZE_BOUNDARY && window.UNLOCK_AT_STEP && phaseSteps >= window.UNLOCK_AT_STEP) {
+        window.FREEZE_BOUNDARY = false;
+        console.log("=== Boundary unfrozen at step " + phaseSteps + " ===");
+      }
+      if (window.PERTURB_Z_AT_STEP && phaseSteps >= window.PERTURB_Z_AT_STEP) {
+        Z[0] = 1.01; Z[1] = 0.99;
+        updateParamsBuf();
+        console.log("=== Z perturbed to [1.01, 0.99] at step " + phaseSteps + " ===");
+        delete window.PERTURB_Z_AT_STEP;
+      }
+      if (window.RESTORE_Z_AT_STEP && phaseSteps >= window.RESTORE_Z_AT_STEP) {
+        Z[0] = 1; Z[1] = 1;
+        updateParamsBuf();
+        console.log("=== Z restored to [1, 1] at step " + phaseSteps + " ===");
+        delete window.RESTORE_Z_AT_STEP;
+      }
+
       // Auto-enable dynamics after convergence (skip if adaptive sweep)
-      if (!dynamicsEnabled && !window.CONVERGENCE_THRESHOLD && phaseSteps >= 10000) {
+      if (!dynamicsEnabled && !window.CONVERGENCE_THRESHOLD && !window.NO_AUTO_DYNAMICS && phaseSteps >= 10000) {
         dynamicsEnabled = true;
         console.log("=== Dynamics auto-enabled at step " + phaseSteps + " ===");
       }

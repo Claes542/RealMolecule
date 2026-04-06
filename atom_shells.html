@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<pre id="log">Orthohelium — atom.js</pre>
+<canvas id="c" style="display:block;margin:10px auto"></canvas>
+<script>
+// Orthohelium: +2 kernel, 1e inner (r<1), 1e outer (r>1)
+window.USER_Z_KERNEL = 2;
+window.USER_SHELLS = [
+  { ne: 1, Rmax: 1.75, Zeff: 2 },              // inner: 1s-like
+  { ne: 1, Rmax: 5.0, Zeff: 1, outerHalf: true } // outer: only in x > center half
+];
+window.USER_NN = 100;
+window.USER_SCREEN = 10;
+window.USER_D = 0.1;
+window.USER_STEPS = 1000;
+window.USER_POISSON = 'simultaneous';  // match p5.js
+</script>
+<script src="atom.js"></script>
+<script>
+const log = document.getElementById('log');
+const canvas = document.getElementById('c');
+canvas.width = 500; canvas.height = 400;
+const ctx = canvas.getContext('2d');
+const a = window._atom;
+
+function draw() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, 500, 400);
+
+  // Density + W boundary slice at k=N2
+  const scale = 4;
+  for (let i = 0; i <= a.NN; i++) {
+    for (let j = 0; j <= a.NN; j++) {
+      const id = a.idx(i, j, a.N2);
+      const u0 = Math.min(255, a.U[0][id] * 500);
+      const u1 = Math.min(255, a.U[1][id] * 500);
+      if (u0 > 2 || u1 > 2) {
+        ctx.fillStyle = 'rgba(' + Math.round(u0) + ',' + Math.round(u1) + ',0,1)';
+        ctx.fillRect(i * scale, j * scale, scale, scale);
+      }
+      // W=0.5 contour: draw bright pixel where W crosses 0.5
+      const w0 = a.W[0][id], w1 = a.W[1][id];
+      if (Math.abs(w0 - 0.5) < 0.15) {
+        ctx.fillStyle = '#ff0';
+        ctx.fillRect(i * scale, j * scale, 2, 2);
+      }
+      if (Math.abs(w1 - 0.5) < 0.15) {
+        ctx.fillStyle = '#0ff';
+        ctx.fillRect(i * scale + 2, j * scale, 2, 2);
+      }
+    }
+  }
+
+  // Cross-section profiles at j=N2
+  ctx.lineWidth = 2;
+  for (let m = 0; m < a.nShells; m++) {
+    ctx.strokeStyle = m === 0 ? '#f44' : '#4f4';
+    ctx.beginPath();
+    for (let i = 0; i <= a.NN; i++) {
+      const id = a.idx(i, a.N2, a.N2);
+      const y = 350 - a.U[m][id] * 100;
+      if (i === 0) ctx.moveTo(i * scale, y); else ctx.lineTo(i * scale, y);
+    }
+    ctx.stroke();
+  }
+
+  // W profiles — solid bright lines
+  for (let m = 0; m < a.nShells; m++) {
+    ctx.strokeStyle = m === 0 ? '#ff8' : '#8ff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i <= a.NN; i++) {
+      const id = a.idx(i, a.N2, a.N2);
+      const y = 200 - a.W[m][id] * 80;
+      if (i === 0) ctx.moveTo(i * scale, y); else ctx.lineTo(i * scale, y);
+    }
+    ctx.stroke();
+  }
+  // Labels
+  ctx.fillStyle = '#ff8'; ctx.font = '12px monospace';
+  ctx.fillText('W0', 10, 130);
+  ctx.fillStyle = '#8ff';
+  ctx.fillText('W1', 10, 145);
+
+  // Kernel dot
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(a.N2 * scale, a.N2 * scale, 4, 0, 2 * Math.PI);
+  ctx.fill();
+}
+
+let step = 0;
+function iterate() {
+  const t0 = performance.now();
+  const res = a.physicsStep();
+  const ms = performance.now() - t0;
+  step++;
+
+  // Overwrite single line with current energy
+  log.textContent = 'Step ' + step + '/' + window.USER_STEPS +
+    '  E=' + res.E.toFixed(6) +
+    '  T=' + res.E_T.toFixed(4) + '  V_eK=' + res.E_eK.toFixed(4) +
+    '  V_ee=' + res.E_ee.toFixed(4) + res.bdyInfo +
+    '  (' + ms.toFixed(0) + 'ms)  target: -2.175';
+  draw();
+
+  if (step < window.USER_STEPS) {
+    requestAnimationFrame(iterate);
+  } else {
+    log.textContent += '\n=== DONE: E=' + res.E.toFixed(6) + ' (target: -2.175) ===';
+  }
+}
+
+log.textContent += '\nStarting...';
+requestAnimationFrame(iterate);
+</script>
+</body></html>

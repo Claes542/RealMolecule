@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// Helium ground state via molecule.js
+// +2 kernel, 2 electrons split into half-spaces
+// Target E = -2.904 Ha
+(function() {
+  var gridN = 100, scr = 10, N2 = 50;
+
+  // Both electrons share the +2 kernel: each carries Z_nuc=1, total = 2
+  // Tiny y-offset for Voronoi separation
+  window.USER_ATOMS = [
+    { i: N2, j: N2, k: N2, Z: 1, el: 'He' },
+    { i: N2, j: N2, k: N2, Z: 1, el: 'He' }
+  ];
+  window.USER_Z = [1, 1];
+  window.PERTURB_Z_AT_STEP = 5000;   // switch to [1.01, 0.99] at step 5000
+  window.RESTORE_Z_AT_STEP = 10000;  // restore to [1, 1] at step 10000
+  window.USER_Z_NUC = [1, 1];  // each carries half the kernel
+  window.USER_RC = [0, 0];
+  window.NO_NUC_REPULSION = true;
+  window.USER_DYNAMICS = false;
+  window.NO_AUTO_DYNAMICS = true;
+
+  // Exact half-space split at i=N2
+  window.CUSTOM_LABEL_INIT = function(S, h, nucPos, NELEC) {
+    var N2 = Math.floor(S / 2);
+    var lData = new Uint32Array(S * S * S);
+    for (var i = 0; i < S; i++) {
+      for (var j = 0; j < S; j++) {
+        for (var k = 0; k < S; k++) {
+          lData[i * S * S + j * S + k] = (i < N2) ? 0 : (i > N2) ? 1 : 0;
+        }
+      }
+    }
+    return lData;
+  };
+
+  window.FREEZE_BOUNDARY = true;  // lock boundary initially
+  window.UNLOCK_AT_STEP = 5000;   // unfreeze after 5000 steps
+
+  window.USER_NN = gridN;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 50000;
+
+  console.log('Helium ground state: +2 kernel, 2e half-space split, target E=-2.904');
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

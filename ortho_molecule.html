@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// Orthohelium via molecule.js with SHELL_INIT
+// Same problem as atom_shells.html but using molecule.js solver
+(function() {
+  var gridN = 100, scr = 10, N2 = 50;
+
+  window.USER_ATOMS = [
+    { i: N2, j: N2, k: N2, Z: 1, el: 'He' },
+    { i: N2, j: N2, k: N2, Z: 1, el: 'He' }
+  ];
+  window.USER_Z = [1, 1];
+  window.USER_Z_NUC = [2, 0.001];
+  window.USER_RC = [0, 0];
+  window.NO_NUC_REPULSION = true;
+
+  // Shell init: inner r<1.75, outer r>1.75 in half-space
+  window.CUSTOM_LABEL_INIT = function(S, h, nucPos, NELEC) {
+    var N2 = Math.floor(S / 2);
+    var lData = new Uint32Array(S * S * S);
+    for (var i = 0; i < S; i++) {
+      for (var j = 0; j < S; j++) {
+        for (var k = 0; k < S; k++) {
+          var id = i * S * S + j * S + k;
+          var dx = (i - N2) * h, dy = (j - N2) * h, dz = (k - N2) * h;
+          var r = Math.sqrt(dx * dx + dy * dy + dz * dz);
+          if (r < 1.75) {
+            lData[id] = 0;  // inner electron: sphere r < 1.75
+          } else {
+            lData[id] = 1;  // outer electron: shell r > 1.75
+          }
+        }
+      }
+    }
+    return lData;
+  };
+
+  // Bias inner electron wavefunction toward +x
+  window.CUSTOM_PSI_INIT = function(S, h, uData, lData) {
+    var N2 = Math.floor(S / 2);
+    for (var i = 0; i < S; i++) {
+      for (var j = 0; j < S; j++) {
+        for (var k = 0; k < S; k++) {
+          var id = i * S * S + j * S + k;
+          if (lData[id] === 1) {
+            // outer electron: uniform sphere of radius 2 centered at (3, 0, 0) au
+            var dx = (i - N2) * h - 3.0;
+            var dy = (j - N2) * h;
+            var dz = (k - N2) * h;
+            var dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+            uData[id] = dist < 2.0 ? 1.0 : 0.0;
+          }
+        }
+      }
+    }
+  };
+
+  window.SHELL_INIT = [
+    { domains: [0], rmax: 1.75, zeff: 2 },
+    { domains: [1], rmin: 1.75, zeff: 1 }
+  ];
+
+  window.USER_NN = gridN;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 50000;
+  window.USER_DYNAMICS = false;
+  window.NO_AUTO_DYNAMICS = true;
+
+  console.log('Orthohelium via molecule.js: R=1.75, target E=-2.175');
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

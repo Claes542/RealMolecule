@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<pre id="log">Hydrogen atom — atom.js</pre>
+<canvas id="c" style="display:block;margin:10px auto"></canvas>
+<script>
+// Hydrogen: +1 kernel, 1 electron. Exact E = -0.5 Ha
+window.USER_Z_KERNEL = 1;
+window.USER_SHELLS = [
+  { ne: 1, Rmax: 5.0, Zeff: 1 }
+];
+window.USER_NN = 100;
+window.USER_SCREEN = 10;
+window.USER_STEPS = 1000;
+</script>
+<script src="atom.js"></script>
+<script>
+const log = document.getElementById('log');
+const canvas = document.getElementById('c');
+canvas.width = 500; canvas.height = 400;
+const ctx = canvas.getContext('2d');
+const a = window._atom;
+
+function draw() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, 500, 400);
+  const scale = 4;
+  for (let i = 0; i <= a.NN; i++) {
+    for (let j = 0; j <= a.NN; j++) {
+      const id = a.idx(i, j, a.N2);
+      const u0 = Math.min(255, a.U[0][id] * 500);
+      if (u0 > 2) {
+        ctx.fillStyle = 'rgba(' + Math.round(u0) + ',0,0,1)';
+        ctx.fillRect(i * scale, j * scale, scale, scale);
+      }
+    }
+  }
+  ctx.strokeStyle = '#f44';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i <= a.NN; i++) {
+    const id = a.idx(i, a.N2, a.N2);
+    const y = 350 - a.U[0][id] * 100;
+    if (i === 0) ctx.moveTo(i * scale, y); else ctx.lineTo(i * scale, y);
+  }
+  ctx.stroke();
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(a.N2 * scale, a.N2 * scale, 4, 0, 2 * Math.PI);
+  ctx.fill();
+}
+
+let step = 0;
+function iterate() {
+  const res = a.physicsStep();
+  step++;
+  if (step % 5 === 0 || step <= 3) {
+    log.textContent += '\nStep ' + step + ': E=' + res.E.toFixed(6) +
+      ' T=' + res.E_T.toFixed(4) + ' V_eK=' + res.E_eK.toFixed(4);
+  }
+  draw();
+  if (step < window.USER_STEPS) requestAnimationFrame(iterate);
+  else log.textContent += '\n=== DONE: E=' + res.E.toFixed(6) + ' (exact: -0.500) ===';
+}
+requestAnimationFrame(iterate);
+</script>
+</body></html>
