@@ -98,7 +98,7 @@ const W_STEPS_PER_FRAME = Math.max(1, STEPS_PER_FRAME);  // match U steps per fr
 const BOUNDARY_INTERVAL = 20;
 const NORM_INTERVAL = 20;
 const POISSON_INTERVAL = window.USER_POISSON_INTERVAL || 50;
-const USE_DIRECT_POTHER = NELEC <= 5;  // direct per-electron Poisson solve (no SIC needed)
+const USE_DIRECT_POTHER = false;  // disabled: use old Poisson path for all systems
 const SIC_INTERVAL = NELEC <= 15 ? 1 : NELEC <= 30 ? 5 : 999999;  // SIC in dynamics to remove self-interaction from wavefunction evolution
 const SIC_JACOBI = NELEC <= 15 ? 50 : 10;
 
@@ -195,7 +195,8 @@ ${HAS_BARE_NUCLEI ? `
 }
 
 fn isInsideAnalytical(ci: u32, cj: u32, ck: u32, lbl: u32) -> bool {
-  return false;  // disabled: bare atoms use Coulomb softening instead
+  if (atoms[lbl].rc > 0.0) { return false; }  // pseudopotential atoms: handled by isInsideRc
+  return distToAtom(ci, cj, ck, lbl) < ${R_SING};
 }
 
 ${cellIdxWGSL}
@@ -1273,8 +1274,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dj = (f32(j) - f32(atoms[n].posJ)) * p.h;
     let dk = (f32(k) - f32(atoms[n].posK)) * p.h;
     let r2 = di*di + dj*dj + dk*dk;
-    // Bare atoms (rc=0): Coulomb softening. Pseudopotential (rc>0): hard cutoff at rc.
-    let r_eff = select(sqrt(r2 + soft_k), max(sqrt(r2), atoms[n].rc), atoms[n].rc > 0.0);
+    // Bare atoms (rc=0): clamp at R_SING. Pseudopotential (rc>0): hard cutoff at rc.
+    let r_eff = select(max(sqrt(r2), ${R_SING}), max(sqrt(r2), atoms[n].rc), atoms[n].rc > 0.0);
     Kval += Zn / r_eff;
   }
   K[id] = Kval;
@@ -1323,8 +1324,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dy = yj - f32(atoms[n].posJ) * p.h;
     let dz = zk - f32(atoms[n].posK) * p.h;
     let r2 = dx*dx + dy*dy + dz*dz;
-    // Bare atoms (rc=0): Coulomb softening. Pseudopotential (rc>0): hard cutoff at rc.
-    let r = select(sqrt(r2 + soft_k), max(sqrt(r2 + 0.04 * p.h2), atoms[n].rc), atoms[n].rc > 0.0);
+    // Bare atoms (rc=0): clamp at R_SING. Pseudopotential (rc>0): hard cutoff at rc.
+    let r = select(max(sqrt(r2), ${R_SING}), max(sqrt(r2 + 0.04 * p.h2), atoms[n].rc), atoms[n].rc > 0.0);
     Kval += Zn / r;
     // Normalized trial: ∫U²dV = Z_eff analytically (U = Zeff²/√π · exp(-Zeff·r))
     // Domains assigned by highest normalized density
@@ -1332,7 +1333,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let Ze = atoms[n].initZeff;
     let rReal = sqrt(r2);
     let rCutInit = atoms[n].initRcut;
-    let uTrial = select(Ze * Ze * ${(1/Math.sqrt(Math.PI)).toFixed(10)} * exp(-Ze * rReal), 0.0, rReal > rCutInit || Za <= 0.0);
+    let uTrial = select(Ze * Ze * ${(1/Math.sqrt(Math.PI)).toFixed(10)} * exp(-Ze * r), 0.0, rReal > rCutInit || Za <= 0.0);
     if (uTrial > bU) { bU = uTrial; bestN = n; }
   }
 
