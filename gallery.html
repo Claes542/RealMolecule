@@ -42,7 +42,7 @@ footer a { color: #4fc3f7; text-decoration: none; }
 
 <div class="warn">Requires WebGPU: Chrome 113+, Edge 113+, or Safari 17+. Large molecules need a modern GPU with ~1 GB memory.</div>
 
-<!-- FEATURED -->
+<!-- TOP LINKS -->
 <div class="section">
   <div class="grid">
     <a class="card" href="molecule.html" style="border-color:#4fc3f7;background:#1a1a2a;grid-column:1/-1;text-align:center;padding:24px">
@@ -53,11 +53,20 @@ footer a { color: #4fc3f7; text-decoration: none; }
       <h3 style="font-size:16px;color:#ffb74d">Benchmarks &mdash; Protein Folding &amp; H-Bond Validation</h3>
       <div class="desc" style="font-size:13px;margin-top:6px">From formamide H-bond (2.04&Aring;) to 153-residue Myoglobin fold. Full results table.</div>
     </a>
+  </div>
+</div>
 
+<!-- ============================================================ -->
+<!-- PROTEIN FOLDING -->
+<!-- ============================================================ -->
+<div class="section">
+  <h2>Protein Folding</h2>
+  <div class="grid">
+    <!-- RealQM vs AlphaFold2 -->
     <div class="card" style="grid-column:1/-1;border-color:#ff7043;background:#1a0a00;padding:24px;cursor:default">
-      <h3 style="font-size:18px;color:#ff7043">Maybe RealQM Can Do What AlphaFold2 Cannot</h3>
+      <h3 style="font-size:18px;color:#ff7043">RealQM vs AlphaFold2</h3>
       <div class="desc" style="font-size:14px;margin-top:12px;line-height:1.8;color:#ccc">
-        <b style="color:#ff7043">AlphaFold2 cannot:</b><br>
+        <b style="color:#ff7043">What AlphaFold2 cannot:</b><br>
         &bull; Predict protein&ndash;protein docking from physics (it uses learned patterns, not forces)<br>
         &bull; Handle drug&ndash;protein binding (no concept of non-protein molecules)<br>
         &bull; Model chemical reactions (bond breaking/forming)<br>
@@ -65,7 +74,7 @@ footer a { color: #4fc3f7; text-decoration: none; }
         &bull; Account for solvent effects (explicit water molecules in the simulation)<br>
         &bull; Work with non-standard chemistry (metals, modified residues, novel molecules)<br><br>
 
-        <b style="color:#66bb6a">RealQM evidence so far:</b><br>
+        <b style="color:#66bb6a">What RealQM has shown:</b><br>
         &bull; <b>Protein folding</b>: 7 proteins from 20 to 153 residues &mdash;
           all-&alpha; (<a href="trpcage_fold.html" style="color:#4fc3f7">Trp-cage</a>,
           <a href="villin_fold.html" style="color:#4fc3f7">Villin</a>,
@@ -118,108 +127,7 @@ footer a { color: #4fc3f7; text-decoration: none; }
         and long-range force accuracy (Poisson convergence).
       </div>
     </div>
-  </div>
-</div>
 
-<!-- QUICK LAUNCH: key simulations -->
-<div class="section">
-  <h2>Key Simulations</h2>
-  <div class="grid">
-    <a class="card" href="formamide_dimer.html" style="border-color:#0cf;background:#0a1520">
-      <h3 style="color:#0cf">Formamide Dimer</h3>
-      <div class="desc">H&middot;&middot;&middot;O=2.04&nbsp;&Aring;. The peptide H-bond.</div>
-      <span class="tag tag-small">foundation</span>
-    </a>
-    <a class="card" href="water2.html" style="border-color:#26c6da;background:#0a1a2a">
-      <h3 style="color:#26c6da">Water Dimer</h3>
-      <div class="desc">H&middot;&middot;&middot;O=1.87, O-O=2.95&nbsp;&Aring;</div>
-      <span class="tag tag-water">water</span>
-    </a>
-    <div class="card" style="border-color:#ff7043;background:#1a0a00;grid-column:1/-1">
-      <h3 style="font-size:16px;color:#ff7043">Proton Transfer: Acid Pushes, Base Pulls</h3>
-      <div class="desc" style="font-size:13px;margin-top:6px;line-height:1.6;color:#ccc">
-        Four reactions that reveal the difference between StdQM (energy bookkeeping) and RealQM (forces):<br><br>
-
-        <b style="color:#ff7043">Test 1: HF + H&sub2;O &rarr; F&supmin; + H&sub3;O&sup+;</b><br>
-        <span style="color:#888">StdQM:</span> Compare pKa(HF)=3.2 vs pKa(H&sub2;O)=15.7.
-        &Delta;G&lt;0, so equilibrium favors products. Proton tunnels through an activation barrier.
-        Transition state theory gives the rate. The reaction happens because the free energy is lower on the product side.<br>
-        <span style="color:#66bb6a">RealQM:</span> Ionic decomposition: F&supmin; (+3 kernel, 4 electrons split into 2 half-spaces, r<sub>c</sub>=1.0)
-        repels the bare proton H&sup+; (0 electrons), while O&rsquo;s lone pair (Z=2, r<sub>c</sub>=0.8) pulls it in.
-        Result: Ht&ndash;O=0.99&nbsp;&Aring; (covalent), F&ndash;Ht=1.91&nbsp;&Aring; (released) at 2.4&nbsp;&Aring; contact.<br><br>
-
-        <b style="color:#66bb6a">Test 2: HCl + NH&sub3; &rarr; Cl&supmin; + NH&sub4;&sup+;</b><br>
-        <span style="color:#888">StdQM:</span> pKa(HCl)=&minus;7 (strong acid), pK<sub>b</sub>(NH&sub3;)=4.75 (strong base).
-        Compute the potential energy surface, find the minimum energy path. Proton transfer is nearly barrierless in gas phase.
-        The outcome is predicted by comparing energy states.<br>
-        <span style="color:#66bb6a">RealQM:</span> Ionic decomposition: Cl&supmin; (+1 kernel, 2 electrons split into half-spaces, r<sub>c</sub>=1.0)
-        repels the bare proton H&sup+; (0 electrons), while N&rsquo;s lone pair (Z=3, r<sub>c</sub>=0.5) pulls it in.
-        Forces drive the motion. Result: Ht&ndash;N=0.97&nbsp;&Aring; (covalent), Cl&ndash;Ht=1.53&nbsp;&Aring; (released) at 2.1&nbsp;&Aring; contact.<br><br>
-
-        <b style="color:#42a5f5">Test 3: NaCl + H&sub2;O &rarr; Na&sup+;(aq) + Cl&supmin;(aq)</b><br>
-        <span style="color:#888">StdQM:</span> Lattice energy (786 kJ/mol) vs hydration enthalpy of Na&sup+; (&minus;406 kJ/mol) + Cl&supmin; (&minus;363 kJ/mol).
-        &Delta;G<sub>solvation</sub>&lt;0, so the salt dissolves. Born model computes ion solvation energies.
-        The outcome is predicted by comparing lattice vs solvation energies.<br>
-        <span style="color:#66bb6a">RealQM:</span> Na&sup+; (+1 kernel, 0 electrons) and Cl&supmin; (+1 kernel, 2 electrons split).
-        Water&rsquo;s O lone pair creates a force pulling Na&sup+; away from Cl&supmin;. No energy bookkeeping.
-        Result: Na&ndash;Cl stretches from 2.36 to 2.84&nbsp;&Aring;, Na&ndash;O shrinks to 1.99&nbsp;&Aring;.<br><br>
-
-        <b style="color:#ffca28">Test 4: Enzyme catalysis &mdash; Serine Protease Triad</b><br>
-        <span style="color:#888">StdQM:</span> Asp&supmin; stabilizes His via electrostatics, lowering Ser&ndash;OH pKa from ~13 to ~7.
-        Proton hops when the free energy landscape permits. Transition state theory gives the rate.<br>
-        <span style="color:#66bb6a">RealQM:</span> Asp&supmin; (O&supmin;, 2 electrons) pushes H1 toward His N (+3 kernel, r<sub>c</sub>=0.5).
-        His then pulls H2 from Ser O, creating the O&supmin; nucleophile. Two proton transfers in sequence,
-        driven by local electron density forces. No energy computation needed.<br><br>
-
-        <b style="color:#ff7043">The key difference:</b> StdQM predicts <i>whether</i> a reaction occurs by comparing
-        energy states. RealQM shows <i>how</i> it occurs through forces.
-        Nature doesn&rsquo;t keep a record of energy or look up pKa tables.
-        Nature acts through <b>forces</b> &mdash; local, instantaneous forces between
-        electrons and nuclei. RealQM does what nature does.
-      </div>
-      <div style="margin-top:8px">
-        <a href="proton_transfer.html" style="color:#66bb6a">&#9654; HF + H&sub2;O</a> &middot;
-        <a href="proton_transfer_nh3.html" style="color:#66bb6a">&#9654; HCl + NH&sub3;</a> &middot;
-        <a href="nacl_dissolve.html" style="color:#66bb6a">&#9654; NaCl + H&sub2;O</a> &middot;
-        <a href="cl_capture.html" style="color:#66bb6a">&#9654; Cl&supmin; formation</a> &middot;
-        <a href="enzyme_triad.html" style="color:#ffca28">&#9654; Enzyme triad</a>
-      </div>
-      <span class="tag tag-small">reaction</span>
-    </div>
-    <div class="card" style="border-color:#e040fb;background:#1a0a2a">
-      <h3 style="color:#e040fb">DNA Double Helix (10 bp)</h3>
-      <div class="desc">Full B-DNA turn. All H-bonds stable (min 2.35&nbsp;&Aring;) &mdash; without water. H-bonds alone hold the helix.</div>
-      <div style="margin-top:6px">
-        <a href="dna_helix.html" style="color:#66bb6a">&#9654; Run</a> &middot;
-        <a href="dna_helix_screenshot.png" style="color:#ef5350">Result</a> &middot;
-        <a href="dna_base_pair.html" style="color:#90caf9">G:C pair</a>
-      </div>
-      <span class="tag" style="background:#2a0a3a;color:#e040fb">DNA</span>
-    </div>
-    <div class="card" style="border-color:#e040fb;background:#1a0a2a">
-      <h3 style="color:#e040fb">DNA Mismatch Detection</h3>
-      <div class="desc">G:C correct (2.07&nbsp;&Aring;) vs G:T mismatch (2.62&nbsp;&Aring;) &mdash; QM distinguishes right from wrong base pairing.</div>
-      <div style="margin-top:6px">
-        <a href="dna_mismatch.html" style="color:#66bb6a">&#9654; Run</a> &middot;
-        <a href="dna_mismatch_screenshot.png" style="color:#ef5350">Result</a>
-      </div>
-      <span class="tag" style="background:#2a0a3a;color:#e040fb">DNA</span>
-    </div>
-    <a class="card" href="rna_hairpin.html" style="border-color:#e040fb;background:#1a0a2a">
-      <h3 style="color:#e040fb">RNA Hairpin</h3>
-      <div class="desc">Stem-loop self-assembly, G1:C12=1.99&Aring;</div>
-      <span class="tag" style="background:#2a0a3a;color:#e040fb">RNA</span>
-    </a>
-    <a class="card" href="ice_hex.html" style="border-color:#26c6da;background:#0a1a2a">
-      <h3 style="color:#26c6da">Ice Ic Crystal</h3>
-      <div class="desc">216 molecules, O-O=2.73&nbsp;&Aring;</div>
-      <span class="tag tag-water">ice</span>
-    </a>
-    <a class="card" href="ice_melt.html" style="border-color:#ff7043;background:#1a1008">
-      <h3 style="color:#ff7043">Ice Melting</h3>
-      <div class="desc">Phase change: H-bond breaking</div>
-      <span class="tag tag-dyn">dynamics</span>
-    </a>
     <!-- Folding physics: H-bonds vs hydrophobic effect -->
     <div style="grid-column:1/-1;background:#111;border:1px solid #444;border-radius:8px;padding:16px 20px;margin:8px 0">
       <h3 style="color:#ff7043;margin:0 0 8px">What drives folding? H-bonds vs water</h3>
@@ -239,6 +147,8 @@ footer a { color: #4fc3f7; text-decoration: none; }
         </div>
       </div>
     </div>
+
+    <!-- Protein folding cards -->
     <a class="card" href="hairpin_bent_dry.html" style="border-color:#ef5350;background:#1a0a0a">
       <h3 style="color:#ef5350">Hairpin Folding (dry)</h3>
       <div class="desc">150&deg; &rarr; 105&deg; via quantum H-bonds alone. Water does not improve folding.</div>
@@ -327,28 +237,79 @@ footer a { color: #4fc3f7; text-decoration: none; }
       <div class="desc">21+30 res, blind chain docking</div>
       <span class="tag tag-protein">protein</span><span class="tag tag-water">docking</span>
     </a>
-    <a class="card" href="li_metal.html" style="border-color:#ba68c8">
-      <h3 style="color:#ba68c8">Li Metal (100 atoms)</h3>
-      <div class="desc">Lattice restores from perturbation</div>
-      <span class="tag tag-dyn">dynamics</span>
+    <!-- DNA / RNA -->
+    <div class="card" style="border-color:#e040fb;background:#1a0a2a">
+      <h3 style="color:#e040fb">DNA Double Helix (10 bp)</h3>
+      <div class="desc">Full B-DNA turn. All H-bonds stable (min 2.35&nbsp;&Aring;) &mdash; without water. H-bonds alone hold the helix.</div>
+      <div style="margin-top:6px">
+        <a href="dna_helix.html" style="color:#66bb6a">&#9654; Run</a> &middot;
+        <a href="dna_helix_screenshot.png" style="color:#ef5350">Result</a> &middot;
+        <a href="dna_base_pair.html" style="color:#90caf9">G:C pair</a>
+      </div>
+      <span class="tag" style="background:#2a0a3a;color:#e040fb">DNA</span>
+    </div>
+    <div class="card" style="border-color:#e040fb;background:#1a0a2a">
+      <h3 style="color:#e040fb">DNA Mismatch Detection</h3>
+      <div class="desc">G:C correct (2.07&nbsp;&Aring;) vs G:T mismatch (2.62&nbsp;&Aring;) &mdash; QM distinguishes right from wrong base pairing.</div>
+      <div style="margin-top:6px">
+        <a href="dna_mismatch.html" style="color:#66bb6a">&#9654; Run</a> &middot;
+        <a href="dna_mismatch_screenshot.png" style="color:#ef5350">Result</a>
+      </div>
+      <span class="tag" style="background:#2a0a3a;color:#e040fb">DNA</span>
+    </div>
+    <a class="card" href="rna_hairpin.html" style="border-color:#e040fb;background:#1a0a2a">
+      <h3 style="color:#e040fb">RNA Hairpin</h3>
+      <div class="desc">Stem-loop self-assembly, G1:C12=1.99&Aring;</div>
+      <span class="tag" style="background:#2a0a3a;color:#e040fb">RNA</span>
     </a>
-    <a class="card" href="bond_breaking.html" style="border-color:#ef5350">
-      <h3 style="color:#ef5350">H + H&sub2; Bond Breaking</h3>
-      <div class="desc">Exchange reaction through H&sub3;</div>
-      <span class="tag tag-dyn">dynamics</span>
+    <!-- Peptides & amino acids -->
+    <a class="card" href="glycine.html">
+      <h3>Glycine</h3>
+      <div class="desc">Single amino acid</div>
+      <span class="tag tag-protein">amino acid</span>
+    </a>
+    <a class="card" href="ala_dipeptide.html">
+      <h3>Ala dipeptide</h3>
+      <div class="desc">Alanine dipeptide</div>
+      <span class="tag tag-protein">peptide</span>
+    </a>
+    <a class="card" href="asp_pro.html">
+      <h3>Asp-Pro</h3>
+      <div class="desc">Dipeptide with proline pyrrolidine ring</div>
+      <span class="tag tag-protein">peptide</span>
+    </a>
+    <a class="card" href="hairpin.html">
+      <h3>Hairpin</h3>
+      <div class="desc">&beta;-hairpin (folded)</div>
+      <span class="tag tag-protein">protein</span>
+    </a>
+    <a class="card" href="hairpin_slider.html">
+      <h3>Hairpin slider</h3>
+      <div class="desc">Adjustable fold fraction 0&ndash;100%</div>
+      <span class="tag tag-protein">protein</span>
+    </a>
+    <a class="card" href="chignolin.html">
+      <h3>Chignolin</h3>
+      <div class="desc">10-residue mini-protein with fold slider</div>
+      <span class="tag tag-protein">protein</span>
+    </a>
+    <a class="card" href="villin.html">
+      <h3>Villin headpiece</h3>
+      <div class="desc">~1000 atoms, 3-helix bundle + hydration</div>
+      <span class="tag tag-protein">protein</span>
     </a>
   </div>
-
-
   <div style="text-align:center;margin-top:12px">
     <a href="benchmarks.html" style="color:#ffb74d;font-size:14px">Full benchmark results with tables &rarr;</a>
   </div>
 </div>
 
+<!-- ============================================================ -->
 <!-- ATOMS -->
+<!-- ============================================================ -->
 <div class="section">
-  <h2>Atoms <span style="font-size:14px;color:#aaa;font-weight:normal">&mdash; click name to run</span></h2>
-  <p class="desc">Single atoms and ions. Energy convergence tests compared against published Hartree-Fock and exact reference values.</p>
+  <h2>Atoms</h2>
+  <p class="desc">Single atoms, ions, and excited states. Energy convergence tests compared against published Hartree-Fock and exact reference values.</p>
   <div class="grid">
     <a class="card" href="test_1atom.html">
       <h3>H atom</h3>
@@ -374,14 +335,7 @@ footer a { color: #4fc3f7; text-decoration: none; }
       <div class="desc">1s&sup2; 2s&sup1; shell init. HF: &minus;7.433 Ha, exact: &minus;7.478 Ha</div>
       <span class="tag tag-small">atom</span>
     </a>
-  </div>
-</div>
-
-<!-- EXCITED STATES -->
-<div class="section">
-  <h2>Excited States</h2>
-  <p class="desc">Electronic excitation via perturbation of ground state electron structure.</p>
-  <div class="grid">
+    <!-- Excited States -->
     <div class="card" style="border-color:#ffca28;background:#1a1a0a;grid-column:1/-1">
       <h3 style="font-size:16px;color:#ffca28">Helium Excitation: Ground State to Orthohelium</h3>
       <div class="desc" style="font-size:13px;margin-top:6px;line-height:1.6;color:#ccc">
@@ -408,10 +362,12 @@ footer a { color: #4fc3f7; text-decoration: none; }
   </div>
 </div>
 
-<!-- SMALL MOLECULES -->
+<!-- ============================================================ -->
+<!-- MOLECULES -->
+<!-- ============================================================ -->
 <div class="section">
-  <h2>Small Molecules</h2>
-  <p class="desc">Static electron density calculations. Fast convergence on 200&sup3; grids.</p>
+  <h2>Molecules</h2>
+  <p class="desc">Static electron density calculations and nuclear dynamics on 200&sup3; grids.</p>
   <div class="grid">
     <a class="card" href="test_h2.html">
       <h3>H&sub2;</h3>
@@ -468,14 +424,7 @@ footer a { color: #4fc3f7; text-decoration: none; }
       <div class="desc">C&sub1;&sub0;H&sub1;&sub6;O bicyclic terpenoid</div>
       <span class="tag tag-small">small molecule</span>
     </a>
-  </div>
-</div>
-
-<!-- DYNAMICS -->
-<div class="section">
-  <h2>Molecules with Nuclear Dynamics</h2>
-  <p class="desc">Electron density drives nuclear motion via Hellmann-Feynman forces. Press D to toggle dynamics.</p>
-  <div class="grid">
+    <!-- Dynamics -->
     <a class="card" href="h2o_dyn.html">
       <h3>H&sub2;O dynamics</h3>
       <div class="desc">Water with nuclear motion</div>
@@ -501,61 +450,26 @@ footer a { color: #4fc3f7; text-decoration: none; }
       <div class="desc">Lithium hydride stretching</div>
       <span class="tag tag-dyn">dynamics</span>
     </a>
-    <a class="card" href="water5_dyn.html">
-      <h3>5 Water molecules</h3>
-      <div class="desc">Small water cluster dynamics</div>
-      <span class="tag tag-dyn">dynamics</span><span class="tag tag-water">water</span>
-    </a>
   </div>
 </div>
 
-<!-- PEPTIDES & PROTEINS -->
+<!-- ============================================================ -->
+<!-- MATERIALS -->
+<!-- ============================================================ -->
 <div class="section">
-  <h2>Peptides &amp; Proteins</h2>
-  <p class="desc">From single amino acids to 1000-atom three-helix bundles. 300&sup3; grids.</p>
+  <h2>Materials</h2>
+  <p class="desc">Water clusters, ice, metallic bonding, and phase transitions.</p>
   <div class="grid">
-    <a class="card" href="glycine.html">
-      <h3>Glycine</h3>
-      <div class="desc">Single amino acid</div>
-      <span class="tag tag-protein">amino acid</span>
+    <a class="card" href="formamide_dimer.html" style="border-color:#0cf;background:#0a1520">
+      <h3 style="color:#0cf">Formamide Dimer</h3>
+      <div class="desc">H&middot;&middot;&middot;O=2.04&nbsp;&Aring;. The peptide H-bond.</div>
+      <span class="tag tag-small">foundation</span>
     </a>
-    <a class="card" href="ala_dipeptide.html">
-      <h3>Ala dipeptide</h3>
-      <div class="desc">Alanine dipeptide</div>
-      <span class="tag tag-protein">peptide</span>
+    <a class="card" href="water2.html" style="border-color:#26c6da;background:#0a1a2a">
+      <h3 style="color:#26c6da">Water Dimer</h3>
+      <div class="desc">H&middot;&middot;&middot;O=1.87, O-O=2.95&nbsp;&Aring;</div>
+      <span class="tag tag-water">water</span>
     </a>
-    <a class="card" href="asp_pro.html">
-      <h3>Asp-Pro</h3>
-      <div class="desc">Dipeptide with proline pyrrolidine ring</div>
-      <span class="tag tag-protein">peptide</span>
-    </a>
-    <a class="card" href="hairpin.html">
-      <h3>Hairpin</h3>
-      <div class="desc">&beta;-hairpin (folded)</div>
-      <span class="tag tag-protein">protein</span>
-    </a>
-    <a class="card" href="hairpin_slider.html">
-      <h3>Hairpin slider</h3>
-      <div class="desc">Adjustable fold fraction 0&ndash;100%</div>
-      <span class="tag tag-protein">protein</span>
-    </a>
-    <a class="card" href="chignolin.html">
-      <h3>Chignolin</h3>
-      <div class="desc">10-residue mini-protein with fold slider</div>
-      <span class="tag tag-protein">protein</span>
-    </a>
-    <a class="card" href="villin.html">
-      <h3>Villin headpiece</h3>
-      <div class="desc">~1000 atoms, 3-helix bundle + hydration</div>
-      <span class="tag tag-protein">protein</span>
-    </a>
-  </div>
-</div>
-
-<!-- WATER CLUSTERS -->
-<div class="section">
-  <h2>Water Clusters</h2>
-  <div class="grid">
     <a class="card" href="h2o_3mol.html">
       <h3>3 waters</h3>
       <span class="tag tag-water">water</span>
@@ -577,10 +491,98 @@ footer a { color: #4fc3f7; text-decoration: none; }
       <div class="desc">Large-scale water simulation</div>
       <span class="tag tag-water">water</span>
     </a>
+    <a class="card" href="water5_dyn.html">
+      <h3>5 Water dynamics</h3>
+      <div class="desc">Small water cluster dynamics</div>
+      <span class="tag tag-dyn">dynamics</span><span class="tag tag-water">water</span>
+    </a>
+    <a class="card" href="ice_hex.html" style="border-color:#26c6da;background:#0a1a2a">
+      <h3 style="color:#26c6da">Ice Ic Crystal</h3>
+      <div class="desc">216 molecules, O-O=2.73&nbsp;&Aring;</div>
+      <span class="tag tag-water">ice</span>
+    </a>
+    <a class="card" href="ice_melt.html" style="border-color:#ff7043;background:#1a1008">
+      <h3 style="color:#ff7043">Ice Melting</h3>
+      <div class="desc">Phase change: H-bond breaking</div>
+      <span class="tag tag-dyn">dynamics</span>
+    </a>
+    <a class="card" href="li_metal.html" style="border-color:#ba68c8">
+      <h3 style="color:#ba68c8">Li Metal (100 atoms)</h3>
+      <div class="desc">Lattice restores from perturbation</div>
+      <span class="tag tag-dyn">dynamics</span>
+    </a>
   </div>
 </div>
 
-<!-- NUCLEUS -->
+<!-- ============================================================ -->
+<!-- CHEMICAL REACTIONS -->
+<!-- ============================================================ -->
+<div class="section">
+  <h2>Chemical Reactions</h2>
+  <p class="desc">Proton transfer, ion formation, salt dissolution, enzyme catalysis, and bond breaking &mdash; driven by electron density forces.</p>
+  <div class="grid">
+    <div class="card" style="border-color:#ff7043;background:#1a0a00;grid-column:1/-1">
+      <h3 style="font-size:16px;color:#ff7043">Proton Transfer: Acid Pushes, Base Pulls</h3>
+      <div class="desc" style="font-size:13px;margin-top:6px;line-height:1.6;color:#ccc">
+        Four reactions that reveal the difference between StdQM (energy bookkeeping) and RealQM (forces):<br><br>
+
+        <b style="color:#ff7043">Test 1: HF + H&sub2;O &rarr; F&supmin; + H&sub3;O&sup+;</b><br>
+        <span style="color:#888">StdQM:</span> Compare pKa(HF)=3.2 vs pKa(H&sub2;O)=15.7.
+        &Delta;G&lt;0, so equilibrium favors products. Proton tunnels through an activation barrier.
+        Transition state theory gives the rate. The reaction happens because the free energy is lower on the product side.<br>
+        <span style="color:#66bb6a">RealQM:</span> Ionic decomposition: F&supmin; (+3 kernel, 4 electrons split into 2 half-spaces, r<sub>c</sub>=1.0)
+        repels the bare proton H&sup+; (0 electrons), while O&rsquo;s lone pair (Z=2, r<sub>c</sub>=0.8) pulls it in.
+        Result: Ht&ndash;O=0.99&nbsp;&Aring; (covalent), F&ndash;Ht=1.91&nbsp;&Aring; (released) at 2.4&nbsp;&Aring; contact.<br><br>
+
+        <b style="color:#66bb6a">Test 2: HCl + NH&sub3; &rarr; Cl&supmin; + NH&sub4;&sup+;</b><br>
+        <span style="color:#888">StdQM:</span> pKa(HCl)=&minus;7 (strong acid), pK<sub>b</sub>(NH&sub3;)=4.75 (strong base).
+        Compute the potential energy surface, find the minimum energy path. Proton transfer is nearly barrierless in gas phase.
+        The outcome is predicted by comparing energy states.<br>
+        <span style="color:#66bb6a">RealQM:</span> Ionic decomposition: Cl&supmin; (+1 kernel, 2 electrons split into half-spaces, r<sub>c</sub>=1.0)
+        repels the bare proton H&sup+; (0 electrons), while N&rsquo;s lone pair (Z=3, r<sub>c</sub>=0.5) pulls it in.
+        Forces drive the motion. Result: Ht&ndash;N=0.97&nbsp;&Aring; (covalent), Cl&ndash;Ht=1.53&nbsp;&Aring; (released) at 2.1&nbsp;&Aring; contact.<br><br>
+
+        <b style="color:#42a5f5">Test 3: NaCl + H&sub2;O &rarr; Na&sup+;(aq) + Cl&supmin;(aq)</b><br>
+        <span style="color:#888">StdQM:</span> Lattice energy (786 kJ/mol) vs hydration enthalpy of Na&sup+; (&minus;406 kJ/mol) + Cl&supmin; (&minus;363 kJ/mol).
+        &Delta;G<sub>solvation</sub>&lt;0, so the salt dissolves. Born model computes ion solvation energies.
+        The outcome is predicted by comparing lattice vs solvation energies.<br>
+        <span style="color:#66bb6a">RealQM:</span> Na&sup+; (+1 kernel, 0 electrons) and Cl&supmin; (+1 kernel, 2 electrons split).
+        Water&rsquo;s O lone pair creates a force pulling Na&sup+; away from Cl&supmin;. No energy bookkeeping.
+        Result: Na&ndash;Cl stretches from 2.36 to 2.84&nbsp;&Aring;, Na&ndash;O shrinks to 1.99&nbsp;&Aring;.<br><br>
+
+        <b style="color:#ffca28">Test 4: Enzyme catalysis &mdash; Serine Protease Triad</b><br>
+        <span style="color:#888">StdQM:</span> Asp&supmin; stabilizes His via electrostatics, lowering Ser&ndash;OH pKa from ~13 to ~7.
+        Proton hops when the free energy landscape permits. Transition state theory gives the rate.<br>
+        <span style="color:#66bb6a">RealQM:</span> Asp&supmin; (O&supmin;, 2 electrons) pushes H1 toward His N (+3 kernel, r<sub>c</sub>=0.5).
+        His then pulls H2 from Ser O, creating the O&supmin; nucleophile. Two proton transfers in sequence,
+        driven by local electron density forces. No energy computation needed.<br><br>
+
+        <b style="color:#ff7043">The key difference:</b> StdQM predicts <i>whether</i> a reaction occurs by comparing
+        energy states. RealQM shows <i>how</i> it occurs through forces.
+        Nature doesn&rsquo;t keep a record of energy or look up pKa tables.
+        Nature acts through <b>forces</b> &mdash; local, instantaneous forces between
+        electrons and nuclei. RealQM does what nature does.
+      </div>
+      <div style="margin-top:8px">
+        <a href="proton_transfer.html" style="color:#66bb6a">&#9654; HF + H&sub2;O</a> &middot;
+        <a href="proton_transfer_nh3.html" style="color:#66bb6a">&#9654; HCl + NH&sub3;</a> &middot;
+        <a href="nacl_dissolve.html" style="color:#66bb6a">&#9654; NaCl + H&sub2;O</a> &middot;
+        <a href="cl_capture.html" style="color:#66bb6a">&#9654; Cl&supmin; formation</a> &middot;
+        <a href="enzyme_triad.html" style="color:#ffca28">&#9654; Enzyme triad</a>
+      </div>
+      <span class="tag tag-small">reaction</span>
+    </div>
+    <a class="card" href="bond_breaking.html" style="border-color:#ef5350">
+      <h3 style="color:#ef5350">H + H&sub2; Bond Breaking</h3>
+      <div class="desc">Exchange reaction through H&sub3;</div>
+      <span class="tag tag-dyn">dynamics</span>
+    </a>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- NUCLEAR PHYSICS -->
+<!-- ============================================================ -->
 <div class="section">
   <h2>Nuclear Physics</h2>
   <p class="desc">RealQM applied to atomic nuclei: protons and electrons as charged density domains interacting via Coulomb forces. The old proton-electron model of the nucleus (4 protons + 2 electrons = He-4, total charge +2) revisited with modern computational methods.</p>
