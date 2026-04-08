@@ -1,6 +1,6 @@
 # RealQM — Molecular Dynamics in the Browser
 
-A WebGPU-powered quantum chemistry simulator that computes electron densities on 3D grids using DFT-like methods, entirely in the browser. Watch molecules form, fold, and interact — from single atoms to 1000-atom proteins with hydration shells.
+RealQM is based on a new form of Schrodinger's equation which has the form of classical multi-phase continuum mechanics in 3D for a system of non-overlapping electron densities interacting by Coulomb potentials. Computational complexity scales with the number of mesh points in 3D and so offers laptop computational simulation of large molecular systems including ab initio protein folding. Runs entirely in the browser using WebGPU compute shaders on any laptop GPU.
 
 **[Launch the demo gallery](https://claes542.github.io/RealMolecule/gallery.html)** (requires Chrome 113+ or Safari 17+ with WebGPU)
 
