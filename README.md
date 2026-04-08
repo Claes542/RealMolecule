@@ -2,7 +2,9 @@
 
 A WebGPU-powered quantum chemistry simulator that computes electron densities on 3D grids using DFT-like methods, entirely in the browser. Watch molecules form, fold, and interact — from single atoms to 1000-atom proteins with hydration shells.
 
-**[Launch the demo gallery](https://claes542.github.io/H2O/gallery.html)** (requires Chrome 113+ or Safari 17+ with WebGPU)
+**[Launch the demo gallery](https://claes542.github.io/RealMolecule/gallery.html)** (requires Chrome 113+ or Safari 17+ with WebGPU)
+
+View the gallery: https://claes542.github.io/RealMolecule/gallery.html
 
 ## What it does
 
@@ -18,13 +20,11 @@ A WebGPU-powered quantum chemistry simulator that computes electron densities on
 
 1. Clone and serve locally:
    ```bash
-   git clone https://github.com/Claes542/H2O.git
-   cd H2O
+   git clone https://github.com/Claes542/RealMolecule.git
+   cd RealMolecule
    python3 -m http.server 8000
    ```
 2. Open `http://localhost:8000/gallery.html` in Chrome or Safari
-
-Or use GitHub Pages: **https://claes542.github.io/H2O/gallery.html**
 
 ## Examples
 
