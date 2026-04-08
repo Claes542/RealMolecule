@@ -9,6 +9,7 @@ const NN = window.USER_NN || 100;
 const screenAu = window.USER_SCREEN || 10;
 const MAX_STEPS = window.USER_STEPS || 2000;
 const NORM_INTERVAL = 1;
+const POISSON_ITERS = window.POISSON_ITERS || 100;
 
 const S = NN + 1;
 const S2 = S * S;
@@ -118,7 +119,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 // Domain via precomputed Voronoi mask
 const initElec_WGSL = `
 ${paramStructWGSL}
-struct ElecCfg { nucI: f32, nucJ: f32, nucK: f32, nucRC: f32, initR: f32, _p0: f32, _p1: f32, _p2: f32, }
+struct ElecCfg { nucI: f32, nucJ: f32, nucK: f32, nucRC: f32, initR: f32, Z: f32, _p1: f32, _p2: f32, }
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read_write> u_out: array<f32>;
 @group(0) @binding(2) var<storage, read_write> w_out: array<f32>;
@@ -137,7 +138,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = (cell / (NM * NM)) + 1u;
   let id = i * p.S2 + j * p.S + k;
 
-  if (domain[id] < 0.5) { return; }
+  let w_dom = domain[id];
 
   let dx = (f32(i) - cfg.nucI) * p.h;
   let dy = (f32(j) - cfg.nucJ) * p.h;
@@ -145,15 +146,19 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let r_raw = sqrt(dx*dx + dy*dy + dz*dz);
   let r_soft = sqrt(dx*dx + dy*dy + dz*dz + p.h2);
 
+  // W: use smooth domain value, zero inside r_c
   if (cfg.nucRC > 0.0 && r_raw < cfg.nucRC) {
     w_out[id] = 0.0;
   } else {
-    w_out[id] = 1.0;
+    w_out[id] = w_dom;
   }
-  if (cfg.initR > 0.0 && r_raw > cfg.initR) {
+  // U: exp(-Z*r) only inside domain (zero outside, matching p5.js)
+  if (w_dom < 0.5) {
+    u_out[id] = 0.0;
+  } else if (cfg.initR > 0.0 && r_raw > cfg.initR) {
     u_out[id] = 0.0;
   } else {
-    u_out[id] = exp(-2.0 * r_soft);  // He: exp(-Z*r) with Z=2
+    u_out[id] = exp(-cfg.Z * r_soft);
   }
 }
 `;
@@ -284,19 +289,24 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   new_w *= mask;
   w_out[id] = new_w;
 
-  // --- Update u using new w at center ---
+  // --- Update u: Neumann BC at domain boundary (matching p5.js) ---
   let uc = u_self[id];
 
-  let flux_xp = (u_self[id + p.S2] - uc) * (w_self[id + p.S2] + new_w) * 0.5;
-  let flux_xm = (uc - u_self[id - p.S2]) * (new_w + w_self[id - p.S2]) * 0.5;
-  let flux_yp = (u_self[id + p.S] - uc) * (w_self[id + p.S] + new_w) * 0.5;
-  let flux_ym = (uc - u_self[id - p.S]) * (new_w + w_self[id - p.S]) * 0.5;
-  let flux_zp = (u_self[id + 1u] - uc) * (w_self[id + 1u] + new_w) * 0.5;
-  let flux_zm = (uc - u_self[id - 1u]) * (new_w + w_self[id - 1u]) * 0.5;
+  // Skip update outside domain (u stays 0 there)
+  if (wc < 0.5) {
+    u_out[id] = 0.0;
+  } else {
+    let u_ip = select(uc, u_self[id + p.S2], w_self[id + p.S2] > 0.5);
+    let u_im = select(uc, u_self[id - p.S2], w_self[id - p.S2] > 0.5);
+    let u_jp = select(uc, u_self[id + p.S],  w_self[id + p.S]  > 0.5);
+    let u_jm = select(uc, u_self[id - p.S],  w_self[id - p.S]  > 0.5);
+    let u_kp = select(uc, u_self[id + 1u],   w_self[id + 1u]   > 0.5);
+    let u_km = select(uc, u_self[id - 1u],   w_self[id - 1u]   > 0.5);
 
-  let wlap = (flux_xp - flux_xm) + (flux_yp - flux_ym) + (flux_zp - flux_zm);
+    let lap = u_ip + u_im + u_jp + u_jm + u_kp + u_km - 6.0 * uc;
 
-  u_out[id] = uc + p.half_d * wlap + p.dt * (Kbuf[id] - 2.0 * Pot[id]) * uc * new_w;
+    u_out[id] = uc + p.half_d * lap + p.dt * (Kbuf[id] - 2.0 * Pot[id]) * uc;
+  }
 }
 `;
 
@@ -320,11 +330,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = (cell / (NM * NM)) + 1u;
   let id = i * p.S2 + j * p.S + k;
 
+  let sum_nb = P_in[id + p.S2] + P_in[id - p.S2]
+             + P_in[id + p.S]  + P_in[id - p.S]
+             + P_in[id + 1u]   + P_in[id - 1u];
+  // Direct Jacobi: P = (sum_neighbors + h²*source) / 6
+  let P_jacobi = (sum_nb + p.h2 * p.TWO_PI * rho_src[id]) / 6.0;
+  // SOR with omega for faster convergence
   let Pc = P_in[id];
-  let lap_P = P_in[id + p.S2] + P_in[id - p.S2]
-            + P_in[id + p.S]  + P_in[id - p.S]
-            + P_in[id + 1u]   + P_in[id - 1u] - 6.0 * Pc;
-  P_out[id] = Pc + p.dt * (lap_P * p.inv_h2 + 2.0 * p.TWO_PI * rho_src[id]);
+  P_out[id] = Pc + 1.5 * (P_jacobi - Pc);
 }
 `;
 
@@ -489,7 +502,6 @@ let sliceData = null;
 function computeVoronoiDomain(m) {
   const domain = new Float32Array(S3);
   const am = atoms[m];
-  // Use init position for domain center if available (e.g. He half-space)
   const ipM = _initPos[m];
   const mi = ipM ? ipM[0] : am.i;
   const mj = ipM ? ipM[1] : am.j;
@@ -498,16 +510,17 @@ function computeVoronoiDomain(m) {
     for (let j = 0; j <= NN; j++) {
       for (let k = 0; k <= NN; k++) {
         const dx0 = (i - mi) * h, dy0 = (j - mj) * h, dz0 = (k - mk) * h;
-        let myDist2 = dx0*dx0 + dy0*dy0 + dz0*dz0;
+        const myDist = Math.sqrt(dx0*dx0 + dy0*dy0 + dz0*dz0 + h2);
+        // W[m] = exp(-r_m) / sum(exp(-r_n)) — smooth partition of unity
         let closest = true;
         for (let n = 0; n < ALL_ATOMS; n++) {
-          if (n === m || atoms[n].Z <= 0) continue; // skip bare protons and self
+          if (n === m || atoms[n].Z <= 0) continue;
           const ipN = _initPos[n];
           const ni = ipN ? ipN[0] : atoms[n].i;
           const nj = ipN ? ipN[1] : atoms[n].j;
           const nk = ipN && ipN[2] !== undefined ? ipN[2] : (atoms[n].k || N2);
           const dx = (i - ni) * h, dy = (j - nj) * h, dz = (k - nk) * h;
-          if (dx*dx + dy*dy + dz*dz < myDist2) { closest = false; break; }
+          if (dx*dx + dy*dy + dz*dz < dx0*dx0 + dy0*dy0 + dz0*dz0) { closest = false; break; }
         }
         if (closest) domain[i * S2 + j * S + k] = 1.0;
       }
@@ -726,7 +739,7 @@ async function runInit() {
     const initI = ip ? ip[0] : a.i;
     const initJ = ip ? ip[1] : a.j;
     const initK = ip && ip[2] !== undefined ? ip[2] : (a.k || N2);
-    device.queue.writeBuffer(elecCfgBuf, 0, new Float32Array([initI, initJ, initK, a.rc || 0, initR, 0, 0, 0]));
+    device.queue.writeBuffer(elecCfgBuf, 0, new Float32Array([initI, initJ, initK, a.rc || 0, initR, a.Z || 1, 0, 0]));
 
     const bg = device.createBindGroup({ layout: initElec_PL.getBindGroupLayout(0), entries: [
       { binding: 0, resource: { buffer: paramsBuf } },
@@ -890,16 +903,16 @@ function doSteps(nSteps) {
         cp.dispatchWorkgroups(DISPATCH_X, DISPATCH_Y);
         cp.end();
       }
-      // P update
-      {
+      // P update — multiple sub-iterations to accelerate convergence
+      for (let ps = 0; ps < POISSON_ITERS; ps++) {
         const cp = enc.beginComputePass();
         cp.setPipeline(updateP_PL);
         cp.setBindGroup(0, updateP_BG[m][P_ping]);
         cp.dispatchWorkgroups(DISPATCH_X, DISPATCH_Y);
         cp.end();
+        P_ping = 1 - P_ping;
       }
     }
-    P_ping = 1 - P_ping;
 
     // Normalize all electrons
     if (s % NORM_INTERVAL === 0) {
@@ -1030,21 +1043,18 @@ async function computeEnergy() {
         const id = i * S2 + j * S + k;
         for (let m = 0; m < NELEC; m++) {
           const v = uArr[m][id];
-          const rho = v * v;
+          const rho = v * v * h3;
           const wv = wArr[m][id];
-          if (wv < 0.5) continue; // skip outside domain
-          const wrho = rho * wv; // w-weighted density
-          // w-weighted gradient: only count flux within domain
-          const wxp = wArr[m][id + S2] < 0.5 ? 0 : 1;
-          const wyp = wArr[m][id + S] < 0.5 ? 0 : 1;
-          const wzp = wArr[m][id + 1] < 0.5 ? 0 : 1;
-          const gx = (uArr[m][id + S2] - v) * wxp;
-          const gy = (uArr[m][id + S] - v) * wyp;
-          const gz = (uArr[m][id + 1] - v) * wzp;
-          E_T += 0.5 * (gx*gx + gy*gy + gz*gz) * h;
-          E_eK += -K[id] * wrho * h3;
-          E_ee += PArr[m][id] * wrho * h3;
-          E_pot += (PArr[m][id] - K[id]) * wrho * h3;
+          // T: only inside domain, skip differences across boundary
+          if (wv > 0.5) {
+            const gx = wArr[m][id + S2] > 0.5 ? (uArr[m][id + S2] - v) : 0;
+            const gy = wArr[m][id + S]  > 0.5 ? (uArr[m][id + S]  - v) : 0;
+            const gz = wArr[m][id + 1]  > 0.5 ? (uArr[m][id + 1]  - v) : 0;
+            E_T += 0.5 * (gx*gx + gy*gy + gz*gz) * h;
+          }
+          // V_eK and V_ee: sum over ALL cells (matching p5.js)
+          E_eK += -K[id] * rho;
+          E_ee += PArr[m][id] * rho;
         }
       }
     }

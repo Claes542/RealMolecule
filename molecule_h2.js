@@ -1,28 +1,18 @@
 // Molecule Quantum Simulation — WebGPU Compute Shaders + Nuclear Dynamics
 // Up to 10 atoms placed interactively, 3D geometry
-console.log("molecule.js loaded v2 — direct Pother + h² softening");
 const NN = window.USER_NN || 200;
 const S = NN + 1;
 const S2 = S * S;
 const S3 = S * S * S;
 const N2 = Math.round(NN / 2);
-const MAX_ATOMS = window.USER_MAX_ATOMS || 2048;
+const MAX_ATOMS = 1024;
 const _uz = window.USER_Z || [2, 3, 1, 0, 0];
 while (_uz.length < MAX_ATOMS) _uz.push(0);
-const NELEC = (function() {
-  const zn = window.USER_Z_NUC || _uz;
-  let c = 0;
-  for (let i = 0; i < _uz.length; i++) if (_uz[i] > 0 || (zn[i] && zn[i] > 0)) c++;
-  return c || 3;
-})();
+const NELEC = _uz.filter(z => z > 0).length || 3;
 const N_ELECTRONS = _uz.reduce((s, z) => s + z, 0);  // total valence electrons
 const NRED_E = 6;  // Energy reduce: T + V_eK + V_ee + dipole(x,y,z)
 const r_cut = window.USER_RC || [0, 0, 0, 0, 0];
 while (r_cut.length < MAX_ATOMS) r_cut.push(0);
-// Z_nuc: nuclear charge for K potential (defaults to Z if not set)
-// Allows bare protons (Z=0 no electron, Z_nuc=1 contributes to K)
-const Z_nuc = window.USER_Z_NUC || _uz.map(z => z);
-while (Z_nuc.length < MAX_ATOMS) Z_nuc.push(0);
 let R_out = 0.5;   // au, unused legacy
 let curvReg = 0.15;  // curvature regularization for free boundary
 let Z = [..._uz];
@@ -40,46 +30,20 @@ const _atoms = window.USER_ATOMS || [
 ];
 while (_atoms.length < MAX_ATOMS) _atoms.push({ i: N2, j: N2, Z: 0, el: '' });
 const atomLabels = _atoms.map(a => a.el);
-// Build unique nucleus list for V_KK (electrons on same nucleus share position)
-// Z_eff = valence charge (core electrons screen full nuclear charge)
-const _nucMap = new Map(); // key "i,j,k" -> { idx, Z_eff, elecIndices }
-for (let e = 0; e < _atoms.length; e++) {
-  const zEl = _atoms[e].Z;
-  const zNucVal = Z_nuc[e] || 0;
-  if (zEl === 0 && zNucVal === 0) continue;
-  const a = _atoms[e];
-  const k = a.k !== undefined ? a.k : N2;
-  const key = a.i + "," + a.j + "," + k;
-  // Z_eff for nuclear repulsion uses Z_nuc (screened by core electrons in r_c)
-  if (_nucMap.has(key)) { _nucMap.get(key).Z_eff += zNucVal || zEl; _nucMap.get(key).elecIndices.push(e); }
-  else _nucMap.set(key, { idx: _nucMap.size, Z_eff: zNucVal || zEl, elecIndices: [e] });
-}
-const uniqueNuclei = [..._nucMap.values()]; // [{idx, Z_eff, elecIndices}, ...]
-// Map electron index -> unique nucleus index
-const elecToNuc = new Array(_atoms.length).fill(-1);
-for (const nuc of uniqueNuclei) for (const e of nuc.elecIndices) elecToNuc[e] = nuc.idx;
+// True nuclear charges (Z) for V_KK — distinct from Z_eff used for electron energies
+const _elZ = { H:1, He:2, Li:3, Be:4, B:5, C:6, N:7, O:8, F:9, Ne:10, Na:11, S:16 };
+const Z_nuc = _atoms.map(a => _elZ[a.el] || a.Z);
 let nucPos = _atoms.map(a => [a.i, a.j, a.k !== undefined ? a.k : N2]);
 const molNucPos = nucPos.map(p => [...p]);
 
 let E_min = Infinity;
-const PROTEIN_COUNT = window.USER_PROTEIN_COUNT || NELEC;  // atoms with force arrows
 let screenAu = window.USER_SCREEN || 10;
 let hGrid = screenAu / NN, h2v = hGrid * hGrid, h3v = hGrid * hGrid * hGrid;
-const dv = NELEC > 500 ? 0.01 : NELEC > 100 ? 0.03 : 0.12;  // smaller timestep for large systems
+const dv = NELEC > 100 ? 0.03 : 0.12;  // smaller timestep for large systems
 let dtv = dv * h2v, half_dv = 0.5 * dv;
-const CANVAS_SIZE = window.USER_CANVAS || 700;
-const PX = CANVAS_SIZE / NN;
+const PX = 700 / NN;
 const INTERIOR = (NN - 1) * (NN - 1) * (NN - 1);
 const R_SING = 2 * hGrid;  // exclude 2 grid spacings from nucleus
-const W_CUTOFF = window.USER_W_CUTOFF || 0;  // smooth ψ cutoff near other nuclei (au), 0 = off
-// Detect if any bare nuclei exist (Z=0, Z_nuc>0) at compile time
-const HAS_BARE_NUCLEI = (function() {
-  const zn = window.USER_Z_NUC || _uz.map(z => z);
-  for (let i = 0; i < _uz.length; i++) {
-    if (_uz[i] === 0 && (zn[i] || 0) > 0) return true;
-  }
-  return false;
-})();
 
 // 2D dispatch to handle >65535 workgroups (300^3 grid needs ~104K)
 const DISPATCH_X = 256;  // workgroups in x dimension (fixed)
@@ -93,35 +57,25 @@ function dispatchLinear(pass, totalCells) {
   }
 }
 
-const STEPS_PER_FRAME = window.USER_STEPS_PER_FRAME || (NELEC <= 5 ? 50 : NELEC <= 15 ? 50 : NELEC <= 30 ? 50 : NELEC <= 100 ? 5 : 2);
+const STEPS_PER_FRAME = NELEC <= 5 ? 500 : NELEC <= 15 ? 100 : NELEC <= 30 ? 50 : NELEC <= 100 ? 5 : 2;
 const W_STEPS_PER_FRAME = Math.max(1, STEPS_PER_FRAME);  // match U steps per frame
 const BOUNDARY_INTERVAL = 20;
 const NORM_INTERVAL = 20;
-const POISSON_INTERVAL = window.USER_POISSON_INTERVAL || 50;
-const USE_DIRECT_POTHER = NELEC <= 5;  // direct per-electron Poisson solve (no SIC needed)
+const POISSON_INTERVAL = 50;
 const SIC_INTERVAL = NELEC <= 15 ? 1 : NELEC <= 30 ? 5 : 999999;  // SIC in dynamics to remove self-interaction from wavefunction evolution
 const SIC_JACOBI = NELEC <= 15 ? 50 : 10;
 
 // === Nuclear dynamics state ===
-const N_MOVE = window.USER_N_MOVE || 10;  // electronic steps between nuclear moves
-const DT_NUC = window.USER_DT_NUC || (NELEC <= 5 ? 2.0 : NELEC > 200 ? 0.2 : 0.8);  // au
-const NUC_SUBSTEPS = window.USER_NUC_SUBSTEPS || (NELEC <= 5 ? 2 : 1);
-const DAMPING = window.USER_DAMPING || 0.98;       // light damping
-const MAX_VEL = NELEC <= 5 ? 0.3 : NELEC > 200 ? 0.03 : 0.1;  // au/au_time
-let forceScale = window.USER_FORCE_SCALE || 1.0;       // adjustable via slider/keys
+const N_MOVE = 200;         // electronic steps between nuclear moves
+const DT_NUC = 0.8;         // au (~0.02 fs)
+const NUC_SUBSTEPS = 1;     // single step (forces recomputed each move)
+const DAMPING = 0.98;       // light damping
+const MAX_VEL = 0.1;        // au/au_time
+let forceScale = 1.0;       // adjustable via slider/keys
 let boundarySpeed = 0.5;    // dt_w for free boundary evolution
 let nucVel = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
-// Apply initial velocities if specified
-if (window.USER_INIT_VEL) {
-  for (let a = 0; a < window.USER_INIT_VEL.length && a < MAX_ATOMS; a++) {
-    nucVel[a] = [...window.USER_INIT_VEL[a]];
-  }
-}
 let nucForce = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
-let nucForceElec = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
-let nucForceNuc = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
-let nucForceTotal = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
-let nucStepCount = 0, dynamicsEnabled = window.USER_DYNAMICS || false;
+let nucStepCount = 0, dynamicsEnabled = false;
 function nucMass(z) { return ({1:1, 2:16, 3:14, 4:12}[z] || 1) * 1836; }
 
 // Multigrid coarse grid
@@ -153,12 +107,12 @@ struct P {
   dt: f32, half_d: f32, h3: f32, sliceK: u32,
 }`;
 
-const ATOM_STRIDE = 8; // 8 f32s per atom (posI, posJ, posK, Z, rc, Z_nuc, initZeff, initRcut)
+const ATOM_STRIDE = 8; // 8 f32s per atom (posI, posJ, posK, Z, rc, pad, pad, pad)
 const ATOM_BUF_BYTES = MAX_ATOMS * ATOM_STRIDE * 4;
 const atomStructWGSL = `
 struct Atom {
   posI: u32, posJ: u32, posK: u32, Z: f32,
-  rc: f32, Z_nuc: f32, initZeff: f32, initRcut: f32,
+  rc: f32, _p0: f32, _p1: f32, _p2: f32,
 }`;
 
 // U update — label-based domains, Neumann BC at domain boundaries and r_c surfaces
@@ -182,21 +136,14 @@ fn distToAtom(ci: u32, cj: u32, ck: u32, n: u32) -> f32 {
 
 fn isInsideRc(ci: u32, cj: u32, ck: u32, lbl: u32) -> bool {
   let rc = atoms[lbl].rc;
-  if (rc > 0.0 && distToAtom(ci, cj, ck, lbl) < rc) { return true; }
-${HAS_BARE_NUCLEI ? `
-  // Check bare nuclei (Z=0, Z_nuc>0) — only compiled when they exist
-  for (var n: u32 = 0u; n < ${NELEC}u; n++) {
-    if (atoms[n].Z <= 0.0 && atoms[n].Z_nuc > 0.0 && atoms[n].rc > 0.0) {
-      if (distToAtom(ci, cj, ck, n) < atoms[n].rc) { return true; }
-    }
-  }
-` : ''}
-  return false;
+  if (rc <= 0.0) { return false; }
+  return distToAtom(ci, cj, ck, lbl) < rc;
 }
 
+// Check if inside analytical region for bare atoms (H: r_c=0, use R_SING sphere)
 fn isInsideAnalytical(ci: u32, cj: u32, ck: u32, lbl: u32) -> bool {
-  if (atoms[lbl].rc > 0.0) { return false; }  // pseudopotential atoms: handled by isInsideRc
-  return distToAtom(ci, cj, ck, lbl) < ${R_SING};
+  let _keep = atoms[lbl].rc;  // keep atoms binding alive
+  return false;
 }
 
 ${cellIdxWGSL}
@@ -220,57 +167,41 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     return;
   }
 
-  let uc = Ui[id];
-
-  // Neumann BC at r_c boundaries and domain boundaries
-  let l_ip = label[id + p.S2]; let excl_ip = isInsideRc(i+1u, j, k, l_ip);
-  let l_im = label[id - p.S2]; let excl_im = isInsideRc(i-1u, j, k, l_im);
-  let l_jp = label[id + p.S];  let excl_jp = isInsideRc(i, j+1u, k, l_jp);
-  let l_jm = label[id - p.S];  let excl_jm = isInsideRc(i, j-1u, k, l_jm);
-  let l_kp = label[id + 1u];   let excl_kp = isInsideRc(i, j, k+1u, l_kp);
-  let l_km = label[id - 1u];   let excl_km = isInsideRc(i, j, k-1u, l_km);
-
-  // Smooth W cutoff: Neumann BC near other electrons' nuclei
-  // w(r) blends neighbor toward uc (flat) near other nucleus
-  let w_c = ${W_CUTOFF.toFixed(6)};
-  var w_ip: f32 = 1.0; var w_im: f32 = 1.0;
-  var w_jp: f32 = 1.0; var w_jm: f32 = 1.0;
-  var w_kp: f32 = 1.0; var w_km: f32 = 1.0;
-  if (w_c > 0.0) {
-    let hw = 2.0 * p.h;
-    for (var n: u32 = 0u; n < ${NELEC}u; n++) {
-      if (n == myL) { continue; }
-      let ax = f32(atoms[n].posI); let ay = f32(atoms[n].posJ); let az = f32(atoms[n].posK);
-      // w(r) for each neighbor position
-      let d_ip = sqrt((f32(i+1u)-ax)*(f32(i+1u)-ax) + (f32(j)-ay)*(f32(j)-ay) + (f32(k)-az)*(f32(k)-az)) * p.h;
-      let d_im = sqrt((f32(i-1u)-ax)*(f32(i-1u)-ax) + (f32(j)-ay)*(f32(j)-ay) + (f32(k)-az)*(f32(k)-az)) * p.h;
-      let d_jp = sqrt((f32(i)-ax)*(f32(i)-ax) + (f32(j+1u)-ay)*(f32(j+1u)-ay) + (f32(k)-az)*(f32(k)-az)) * p.h;
-      let d_jm = sqrt((f32(i)-ax)*(f32(i)-ax) + (f32(j-1u)-ay)*(f32(j-1u)-ay) + (f32(k)-az)*(f32(k)-az)) * p.h;
-      let d_kp = sqrt((f32(i)-ax)*(f32(i)-ax) + (f32(j)-ay)*(f32(j)-ay) + (f32(k+1u)-az)*(f32(k+1u)-az)) * p.h;
-      let d_km = sqrt((f32(i)-ax)*(f32(i)-ax) + (f32(j)-ay)*(f32(j)-ay) + (f32(k-1u)-az)*(f32(k-1u)-az)) * p.h;
-      w_ip = min(w_ip, clamp((d_ip - w_c + hw) / (2.0 * hw), 0.0, 1.0));
-      w_im = min(w_im, clamp((d_im - w_c + hw) / (2.0 * hw), 0.0, 1.0));
-      w_jp = min(w_jp, clamp((d_jp - w_c + hw) / (2.0 * hw), 0.0, 1.0));
-      w_jm = min(w_jm, clamp((d_jm - w_c + hw) / (2.0 * hw), 0.0, 1.0));
-      w_kp = min(w_kp, clamp((d_kp - w_c + hw) / (2.0 * hw), 0.0, 1.0));
-      w_km = min(w_km, clamp((d_km - w_c + hw) / (2.0 * hw), 0.0, 1.0));
-    }
+  // Inside analytical region for bare atoms (H): set U from analytical shape
+  // scaled by average U from outside the R_SING boundary
+  if (isInsideAnalytical(i, j, k, myL)) {
+    let Za = atoms[myL].Z;
+    let r = distToAtom(i, j, k, myL);
+    let ai = atoms[myL].posI; let aj = atoms[myL].posJ; let ak = atoms[myL].posK;
+    // Average U on the 6 face-neighbor shell just outside R_SING
+    let nOff = u32(ceil(${R_SING} / p.h));  // grid points to reach outside R_SING
+    let avgOut = (Ui[(ai + nOff) * p.S2 + aj * p.S + ak] +
+                  Ui[(ai - nOff) * p.S2 + aj * p.S + ak] +
+                  Ui[ai * p.S2 + (aj + nOff) * p.S + ak] +
+                  Ui[ai * p.S2 + (aj - nOff) * p.S + ak] +
+                  Ui[ai * p.S2 + aj * p.S + (ak + nOff)] +
+                  Ui[ai * p.S2 + aj * p.S + (ak - nOff)]) / 6.0;
+    let rOut = f32(nOff) * p.h;
+    Uo[id] = avgOut * exp(-Za * r) / exp(-Za * rOut);
+    return;
   }
 
-  // Blend neighbors toward uc where w < 1 (smooth Neumann at cutoff)
-  let u_raw_ip = select(uc, Ui[id + p.S2], l_ip == myL && !excl_ip);
-  let u_raw_im = select(uc, Ui[id - p.S2], l_im == myL && !excl_im);
-  let u_raw_jp = select(uc, Ui[id + p.S],  l_jp == myL && !excl_jp);
-  let u_raw_jm = select(uc, Ui[id - p.S],  l_jm == myL && !excl_jm);
-  let u_raw_kp = select(uc, Ui[id + 1u],   l_kp == myL && !excl_kp);
-  let u_raw_km = select(uc, Ui[id - 1u],   l_km == myL && !excl_km);
+  let uc = Ui[id];
 
-  let u_ip = mix(uc, u_raw_ip, w_ip);
-  let u_im = mix(uc, u_raw_im, w_im);
-  let u_jp = mix(uc, u_raw_jp, w_jp);
-  let u_jm = mix(uc, u_raw_jm, w_jm);
-  let u_kp = mix(uc, u_raw_kp, w_kp);
-  let u_km = mix(uc, u_raw_km, w_km);
+  // Outside: Neumann BC at both r_c and analytical boundaries
+  let l_ip = label[id + p.S2]; let excl_ip = isInsideRc(i+1u, j, k, l_ip) || isInsideAnalytical(i+1u, j, k, myL);
+  let l_im = label[id - p.S2]; let excl_im = isInsideRc(i-1u, j, k, l_im) || isInsideAnalytical(i-1u, j, k, myL);
+  let l_jp = label[id + p.S];  let excl_jp = isInsideRc(i, j+1u, k, l_jp) || isInsideAnalytical(i, j+1u, k, myL);
+  let l_jm = label[id - p.S];  let excl_jm = isInsideRc(i, j-1u, k, l_jm) || isInsideAnalytical(i, j-1u, k, myL);
+  let l_kp = label[id + 1u];   let excl_kp = isInsideRc(i, j, k+1u, l_kp) || isInsideAnalytical(i, j, k+1u, myL);
+  let l_km = label[id - 1u];   let excl_km = isInsideRc(i, j, k-1u, l_km) || isInsideAnalytical(i, j, k-1u, myL);
+
+  let u_ip = select(uc, Ui[id + p.S2], l_ip == myL && !excl_ip);
+  let u_im = select(uc, Ui[id - p.S2], l_im == myL && !excl_im);
+  let u_jp = select(uc, Ui[id + p.S],  l_jp == myL && !excl_jp);
+  let u_jm = select(uc, Ui[id - p.S],  l_jm == myL && !excl_jm);
+  let u_kp = select(uc, Ui[id + 1u],   l_kp == myL && !excl_kp);
+  let u_km = select(uc, Ui[id - 1u],   l_km == myL && !excl_km);
 
   let lap = u_ip + u_im + u_jp + u_jm + u_kp + u_km - 6.0 * uc;
 
@@ -281,7 +212,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 // Chebyshev semi-iterative acceleration of ITP
 // ψ_{n+1} = ω * (standard ITP step) + (1-ω) * ψ_{n-1}
-// Same stencil as updateU, with momentum term
+// Same stencil as updateU, but with momentum term from previous iterate
 const chebyshevStepWGSL = `
 ${paramStructWGSL}
 ${atomStructWGSL}
@@ -311,7 +242,8 @@ fn isInsideRc(ci: u32, cj: u32, ck: u32, lbl: u32) -> bool {
 }
 
 fn isInsideAnalytical(ci: u32, cj: u32, ck: u32, lbl: u32) -> bool {
-  return false;
+  if (atoms[lbl].rc > 0.0) { return false; }
+  return distToAtom(ci, cj, ck, lbl) < ${R_SING};
 }
 
 ${cellIdxWGSL}
@@ -334,14 +266,30 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     return;
   }
 
+  if (isInsideAnalytical(i, j, k, myL)) {
+    let Za = atoms[myL].Z;
+    let r = distToAtom(i, j, k, myL);
+    let ai = atoms[myL].posI; let aj = atoms[myL].posJ; let ak = atoms[myL].posK;
+    let nOff = u32(ceil(${R_SING} / p.h));
+    let avgOut = (Ui[(ai + nOff) * p.S2 + aj * p.S + ak] +
+                  Ui[(ai - nOff) * p.S2 + aj * p.S + ak] +
+                  Ui[ai * p.S2 + (aj + nOff) * p.S + ak] +
+                  Ui[ai * p.S2 + (aj - nOff) * p.S + ak] +
+                  Ui[ai * p.S2 + aj * p.S + (ak + nOff)] +
+                  Ui[ai * p.S2 + aj * p.S + (ak - nOff)]) / 6.0;
+    let rOut = f32(nOff) * p.h;
+    Uo[id] = avgOut * exp(-Za * r) / exp(-Za * rOut);
+    return;
+  }
+
   let uc = Ui[id];
 
-  let l_ip = label[id + p.S2]; let excl_ip = isInsideRc(i+1u, j, k, l_ip);
-  let l_im = label[id - p.S2]; let excl_im = isInsideRc(i-1u, j, k, l_im);
-  let l_jp = label[id + p.S];  let excl_jp = isInsideRc(i, j+1u, k, l_jp);
-  let l_jm = label[id - p.S];  let excl_jm = isInsideRc(i, j-1u, k, l_jm);
-  let l_kp = label[id + 1u];   let excl_kp = isInsideRc(i, j, k+1u, l_kp);
-  let l_km = label[id - 1u];   let excl_km = isInsideRc(i, j, k-1u, l_km);
+  let l_ip = label[id + p.S2]; let excl_ip = isInsideRc(i+1u, j, k, l_ip) || isInsideAnalytical(i+1u, j, k, myL);
+  let l_im = label[id - p.S2]; let excl_im = isInsideRc(i-1u, j, k, l_im) || isInsideAnalytical(i-1u, j, k, myL);
+  let l_jp = label[id + p.S];  let excl_jp = isInsideRc(i, j+1u, k, l_jp) || isInsideAnalytical(i, j+1u, k, myL);
+  let l_jm = label[id - p.S];  let excl_jm = isInsideRc(i, j-1u, k, l_jm) || isInsideAnalytical(i, j-1u, k, myL);
+  let l_kp = label[id + 1u];   let excl_kp = isInsideRc(i, j, k+1u, l_kp) || isInsideAnalytical(i, j, k+1u, myL);
+  let l_km = label[id - 1u];   let excl_km = isInsideRc(i, j, k-1u, l_km) || isInsideAnalytical(i, j, k-1u, myL);
 
   let u_ip = select(uc, Ui[id + p.S2], l_ip == myL && !excl_ip);
   let u_im = select(uc, Ui[id - p.S2], l_im == myL && !excl_im);
@@ -352,8 +300,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   let lap = u_ip + u_im + u_jp + u_jm + u_kp + u_km - 6.0 * uc;
 
+  // Standard ITP step: ψ + dt*(½∇²ψ + V·ψ)
   let itpStep = uc + p.half_d * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;
 
+  // Chebyshev momentum: ψ_{n+1} = ω·(ITP step) + (1-ω)·ψ_{n-1}
   Uo[id] = cheb.omega * itpStep + (1.0 - cheb.omega) * Uprev[id];
 }
 `;
@@ -414,21 +364,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     return;
   }
 
-  // Check locked boundaries: don't evolve if both labels are in a locked group
-${(function() {
-    const groups = window.USER_LOCKED_GROUPS || [];
-    if (groups.length === 0) return '';
-    let code = '  var locked = false;\n';
-    for (const g of groups) {
-      const checks = g.map(a => `myL == ${a}u || bestOtherL == ${a}u`);
-      // Both must be in the same group
-      const myChecks = g.map(a => `myL == ${a}u`).join(' || ');
-      const otherChecks = g.map(a => `bestOtherL == ${a}u`).join(' || ');
-      code += `  if ((${myChecks}) && (${otherChecks})) { locked = true; }\n`;
-    }
-    code += '  if (locked) { W[id] = max(w, 0.5); labelOut[id] = myL; return; }\n';
-    return code;
-  })()}
   // Boundary cell: evolve W based on relative density difference
   // Normalized velocity in [-1,+1] so boundary speed is independent of system size
   let denom = myRho + bestOtherRho;
@@ -506,106 +441,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
-// Compute rho of all electrons EXCEPT the target label (for direct Pother solve)
-const computeRhoOtherWGSL = `
-${paramStructWGSL}
-struct DomIdx { idx: u32, _p0: u32, _p1: u32, _p2: u32 }
-@group(0) @binding(0) var<uniform> p: P;
-@group(0) @binding(1) var<storage, read> U: array<f32>;
-@group(0) @binding(2) var<storage, read_write> rhoOther: array<f32>;
-@group(0) @binding(3) var<storage, read> label: array<u32>;
-@group(0) @binding(4) var<uniform> dom: DomIdx;
-
-${cellIdxWGSL}
-@compute @workgroup_size(256)
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  let NM = p.NN - 1u;
-  let tot = NM * NM * NM;
-  let cell = cellIdx(gid);
-  if (cell >= tot) { return; }
-  let k = (cell % NM) + 1u;
-  let j = ((cell / NM) % NM) + 1u;
-  let i = (cell / (NM * NM)) + 1u;
-  let id = i * p.S2 + j * p.S + k;
-  let u = U[id];
-  rhoOther[id] = select(u * u, 0.0, label[id] == dom.idx);
-}
-`;
-
-// GPU-side initialization of P_direct[m] = sum_{n≠m} 0.5/r (replaces CPU triple loop)
-const initPdirectWGSL = `
-${paramStructWGSL}
-${atomStructWGSL}
-struct DomIdx { idx: u32, _p0: u32, _p1: u32, _p2: u32 }
-@group(0) @binding(0) var<uniform> p: P;
-@group(0) @binding(1) var<storage, read> atoms: array<Atom>;
-@group(0) @binding(2) var<storage, read_write> Pdirect: array<f32>;
-@group(0) @binding(3) var<storage, read_write> Pother: array<f32>;
-@group(0) @binding(4) var<uniform> dom: DomIdx;
-
-${cellIdxWGSL}
-@compute @workgroup_size(256)
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  let NM = p.NN - 1u;
-  let tot = NM * NM * NM;
-  let cell = cellIdx(gid);
-  if (cell >= tot) { return; }
-  let k = (cell % NM) + 1u;
-  let j = ((cell / NM) % NM) + 1u;
-  let i = (cell / (NM * NM)) + 1u;
-  let id = i * p.S2 + j * p.S + k;
-  let xi = f32(i) * p.h;
-  let yj = f32(j) * p.h;
-  let zk = f32(k) * p.h;
-  let m = dom.idx;
-  var val: f32 = 0.0;
-  for (var n: u32 = 0u; n < ${NELEC}u; n++) {
-    let Za = atoms[n].Z;
-    if (Za <= 0.0 || n == m) { continue; }
-    let dx = xi - f32(atoms[n].posI) * p.h;
-    let dy = yj - f32(atoms[n].posJ) * p.h;
-    let dz = zk - f32(atoms[n].posK) * p.h;
-    let r = sqrt(dx*dx + dy*dy + dz*dz + p.h2);
-    val += 0.5 / r;
-  }
-  Pdirect[id] = val;
-  Pother[id] += val;
-}
-`;
-
-// Copy P_direct[m] to PotherBuf at cells where label == target
-const copyPotherForLabelWGSL = `
-${paramStructWGSL}
-struct DomIdx { idx: u32, _p0: u32, _p1: u32, _p2: u32 }
-@group(0) @binding(0) var<uniform> p: P;
-@group(0) @binding(1) var<storage, read> Psrc: array<f32>;
-@group(0) @binding(2) var<storage, read_write> Pother: array<f32>;
-@group(0) @binding(3) var<storage, read> label: array<u32>;
-@group(0) @binding(4) var<uniform> dom: DomIdx;
-
-${cellIdxWGSL}
-@compute @workgroup_size(256)
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  let NM = p.NN - 1u;
-  let tot = NM * NM * NM;
-  let cell = cellIdx(gid);
-  if (cell >= tot) { return; }
-  let k = (cell % NM) + 1u;
-  let j = ((cell / NM) % NM) + 1u;
-  let i = (cell / (NM * NM)) + 1u;
-  let id = i * p.S2 + j * p.S + k;
-  if (label[id] == dom.idx) {
-    Pother[id] = Psrc[id];
-  }
-}
-`;
-
 // Subtract per-domain self-potential from Pother at points in that domain
-// For domain with Z_eff electrons: subtract 1/Z_eff of self-potential
-// (keep (Z_eff-1)/Z_eff for intra-domain electron-electron repulsion)
 const subtractPselfWGSL = `
 ${paramStructWGSL}
-struct DomIdx { idx: u32, Zeff_bits: u32, _p1: u32, _p2: u32 }
+struct DomIdx { idx: u32, _p0: u32, _p1: u32, _p2: u32 }
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read> Pm: array<f32>;
 @group(0) @binding(2) var<storage, read_write> Pother: array<f32>;
@@ -624,9 +463,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = (cell / (NM * NM)) + 1u;
   let id = i * p.S2 + j * p.S + k;
   if (label[id] == dom.idx) {
-    let Zeff = bitcast<f32>(dom.Zeff_bits);
-    let frac = select(1.0, 1.0 / Zeff, Zeff > 1.0);
-    Pother[id] -= Pm[id] * frac;
+    Pother[id] -= Pm[id];
   }
 }
 `;
@@ -871,11 +708,8 @@ ${atomStructWGSL}
 @group(0) @binding(6) var<storage, read> atoms: array<Atom>;
 
 fn isInsideExcl(ci: u32, cj: u32, ck: u32, lbl: u32) -> bool {
-  let rc = max(atoms[lbl].rc, ${R_SING});
-  let dx = (f32(ci) - f32(atoms[lbl].posI)) * p.h;
-  let dy = (f32(cj) - f32(atoms[lbl].posJ)) * p.h;
-  let dz = (f32(ck) - f32(atoms[lbl].posK)) * p.h;
-  return sqrt(dx*dx + dy*dy + dz*dz) < rc;
+  let _keep = atoms[lbl].rc;  // keep atoms binding alive
+  return false;
 }
 
 var<workgroup> sn: array<f32, ${NRED_E * REDUCE_WG}>;
@@ -903,7 +737,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
     let rho = v * v;
     let myL = label[id];
 
-    // Skip points inside r_c exclusion sphere (pseudopotential atoms only)
+    // Skip points inside exclusion sphere max(r_c, R_SING) — replaced by analytical correction
     if (isInsideExcl(i, j, k, myL)) { cell = cell + stride; continue; }
 
     // Gradients: zero if neighbor is inside any exclusion sphere (Neumann BC)
@@ -1036,27 +870,9 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
 
   let sk = p.sliceK;
 
-  // K line + w(r) cutoff line along j=sliceK axis
+  // K line data along j=sliceK axis
   if (j == 0u) {
-    let lineIdx = i * p.S2 + sk * p.S + sk;
-    out[3u * SS * SS + i] = K[lineIdx];
-    // Compute w(r) cutoff analytically
-    let w_c = ${W_CUTOFF.toFixed(6)};
-    var wVal: f32 = 1.0;
-    if (w_c > 0.0) {
-      let hw = 2.0 * p.h;
-      let lbl = label[lineIdx];
-      for (var n: u32 = 0u; n < ${NELEC}u; n++) {
-        if (n == lbl) { continue; }
-        let dx = (f32(i) - f32(atoms[n].posI)) * p.h;
-        let dy = (f32(sk) - f32(atoms[n].posJ)) * p.h;
-        let dz = (f32(sk) - f32(atoms[n].posK)) * p.h;
-        let d = sqrt(dx*dx + dy*dy + dz*dz);
-        let s = clamp((d - w_c + hw) / (2.0 * hw), 0.0, 1.0);
-        wVal = min(wVal, s * s * (3.0 - 2.0 * s));
-      }
-    }
-    out[3u * SS * SS + SS + i] = wVal;
+    out[3u * SS * SS + i] = K[i * p.S2 + sk * p.S + sk];
   }
 
   if (i < 1u || i >= p.NN || j < 1u || j >= p.NN) {
@@ -1071,32 +887,17 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
   let lbl = label[idx];
   let Zlbl = atoms[lbl].Z;
   out[i * SS + j] = u * u;
-  // Pack both Z and domain label: Z + label/1000 (label recoverable as fract * 1000)
-  out[SS * SS + i * SS + j] = f32(lbl) + Zlbl * 1000.0;
+  out[SS * SS + i * SS + j] = Zlbl;
 
-  // Boundary detection: 1.0 = active (density present), 2.0 = broken (density ~zero both sides)
+  // Boundary: only where density exists (skip empty Voronoi regions)
   let dens = u * u;
   var bnd = 0.0;
-  if (i > 1u && i < p.NN - 1u) {
-    let nbIdx = idx + p.S2;
-    if (lbl != label[nbIdx]) {
-      let nbDens = U[nbIdx] * U[nbIdx];
-      if (dens > 1e-6 || nbDens > 1e-6) {
-        bnd = 1.0;  // active boundary — bond exists
-      } else {
-        bnd = 2.0;  // broken boundary — no density on either side
-      }
+  if (dens > 1e-6) {
+    if (i > 1u && i < p.NN - 1u) {
+      if (lbl != label[idx + p.S2]) { bnd = 1.0; }
     }
-  }
-  if (bnd < 1.5 && j > 1u && j < p.NN - 1u) {
-    let nbIdx = idx + p.S;
-    if (lbl != label[nbIdx]) {
-      let nbDens = U[nbIdx] * U[nbIdx];
-      if (dens > 1e-6 || nbDens > 1e-6) {
-        bnd = max(bnd, 1.0);
-      } else {
-        bnd = 2.0;
-      }
+    if (j > 1u && j < p.NN - 1u) {
+      if (lbl != label[idx + p.S]) { bnd = 1.0; }
     }
   }
   out[2u * SS * SS + i * SS + j] = bnd;
@@ -1105,13 +906,9 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
 
 // === Nuclear dynamics shaders ===
 
-// Two force methods: HF integral (small systems) and gradient-of-P (large systems)
-const USE_GRADP_FORCE = window.USER_GRADP_FORCE !== undefined ? window.USER_GRADP_FORCE : true;  // default on
-const FORCE_RADIUS = USE_GRADP_FORCE ? Math.max(5, Math.round(3.0 / hGrid)) : 0;  // 3 au local sphere
-
-const gradPtotal_WGSL = USE_GRADP_FORCE ? `
-// Averaged gradient of total electron potential P in sphere around nucleus
-// F_A = 2 * Z_A * <∇P>_R — uses converged P from multigrid V-cycle
+// Gradient of electron potential P at nuclear positions — reads directly from P_buf[0]
+const FORCE_RADIUS = Math.max(3, Math.round(1.0 / hGrid));  // ~1 au sphere in grid cells
+const gradPtotal_WGSL = `
 ${paramStructWGSL}
 ${atomStructWGSL}
 @group(0) @binding(0) var<uniform> p: P;
@@ -1124,7 +921,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let atom = gid.x;
   if (atom >= ${NELEC}u) { return; }
 
-  let ZA = select(atoms[atom].Z, atoms[atom].Z_nuc, atoms[atom].Z <= 0.0);
+  let ZA = atoms[atom].Z;
   if (ZA <= 0.0) {
     forceSums[atom * 3u] = 0.0;
     forceSums[atom * 3u + 1u] = 0.0;
@@ -1179,66 +976,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   forceSums[atom * 3u + 1u] = 2.0 * ZA * sumFj;
   forceSums[atom * 3u + 2u] = 2.0 * ZA * sumFk;
 }
-` :
-// Direct Coulomb force (HF integral) for small systems
-`
-${paramStructWGSL}
-${atomStructWGSL}
-@group(0) @binding(0) var<uniform> p: P;
-@group(0) @binding(1) var<storage, read> U: array<f32>;
-@group(0) @binding(2) var<storage, read_write> forceSums: array<f32>;
-@group(0) @binding(3) var<storage, read> atoms: array<Atom>;
-
-@compute @workgroup_size(1)
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  let atom = gid.x;
-  if (atom >= ${NELEC}u) { return; }
-
-  let ZA = select(atoms[atom].Z, atoms[atom].Z_nuc, atoms[atom].Z <= 0.0);
-  if (ZA <= 0.0) {
-    forceSums[atom * 3u] = 0.0;
-    forceSums[atom * 3u + 1u] = 0.0;
-    forceSums[atom * 3u + 2u] = 0.0;
-    return;
-  }
-
-  let Ri = f32(atoms[atom].posI) * p.h;
-  let Rj = f32(atoms[atom].posJ) * p.h;
-  let Rk = f32(atoms[atom].posK) * p.h;
-  let h3 = p.h * p.h * p.h;
-  let soft = p.h2;
-
-  var fi: f32 = 0.0;
-  var fj: f32 = 0.0;
-  var fk: f32 = 0.0;
-
-  let NM = i32(p.NN) - 1;
-  for (var i: i32 = 1; i <= NM; i++) {
-    let xi = f32(i) * p.h;
-    let di = xi - Ri;
-    for (var j: i32 = 1; j <= NM; j++) {
-      let yj = f32(j) * p.h;
-      let dj = yj - Rj;
-      for (var k: i32 = 1; k <= NM; k++) {
-        let zk = f32(k) * p.h;
-        let dk = zk - Rk;
-        let r2 = di*di + dj*dj + dk*dk + soft;
-        let r = sqrt(r2);
-        let inv_r3 = 1.0 / (r * r2);
-        let id = u32(i) * p.S2 + u32(j) * p.S + u32(k);
-        let rho = U[id] * U[id];
-        let w = rho * inv_r3 * h3;
-        fi += di * w;
-        fj += dj * w;
-        fk += dk * w;
-      }
-    }
-  }
-
-  forceSums[atom * 3u]      = ZA * fi;
-  forceSums[atom * 3u + 1u] = ZA * fj;
-  forceSums[atom * 3u + 2u] = ZA * fk;
-}
 `;
 
 // Recompute nuclear potential K on GPU after nuclei move — adapted for atomBuf (loop)
@@ -1264,18 +1001,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = id / p.S2;
 
   var Kval: f32 = 0.0;
-  let soft_k = p.h2;  // Coulomb softening: r=sqrt(r²+h²) matching original
   for (var n: u32 = 0u; n < ${NELEC}u; n++) {
     let Za = atoms[n].Z;
-    let Zn = select(Za, atoms[n].Z_nuc, atoms[n].Z_nuc > 0.0);
-    if (Za <= 0.0 && Zn <= 0.0) { continue; }
+    if (Za <= 0.0) { continue; }
     let di = (f32(i) - f32(atoms[n].posI)) * p.h;
     let dj = (f32(j) - f32(atoms[n].posJ)) * p.h;
     let dk = (f32(k) - f32(atoms[n].posK)) * p.h;
-    let r2 = di*di + dj*dj + dk*dk;
-    // Bare atoms (rc=0): clamp at R_SING. Pseudopotential (rc>0): hard cutoff at rc.
-    let r_eff = select(max(sqrt(r2), ${R_SING}), max(sqrt(r2), atoms[n].rc), atoms[n].rc > 0.0);
-    Kval += Zn / r_eff;
+    let r = sqrt(di*di + dj*dj + dk*dk + p.h2);
+    Kval += Za / r;
   }
   K[id] = Kval;
 }
@@ -1312,27 +1045,21 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   var Kval: f32 = K[id];
   var bU: f32 = bestU[id];
   var bestN: u32 = label[id];
-  let soft_k = p.h2;  // Coulomb softening for bare atoms, matching original
+  let soft = 0.04 * p.h2;
   let end = range.start + range.count;
 
   for (var n: u32 = range.start; n < end; n++) {
     let Za = atoms[n].Z;
-    let Zn = select(Za, atoms[n].Z_nuc, atoms[n].Z_nuc > 0.0); // nuclear charge (defaults to Z)
-    if (Za <= 0.0 && Zn <= 0.0) { continue; }
+    if (Za <= 0.0) { continue; }
     let dx = xi - f32(atoms[n].posI) * p.h;
     let dy = yj - f32(atoms[n].posJ) * p.h;
     let dz = zk - f32(atoms[n].posK) * p.h;
-    let r2 = dx*dx + dy*dy + dz*dz;
-    // Bare atoms (rc=0): clamp at R_SING. Pseudopotential (rc>0): hard cutoff at rc.
-    let r = select(max(sqrt(r2), ${R_SING}), max(sqrt(r2 + 0.04 * p.h2), atoms[n].rc), atoms[n].rc > 0.0);
-    Kval += Zn / r;
-    // Normalized trial: ∫U²dV = Z_eff analytically (U = Zeff²/√π · exp(-Zeff·r))
+    let r2 = dx*dx + dy*dy + dz*dz + p.h2;
+    let r = sqrt(r2);
+    Kval += Za / r;
+    // Normalized trial: ∫U²dV = Z_eff analytically (U = Z²/√π · exp(-Z·r))
     // Domains assigned by highest normalized density
-    // Skip wavefunction init for bare protons (Za=0): no electron domain
-    let Ze = atoms[n].initZeff;
-    let rReal = sqrt(r2);
-    let rCutInit = atoms[n].initRcut;
-    let uTrial = select(Ze * Ze * ${(1/Math.sqrt(Math.PI)).toFixed(10)} * exp(-Ze * r), 0.0, rReal > rCutInit || Za <= 0.0);
+    let uTrial = Za * Za * ${(1/Math.sqrt(Math.PI)).toFixed(10)} * exp(-Za * r);
     if (uTrial > bU) { bU = uTrial; bestN = n; }
   }
 
@@ -1387,7 +1114,8 @@ fn isInsideRc(ci: u32, cj: u32, ck: u32, lbl: u32) -> bool {
 }
 
 fn isInsideAnalytical(ci: u32, cj: u32, ck: u32, lbl: u32) -> bool {
-  return false;  // disabled: bare atoms use Coulomb softening
+  if (atoms[lbl].rc > 0.0) { return false; }
+  return distToAtom(ci, cj, ck, lbl) < ${R_SING};
 }
 
 ${cellIdxWGSL}
@@ -1405,21 +1133,21 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   let myL = label[id];
 
-  // Inside r_c exclusion: HU = 0
-  if (isInsideRc(i, j, k, myL)) {
+  // Inside exclusion: HU = 0
+  if (isInsideRc(i, j, k, myL) || isInsideAnalytical(i, j, k, myL)) {
     HU[id] = 0.0;
     return;
   }
 
   let uc = Ui[id];
 
-  // Neumann BC at domain boundaries and r_c surfaces
-  let l_ip = label[id + p.S2]; let excl_ip = isInsideRc(i+1u, j, k, l_ip);
-  let l_im = label[id - p.S2]; let excl_im = isInsideRc(i-1u, j, k, l_im);
-  let l_jp = label[id + p.S];  let excl_jp = isInsideRc(i, j+1u, k, l_jp);
-  let l_jm = label[id - p.S];  let excl_jm = isInsideRc(i, j-1u, k, l_jm);
-  let l_kp = label[id + 1u];   let excl_kp = isInsideRc(i, j, k+1u, l_kp);
-  let l_km = label[id - 1u];   let excl_km = isInsideRc(i, j, k-1u, l_km);
+  // Neumann BC at domain boundaries and exclusion surfaces (same as updateU)
+  let l_ip = label[id + p.S2]; let excl_ip = isInsideRc(i+1u, j, k, l_ip) || isInsideAnalytical(i+1u, j, k, myL);
+  let l_im = label[id - p.S2]; let excl_im = isInsideRc(i-1u, j, k, l_im) || isInsideAnalytical(i-1u, j, k, myL);
+  let l_jp = label[id + p.S];  let excl_jp = isInsideRc(i, j+1u, k, l_jp) || isInsideAnalytical(i, j+1u, k, myL);
+  let l_jm = label[id - p.S];  let excl_jm = isInsideRc(i, j-1u, k, l_jm) || isInsideAnalytical(i, j-1u, k, myL);
+  let l_kp = label[id + 1u];   let excl_kp = isInsideRc(i, j, k+1u, l_kp) || isInsideAnalytical(i, j, k+1u, myL);
+  let l_km = label[id - 1u];   let excl_km = isInsideRc(i, j, k-1u, l_km) || isInsideAnalytical(i, j, k-1u, myL);
 
   let u_ip = select(uc, Ui[id + p.S2], l_ip == myL && !excl_ip);
   let u_im = select(uc, Ui[id - p.S2], l_im == myL && !excl_im);
@@ -1643,9 +1371,6 @@ let reduceEnergyPL, finalizeEnergyPL, accumNormsPL, decodeNormsPL, normalizePL, 
 let gpuInitAccumPL, gpuInitFinalPL;
 let computeRhoPL, computeResidualPL, restrictPL, coarseSmoothPL, prolongCorrectPL;
 let computeRhoSelfPL, subtractPselfPL;
-let computeRhoOtherPL, copyPotherForLabelPL, initPdirectPL;
-let P_directBuf = [], P_directScratchBuf;
-let computeRhoOtherBG = [], jacobiDirectBG = [], copyPotherForLabelBG = [], initPdirectBG = [];
 let updateBG = [], evolveBoundaryBG = [], fixBoundaryUBG = [], jacobiFineBG = [];
 let reduceEnergyBG = [], finalizeEnergyBG, accumNormsBG = [], decodeNormsBG, normalizeBG = [], extractBG = [];
 let gpuInitAccumBG, gpuInitFinalBG;
@@ -1721,11 +1446,11 @@ let gpuError = null;
 // Single phase run
 let phase = 0, phaseSteps = 0, frameCount = 0;
 const TOTAL_STEPS = window.USER_STEPS || 20000;
-let addNucRepulsion = window.NO_NUC_REPULSION ? false : true;
+let addNucRepulsion = true;
 let vcycleEnabled = true;
 let vcycleCount = 0;
 
-const SLICE_SIZE = (3 * S * S + 2 * S) * 4;  // 3 image slices (density, Z, boundary) + K line + W line
+const SLICE_SIZE = (3 * S * S + S) * 4;  // 3 image slices (density, Z, boundary) + 1 K line
 const WG_UPDATE = Math.ceil(INTERIOR / 256);
 const WG_REDUCE = Math.min(MAX_REDUCE_WG, Math.ceil(INTERIOR / REDUCE_WG));
 const WG_NORM = Math.ceil(INTERIOR / 256);
@@ -1756,35 +1481,13 @@ function fillAtomBuf() {
     au[off + 2] = nucPos[n][2];
     af[off + 3] = Z[n];
     af[off + 4] = r_cut[n];
-    af[off + 5] = Z_nuc[n]; // nuclear charge (may differ from Z for bare protons)
-    // Per-atom init: initZeff controls exp(-Zeff*r), initRcut limits domain radius
-    const perZeff = window.USER_INIT_ZEFF;
-    const perRcut = window.USER_INIT_RCUT;
-    af[off + 6] = perZeff ? perZeff[n] || Z[n] : (window.INIT_ZEFF || Z[n]);
-    af[off + 7] = perRcut ? perRcut[n] || 1e6 : (window.INIT_RCUT || 1e6);
   }
   device.queue.writeBuffer(atomBuf, 0, ab);
 }
 
 async function uploadInitialData() {
   console.log("GPU Init: " + NELEC + " atoms, NN=" + NN + " S3=" + S3);
-
-  // If USER_INIT_POS is set, temporarily move atoms to electron positions for wavefunction init
-  const initPos = window.USER_INIT_POS;
-  const savedPos = [];
-  if (initPos) {
-    for (let n = 0; n < NELEC; n++) {
-      savedPos.push([nucPos[n][0], nucPos[n][1], nucPos[n][2]]);
-      if (initPos[n]) {
-        nucPos[n][0] = initPos[n][0];
-        nucPos[n][1] = initPos[n][1];
-        // keep k (z) the same
-        console.log("Atom " + n + ": init wavefunction at (" + initPos[n][0] + "," + initPos[n][1] + ") nucleus at (" + savedPos[n][0] + "," + savedPos[n][1] + ")");
-      }
-    }
-  }
-
-  fillAtomBuf(); // upload with electron positions for U init
+  fillAtomBuf();
 
   const t0 = performance.now();
   const WG_INIT = Math.ceil(S3 / 256);
@@ -1817,31 +1520,6 @@ async function uploadInitialData() {
     dispatchLinear(ip, S3);
     ip.end();
     device.queue.submit([enc.finish()]);
-  }
-
-  // Restore nucleus positions and recompute K potential
-  if (initPos && savedPos.length > 0) {
-    for (let n = 0; n < NELEC; n++) {
-      nucPos[n][0] = savedPos[n][0];
-      nucPos[n][1] = savedPos[n][1];
-      nucPos[n][2] = savedPos[n][2];
-    }
-    fillAtomBuf(); // re-upload with true nucleus positions
-    // Recompute K with correct nucleus positions
-    {
-      const kEnc = device.createCommandEncoder();
-      kEnc.clearBuffer(K_buf);
-      device.queue.submit([kEnc.finish()]);
-      const kEnc2 = device.createCommandEncoder();
-      const kp = kEnc2.beginComputePass();
-      kp.setPipeline(recomputeK_PL);
-      kp.setBindGroup(0, recomputeK_BG);
-      dispatchLinear(kp, S3);
-      kp.end();
-      device.queue.submit([kEnc2.finish()]);
-      await device.queue.onSubmittedWorkDone();
-    }
-    console.log("Restored nucleus positions — K recomputed at proton locations");
   }
 
   // Final pass: set U and P from bestR2 (labels already set by accum)
@@ -1880,73 +1558,6 @@ async function uploadInitialData() {
     window._initDebug = "initU: max=" + dbgMax.toExponential(2) + " nz=" + dbgNonZero;
   }
 
-  // Shell-based initialization: override Voronoi with radial shells
-  // SHELL_INIT = [ { domains: [0,1], rmax: R, zeff: Z }, { domains: [2], rmin: R, zeff: Z }, ... ]
-  if (window.SHELL_INIT) {
-    console.log("Shell init: overriding Voronoi with radial shells");
-    const uData = new Float32Array(S3);
-    const lData = new Uint32Array(S3);
-    // Center = average of all atom positions
-    let cx = 0, cy = 0, cz = 0;
-    for (let a = 0; a < NELEC; a++) {
-      cx += nucPos[a][0]; cy += nucPos[a][1]; cz += nucPos[a][2];
-    }
-    cx /= NELEC; cy /= NELEC; cz /= NELEC;
-
-    for (let i = 0; i < S; i++) {
-      for (let j = 0; j < S; j++) {
-        for (let k = 0; k < S; k++) {
-          const id = i * S2 + j * S + k;
-          const r = Math.sqrt(((i - cx) * hGrid) ** 2 + ((j - cy) * hGrid) ** 2 + ((k - cz) * hGrid) ** 2);
-
-          // Find which shell this point belongs to
-          let assigned = false;
-          for (const shell of window.SHELL_INIT) {
-            const rmin = shell.rmin || 0;
-            const rmax = shell.rmax || Infinity;
-            if (r >= rmin && r < rmax) {
-              // Assign to one of the shell's domains based on angular partition
-              const doms = shell.domains;
-              let domIdx;
-              if (doms.length === 1) {
-                domIdx = doms[0];
-              } else {
-                // Split hemisphere: use angle from x-axis for 2, thirds for 3, etc.
-                const angle = Math.atan2((j - cy), (i - cx));
-                const sector = Math.floor((angle + Math.PI) / (2 * Math.PI) * doms.length);
-                domIdx = doms[Math.min(sector, doms.length - 1)];
-              }
-              lData[id] = domIdx;
-              const zeff = shell.zeff || 1;
-              uData[id] = zeff * zeff / Math.sqrt(Math.PI) * Math.exp(-zeff * r);
-              assigned = true;
-              break;
-            }
-          }
-          if (!assigned) {
-            lData[id] = 0;
-            uData[id] = 0;
-          }
-        }
-      }
-    }
-    // Apply custom psi modification if provided
-    if (window.CUSTOM_PSI_INIT) {
-      window.CUSTOM_PSI_INIT(S, hGrid, uData, lData);
-    }
-    device.queue.writeBuffer(U_buf[0], 0, uData);
-    device.queue.writeBuffer(labelBuf, 0, lData);
-    console.log("Shell init complete");
-  }
-
-  // Custom label initialization: override Voronoi domain assignment
-  if (window.CUSTOM_LABEL_INIT) {
-    console.log("Custom label init: overriding Voronoi domains");
-    const lData = window.CUSTOM_LABEL_INIT(S, hGrid, nucPos, NELEC);
-    device.queue.writeBuffer(labelBuf, 0, lData);
-    console.log("Custom label init complete");
-  }
-
   // Copy to double-buffered slots
   const cpEnc = device.createCommandEncoder();
   cpEnc.copyBufferToBuffer(U_buf[0], 0, U_buf[1], 0, S3 * 4);
@@ -1975,7 +1586,7 @@ async function startMolPhase() {
   nucPos = molNucPos.map(p => [...p]);
   Z = [...Z_orig]; Ne = [...Ne_orig];
   R_out = 1.0;
-  addNucRepulsion = !window.NO_NUC_REPULSION;
+  addNucRepulsion = true;
   updateParamsBuf();
   await uploadInitialData();
   tStep = 0;
@@ -1995,7 +1606,7 @@ window.restartWithPositions = async function(newPositions) {
     molNucPos[n] = [...newPositions[n]];
   }
   R_out = 1.0;
-  addNucRepulsion = !window.NO_NUC_REPULSION;
+  addNucRepulsion = true;
   updateParamsBuf();
   await uploadInitialData();
   tStep = 0;
@@ -2061,7 +1672,7 @@ window.isGpuReady = function() { return gpuReady; };
 
 function setup() {
   console.log("setup: NELEC=" + NELEC + " NRED_E=" + NRED_E + " REDUCE_WG=" + REDUCE_WG);
-  createCanvas(CANVAS_SIZE, CANVAS_SIZE);
+  createCanvas(700, 700);
   textSize(9);
 
   // Control sliders (top-right)
@@ -2098,10 +1709,6 @@ async function initGPU() {
     }
 
     const adapter = await navigator.gpu.requestAdapter();
-    if (!adapter) {
-      gpuError = "No WebGPU adapter found. Check GPU drivers or try Chrome 113+.";
-      return;
-    }
 
     try {
       const info = await adapter.requestAdapterInfo();
@@ -2140,20 +1747,10 @@ async function initGPU() {
     PselfScratchBuf = device.createBuffer({ size: bs, usage });
     sicBuf = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     sicResidualBuf = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-    // Domain index uniform buffers (needed for SIC and direct Pother)
-    for (let m = 0; m < NELEC; m++) {
-      if (!domainBufs[m]) {
-        domainBufs[m] = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-        const _zf = new Float32Array([Z[m]]);
-        const _zu = new Uint32Array(_zf.buffer);
-        device.queue.writeBuffer(domainBufs[m], 0, new Uint32Array([m, _zu[0], 0, 0]));
-      }
-    }
-    if (USE_DIRECT_POTHER) {
-      // Per-electron persistent P buffers for direct Pother solve
-      P_directScratchBuf = device.createBuffer({ size: bs, usage });
+    if (SIC_INTERVAL < 999999) {
       for (let m = 0; m < NELEC; m++) {
-        P_directBuf[m] = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+        domainBufs[m] = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        device.queue.writeBuffer(domainBufs[m], 0, new Uint32Array([m, 0, 0, 0]));
       }
     }
     // Multigrid buffers
@@ -2264,14 +1861,6 @@ async function initGPU() {
     // fixBoundaryUPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: fixBoundaryUMod, entryPoint: 'main' } });
     computeRhoSelfPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: computeRhoSelfMod, entryPoint: 'main' } });
     subtractPselfPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: subtractPselfMod, entryPoint: 'main' } });
-    if (USE_DIRECT_POTHER) {
-      const computeRhoOtherMod = await compileShader('computeRhoOther', computeRhoOtherWGSL);
-      const copyPotherForLabelMod = await compileShader('copyPotherForLabel', copyPotherForLabelWGSL);
-      const initPdirectMod = await compileShader('initPdirect', initPdirectWGSL);
-      computeRhoOtherPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: computeRhoOtherMod, entryPoint: 'main' } });
-      copyPotherForLabelPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: copyPotherForLabelMod, entryPoint: 'main' } });
-      initPdirectPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: initPdirectMod, entryPoint: 'main' } });
-    }
     jacobiSmoothPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: jacobiSmoothMod, entryPoint: 'main' } });
     computeRhoPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: computeRhoMod, entryPoint: 'main' } });
     computeResidualPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: computeResidualMod, entryPoint: 'main' } });
@@ -2489,84 +2078,12 @@ async function initGPU() {
       { binding: 2, resource: { buffer: sicBuf } },
     ]});
 
-    // Direct Pother bind groups (per-electron Poisson, no SIC)
-    if (USE_DIRECT_POTHER) {
-      for (let m = 0; m < NELEC; m++) {
-        // computeRhoOther: same layout as computeRhoSelf (params, U, rhoOut, label, domIdx)
-        computeRhoOtherBG[m] = [];
-        for (let c = 0; c < 2; c++) {
-          computeRhoOtherBG[m][c] = device.createBindGroup({ layout: computeRhoOtherPL.getBindGroupLayout(0), entries: [
-            { binding: 0, resource: { buffer: paramsBuf } },
-            { binding: 1, resource: { buffer: U_buf[c] } },
-            { binding: 2, resource: { buffer: rhoTotalBuf } },  // reuse as rhoOther output
-            { binding: 3, resource: { buffer: labelBuf } },
-            { binding: 4, resource: { buffer: domainBufs[m] } },
-          ]});
-        }
-        // Jacobi: P_direct[m] <-> P_directScratch, sourced from rhoTotalBuf
-        jacobiDirectBG[m] = [
-          device.createBindGroup({ layout: jacobiSmoothPL.getBindGroupLayout(0), entries: [
-            { binding: 0, resource: { buffer: paramsBuf } },
-            { binding: 1, resource: { buffer: P_directBuf[m] } },
-            { binding: 2, resource: { buffer: P_directScratchBuf } },
-            { binding: 3, resource: { buffer: rhoTotalBuf } },
-          ]}),
-          device.createBindGroup({ layout: jacobiSmoothPL.getBindGroupLayout(0), entries: [
-            { binding: 0, resource: { buffer: paramsBuf } },
-            { binding: 1, resource: { buffer: P_directScratchBuf } },
-            { binding: 2, resource: { buffer: P_directBuf[m] } },
-            { binding: 3, resource: { buffer: rhoTotalBuf } },
-          ]}),
-        ];
-        // copyPotherForLabel: same layout as subtractPself (params, Psrc, Pother, label, domIdx)
-        copyPotherForLabelBG[m] = device.createBindGroup({ layout: copyPotherForLabelPL.getBindGroupLayout(0), entries: [
-          { binding: 0, resource: { buffer: paramsBuf } },
-          { binding: 1, resource: { buffer: P_directBuf[m] } },
-          { binding: 2, resource: { buffer: PotherBuf } },
-          { binding: 3, resource: { buffer: labelBuf } },
-          { binding: 4, resource: { buffer: domainBufs[m] } },
-        ]});
-        // initPdirect: compute P_direct[m] = sum_{n!=m} 0.5/r on GPU
-        initPdirectBG[m] = device.createBindGroup({ layout: initPdirectPL.getBindGroupLayout(0), entries: [
-          { binding: 0, resource: { buffer: paramsBuf } },
-          { binding: 1, resource: { buffer: atomBuf } },
-          { binding: 2, resource: { buffer: P_directBuf[m] } },
-          { binding: 3, resource: { buffer: PotherBuf } },
-          { binding: 4, resource: { buffer: domainBufs[m] } },
-        ]});
-      }
-    }
-
-    // Initialize P_direct buffers with 0.5/r on GPU (replaces CPU triple loop that blocked main thread)
-    if (USE_DIRECT_POTHER && N_ELECTRONS > 1) {
-      const clrEnc2 = device.createCommandEncoder();
-      clrEnc2.clearBuffer(PotherBuf);
-      device.queue.submit([clrEnc2.finish()]);
-      for (let m = 0; m < NELEC; m++) {
-        if (Z[m] === 0) continue;
-        const initEnc = device.createCommandEncoder();
-        const cp = initEnc.beginComputePass();
-        cp.setPipeline(initPdirectPL);
-        cp.setBindGroup(0, initPdirectBG[m]);
-        dispatchLinear(cp, INTERIOR);
-        cp.end();
-        device.queue.submit([initEnc.finish()]);
-      }
-      await device.queue.onSubmittedWorkDone();
-      console.log("Direct Pother: GPU-initialized P_direct + PotherBuf with 0.5/r, NELEC=" + NELEC);
-    }
-
     // Nuclear dynamics bind groups
-    // gradPtotal: direct Coulomb force from U² density on nuclei
+    // gradPtotal: reads P_buf[0] directly (already converged from main V-cycle)
     for (let c = 0; c < 2; c++) {
-      // Bind to correct potential buffer:
-      // NELEC ≤ 5: PotherBuf (direct per-electron Poisson)
-      // NELEC > 5: P_buf[0] (total Poisson from multigrid)
-      // HF uses U_buf; gradP uses P_buf (multigrid) or PotherBuf (direct)
-      const forceBuf = USE_GRADP_FORCE ? (USE_DIRECT_POTHER ? PotherBuf : P_buf[0]) : U_buf[c];
       gradPtotalBG[c] = device.createBindGroup({ layout: gradPtotalPL.getBindGroupLayout(0), entries: [
         { binding: 0, resource: { buffer: paramsBuf } },
-        { binding: 1, resource: { buffer: forceBuf } },
+        { binding: 1, resource: { buffer: P_buf[0] } },
         { binding: 2, resource: { buffer: forceSumsBuf } },
         { binding: 3, resource: { buffer: atomBuf } },
       ]});
@@ -2600,9 +2117,7 @@ async function initGPU() {
     for (let m = 0; m < NELEC; m++) {
       if (!domainBufs[m]) {
         domainBufs[m] = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-        const _zf = new Float32Array([Z[m]]);
-        const _zu = new Uint32Array(_zf.buffer);
-        device.queue.writeBuffer(domainBufs[m], 0, new Uint32Array([m, _zu[0], 0, 0]));
+        device.queue.writeBuffer(domainBufs[m], 0, new Uint32Array([m, 0, 0, 0]));
       }
     }
 
@@ -2691,49 +2206,20 @@ async function doSteps(n) {
 
   for (let s = 0; s < n; s++) {
     const next = 1 - cur;
-    // --- Poisson solve (skip for single-electron systems or NO_VEE) ---
-    let vp;
-    if (N_ELECTRONS > 1 && !window.NO_VEE && USE_DIRECT_POTHER) {
-    // --- Direct per-electron Pother: solve ∇²P_m = -2π·ρ_other_m for each electron ---
-    const JACOBI_DIRECT = 10;
-    for (let m = 0; m < NELEC; m++) {
-      if (Z[m] === 0) continue;
-      // Compute rhoOther (density of all electrons except m) into rhoTotalBuf
-      vp = enc.beginComputePass();
-      vp.setPipeline(computeRhoOtherPL);
-      vp.setBindGroup(0, computeRhoOtherBG[m][cur]);
-      dispatchLinear(vp, INTERIOR);
-      vp.end();
-      // Jacobi iterations on P_direct[m] (persistent, accumulates across frames)
-      for (let js = 0; js < JACOBI_DIRECT; js++) {
-        vp = enc.beginComputePass();
-        vp.setPipeline(jacobiSmoothPL);
-        vp.setBindGroup(0, jacobiDirectBG[m][js % 2]);
-        dispatchLinear(vp, INTERIOR);
-        vp.end();
-      }
-      // Copy P_direct[m] to PotherBuf where label == m
-      vp = enc.beginComputePass();
-      vp.setPipeline(copyPotherForLabelPL);
-      vp.setBindGroup(0, copyPotherForLabelBG[m]);
-      dispatchLinear(vp, INTERIOR);
-      vp.end();
-    }
-
-    } else if (N_ELECTRONS > 1 && !window.NO_VEE) {
-    // --- Total Poisson + SIC path (for larger systems) ---
-    // Compute rho_total from U[cur] + labels
-    vp = enc.beginComputePass();
+    // --- Compute rho_total from U[cur] + labels ---
+    let vp = enc.beginComputePass();
     vp.setPipeline(computeRhoPL);
     vp.setBindGroup(0, computeRhoBG[cur]);
     dispatchLinear(vp, INTERIOR);
     vp.end();
-    // Jacobi smooth P every step
-    const JACOBI_PER_STEP = window.USER_JACOBI_PER_STEP || 2;
-    for (let js = 0; js < JACOBI_PER_STEP; js++) {
+
+    // --- Poisson solve (skip for single-electron systems — no V_ee) ---
+    if (N_ELECTRONS > 1) {
+    // --- Jacobi smooth P every step (2 sweeps: P[0]->P[1]->P[0]) ---
+    for (let js = 0; js < 2; js++) {
       vp = enc.beginComputePass();
       vp.setPipeline(jacobiSmoothPL);
-      vp.setBindGroup(0, jacobiFineBG[js % 2]);
+      vp.setBindGroup(0, jacobiFineBG[js]);
       dispatchLinear(vp, INTERIOR);
       vp.end();
     }
@@ -2770,7 +2256,7 @@ async function doSteps(n) {
       vp.end();
     }
 
-    } // end Poisson block
+    } // end N_ELECTRONS > 1 Poisson block
 
     // --- U update ---
     let cp;
@@ -2858,7 +2344,7 @@ async function doSteps(n) {
     cur = next;
 
     // Nuclear force computation at N_MOVE intervals — gradient of P directly
-    if ((tStep + s + 1) % N_MOVE === 0) {
+    if (dynamicsEnabled && (tStep + s + 1) % N_MOVE === 0) {
       cp = enc.beginComputePass();
       cp.setPipeline(gradPtotalPL);
       cp.setBindGroup(0, gradPtotalBG[cur]);
@@ -2866,14 +2352,11 @@ async function doSteps(n) {
       cp.end();
       needForceReadback = true;
     }
-
   }
 
   // --- Compute Pother = P_total - P_self (remove self-repulsion) ---
-  if (N_ELECTRONS <= 1 || window.NO_VEE) {
-    enc.clearBuffer(PotherBuf);  // no V_ee
-  } else if (USE_DIRECT_POTHER) {
-    // PotherBuf already built per-step in the direct Poisson loop above
+  if (N_ELECTRONS <= 1) {
+    enc.clearBuffer(PotherBuf);  // single electron: no V_ee
   } else {
   enc.copyBufferToBuffer(P_buf[0], 0, PotherBuf, 0, S3 * 4);
   // Only run SIC periodically to avoid GPU timeout with many atoms
@@ -2936,7 +2419,7 @@ async function doSteps(n) {
       sp.end();
     }
   }
-  } // end Pother block
+  } // end N_ELECTRONS > 1 else block
 
   // --- Energy reduce (after SIC so V_ee uses current frame's PotherBuf) ---
   {
@@ -2955,8 +2438,7 @@ async function doSteps(n) {
 
   // --- Evolve level set W + flip labels where W < 0 ---
   frameCount++;
-  if (window.FREEZE_BOUNDARY) { /* skip boundary evolution */ }
-  else for (let s = 0; s < W_STEPS_PER_FRAME; s++) {
+  for (let s = 0; s < W_STEPS_PER_FRAME; s++) {
     let bp = enc.beginComputePass();
     bp.setPipeline(evolveBoundaryPL);
     bp.setBindGroup(0, evolveBoundaryBG[cur]);
@@ -2990,16 +2472,7 @@ async function doSteps(n) {
   E_T = sumsData[0];
   E_eK = sumsData[1];
   E_ee = sumsData[2];  // SIC already removed self-interaction from PotherBuf
-  // Per-H correction: exclusion sphere around each nucleus clips T and V_eK
-  // This is a per-nucleus artifact independent of bonding
-  {
-    const H_RAW = { 100: [0.5, -1.0], 200: [0.503, -1.028], 300: [0.5, -1.0] };
-    const raw = H_RAW[NN] || H_RAW[200];
-    let nH = 0;
-    for (let a = 0; a < NELEC; a++) { if (Z[a] === 1 && r_cut[a] === 0) nH++; }
-    E_T  += nH * (0.5 - raw[0]);
-    E_eK += nH * (-1.0 - raw[1]);
-  }
+  // Per-H correction disabled (sqrt(r2+h2) softening, no exclusion sphere)
 
   // Dipole moment: μ = Σ Z_a·R_a - ∫ ρ(r)·r dV
   // sumsData[3..5] = electronic part ∫ ρ·r dV (positive, negate for electron charge)
@@ -3030,15 +2503,14 @@ async function doSteps(n) {
   E_KK = 0;
   if (addNucRepulsion) {
     const soft_nuc = 0.04 * h2v;
-    for (let a = 0; a < uniqueNuclei.length; a++) {
-      const ea = uniqueNuclei[a].elecIndices[0]; // representative electron index for position
-      for (let b = a + 1; b < uniqueNuclei.length; b++) {
-        const eb = uniqueNuclei[b].elecIndices[0];
+    for (let a = 0; a < NELEC; a++) {
+      for (let b = a + 1; b < NELEC; b++) {
+        if (Z[a] === 0 || Z[b] === 0) continue;
         const d = Math.sqrt(
-          ((nucPos[ea][0]-nucPos[eb][0])*hGrid)**2 +
-          ((nucPos[ea][1]-nucPos[eb][1])*hGrid)**2 +
-          ((nucPos[ea][2]-nucPos[eb][2])*hGrid)**2 + soft_nuc);
-        E_KK += uniqueNuclei[a].Z_eff * uniqueNuclei[b].Z_eff / d;
+          ((nucPos[a][0]-nucPos[b][0])*hGrid)**2 +
+          ((nucPos[a][1]-nucPos[b][1])*hGrid)**2 +
+          ((nucPos[a][2]-nucPos[b][2])*hGrid)**2 + soft_nuc);
+        E_KK += Z_nuc[a]*Z_nuc[b]/d;
       }
     }
   }
@@ -3050,62 +2522,14 @@ async function doSteps(n) {
     return;
   }
 
-  console.log("Step " + tStep + ": E=" + E.toFixed(6) + " T=" + E_T.toFixed(4) + " V_eK=" + E_eK.toFixed(4) + " V_ee=" + E_ee.toFixed(4) + " V_KK=" + E_KK.toFixed(4) + " (" + lastMs.toFixed(0) + "ms/" + n + "steps)");
+  console.log("Step " + tStep + ": E=" + E.toFixed(6) + " (" + lastMs.toFixed(0) + "ms/" + n + "steps)");
 
   // Force readback and nuclear dynamics
   if (needForceReadback) {
     await forceSumsReadBuf.mapAsync(GPUMapMode.READ);
     const forceData = new Float32Array(forceSumsReadBuf.getMappedRange().slice(0));
     forceSumsReadBuf.unmap();
-    // Store electronic forces (HF integral from GPU)
-    for (let a = 0; a < NELEC; a++) {
-      if (Z[a] === 0 && Z_nuc[a] === 0) { nucForceElec[a] = [0,0,0]; nucForceNuc[a] = [0,0,0]; nucForceTotal[a] = [0,0,0]; continue; }
-      nucForceElec[a] = (Z[a] > 0 || Z_nuc[a] > 0) ? [forceData[a*3], forceData[a*3+1], forceData[a*3+2]] : [0,0,0];
-      nucForceNuc[a] = [0, 0, 0];
-    }
-
-
-    // Compute nuclear-nuclear Coulomb repulsion forces
-    if (!addNucRepulsion) {
-      // Skip nuc-nuc forces (e.g. He internal entries)
-      for (let a = 0; a < NELEC; a++) nucForceNuc[a] = [0, 0, 0];
-    }
-    for (let a = 0; addNucRepulsion && a < uniqueNuclei.length; a++) {
-      const ea = uniqueNuclei[a].elecIndices[0];
-      let fx = 0, fy = 0, fz = 0;
-      for (let b = 0; b < uniqueNuclei.length; b++) {
-        if (b === a) continue;
-        const eb = uniqueNuclei[b].elecIndices[0];
-        const dx = (nucPos[ea][0] - nucPos[eb][0]) * hGrid;
-        const dy = (nucPos[ea][1] - nucPos[eb][1]) * hGrid;
-        const dz = (nucPos[ea][2] - nucPos[eb][2]) * hGrid;
-        const r2 = dx*dx + dy*dy + dz*dz + hGrid*hGrid;
-        const r = Math.sqrt(r2);
-        const inv_r3 = 1.0 / (r * r2);
-        fx += uniqueNuclei[a].Z_eff * uniqueNuclei[b].Z_eff * dx * inv_r3;
-        fy += uniqueNuclei[a].Z_eff * uniqueNuclei[b].Z_eff * dy * inv_r3;
-        fz += uniqueNuclei[a].Z_eff * uniqueNuclei[b].Z_eff * dz * inv_r3;
-      }
-      for (const e of uniqueNuclei[a].elecIndices) {
-        nucForceNuc[e] = [fx, fy, fz];
-      }
-    }
-    // Compute total forces
-    for (let a = 0; a < NELEC; a++) {
-      if (Z[a] === 0 && Z_nuc[a] === 0) continue;
-      nucForceTotal[a] = [
-        nucForceElec[a][0] + nucForceNuc[a][0],
-        nucForceElec[a][1] + nucForceNuc[a][1],
-        nucForceElec[a][2] + nucForceNuc[a][2]
-      ];
-    }
-    // Zero display forces on hinge atoms
-    if (window.USER_HINGE_ATOMS) {
-      for (const a of window.USER_HINGE_ATOMS) {
-        if (a < NELEC) nucForceTotal[a] = [0, 0, 0];
-      }
-    }
-    if (dynamicsEnabled) await moveNuclei(forceData);
+    await moveNuclei(forceData);
   }
 }
 
@@ -3247,21 +2671,24 @@ async function doLOBPCGStep() {
   // Phase 1: Compute rho + Poisson + SIC (same as doSteps but single iteration)
   {
     const enc = device.createCommandEncoder();
-    let vp;
 
-    if (N_ELECTRONS > 1 && USE_DIRECT_POTHER) {
-      // Direct per-electron Pother
-      for (let m = 0; m < NELEC; m++) {
-        if (Z[m] === 0) continue;
-        vp = enc.beginComputePass(); vp.setPipeline(computeRhoOtherPL); vp.setBindGroup(0, computeRhoOtherBG[m][cur]); dispatchLinear(vp, INTERIOR); vp.end();
-        for (let js = 0; js < 10; js++) { vp = enc.beginComputePass(); vp.setPipeline(jacobiSmoothPL); vp.setBindGroup(0, jacobiDirectBG[m][js % 2]); dispatchLinear(vp, INTERIOR); vp.end(); }
-        vp = enc.beginComputePass(); vp.setPipeline(copyPotherForLabelPL); vp.setBindGroup(0, copyPotherForLabelBG[m]); dispatchLinear(vp, INTERIOR); vp.end();
+    // Compute rho
+    let vp = enc.beginComputePass();
+    vp.setPipeline(computeRhoPL);
+    vp.setBindGroup(0, computeRhoBG[cur]);
+    dispatchLinear(vp, INTERIOR);
+    vp.end();
+
+    // Poisson solve
+    if (N_ELECTRONS > 1) {
+      for (let js = 0; js < 4; js++) {
+        vp = enc.beginComputePass();
+        vp.setPipeline(jacobiSmoothPL);
+        vp.setBindGroup(0, jacobiFineBG[js % 2]);
+        dispatchLinear(vp, INTERIOR);
+        vp.end();
       }
-    } else if (N_ELECTRONS > 1) {
-      // Compute rho
-      vp = enc.beginComputePass(); vp.setPipeline(computeRhoPL); vp.setBindGroup(0, computeRhoBG[cur]); dispatchLinear(vp, INTERIOR); vp.end();
-      // Poisson solve
-      for (let js = 0; js < 4; js++) { vp = enc.beginComputePass(); vp.setPipeline(jacobiSmoothPL); vp.setBindGroup(0, jacobiFineBG[js % 2]); dispatchLinear(vp, INTERIOR); vp.end(); }
+      // V-cycle
       if (vcycleEnabled) {
         vp = enc.beginComputePass(); vp.setPipeline(computeResidualPL); vp.setBindGroup(0, residualBG[0]); dispatchLinear(vp, INTERIOR); vp.end();
         vp = enc.beginComputePass(); vp.setPipeline(restrictPL); vp.setBindGroup(0, restrictBG); vp.dispatchWorkgroups(WG_COARSE); vp.end();
@@ -3271,11 +2698,9 @@ async function doLOBPCGStep() {
       }
     }
 
-    // SIC (only for non-direct path)
-    if (N_ELECTRONS <= 1 || window.NO_VEE) {
+    // SIC
+    if (N_ELECTRONS <= 1) {
       enc.clearBuffer(PotherBuf);
-    } else if (USE_DIRECT_POTHER) {
-      // already built above
     } else {
       enc.copyBufferToBuffer(P_buf[0], 0, PotherBuf, 0, S3 * 4);
       for (let m = 0; m < NELEC; m++) {
@@ -3489,7 +2914,6 @@ async function doLOBPCGStep() {
 
     // Boundary evolution
     frameCount++;
-    if (!window.FREEZE_BOUNDARY) {
     for (let s = 0; s < W_STEPS_PER_FRAME; s++) {
       let bp = enc.beginComputePass();
       bp.setPipeline(evolveBoundaryPL);
@@ -3497,7 +2921,6 @@ async function doLOBPCGStep() {
       dispatchLinear(bp, INTERIOR);
       bp.end();
       enc.copyBufferToBuffer(label2Buf, 0, labelBuf, 0, S3 * 4);
-    }
     }
 
     // Extract slice
@@ -3525,15 +2948,7 @@ async function doLOBPCGStep() {
   E_T = sumsData[0];
   E_eK = sumsData[1];
   E_ee = sumsData[2];
-  // Per-H correction (same as ITP path)
-  {
-    const H_RAW = { 100: [0.5, -1.0], 200: [0.503, -1.028], 300: [0.5, -1.0] };
-    const raw = H_RAW[NN] || H_RAW[200];
-    let nH = 0;
-    for (let a = 0; a < NELEC; a++) { if (Z[a] === 1 && r_cut[a] === 0) nH++; }
-    E_T  += nH * (0.5 - raw[0]);
-    E_eK += nH * (-1.0 - raw[1]);
-  }
+  // Per-H correction disabled (sqrt(r2+h2) softening, no exclusion sphere)
   {
     let dip_x = 0, dip_y = 0, dip_z = 0;
     for (let a = 0; a < NELEC; a++) {
@@ -3557,15 +2972,14 @@ async function doLOBPCGStep() {
   E_KK = 0;
   if (addNucRepulsion) {
     const soft_nuc = 0.04 * h2v;
-    for (let a = 0; a < uniqueNuclei.length; a++) {
-      const ea = uniqueNuclei[a].elecIndices[0];
-      for (let b = a + 1; b < uniqueNuclei.length; b++) {
-        const eb = uniqueNuclei[b].elecIndices[0];
+    for (let a = 0; a < NELEC; a++) {
+      for (let b = a + 1; b < NELEC; b++) {
+        if (Z[a] === 0 || Z[b] === 0) continue;
         const d = Math.sqrt(
-          ((nucPos[ea][0]-nucPos[eb][0])*hGrid)**2 +
-          ((nucPos[ea][1]-nucPos[eb][1])*hGrid)**2 +
-          ((nucPos[ea][2]-nucPos[eb][2])*hGrid)**2 + soft_nuc);
-        E_KK += uniqueNuclei[a].Z_eff * uniqueNuclei[b].Z_eff / d;
+          ((nucPos[a][0]-nucPos[b][0])*hGrid)**2 +
+          ((nucPos[a][1]-nucPos[b][1])*hGrid)**2 +
+          ((nucPos[a][2]-nucPos[b][2])*hGrid)**2 + soft_nuc);
+        E_KK += Z_nuc[a]*Z_nuc[b]/d;
       }
     }
   }
@@ -3579,599 +2993,41 @@ async function doLOBPCGStep() {
 async function moveNuclei(gpuForces) {
   // Start with electron density gradient forces from GPU
   for (let a = 0; a < NELEC; a++) {
-    if (Z[a] === 0) { nucForce[a] = [0,0,0]; nucForceElec[a] = [0,0,0]; continue; }
+    if (Z[a] === 0) { nucForce[a] = [0,0,0]; continue; }
     nucForce[a] = [gpuForces[a*3], gpuForces[a*3+1], gpuForces[a*3+2]];
-    nucForceElec[a] = [gpuForces[a*3], gpuForces[a*3+1], gpuForces[a*3+2]];
   }
 
-  // Add nuclear-nuclear (kernel-kernel) Coulomb repulsion forces using unique nuclei
-  // F_A += sum_{B≠A} Z_eff_A * Z_eff_B * (R_A - R_B) / |R_A - R_B|^3
-  for (let a = 0; a < uniqueNuclei.length; a++) {
-    const ea = uniqueNuclei[a].elecIndices[0];
-    let fx = 0, fy = 0, fz = 0;
-    for (let b = 0; b < uniqueNuclei.length; b++) {
-      if (b === a) continue;
-      const eb = uniqueNuclei[b].elecIndices[0];
-      const dx = (nucPos[ea][0] - nucPos[eb][0]) * hGrid;
-      const dy = (nucPos[ea][1] - nucPos[eb][1]) * hGrid;
-      const dz = (nucPos[ea][2] - nucPos[eb][2]) * hGrid;
-      const r2 = dx*dx + dy*dy + dz*dz + hGrid*hGrid;
+  // Add nuclear-nuclear (kernel-kernel) Coulomb repulsion forces
+  // F_A += sum_{B≠A} Z_A * Z_B * (R_A - R_B) / |R_A - R_B|^3
+  for (let a = 0; a < NELEC; a++) {
+    if (Z[a] === 0) continue;
+    for (let b = 0; b < NELEC; b++) {
+      if (b === a || Z[b] === 0) continue;
+      const dx = (nucPos[a][0] - nucPos[b][0]) * hGrid;
+      const dy = (nucPos[a][1] - nucPos[b][1]) * hGrid;
+      const dz = (nucPos[a][2] - nucPos[b][2]) * hGrid;
+      const r2 = dx*dx + dy*dy + dz*dz;
       const r = Math.sqrt(r2);
       const inv_r3 = 1.0 / (r * r2);
-      fx += uniqueNuclei[a].Z_eff * uniqueNuclei[b].Z_eff * dx * inv_r3;
-      fy += uniqueNuclei[a].Z_eff * uniqueNuclei[b].Z_eff * dy * inv_r3;
-      fz += uniqueNuclei[a].Z_eff * uniqueNuclei[b].Z_eff * dz * inv_r3;
-    }
-    // Apply same force to all electrons of this nucleus
-    for (const e of uniqueNuclei[a].elecIndices) {
-      nucForce[e][0] += fx;
-      nucForce[e][1] += fy;
-      nucForce[e][2] += fz;
-    }
-  }
-
-  // Zero out forces on hinge atoms (free pivot)
-  if (window.USER_HINGE_ATOMS) {
-    for (const a of window.USER_HINGE_ATOMS) {
-      if (a < NELEC) nucForce[a] = [0, 0, 0];
+      nucForce[a][0] += Z[a] * Z[b] * dx * inv_r3;
+      nucForce[a][1] += Z[a] * Z[b] * dy * inv_r3;
+      nucForce[a][2] += Z[a] * Z[b] * dz * inv_r3;
     }
   }
 
   console.log("Forces (elec+nuc): " + nucForce.filter((_,i) => Z[i]>0).map((f,i) =>
     atomLabels[i]+"=("+f.map(x=>x.toExponential(3)).join(",")+")").join(" "));
 
-  // Log net force on each branch for fold analysis (before elastic update)
-  if (window.USER_FOLD_ATOMS) {
-    const fa = window.USER_FOLD_ATOMS;
-    const hingeAtom = fa[1];
-    let s1fx=0, s1fy=0, s2fx=0, s2fy=0;
-    let s1n=0, s2n=0;
-    for (let a = 0; a < NELEC; a++) {
-      if (Z[a] === 0) continue;
-      if (a < hingeAtom) { s1fx += nucForce[a][0]; s1fy += nucForce[a][1]; s1n++; }
-      else { s2fx += nucForce[a][0]; s2fy += nucForce[a][1]; s2n++; }
-    }
-    let s1cx=0, s1cy=0, s2cx=0, s2cy=0;
-    for (let a = 0; a < NELEC; a++) {
-      if (Z[a] === 0) continue;
-      if (a < hingeAtom) { s1cx += nucPos[a][0]; s1cy += nucPos[a][1]; }
-      else { s2cx += nucPos[a][0]; s2cy += nucPos[a][1]; }
-    }
-    s1cx /= s1n; s1cy /= s1n; s2cx /= s2n; s2cy /= s2n;
-    const dx12 = s2cx - s1cx, dy12 = s2cy - s1cy;
-    const d12 = Math.sqrt(dx12*dx12 + dy12*dy12);
-    const s1proj = (s1fx * (-dx12) + s1fy * (-dy12)) / d12;
-    const s2proj = (s2fx * dx12 + s2fy * dy12) / d12;
-    const netUnfold = s1proj + s2proj;
-    window._foldNetUnfold = netUnfold;
-    window._foldS1proj = s1proj;
-    window._foldS2proj = s2proj;
-    console.log("FOLD FORCES: NET=" + netUnfold.toExponential(3) + (netUnfold > 0 ? " UNFOLDING" : " FOLDING"));
-  }
-
-  // Classical MD: bonds + angles + quantum forces, then full restart
-  const cmd = window.USER_CLASSICAL_MD;
-  const eb = window.USER_ELASTIC_BACKBONE; // keep for backward compat
-  if (cmd && cmd.caIndices) {
-    const mdSteps = cmd.mdSteps;
-    const mdDt = cmd.mdDt;
-
-    // Coarse-grained approach: move Ca atoms by per-residue net quantum force
-    // then SHAKE Ca-Ca distances, then rebuild all atoms from Ca + offsets
-
-    // Need residue groups and Ca indices — reuse from config or detect
-    const caIdx = cmd.caIndices;
-    const groups = cmd.groups;
-    const offsets = cmd.offsets;
-    const nRes = caIdx.length;
-
-    // 1. Sum quantum forces per residue
-    const resFx = new Array(nRes).fill(0);
-    const resFy = new Array(nRes).fill(0);
-    const resFz = new Array(nRes).fill(0);
-    for (let g = 0; g < nRes; g++) {
-      for (const a of groups[g]) {
-        if (a < NELEC && Z[a] > 0) {
-          resFx[g] += nucForce[a][0];
-          resFy[g] += nucForce[a][1];
-          resFz[g] += nucForce[a][2];
-        }
-      }
-    }
-
-    // SASA hydrophobic pressure: exposed residues get inward force toward centroid
-    const sasa = window.USER_SASA;
-    if (sasa) {
-      const probeR = sasa.probeRadius || 15.0;  // neighbor cutoff in grid units
-      const gamma = sasa.gamma || 0.5;           // surface tension (force scale)
-      const maxNeighbors = sasa.maxNeighbors || 6; // fully buried threshold
-
-      // Protein centroid (Ca atoms only)
-      let cx = 0, cy = 0, cz = 0;
-      for (let g = 0; g < nRes; g++) {
-        cx += nucPos[caIdx[g]][0];
-        cy += nucPos[caIdx[g]][1];
-        cz += nucPos[caIdx[g]][2];
-      }
-      cx /= nRes; cy /= nRes; cz /= nRes;
-
-      // Per-residue: count neighbors, compute exposure, add inward force
-      for (let g = 0; g < nRes; g++) {
-        let neighbors = 0;
-        const px = nucPos[caIdx[g]][0], py = nucPos[caIdx[g]][1], pz = nucPos[caIdx[g]][2];
-        for (let h = 0; h < nRes; h++) {
-          if (h === g) continue;
-          const dx = nucPos[caIdx[h]][0] - px;
-          const dy = nucPos[caIdx[h]][1] - py;
-          const dz = nucPos[caIdx[h]][2] - pz;
-          if (dx*dx + dy*dy + dz*dz < probeR * probeR) neighbors++;
-        }
-        // Exposure: 1 = fully exposed, 0 = fully buried
-        const exposure = Math.max(0, 1 - neighbors / maxNeighbors);
-        if (exposure > 0) {
-          // Force toward centroid, proportional to exposure
-          const dx = cx - px, dy = cy - py, dz = cz - pz;
-          const d = Math.sqrt(dx*dx + dy*dy + dz*dz) + 0.01;
-          resFx[g] += gamma * exposure * dx / d;
-          resFy[g] += gamma * exposure * dy / d;
-          resFz[g] += gamma * exposure * dz / d;
-        }
-      }
-      if (phaseSteps % 500 === 0) {
-        console.log("SASA: gamma=" + gamma + " probeR=" + probeR);
-      }
-    }
-
-    // 2. Move residues — mode-dependent
-    if (cmd.mode === 'translate') {
-      // Per-residue rigid translation: each residue group moves by its net force (3D)
-      // Pin first residue only — chain can compress from free end
-      const pinEnds = cmd.pinEnds !== false; // default true
-      const maxDisp = 1.0; // max displacement per step (grid cells)
-      // During contact-driven folding, dampen quantum repulsion so biases can work
-      let qDamp = 1.0;
-      if (cmd.contactBias) {
-        // Check if any contacts are far from target — if so, dampen quantum forces
-        const cb = cmd.contactBias;
-        let maxExcess = 0;
-        const allPairs = [].concat(cb.hbonds || [], cb.contacts || []);
-        for (const p of allPairs) {
-          let dx = nucPos[p.b][0]-nucPos[p.a][0], dy = nucPos[p.b][1]-nucPos[p.a][1], dz = nucPos[p.b][2]-nucPos[p.a][2];
-          let distAu = Math.sqrt(dx*dx+dy*dy+dz*dz) * hGrid;
-          let excess = (distAu - p.target) / p.target;
-          if (excess > maxExcess) maxExcess = excess;
-        }
-        // Scale: if worst contact is >2x target, zero quantum; if >1.5x, 10%; etc.
-        if (maxExcess > 1.0) qDamp = 0.0;
-        else if (maxExcess > 0.5) qDamp = 0.1;
-        else if (maxExcess > 0.2) qDamp = 0.5;
-        // else full quantum forces (contacts nearly formed)
-      }
-      for (let g = 0; g < nRes; g++) {
-        // End damping: scale down forces on terminal residues instead of freezing
-        const pinN = (typeof pinEnds === 'number') ? pinEnds : (pinEnds === true ? 2 : 0);
-        let endDamp = 1.0;
-        if (pinN > 0) {
-          const distFromEnd = Math.min(g, nRes - 1 - g);
-          if (distFromEnd < pinN) endDamp = (distFromEnd + 1) / (pinN + 1); // gradual: 0.25, 0.5, 0.75...
-        }
-        let dx = resFx[g] * forceScale * mdDt * 0.01 * endDamp * qDamp;
-        let dy = resFy[g] * forceScale * mdDt * 0.01 * endDamp * qDamp;
-        let dz = resFz[g] * forceScale * mdDt * 0.01 * endDamp * qDamp;
-        let mag = Math.sqrt(dx*dx + dy*dy + dz*dz);
-        if (mag > maxDisp) { dx *= maxDisp/mag; dy *= maxDisp/mag; dz *= maxDisp/mag; }
-        for (const a of groups[g]) {
-          if (a >= NELEC || Z[a] === 0) continue;
-          nucPos[a][0] += dx;
-          nucPos[a][1] += dy;
-          nucPos[a][2] += dz;
-        }
-      }
-      // C-term OH follows last residue
-      if (groups.length > nRes) {
-        let dx = resFx[nRes-1] * forceScale * mdDt * 0.01;
-        let dy = resFy[nRes-1] * forceScale * mdDt * 0.01;
-        let dz = resFz[nRes-1] * forceScale * mdDt * 0.01;
-        let mag = Math.sqrt(dx*dx + dy*dy + dz*dz);
-        if (mag > maxDisp) { dx *= maxDisp/mag; dy *= maxDisp/mag; dz *= maxDisp/mag; }
-        for (const a of groups[nRes]) {
-          if (a >= NELEC || Z[a] === 0) continue;
-          nucPos[a][0] += dx;
-          nucPos[a][1] += dy;
-          nucPos[a][2] += dz;
-        }
-      }
-      // Helical constraint: as chain compresses, rotate residues around axis
-      // Alpha helix: 100° per residue around z-axis
-      if (cmd.helicalBias) {
-        // Find chain axis (first Ca to last Ca)
-        const ca0 = nucPos[caIdx[0]], caL = nucPos[caIdx[nRes-1]];
-        let hax = caL[0]-ca0[0], hay = caL[1]-ca0[1], haz = caL[2]-ca0[2];
-        let haLen = Math.sqrt(hax*hax+hay*hay+haz*haz) + 1e-10;
-        hax /= haLen; hay /= haLen; haz /= haLen;
-        // Centroid of chain
-        let ccx=0, ccy=0, ccz=0;
-        for (let g = 0; g < nRes; g++) {
-          ccx += nucPos[caIdx[g]][0]; ccy += nucPos[caIdx[g]][1]; ccz += nucPos[caIdx[g]][2];
-        }
-        ccx /= nRes; ccy /= nRes; ccz /= nRes;
-
-        const idealAnglePerRes = (2 * Math.PI / 3.6); // 100° in radians
-        const idealRadiusGrid = (cmd.helicalBias.idealRadius || 4.35) / hGrid;
-        const biasStrength = cmd.helicalBias.strength || 0.02;
-
-        for (let g = 1; g < nRes; g++) { // skip pinned res 0
-          const ca = nucPos[caIdx[g]];
-          // Project Ca onto axis to get axial position
-          let rx = ca[0]-ccx, ry = ca[1]-ccy, rz = ca[2]-ccz;
-          let axialProj = rx*hax + ry*hay + rz*haz;
-          // Perpendicular vector from axis to Ca
-          let px = rx - axialProj*hax;
-          let py = ry - axialProj*hay;
-          let pz = rz - axialProj*haz;
-          let pLen = Math.sqrt(px*px + py*py + pz*pz) + 1e-10;
-
-          // Target angle for this residue
-          let targetAngle = g * idealAnglePerRes;
-          // Target position: on helix at idealRadius from axis
-          // Use axis-perpendicular plane basis vectors
-          // e1 = initial perp direction of res 1, e2 = axis × e1
-          // Simplified: nudge radially outward if too close to axis
-          let radialForce = (idealRadiusGrid - pLen) * biasStrength;
-          let nudgeX = (px / pLen) * radialForce;
-          let nudgeY = (py / pLen) * radialForce;
-          let nudgeZ = (pz / pLen) * radialForce;
-
-          for (const a of groups[g]) {
-            if (a >= NELEC || Z[a] === 0) continue;
-            nucPos[a][0] += nudgeX;
-            nucPos[a][1] += nudgeY;
-            nucPos[a][2] += nudgeZ;
-          }
-        }
-      }
-
-      // SHAKE: enforce min/max Ca-Ca distance to prevent over-compression
-      // Target Ca-Ca ~ 3.8 A = 7.18 au; allow ±30%
-      const targetCaCa = (cmd.targetCaCa || 7.18) / hGrid; // in grid cells
-      const shakeTol = cmd.shakeTolerance || 0.15; // ±15% default
-      const minCaCa = targetCaCa * (1 - shakeTol);
-      const maxCaCa = targetCaCa * (1 + shakeTol);
-      for (let iter = 0; iter < 5; iter++) {
-        for (let g = 0; g < nRes - 1; g++) {
-          const a1 = caIdx[g], a2 = caIdx[g+1];
-          let dx = nucPos[a2][0] - nucPos[a1][0];
-          let dy = nucPos[a2][1] - nucPos[a1][1];
-          let dz = nucPos[a2][2] - nucPos[a1][2];
-          let dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
-          if (dist < minCaCa || dist > maxCaCa) {
-            let target = dist < minCaCa ? minCaCa : maxCaCa;
-            let corr = (target - dist) / (2 * dist + 1e-10);
-            let cx = dx * corr, cy = dy * corr, cz = dz * corr;
-            // Move both Ca and their entire residue groups
-            for (const a of groups[g]) {
-              if (a >= NELEC || Z[a] === 0) continue;
-              nucPos[a][0] -= cx; nucPos[a][1] -= cy; nucPos[a][2] -= cz;
-            }
-            for (const a of groups[g+1]) {
-              if (a >= NELEC || Z[a] === 0) continue;
-              nucPos[a][0] += cx; nucPos[a][1] += cy; nucPos[a][2] += cz;
-            }
-          }
-        }
-      }
-
-      // Steric repulsion: prevent non-bonded Ca atoms from getting too close
-      // Mimics van der Waals excluded volume — pushes apart residues closer than minNB
-      {
-        const minNB_au = 3.0;  // minimum non-bonded Ca-Ca distance in Å
-        const minNB = minNB_au * 1.8897 / hGrid;  // in grid cells
-        const stericStr = 0.5;  // grid cells per step repulsion
-        for (let g1 = 0; g1 < nRes; g1++) {
-          for (let g2 = g1 + 2; g2 < nRes; g2++) {  // skip bonded neighbors (g1±1)
-            const a1 = caIdx[g1], a2 = caIdx[g2];
-            let dx = nucPos[a2][0] - nucPos[a1][0];
-            let dy = nucPos[a2][1] - nucPos[a1][1];
-            let dz = nucPos[a2][2] - nucPos[a1][2];
-            let dist = Math.sqrt(dx*dx + dy*dy + dz*dz) + 1e-10;
-            if (dist < minNB) {
-              let push = stericStr * (minNB - dist) / dist;
-              let px = dx * push * 0.5, py = dy * push * 0.5, pz = dz * push * 0.5;
-              for (const a of groups[g1]) {
-                if (a >= NELEC || Z[a] === 0) continue;
-                nucPos[a][0] -= px; nucPos[a][1] -= py; nucPos[a][2] -= pz;
-              }
-              for (const a of groups[g2]) {
-                if (a >= NELEC || Z[a] === 0) continue;
-                nucPos[a][0] += px; nucPos[a][1] += py; nucPos[a][2] += pz;
-              }
-            }
-          }
-        }
-      }
-
-      // Contact bias: targeted attractions for H-bonds and hydrophobic contacts
-      if (cmd.contactBias) {
-        const cb = cmd.contactBias;
-        const hbStr = (cb.hbondStrength || 0.5) ;
-        const ctStr = (cb.contactStrength || 1.0);
-
-        // Helper: apply pairwise attractive bias between two atoms
-        // Moves the residue groups containing each atom toward each other
-        function applyPairBias(atomA, atomB, targetAu, strength) {
-          let dx = nucPos[atomB][0] - nucPos[atomA][0];
-          let dy = nucPos[atomB][1] - nucPos[atomA][1];
-          let dz = nucPos[atomB][2] - nucPos[atomA][2];
-          let distGrid = Math.sqrt(dx*dx + dy*dy + dz*dz) + 1e-10;
-          let distAu = distGrid * hGrid;
-          if (distAu <= targetAu) return distAu; // already close enough
-          let excess = (distAu - targetAu) / distAu;
-          let nudge = strength * excess;
-          let nx = dx / distGrid * nudge, ny = dy / distGrid * nudge, nz = dz / distGrid * nudge;
-          // Find which residue groups these atoms belong to
-          let gA = -1, gB = -1;
-          for (let g = 0; g < groups.length; g++) {
-            if (groups[g].indexOf(atomA) >= 0) gA = g;
-            if (groups[g].indexOf(atomB) >= 0) gB = g;
-          }
-          if (gA >= 0) {
-            for (const a of groups[gA]) {
-              if (a >= NELEC || Z[a] === 0) continue;
-              nucPos[a][0] += nx * 0.5; nucPos[a][1] += ny * 0.5; nucPos[a][2] += nz * 0.5;
-            }
-          }
-          if (gB >= 0) {
-            for (const a of groups[gB]) {
-              if (a >= NELEC || Z[a] === 0) continue;
-              nucPos[a][0] -= nx * 0.5; nucPos[a][1] -= ny * 0.5; nucPos[a][2] -= nz * 0.5;
-            }
-          }
-          return distAu;
-        }
-
-        // H-bond biases
-        let hbLog = [];
-        if (cb.hbonds) {
-          for (const hb of cb.hbonds) {
-            let d = applyPairBias(hb.a, hb.b, hb.target, hbStr);
-            hbLog.push(hb.label + "=" + (d * 0.529177).toFixed(1));
-          }
-        }
-        // Hydrophobic contact biases
-        let ctLog = [];
-        if (cb.contacts) {
-          for (const ct of cb.contacts) {
-            let d = applyPairBias(ct.a, ct.b, ct.target, ctStr);
-            ctLog.push(ct.label + "=" + (d * 0.529177).toFixed(1));
-          }
-        }
-
-        // Compute and report Rg
-        let cmx = 0, cmy = 0, cmz = 0;
-        for (let g = 0; g < nRes; g++) { cmx += nucPos[caIdx[g]][0]; cmy += nucPos[caIdx[g]][1]; cmz += nucPos[caIdx[g]][2]; }
-        cmx /= nRes; cmy /= nRes; cmz /= nRes;
-        let rg2 = 0;
-        for (let g = 0; g < nRes; g++) { let ddx = nucPos[caIdx[g]][0]-cmx, ddy = nucPos[caIdx[g]][1]-cmy, ddz = nucPos[caIdx[g]][2]-cmz; rg2 += ddx*ddx+ddy*ddy+ddz*ddz; }
-        let rgAu = Math.sqrt(rg2 / nRes) * hGrid;
-        window._compactRg = rgAu;
-        window._compactTargetRg = 0; // no global target, contact-driven
-
-        if (nucStepCount % 5 === 0) console.log("CONTACTS: Rg=" + (rgAu*0.529177).toFixed(1) + "A  HB:[" + hbLog.join(" ") + "]  CT:[" + ctLog.join(" ") + "]");
-      }
-
-      console.log("TRANSLATE MD: " + nRes + " residues, forces=" +
-        resFx.map((f,i) => "(" + f.toExponential(1) + "," + resFy[i].toExponential(1) + "," + resFz[i].toExponential(1) + ")").join(" "));
-    } else {
-      // Default: Two rigid strands pivoting at hinge (for hairpin folding)
-      const hingeRes = cmd.hingeRes || Math.floor(nRes/2);
-      const hingeX = (nucPos[caIdx[hingeRes-1]][0] + nucPos[caIdx[hingeRes]][0]) / 2;
-      const hingeY = (nucPos[caIdx[hingeRes-1]][1] + nucPos[caIdx[hingeRes]][1]) / 2;
-
-      let torque1 = 0, torque2 = 0;
-      for (let g = 0; g < hingeRes; g++) {
-        const rx = nucPos[caIdx[g]][0] - hingeX;
-        const ry = nucPos[caIdx[g]][1] - hingeY;
-        torque1 += rx * resFy[g] - ry * resFx[g];
-      }
-      for (let g = hingeRes; g < nRes; g++) {
-        const rx = nucPos[caIdx[g]][0] - hingeX;
-        const ry = nucPos[caIdx[g]][1] - hingeY;
-        torque2 += rx * resFy[g] - ry * resFx[g];
-      }
-
-      const maxAngle = 0.02;
-      let dTheta1 = torque1 * forceScale * mdDt * 0.0001;
-      let dTheta2 = torque2 * forceScale * mdDt * 0.0001;
-      dTheta1 = Math.max(-maxAngle, Math.min(maxAngle, dTheta1));
-      dTheta2 = Math.max(-maxAngle, Math.min(maxAngle, dTheta2));
-
-      const cos1 = Math.cos(dTheta1), sin1 = Math.sin(dTheta1);
-      for (let g = 0; g < hingeRes; g++) {
-        for (const a of groups[g]) {
-          if (a >= NELEC || Z[a] === 0) continue;
-          const rx = nucPos[a][0] - hingeX;
-          const ry = nucPos[a][1] - hingeY;
-          nucPos[a][0] = hingeX + rx * cos1 - ry * sin1;
-          nucPos[a][1] = hingeY + rx * sin1 + ry * cos1;
-        }
-      }
-      const cos2 = Math.cos(dTheta2), sin2 = Math.sin(dTheta2);
-      for (let g = hingeRes; g < nRes; g++) {
-        for (const a of groups[g]) {
-          if (a >= NELEC || Z[a] === 0) continue;
-          const rx = nucPos[a][0] - hingeX;
-          const ry = nucPos[a][1] - hingeY;
-          nucPos[a][0] = hingeX + rx * cos2 - ry * sin2;
-          nucPos[a][1] = hingeY + rx * sin2 + ry * cos2;
-        }
-      }
-      if (groups.length > nRes) {
-        for (const a of groups[nRes]) {
-          if (a >= NELEC || Z[a] === 0) continue;
-          const rx = nucPos[a][0] - hingeX;
-          const ry = nucPos[a][1] - hingeY;
-          nucPos[a][0] = hingeX + rx * cos2 - ry * sin2;
-          nucPos[a][1] = hingeY + rx * sin2 + ry * cos2;
-        }
-      }
-      console.log("RIGID STRANDS: torque1=" + torque1.toExponential(2) +
-        " torque2=" + torque2.toExponential(2) +
-        " dTheta1=" + (dTheta1*180/Math.PI).toFixed(3) + "° dTheta2=" + (dTheta2*180/Math.PI).toFixed(3) + "°");
-    }
-
-    // Boundary clamp (3D)
-    for (let a = 0; a < NELEC; a++) {
-      if (Z[a] === 0) continue;
-      nucPos[a][0] = Math.max(5, Math.min(NN - 5, nucPos[a][0]));
-      nucPos[a][1] = Math.max(5, Math.min(NN - 5, nucPos[a][1]));
-      nucPos[a][2] = Math.max(5, Math.min(NN - 5, nucPos[a][2]));
-    }
-
-    console.log("CLASSICAL MD: SHAKE + offsets, " + nRes + " residues — FULL RESTART");
-    nucStepCount++;
-
-    // Full restart: re-initialize wavefunctions, labels, K, P from scratch
-    fillAtomBuf();
-
-    // Clear K, labels, U, P
-    const clrEnc = device.createCommandEncoder();
-    clrEnc.clearBuffer(K_buf);
-    clrEnc.clearBuffer(labelBuf);
-    clrEnc.clearBuffer(U_buf[0]);
-    clrEnc.clearBuffer(P_buf[0]);
-    device.queue.submit([clrEnc.finish()]);
-
-    // Clear bestR2
-    const bU = new Float32Array(S3);
-    bU.fill(0.0);
-    device.queue.writeBuffer(bestR2Buf, 0, bU);
-
-    // Batched init: recompute K and assign labels
-    const nBatches = Math.ceil(NELEC / INIT_BATCH);
-    for (let b = 0; b < nBatches; b++) {
-      const start = b * INIT_BATCH;
-      const count = Math.min(INIT_BATCH, NELEC - start);
-      device.queue.writeBuffer(initRangeBuf, 0, new Uint32Array([start, count, 0, 0]));
-      const enc = device.createCommandEncoder();
-      const ip = enc.beginComputePass();
-      ip.setPipeline(gpuInitAccumPL);
-      ip.setBindGroup(0, gpuInitAccumBG);
-      dispatchLinear(ip, S3);
-      ip.end();
-      device.queue.submit([enc.finish()]);
-    }
-
-    // Final pass: set U and P from bestR2
-    {
-      const enc = device.createCommandEncoder();
-      const ip = enc.beginComputePass();
-      ip.setPipeline(gpuInitFinalPL);
-      ip.setBindGroup(0, gpuInitFinalBG);
-      dispatchLinear(ip, S3);
-      ip.end();
-      device.queue.submit([enc.finish()]);
-    }
-
-    // Copy U[0] to U[1]
-    {
-      const enc = device.createCommandEncoder();
-      enc.copyBufferToBuffer(U_buf[0], 0, U_buf[1], 0, S3 * 4);
-      device.queue.submit([enc.finish()]);
-    }
-
-    await device.queue.onSubmittedWorkDone();
-
-    // Reset step counter so it runs N_MOVE steps before next force computation
-    tStep = 0;
-    phaseSteps = 0;
-
-    return; // skip normal per-atom dynamics
-  }
-
-  // Log net force on each branch for fold analysis
-  if (window.USER_FOLD_ATOMS) {
-    const fa = window.USER_FOLD_ATOMS; // [strand1_end, hinge, strand2_end]
-    // Strand1 atoms: indices 0..44 (residues 0-5), Strand2: 45..86 (residues 6-11)
-    const hingeAtom = fa[1]; // atom 45
-    let s1fx=0, s1fy=0, s2fx=0, s2fy=0;
-    let s1n=0, s2n=0;
-    for (let a = 0; a < NELEC; a++) {
-      if (Z[a] === 0) continue;
-      if (a < hingeAtom) { s1fx += nucForce[a][0]; s1fy += nucForce[a][1]; s1n++; }
-      else { s2fx += nucForce[a][0]; s2fy += nucForce[a][1]; s2n++; }
-    }
-    // Compute center of mass of each strand
-    let s1cx=0, s1cy=0, s2cx=0, s2cy=0;
-    for (let a = 0; a < NELEC; a++) {
-      if (Z[a] === 0) continue;
-      if (a < hingeAtom) { s1cx += nucPos[a][0]; s1cy += nucPos[a][1]; s1n; }
-      else { s2cx += nucPos[a][0]; s2cy += nucPos[a][1]; s2n; }
-    }
-    s1cx /= s1n; s1cy /= s1n; s2cx /= s2n; s2cy /= s2n;
-    // Vector from strand1 COM to strand2 COM
-    const dx12 = s2cx - s1cx, dy12 = s2cy - s1cy;
-    const d12 = Math.sqrt(dx12*dx12 + dy12*dy12);
-    // Project net forces along inter-strand axis (positive = strands moving apart = unfolding)
-    const s1proj = (s1fx * (-dx12) + s1fy * (-dy12)) / d12; // strand1 force away from strand2
-    const s2proj = (s2fx * dx12 + s2fy * dy12) / d12;       // strand2 force away from strand1
-    const netUnfold = s1proj + s2proj; // positive = unfolding, negative = folding
-    window._foldNetUnfold = netUnfold;
-    window._foldS1proj = s1proj;
-    window._foldS2proj = s2proj;
-    console.log("FOLD FORCES: strand1=(" + s1fx.toExponential(3) + "," + s1fy.toExponential(3) +
-      ") strand2=(" + s2fx.toExponential(3) + "," + s2fy.toExponential(3) +
-      ") | along axis: s1=" + s1proj.toExponential(3) + " s2=" + s2proj.toExponential(3) +
-      " | NET=" + netUnfold.toExponential(3) + (netUnfold > 0 ? " UNFOLDING" : " FOLDING"));
-  }
-
-  // If USER_RIGID_GROUPS defined, move each group as rigid body (average force)
-  // Format: [[a0,a1,...], [a2,a3,...], ...] — atom indices per group
-  const rigidGroups = window.USER_RIGID_GROUPS;
-
   for (let sub = 0; sub < NUC_SUBSTEPS; sub++) {
-    if (rigidGroups) {
-      // Rigid group dynamics: average force over group, move all atoms together
-      for (const group of rigidGroups) {
-        let gfx = 0, gfy = 0, gfz = 0, totalMass = 0;
-        for (const a of group) {
-          if (a >= NELEC || Z[a] === 0) continue;
-          gfx += nucForce[a][0];
-          gfy += nucForce[a][1];
-          gfz += nucForce[a][2];
-          totalMass += nucMass(Z[a]);
-        }
-        if (totalMass === 0) continue;
-        // Shared velocity for the group (use first atom's velocity as group velocity)
-        const g0 = group[0];
-        for (let d = 0; d < 3; d++) {
-          const gf = d === 0 ? gfx : d === 1 ? gfy : gfz;
-          nucVel[g0][d] += gf / totalMass * DT_NUC * forceScale;
-          nucVel[g0][d] *= DAMPING;
-          nucVel[g0][d] = Math.max(-MAX_VEL, Math.min(MAX_VEL, nucVel[g0][d]));
-        }
-        // Move all atoms in group by same displacement
-        for (const a of group) {
-          if (a >= NELEC || Z[a] === 0) continue;
-          for (let d = 0; d < 3; d++) {
-            nucPos[a][d] += nucVel[g0][d] * DT_NUC / hGrid;
-            nucPos[a][d] = Math.max(5, Math.min(NN - 5, nucPos[a][d]));
-          }
-        }
-      }
-    } else {
-      // Per-atom dynamics (original)
-      const frozenAtoms = window.USER_FROZEN_ATOMS || [];
-      for (let a = 0; a < NELEC; a++) {
-        if (Z[a] === 0 && Z_nuc[a] === 0) continue;
-        if (frozenAtoms.indexOf(a) >= 0) continue;
-        const m = nucMass(Z_nuc[a] || Z[a]);
-        for (let d = 0; d < 3; d++) {
-          nucVel[a][d] += nucForce[a][d] / m * DT_NUC * forceScale;
-          nucVel[a][d] *= DAMPING;
-          nucVel[a][d] = Math.max(-MAX_VEL, Math.min(MAX_VEL, nucVel[a][d]));
-          nucPos[a][d] += nucVel[a][d] * DT_NUC / hGrid;
-          nucPos[a][d] = Math.max(5, Math.min(NN - 5, nucPos[a][d]));
-        }
+    for (let a = 0; a < NELEC; a++) {
+      if (Z[a] === 0) continue;
+      const m = nucMass(Z[a]);
+      for (let d = 0; d < 3; d++) {
+        nucVel[a][d] += nucForce[a][d] / m * DT_NUC * forceScale;
+        nucVel[a][d] *= DAMPING;
+        nucVel[a][d] = Math.max(-MAX_VEL, Math.min(MAX_VEL, nucVel[a][d]));
+        nucPos[a][d] += nucVel[a][d] * DT_NUC / hGrid;
+        nucPos[a][d] = Math.max(5, Math.min(NN - 5, nucPos[a][d]));
       }
     }
   }
@@ -4179,9 +3035,6 @@ async function moveNuclei(gpuForces) {
   nucStepCount++;
   console.log("Nuc step " + nucStepCount + ": " +
     nucPos.filter((_, i) => Z[i] > 0).map(p => "(" + p.map(x => x.toFixed(2)).join(",") + ")").join(" "));
-
-  // Flag that atom positions changed — draw() will capture frame after rendering
-  window._nucUpdated = true;
 
   // Update atomBuf with new positions, recompute K on GPU (batched, keep converged U, labels, P)
   fillAtomBuf();
@@ -4239,27 +3092,8 @@ function draw() {
       phaseSteps += useLOBPCG ? LOBPCG_ITERS : STEPS_PER_FRAME;
       if (isFinite(E) && E < E_min) E_min = E;
 
-
-      // Unfreeze boundary and perturb Z at specified step
-      if (window.FREEZE_BOUNDARY && window.UNLOCK_AT_STEP && phaseSteps >= window.UNLOCK_AT_STEP) {
-        window.FREEZE_BOUNDARY = false;
-        console.log("=== Boundary unfrozen at step " + phaseSteps + " ===");
-      }
-      if (window.PERTURB_Z_AT_STEP && phaseSteps >= window.PERTURB_Z_AT_STEP) {
-        Z[0] = 1.01; Z[1] = 0.99;
-        updateParamsBuf();
-        console.log("=== Z perturbed to [1.01, 0.99] at step " + phaseSteps + " ===");
-        delete window.PERTURB_Z_AT_STEP;
-      }
-      if (window.RESTORE_Z_AT_STEP && phaseSteps >= window.RESTORE_Z_AT_STEP) {
-        Z[0] = 1; Z[1] = 1;
-        updateParamsBuf();
-        console.log("=== Z restored to [1, 1] at step " + phaseSteps + " ===");
-        delete window.RESTORE_Z_AT_STEP;
-      }
-
       // Auto-enable dynamics after convergence (skip if adaptive sweep)
-      if (!dynamicsEnabled && !window.CONVERGENCE_THRESHOLD && !window.NO_AUTO_DYNAMICS && phaseSteps >= 10000) {
+      if (!dynamicsEnabled && !window.CONVERGENCE_THRESHOLD && phaseSteps >= 10000) {
         dynamicsEnabled = true;
         console.log("=== Dynamics auto-enabled at step " + phaseSteps + " ===");
       }
@@ -4273,7 +3107,7 @@ function draw() {
             console.log("=== CONVERGED at step " + phaseSteps + ": E=" + E.toFixed(6) + " (dE=" + Math.abs(E - window._prevE).toFixed(6) + ") ===");
             phase = 1;
             window._convCount = 0;
-            if (window.onSweepDone) window.onSweepDone(E, phaseSteps, E_T, E_eK, E_ee, E_KK);
+            if (window.onSweepDone) window.onSweepDone(E, phaseSteps);
           }
         } else {
           window._convCount = 0;
@@ -4284,7 +3118,7 @@ function draw() {
       if (!dynamicsEnabled && phaseSteps >= TOTAL_STEPS) {
         console.log("=== DONE: E=" + E.toFixed(6) + " ===");
         phase = 1;  // done
-        if (window.onSweepDone) window.onSweepDone(E, phaseSteps, E_T, E_eK, E_ee, E_KK);
+        if (window.onSweepDone) window.onSweepDone(E, phaseSteps);
       }
     }).catch((e) => {
       gpuError = e.message || String(e);
@@ -4317,21 +3151,13 @@ function draw() {
           " E_T=" + E_T.toExponential(3) + " E_eK=" + E_eK.toExponential(3));
       }
     }
-    // Skip 2D density rendering when in 3D view mode
-    if (!window._view3D) {
     loadPixels();
     const d = pixelDensity();
-    const W = CANVAS_SIZE * d, H = CANVAS_SIZE * d;
+    const W = 700 * d, H = 700 * d;
     for (let p = 0; p < W * H * 4; p += 4) {
       pixels[p] = 0; pixels[p+1] = 0; pixels[p+2] = 0; pixels[p+3] = 255;
     }
-    // Per-domain colors: cycle through distinct hues
-    const domainRGB = [
-      [1,0.3,0.3], [0.3,0.6,1], [0.3,1,0.3], [1,1,0],
-      [1,0.5,0], [0.6,0.3,1], [0,1,1], [1,0.3,0.7],
-      [0.5,1,0.5], [1,0.7,0.3], [0.3,1,0.8], [0.8,0.5,1],
-    ];
-    // Element colors fallback: H=yellow, O=red, N=blue, C=green
+    // Element colors: H=yellow, O=red, N=blue, C=green
     const zRGB = {1:[1,1,0], 2:[1,0,0], 3:[0,0.5,1], 4:[0,1,0]};
     // Auto-scale: use 99th percentile to avoid nuclear spikes dominating
     const densVals = [];
@@ -4352,23 +3178,16 @@ function draw() {
         const py1 = Math.floor(PX * (j + 1) * d);
         const b = i * SS + j;
         const dens = sliceData[b];              // slot 0: total density
-        const packed = sliceData[SS2 + b];       // slot 1: label + Z*1000
-        const domLabel = Math.round(packed % 1000);
-        const Zel = Math.round(packed / 1000);
+        const Zel = sliceData[SS2 + b];         // slot 1: element Z
         const bnd = sliceData[2 * SS2 + b];     // slot 2: boundary
         const norm = Math.min(1.0, dens * invMax);
         const brightness = 255 * Math.sqrt(norm);
-        // Use domain color if multiple atoms share same element, else element color
-        const rgb = domainRGB[domLabel % domainRGB.length] || zRGB[Zel] || [0.5, 0.5, 0.5];
+        const rgb = zRGB[Math.round(Zel)] || [0.5, 0.5, 0.5];
         let ri = Math.min(255, Math.floor(brightness * rgb[0]));
         let gi = Math.min(255, Math.floor(brightness * rgb[1]));
         let bi = Math.min(255, Math.floor(brightness * rgb[2]));
-        // Boundary overlay: active=brighten, broken=bright white
-        if (bnd > 1.5) {
-          // Broken boundary — no density on either side — bright white
-          ri = 255; gi = 255; bi = 255;
-        } else if (bnd > 0.5) {
-          // Active boundary — density present — brighten slightly
+        // Dim boundary overlay (don't replace density, just brighten slightly)
+        if (bnd > 0.5) {
           ri = Math.min(255, ri + 40);
           gi = Math.min(255, gi + 40);
           bi = Math.min(255, bi + 40);
@@ -4408,305 +3227,69 @@ function draw() {
       }
     }
     if (globalMax > 0) {
-      const domRGBplot = domainRGB.map(c => [Math.round(c[0]*255), Math.round(c[1]*255), Math.round(c[2]*255)]);
+      const zRGBplot = {1:[255,255,0], 2:[255,60,60], 3:[60,130,255], 4:[60,255,60]};
       const lineH = 60;
       const sc = lineH / globalMax;
       for (let li = 0; li < nLines; li++) {
         const row = lineRows[li];
         const rowY = PX * row;
         stroke(255, 255, 255, 40); strokeWeight(1);
-        line(0, rowY, CANVAS_SIZE, rowY);
+        line(0, rowY, 700, rowY);
         strokeWeight(2); noFill();
         for (let i = 1; i < NN - 1; i++) {
           const v1 = sliceData[i * SS + row];
           const v2 = sliceData[(i+1) * SS + row];
           if (v1 < 1e-12 && v2 < 1e-12) continue;
-          const pk = sliceData[SS2 + i * SS + row];
-          const dl = Math.round(pk % 1000);
-          const c = domRGBplot[dl % domRGBplot.length] || [180,180,180];
+          const z = Math.round(sliceData[SS2 + i * SS + row]);
+          const c = zRGBplot[z] || [180,180,180];
           stroke(c[0], c[1], c[2], 220);
           line(PX * i, rowY - v1 * sc, PX * (i+1), rowY - v2 * sc);
         }
       }
     }
 
-    // W line plot along the slice axis (through nuclei)
+    // K potential line plot along the slice axis (through nuclei)
     const kBase = 3 * SS * SS;
-    const wBase = kBase + SS;
-    if (sliceData.length > wBase + NN) {
-      // Plot W as cyan line at bottom
-      const wPlotY = CANVAS_SIZE - 80;
-      const wPlotH = 60;
-      stroke(0, 255, 255, 180); strokeWeight(2); noFill();
+    // Use median-based scale to avoid 1/r singularity dominating the plot
+    let kVals = [];
+    for (let i = 1; i < NN; i++) {
+      const kv = sliceData[kBase + i];
+      if (kv > 0) kVals.push(kv);
+    }
+    kVals.sort((a, b) => a - b);
+    const kMax = kVals.length > 0 ? kVals[kVals.length - 1] : 0;
+    const kCap = kVals.length > 0 ? kVals[Math.floor(kVals.length * 0.95)] * 3 : 1;
+    if (kMax > 0) {
+      const kPlotH = 80;
+      const kPlotY = 700 - 10;
+      const kSc = kPlotH / kCap;
+      stroke(0, 200, 255, 180); strokeWeight(1.5); noFill();
       for (let i = 1; i < NN - 1; i++) {
-        const w1 = sliceData[wBase + i];
-        const w2 = sliceData[wBase + i + 1];
-        line(PX * i, wPlotY - w1 * wPlotH, PX * (i+1), wPlotY - w2 * wPlotH);
+        const k1 = sliceData[kBase + i];
+        const k2 = sliceData[kBase + i + 1];
+        line(PX * i, kPlotY - k1 * kSc, PX * (i+1), kPlotY - k2 * kSc);
       }
-      fill(0, 255, 255); noStroke(); textSize(10);
-      text("W (domain weight)", 5, wPlotY - wPlotH - 2);
+      fill(0, 200, 255); noStroke();
+      text("K(r) max=" + kMax.toFixed(2), 5, kPlotY - kPlotH + 10);
     }
-  }
-  } // end skip 2D when _view3D
-
-  // 3D view mode: press '3' to toggle
-  if (window._view3D) {
-    background(0); // clear to black — no 2D heatmap underneath
-    // Draw all atoms as 3D projection with auto-rotation
-    const fixedYrot = window.USER_VIEW_YROT !== undefined ? window.USER_VIEW_YROT : Math.PI/2;
-    const fixedTilt = window.USER_VIEW_TILT !== undefined ? window.USER_VIEW_TILT : Math.PI/4;
-    const t3d = window._view3D_fixed ? fixedYrot : (frameCount || 0) * 0.02;
-    const tilt = window._view3D_fixed ? fixedTilt : 0.3;
-    const cosT = Math.cos(t3d), sinT = Math.sin(t3d);
-    const cosT2 = Math.cos(tilt), sinT2 = Math.sin(tilt); // tilt
-    const cx3 = NN / 2, cy3 = NN / 2, cz3 = NN / 2;
-    const scale3 = PX * 0.8;
-    const canvMid = CANVAS_SIZE / 2;
-
-    // Element colors
-    const elCol = {1:[255,255,255], 2:[255,50,50], 3:[50,50,255], 4:[100,255,100]};
-
-    // Draw bonds: covalent (solid) and H-bonds (colored by distance)
-    // Helper to project a point
-    function proj3D(n) {
-      let ax = nucPos[n][0]-cx3, ay = nucPos[n][1]-cy3, az = nucPos[n][2]-cz3;
-      let rx = ax*cosT + az*sinT, rz = -ax*sinT + az*cosT;
-      let ry = ay*cosT2 - rz*sinT2;
-      return { x: canvMid + rx*scale3, y: canvMid + ry*scale3 };
-    }
-    const ANG = 0.529177;  // bohr to angstrom
-    for (let a = 0; a < NELEC; a++) {
-      if (Z[a] === 0) continue;
-      for (let b = a+1; b < NELEC; b++) {
-        if (Z[b] === 0) continue;
-        const dx = (nucPos[a][0]-nucPos[b][0])*hGrid;
-        const dy = (nucPos[a][1]-nucPos[b][1])*hGrid;
-        const dz = (nucPos[a][2]-nucPos[b][2])*hGrid;
-        const d = Math.sqrt(dx*dx+dy*dy+dz*dz);
-        const dAng = d * ANG;
-        // Classify bond type
-        const isHO = (Z[a] === 1 && Z[b] === 2) || (Z[a] === 2 && Z[b] === 1);
-        const isOO = (Z[a] === 2 && Z[b] === 2);
-        if (isHO && dAng < 1.3) {
-          // Covalent O-H bond — solid white
-          stroke(200); strokeWeight(2);
-          const pa = proj3D(a), pb = proj3D(b);
-          line(pa.x, pa.y, pb.x, pb.y);
-        } else if (isHO && dAng >= 1.3 && dAng < 2.8) {
-          // H-bond: green < 2.2, yellow 2.2-2.5, red > 2.5
-          let r, g, bl;
-          if (dAng < 2.2) { r = 0; g = 255; bl = 100; }        // intact — green
-          else if (dAng < 2.5) { r = 255; g = 255; bl = 0; }    // stretched — yellow
-          else { r = 255; g = 60; bl = 60; }                     // breaking — red
-          stroke(r, g, bl, 180); strokeWeight(1);
-          const pa = proj3D(a), pb = proj3D(b);
-          // Dashed appearance: draw shorter line
-          const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
-          line(pa.x, pa.y, mx, my);
-          // gap then second half
-          const qx = (mx + pb.x) / 2, qy = (my + pb.y) / 2;
-          line(qx, qy, pb.x, pb.y);
-        } else if (!isHO && !isOO && d < 5.5) {
-          // Other covalent bonds (C-N, C-C, N-H etc)
-          stroke(80); strokeWeight(1);
-          const pa = proj3D(a), pb = proj3D(b);
-          line(pa.x, pa.y, pb.x, pb.y);
-        }
-      }
-    }
-
-    // Draw atoms (sorted by depth for proper overlap)
-    let atomList = [];
-    for (let n = 0; n < NELEC; n++) {
-      if (Z[n] === 0 && Z_nuc[n] === 0) continue;  // skip empty
-      if (Z[n] > 0 && Z_nuc[n] === 0) continue;  // skip electron-only (no kernel)
-      let ax = nucPos[n][0]-cx3, ay = nucPos[n][1]-cy3, az = nucPos[n][2]-cz3;
-      let rx = ax*cosT + az*sinT, rz = -ax*sinT + az*cosT;
-      let ry = ay*cosT2 - rz*sinT2, rz2 = ay*sinT2 + rz*cosT2;
-      atomList.push({n:n, sx: canvMid + rx*scale3, sy: canvMid + ry*scale3, depth: rz2, z: Z[n]});
-    }
-    atomList.sort((a,b) => a.depth - b.depth); // back to front
-
-    noStroke();
-    for (const at of atomList) {
-      const col = at.z === 0 ? [255,80,80] : (elCol[at.z] || [200,200,200]);
-      const sz = at.z <= 1 ? 5 : 10;
-      fill(col[0], col[1], col[2], 200);
-      circle(at.sx, at.sy, sz);
-    }
-
-    // Ribbon overlay: colored backbone trace through Ca atoms
-    const cmd3 = window.USER_CLASSICAL_MD;
-    if (cmd3 && cmd3.caIndices && cmd3.caIndices.length > 2) {
-      const caIdx = cmd3.caIndices;
-      const nCa = caIdx.length;
-
-      // Project all Ca positions
-      const caProj = [];
-      for (let g = 0; g < nCa; g++) {
-        const a = caIdx[g];
-        let ax = nucPos[a][0]-cx3, ay = nucPos[a][1]-cy3, az = nucPos[a][2]-cz3;
-        let rx = ax*cosT + az*sinT, rz = -ax*sinT + az*cosT;
-        let ry = ay*cosT2 - rz*sinT2;
-        caProj.push({ x: canvMid + rx*scale3, y: canvMid + ry*scale3 });
-      }
-
-      // Classify secondary structure from local geometry
-      // Helix: Ca[i-1]-Ca[i]-Ca[i+1] angle < 100° AND Ca[i]-Ca[i+2] distance < 6 Å
-      // Sheet: angle > 115° AND Ca[i]-Ca[i+2] distance > 6.5 Å
-      const ssType = new Array(nCa).fill(0); // 0=coil, 1=helix, 2=sheet
-      const bohrToAng = 0.529177;
-      for (let g = 1; g < nCa - 1; g++) {
-        const a0 = caIdx[g-1], a1 = caIdx[g], a2 = caIdx[g+1];
-        const bax = nucPos[a0][0]-nucPos[a1][0], bay = nucPos[a0][1]-nucPos[a1][1], baz = nucPos[a0][2]-nucPos[a1][2];
-        const bcx = nucPos[a2][0]-nucPos[a1][0], bcy = nucPos[a2][1]-nucPos[a1][1], bcz = nucPos[a2][2]-nucPos[a1][2];
-        const magBA = Math.sqrt(bax*bax+bay*bay+baz*baz);
-        const magBC = Math.sqrt(bcx*bcx+bcy*bcy+bcz*bcz);
-        const dot = bax*bcx + bay*bcy + baz*bcz;
-        const ang = Math.acos(Math.max(-1, Math.min(1, dot / (magBA * magBC + 1e-10)))) * 180 / Math.PI;
-
-        // Ca[i] to Ca[i+2] distance
-        let d_i2 = 999;
-        if (g + 1 < nCa) {
-          const a3 = caIdx[g+1];
-          const dx = (nucPos[a1][0]-nucPos[a3][0]) * hGrid * bohrToAng;
-          const dy = (nucPos[a1][1]-nucPos[a3][1]) * hGrid * bohrToAng;
-          const dz = (nucPos[a1][2]-nucPos[a3][2]) * hGrid * bohrToAng;
-          d_i2 = Math.sqrt(dx*dx+dy*dy+dz*dz);
-        }
-
-        if (ang < 105 && d_i2 < 6.0) {
-          ssType[g] = 1; // helix
-        } else if (ang > 115 && d_i2 > 6.0) {
-          ssType[g] = 2; // sheet
-        }
-      }
-      // Extend assignments to neighbors (smooth out isolated assignments)
-      for (let pass = 0; pass < 2; pass++) {
-        for (let g = 1; g < nCa - 1; g++) {
-          if (ssType[g] === 0 && ssType[g-1] === ssType[g+1] && ssType[g-1] !== 0) {
-            ssType[g] = ssType[g-1];
-          }
-        }
-      }
-
-      // Draw ribbon
-      const ssCol = {0: [150,150,150], 1: [255,50,100], 2: [255,220,50]};
-      const ssWidth = {0: 1, 1: 4, 2: 3};
-      for (let g = 0; g < nCa - 1; g++) {
-        const ss = ssType[g] || ssType[g+1] || 0;
-        const col = ssCol[ss];
-        stroke(col[0], col[1], col[2], 200);
-        strokeWeight(ssWidth[ss]);
-        line(caProj[g].x, caProj[g].y, caProj[g+1].x, caProj[g+1].y);
-      }
-
-      // Helix: add sine wave ribbon for visual effect
-      for (let g = 0; g < nCa - 1; g++) {
-        if (ssType[g] === 1 && ssType[g+1] === 1) {
-          stroke(255, 80, 150, 120);
-          strokeWeight(1);
-          const steps = 8;
-          for (let s = 0; s < steps; s++) {
-            const t1 = s / steps, t2 = (s+1) / steps;
-            const x1 = caProj[g].x + (caProj[g+1].x - caProj[g].x) * t1;
-            const y1 = caProj[g].y + (caProj[g+1].y - caProj[g].y) * t1 + Math.sin(t1 * Math.PI * 2 + g * 1.7) * 4;
-            const x2 = caProj[g].x + (caProj[g+1].x - caProj[g].x) * t2;
-            const y2 = caProj[g].y + (caProj[g+1].y - caProj[g].y) * t2 + Math.sin(t2 * Math.PI * 2 + g * 1.7) * 4;
-            line(x1, y1, x2, y2);
-          }
-        }
-      }
-
-      // Legend
-      noStroke(); textSize(10);
-      fill(255, 50, 100); text("\u2588 helix", CANVAS_SIZE - 120, 15);
-      fill(255, 220, 50); text("\u2588 sheet", CANVAS_SIZE - 120, 27);
-      fill(150, 150, 150); text("\u2588 coil", CANVAS_SIZE - 120, 39);
-    }
-
-    // Label
-    fill(255, 255, 0);
-    noStroke();
-    textSize(11);
-    text("3D VIEW (3=toggle) H=white C=green N=blue O=red  R=record D=dynamics", 5, 15);
-
-    // Fold angle in 3D view
-    if (window.USER_FOLD_ATOMS) {
-      const fa = window.USER_FOLD_ATOMS;
-      const a3 = nucPos[fa[0]], b3 = nucPos[fa[1]], c3 = nucPos[fa[2]];
-      const ba3 = [a3[0]-b3[0], a3[1]-b3[1], a3[2]-b3[2]];
-      const bc3 = [c3[0]-b3[0], c3[1]-b3[1], c3[2]-b3[2]];
-      const dot3 = ba3[0]*bc3[0] + ba3[1]*bc3[1] + ba3[2]*bc3[2];
-      const magBA3 = Math.sqrt(ba3[0]*ba3[0]+ba3[1]*ba3[1]+ba3[2]*ba3[2]);
-      const magBC3 = Math.sqrt(bc3[0]*bc3[0]+bc3[1]*bc3[1]+bc3[2]*bc3[2]);
-      const foldAngle3 = Math.acos(Math.max(-1, Math.min(1, dot3 / (magBA3 * magBC3)))) * 180 / Math.PI;
-      const foldPct3 = (1 - foldAngle3 / 180) * 100;
-      fill(255, 255, 0);
-      text("Fold: " + foldAngle3.toFixed(1) + "\u00B0 (" + foldPct3.toFixed(0) + "%)  [180\u00B0=open, 0\u00B0=folded]", 5, 30);
-    }
-
-    // Bond distances in 3D view
-    if (window.USER_BOND_PAIRS) {
-      fill(200, 200, 255);
-      const bp3 = window.USER_BOND_PAIRS;
-      const bohrToAng3 = 0.529177;
-      let bondY3 = 45;
-      for (let b = 0; b < bp3.length; b++) {
-        const a1 = bp3[b][0], a2 = bp3[b][1], label = bp3[b][2] || "";
-        const dx = nucPos[a1][0] - nucPos[a2][0];
-        const dy = nucPos[a1][1] - nucPos[a2][1];
-        const dz = nucPos[a1][2] - nucPos[a2][2];
-        const dAu = Math.sqrt(dx*dx + dy*dy + dz*dz) * hGrid;
-        const dAng = dAu * bohrToAng3;
-        text(label + " " + dAng.toFixed(2) + "\u00C5", 5, bondY3);
-        bondY3 += 13;
-      }
-    }
-
-    // Helix progress in 3D view
-    if (window.USER_HELIX_PROGRESS) {
-      fill(0, 255, 200);
-      text("Helix: " + (window._helixPct || 0).toFixed(1) + "%  R=" + ((window._helixRadius || 0)*0.529177).toFixed(2) +
-        "\u00C5  rise=" + ((window._helixRise || 0)*0.529177).toFixed(2) + "\u00C5  H-bonds=" + (window._helixHbonds || 0), 5, CANVAS_SIZE - 20);
-    }
-
-    // Dynamics status
-    fill(dynamicsEnabled ? [0,255,255] : [150,150,150]);
-    text("Dynamics: " + (dynamicsEnabled ? "ON" : "OFF") + "  nucStep=" + nucStepCount + "  Force=" + forceScale.toFixed(1) + "x", 5, CANVAS_SIZE - 5);
-
-    // Rg display (above dynamics line)
-    if (window._compactRg !== undefined) {
-      fill(255, 200, 50);
-      text("Rg=" + (window._compactRg * 0.529177).toFixed(1) + "\u00C5", 5, CANVAS_SIZE - 35);
-    }
-
-    return; // skip normal 2D draw
   }
 
   // Draw nuclear positions with force arrows
   fill(255); stroke(255); strokeWeight(1);
   for (let n = 0; n < NELEC; n++) {
-    // Draw bare protons (Z=0, Z_nuc>0) as white dots like other nuclei
-    if (Z[n] === 0 && Z_nuc[n] > 0) {
-      const nx = nucPos[n][0] * PX, ny = nucPos[n][1] * PX;
-      fill(255); noStroke();
-      circle(nx, ny, 6);
-      stroke(255); strokeWeight(1);
-    }
-    if (Z_nuc[n] > 0) {  // draw all kernels (including bare nuclei)
-      const nx = nucPos[n][0] * PX, ny = nucPos[n][1] * PX;
-      circle(nx, ny, 6);
-      const _frozen = window.USER_FROZEN_ATOMS || [];
-      if (nucForceTotal[n] && _frozen.indexOf(n) < 0) {
-        const arrowScale = (window.USER_ARROW_SCALE || 250) * forceScale;
-        const ft = nucForceTotal[n];
-        const fx = ft[0], fy = ft[1];
-        if (fx*fx + fy*fy > 1e-16) {
-          stroke(255, 255, 0); strokeWeight(2);
-          line(nx, ny, nx + fx * arrowScale, ny + fy * arrowScale);
+    if (Z[n] > 0) {
+      circle(nucPos[n][0] * PX, nucPos[n][1] * PX, 6);
+      // Draw force arrows when dynamics enabled
+      if (dynamicsEnabled && nucForce[n]) {
+        const fx = nucForce[n][0], fy = nucForce[n][1];
+        const fmag = Math.sqrt(fx*fx + fy*fy);
+        if (fmag > 1e-8) {
+          const arrowScale = 100;
+          const ax = nucPos[n][0] * PX + fx * arrowScale;
+          const ay = nucPos[n][1] * PX + fy * arrowScale;
+          stroke(0, 255, 0); strokeWeight(1);
+          line(nucPos[n][0] * PX, nucPos[n][1] * PX, ax, ay);
         }
-        stroke(255); strokeWeight(1);
       }
     }
   }
@@ -4714,7 +3297,7 @@ function draw() {
 
   // Screen boundary
   noFill(); stroke(100); strokeWeight(1);
-  rect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  rect(0, 0, 700, 700);
   noStroke();
 
   fill(255);
@@ -4722,7 +3305,7 @@ function draw() {
   const pLabel = phase === 0 ? "running" : "DONE";
   text("Molecule: " + labels + " | " + screenAu + " au | " + pLabel + " | " + NN + "^3", 5, 20);
   text("step " + tStep + " (" + phaseSteps + "/" + TOTAL_STEPS + ")  E=" + (E_T + E_eK + E_ee + E_KK).toFixed(6) + "  E_min=" + E_min.toFixed(6), 5, 35);
-  if (lastMs > 0) text((lastMs / STEPS_PER_FRAME).toFixed(1) + "ms/step", CANVAS_SIZE - 120, 35);
+  if (lastMs > 0) text((lastMs / STEPS_PER_FRAME).toFixed(1) + "ms/step", 300, 35);
 
   fill(200);
   text("T=" + E_T.toFixed(4) + " V_eK=" + E_eK.toFixed(4) + " V_ee=" + E_ee.toFixed(4) + " V_KK=" + E_KK.toFixed(4) + "  Dipole=" + dipole_D.toFixed(3) + " D  E_bind=" + E_bind.toFixed(4) + " Ha", 5, 50);
@@ -4730,177 +3313,25 @@ function draw() {
   const solverName = useLOBPCG ? "LOBPCG" : useCheb ? "Chebyshev" : "ITP";
   text("V-cycle: " + (vcycleEnabled ? "ON" : "OFF") + " (" + vcycleCount + ")  Solver: " + solverName + " [L=LOBPCG C=Cheb]", 5, 65);
 
-  // Fold angle measurement
-  if (window.USER_FOLD_ATOMS) {
-    const fa = window.USER_FOLD_ATOMS;  // [strand1_idx, hinge_idx, strand2_idx]
-    const a = nucPos[fa[0]], b = nucPos[fa[1]], c = nucPos[fa[2]];
-    const ba = [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
-    const bc = [c[0]-b[0], c[1]-b[1], c[2]-b[2]];
-    const dot = ba[0]*bc[0] + ba[1]*bc[1] + ba[2]*bc[2];
-    const magBA = Math.sqrt(ba[0]*ba[0]+ba[1]*ba[1]+ba[2]*ba[2]);
-    const magBC = Math.sqrt(bc[0]*bc[0]+bc[1]*bc[1]+bc[2]*bc[2]);
-    const foldAngle = Math.acos(Math.max(-1, Math.min(1, dot / (magBA * magBC)))) * 180 / Math.PI;
-    const foldPct = (1 - foldAngle / 180) * 100;  // 0%=straight(180°), 100%=folded(0°)
-    fill(255, 255, 0);
-    text("Fold: " + foldAngle.toFixed(1) + "\u00B0  (" + foldPct.toFixed(1) + "%)  [180\u00B0=open, 0\u00B0=folded]", 5, 80);
-    window._foldAngle = foldAngle;
-    window._foldPct = foldPct;
-  }
-
-  // Helix progress measurement
-  if (window.USER_HELIX_PROGRESS) {
-    const hp = window.USER_HELIX_PROGRESS;
-    const caIdx = hp.caIndices;        // Ca atom indices
-    const oIdx = hp.oIndices;          // carbonyl O indices
-    const hIdx = hp.hIndices;          // amide H indices
-    const idealRadius = hp.idealRadius || 4.35; // 2.3 A in au
-    const idealRise = hp.idealRise || 2.83;     // 1.5 A in au
-    const hbondCutoff = hp.hbondCutoff || 4.72; // 2.5 A in au
-    const bohrToAng = 0.529177;
-
-    // 1. Average Ca radius from helix axis
-    // Convert all Ca positions to au first
-    let caAu = [];
-    for (let i = 0; i < caIdx.length; i++) {
-      caAu.push([
-        nucPos[caIdx[i]][0] * hGrid,
-        nucPos[caIdx[i]][1] * hGrid,
-        nucPos[caIdx[i]][2] * hGrid
-      ]);
-    }
-    let cx = 0, cy = 0, cz = 0;
-    for (let i = 0; i < caAu.length; i++) {
-      cx += caAu[i][0]; cy += caAu[i][1]; cz += caAu[i][2];
-    }
-    cx /= caAu.length; cy /= caAu.length; cz /= caAu.length;
-    // Helix axis ~ line from first Ca to last Ca (in au)
-    let ax = caAu[caAu.length-1][0] - caAu[0][0];
-    let ay = caAu[caAu.length-1][1] - caAu[0][1];
-    let az = caAu[caAu.length-1][2] - caAu[0][2];
-    let aLen = Math.sqrt(ax*ax + ay*ay + az*az) + 1e-10;
-    ax /= aLen; ay /= aLen; az /= aLen;
-    // Average perpendicular distance from axis
-    let avgRadius = 0;
-    for (let i = 0; i < caAu.length; i++) {
-      let dx = caAu[i][0] - cx;
-      let dy = caAu[i][1] - cy;
-      let dz = caAu[i][2] - cz;
-      let proj = dx*ax + dy*ay + dz*az;
-      let perpSq = dx*dx + dy*dy + dz*dz - proj*proj;
-      avgRadius += Math.sqrt(Math.max(0, perpSq));
-    }
-    avgRadius /= caAu.length;
-    let radiusScore = Math.min(1, avgRadius / idealRadius);
-
-    // 2. Average rise per residue (end-to-end along axis / nRes)
-    let risePerRes = aLen / (caAu.length - 1);
-    // Score: 1.0 when rise = ideal, decreasing as it deviates
-    let riseScore = 1 - Math.min(1, Math.abs(risePerRes - idealRise) / idealRise);
-
-    // 3. i→i+4 H-bond formation (O[i]···H[i+4] distance)
-    let nHbonds = 0, totalHbonds = 0, avgHbondDist = 0;
-    if (oIdx && hIdx) {
-      for (let i = 0; i + 4 < oIdx.length && i + 4 < hIdx.length; i++) {
-        let dx = (nucPos[oIdx[i]][0] - nucPos[hIdx[i+4]][0]) * hGrid;
-        let dy = (nucPos[oIdx[i]][1] - nucPos[hIdx[i+4]][1]) * hGrid;
-        let dz = (nucPos[oIdx[i]][2] - nucPos[hIdx[i+4]][2]) * hGrid;
-        let d = Math.sqrt(dx*dx + dy*dy + dz*dz);
-        avgHbondDist += d;
-        if (d < hbondCutoff) nHbonds++;
-        totalHbonds++;
-      }
-      avgHbondDist /= Math.max(1, totalHbonds);
-    }
-    let hbondScore = totalHbonds > 0 ? nHbonds / totalHbonds : 0;
-
-    // Composite score (weighted)
-    let helixPct = (radiusScore * 0.3 + riseScore * 0.3 + hbondScore * 0.4) * 100;
-
-    fill(0, 255, 200);
-    text("Helix: " + helixPct.toFixed(1) + "%  R=" + (avgRadius*bohrToAng).toFixed(2) +
-      "\u00C5/" + (idealRadius*bohrToAng).toFixed(1) + "  rise=" + (risePerRes*bohrToAng).toFixed(2) +
-      "\u00C5/" + (idealRise*bohrToAng).toFixed(1) + "  H-bonds=" + nHbonds + "/" + totalHbonds +
-      " (avg " + (avgHbondDist*bohrToAng).toFixed(2) + "\u00C5)", 5, 80);
-    window._helixPct = helixPct;
-    window._helixRadius = avgRadius;
-    window._helixRise = risePerRes;
-    window._helixHbonds = nHbonds;
-  }
-
-  // Rg display
-  if (window._compactRg !== undefined) {
-    fill(255, 200, 50);
-    text("Rg=" + (window._compactRg * 0.529177).toFixed(1) + "\u00C5 (" + window._compactRg.toFixed(0) + "au)  target=" + (window._compactTargetRg * 0.529177).toFixed(1) + "\u00C5", 5, 95);
-  }
-
   // Dynamics status
   fill(dynamicsEnabled ? [0,255,255] : [150,150,150]);
-  text("Dynamics: " + (dynamicsEnabled ? "ON" : "OFF") + " (nucStep=" + nucStepCount + ")  Force=" + forceScale.toFixed(1) + "x  [D toggle, +/- force]", 5, 110);
-  fill(255, 255, 0); text("yellow=net force", 5, 125);
-
-
-  // Display net fold forces on screen
-  if (window.USER_FOLD_ATOMS && window._foldNetUnfold !== undefined) {
-    fill(window._foldNetUnfold > 0 ? [255, 100, 100] : [100, 255, 100]);
-    text("Net fold force: " + window._foldNetUnfold.toExponential(2) +
-      (window._foldNetUnfold > 0 ? " UNFOLDING" : " FOLDING") +
-      "  s1=" + window._foldS1proj.toExponential(2) +
-      " s2=" + window._foldS2proj.toExponential(2), 5, 155);
-  }
+  text("Dynamics: " + (dynamicsEnabled ? "ON" : "OFF") + " (nucStep=" + nucStepCount + ")  Force=" + forceScale.toFixed(1) + "x  [D toggle, +/- force]", 5, 80);
 
   // r_c values
   fill(200, 180, 255);
   var rcInfo = atomLabels.map((el, i) => [el, Z_orig[i], r_cut[i]]).filter(x => x[1] > 0);
   var rcSeen = {};
   rcInfo.forEach(x => { rcSeen[x[0]] = x[2]; });
-  text("r_c: " + Object.keys(rcSeen).map(k => k + "=" + rcSeen[k]).join(" "), 5, 170);
-
-  // Bond length display (after r_c to avoid overlap)
-  if (window.USER_BOND_PAIRS) {
-    fill(200, 200, 255);
-    const bp = window.USER_BOND_PAIRS;
-    const bohrToAng = 0.529177;
-    var bondY = 215;
-    let bondStr = "Calc:  ";
-    var ref = window.USER_REFERENCE;
-    var refStr = (ref && ref.bonds) ? "Ref:   " : null;
-    for (let b = 0; b < bp.length; b++) {
-      const a1 = bp[b][0], a2 = bp[b][1], label = bp[b][2] || "";
-      const dx = nucPos[a1][0] - nucPos[a2][0];
-      const dy = nucPos[a1][1] - nucPos[a2][1];
-      const dz = nucPos[a1][2] - nucPos[a2][2];
-      const dAu = Math.sqrt(dx*dx + dy*dy + dz*dz) * hGrid;
-      const dAng = dAu * bohrToAng;
-      bondStr += label + dAng.toFixed(2) + "\u00C5 ";
-      if (refStr !== null) { var rv = ref.bonds[label.replace(":", "")]; refStr += label + (rv || "?") + "\u00C5 "; }
-      if (b === 6) {
-        text(bondStr, 5, bondY); bondY += 15; bondStr = "      ";
-        if (refStr !== null) { fill(150, 255, 150); text(refStr, 5, bondY); bondY += 15; refStr = "      "; fill(200, 200, 255); }
-      }
-    }
-    if (bondStr.trim()) { text(bondStr, 5, bondY); bondY += 15; }
-    if (refStr !== null && refStr.trim()) { fill(150, 255, 150); text(refStr, 5, bondY); bondY += 15; }
-
-    // Show reference energy and binding
-    if (window.USER_REFERENCE) {
-      fill(150, 255, 150);
-      if (window.USER_REFERENCE.energy) {
-        text("Ref: " + window.USER_REFERENCE.energy, 5, bondY); bondY += 15;
-      }
-      if (window.USER_REFERENCE.binding) {
-        text("Binding: " + window.USER_REFERENCE.binding, 5, bondY);
-      }
-    }
-  }
+  text("r_c: " + Object.keys(rcSeen).map(k => k + "=" + rcSeen[k]).join(" "), 5, 95);
 
   // Diagnostics
   fill(255, 255, 0);
   text("maxDens=" + (window._diagMaxD || 0).toExponential(2) +
     " pos=" + (window._diagPos || 0) + " nan=" + (window._diagNan || 0) +
-    " neg=" + (window._diagNeg || 0), 5, 195);
+    " neg=" + (window._diagNeg || 0), 5, 110);
   if (window._initDebug) {
     fill(0, 255, 255);
-    text(window._initDebug, 300, 195);
+    text(window._initDebug, 300, 110);
   }
   if (window._gpuValErr) {
     fill(255, 0, 0);
@@ -4912,99 +3343,14 @@ function draw() {
 
   // Slice position
   fill(180, 180, 255);
-  text("Slice k=" + sliceK + "/" + NN + "  [Up/Down to scroll]", 5, 185);
-
-  // Capture video frame after canvas is fully rendered with updated atom positions
-  if (window._nucUpdated && window._recStreamTrack) {
-    try { window._recStreamTrack.requestFrame(); } catch(e) {}
-    window._nucUpdated = false;
-  }
+  text("Slice k=" + sliceK + "/" + NN + "  [Up/Down to scroll]", 5, 125);
 }
 
-// Auto-video: set window.USER_AUTO_VIDEO = { steps: 5000, interval: 200, fps: 15, filename: 'fold.webm' }
-// Captures snapshots during dynamics, stitches video when step limit reached
-(function() {
-  var av = window.USER_AUTO_VIDEO;
-  if (!av) return;
-  var interval = av.interval || 200;
-  var fps = av.fps || 15;
-  var maxSteps = av.steps || 5000;
-  var filename = av.filename || 'fold.webm';
-  var frames = [];
-  var done = false;
-  var dynamicsStartStep = -1;
-
-  setInterval(function() {
-    if (done) return;
-    var canvas = document.querySelector('canvas');
-    if (!canvas || typeof phaseSteps === 'undefined' || typeof dynamicsEnabled === 'undefined') return;
-    if (!dynamicsEnabled) return;
-    if (dynamicsStartStep < 0) {
-      dynamicsStartStep = phaseSteps;
-      console.log('AUTO-VIDEO: recording started at step ' + phaseSteps);
-    }
-    var dynSteps = phaseSteps - dynamicsStartStep;
-    if (dynSteps > 0 && dynSteps % interval === 0) {
-      canvas.toBlob(function(blob) {
-        if (blob) frames.push(blob);
-      }, 'image/webp', 0.85);
-    }
-    if (dynSteps >= maxSteps && frames.length > 0) {
-      done = true;
-      console.log('AUTO-VIDEO: stitching ' + frames.length + ' frames...');
-      var w = canvas.width, h = canvas.height;
-      var off = document.createElement('canvas');
-      off.width = w; off.height = h;
-      var ctx = off.getContext('2d');
-      var stream = off.captureStream(0);
-      var track = stream.getVideoTracks()[0];
-      var mime = MediaRecorder.isTypeSupported('video/webm; codecs=vp9')
-        ? 'video/webm; codecs=vp9' : 'video/webm';
-      var rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 5000000 });
-      var chunks = [];
-      rec.ondataavailable = function(ev) { if (ev.data.size > 0) chunks.push(ev.data); };
-      rec.onstop = function() {
-        var blob = new Blob(chunks, { type: mime });
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url; a.download = filename; a.click();
-        URL.revokeObjectURL(url);
-        console.log('AUTO-VIDEO: saved ' + filename + ' (' + frames.length + ' frames)');
-      };
-      rec.start();
-      var idx = 0;
-      var frameDur = 1000 / fps;
-      (function drawNext() {
-        if (idx >= frames.length) { rec.stop(); return; }
-        var img = new Image();
-        img.onload = function() {
-          ctx.drawImage(img, 0, 0, w, h);
-          if (track.requestFrame) track.requestFrame();
-          idx++;
-          setTimeout(drawNext, frameDur);
-        };
-        img.src = URL.createObjectURL(frames[idx]);
-      })();
-    }
-  }, 100);
-})();
-
 function keyPressed() {
-  if (key === '3') {
-    window._view3D = !window._view3D;
-    console.log("3D view " + (window._view3D ? "ON" : "OFF"));
-  }
-  if (key === 'f' || key === 'F') {
-    window._view3D_fixed = !window._view3D_fixed;
-    console.log("3D rotation " + (window._view3D_fixed ? "FIXED" : "rotating"));
-  }
   if (key === 'v' || key === 'V') {
     vcycleEnabled = !vcycleEnabled;
     vcycleCount = 0;
     console.log("V-cycle " + (vcycleEnabled ? "ENABLED" : "DISABLED"));
-  }
-  if (key === 'r' || key === 'R') {
-    if (window._toggleRecording) window._toggleRecording();
   }
   if (key === 'd' || key === 'D') {
     dynamicsEnabled = !dynamicsEnabled;

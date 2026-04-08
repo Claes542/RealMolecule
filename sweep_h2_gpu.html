@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>H₂ Bond Sweep — r_c=0, 10 au</title>
+  <style>
+    body { margin: 0; display: flex; justify-content: center; align-items: center;
+           min-height: 100vh; background: #fff; overflow: hidden; flex-direction: column; }
+    canvas { border: none; }
+  </style>
+</head>
+<body>
+  <script>
+    window.onerror = function(msg, url, line, col, err) {
+      document.body.style.color = 'red';
+      document.body.innerHTML = '<pre>ERROR: ' + msg + '\nLine: ' + line + '\n' + (err && err.stack || '') + '</pre>';
+    };
+    window.USER_NN = 200;
+    window.USER_SCREEN = 10;
+    window.USER_D = 14;       // initial D, will be overridden
+    window.USER_NELEC = 2;
+    window.USER_STEPS = 999999;
+    window.USER_RC = [0, 0];
+
+    // Sweep config
+    window.SWEEP_MODE = true;
+    window.SWEEP_R_VALUES = [0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0];
+    window.SWEEP_STEPS_PER_R = 3000;
+  </script>
+  <script src="realqm_gpu.js"></script>
+  <script>
+"use strict";
+
+const R_VALUES = window.SWEEP_R_VALUES;
+const STEPS_PER_R = window.SWEEP_STEPS_PER_R;
+const h_au = window.USER_SCREEN / window.USER_NN;
+
+let sweepResults = [];
+let sweepIdx = 0;
+let sweepState = 'wait_init';
+let sweepStepsThisR = 0;
+
+const _origDraw = window.draw;
+window.draw = function() {
+  background(255);
+
+  if (typeof gpuReady === 'undefined' || !gpuReady) {
+    fill(0); textSize(14);
+    text("Initializing GPU...", 10, 200);
+    return;
+  }
+
+  if (sweepState === 'wait_init') {
+    sweepState = 'next';
+  }
+
+  if (sweepState === 'next') {
+    if (sweepIdx >= R_VALUES.length) {
+      sweepState = 'done';
+    } else {
+      const R = R_VALUES[sweepIdx];
+      const D_new = Math.round(R / h_au);
+      console.log(`\n--- Sweep R=${R.toFixed(2)} au (D=${D_new}) [${sweepIdx+1}/${R_VALUES.length}] ---`);
+      reinitSim(D_new);
+      sweepStepsThisR = 0;
+      sweepState = 'running';
+    }
+  }
+
+  if (sweepState === 'running') {
+    const stepsPerFrame = 10;
+    doSteps(stepsPerFrame);
+    sweepStepsThisR += stepsPerFrame;
+    stepCount = sweepStepsThisR;
+
+    if (!readbackPending && (sweepStepsThisR % 200 === 0 || sweepStepsThisR >= STEPS_PER_R)) {
+      readbackPending = true;
+      (async function() {
+        try {
+          await device.queue.onSubmittedWorkDone();
+          await computeEnergy();
+        } catch(e) { console.error(e); }
+        readbackPending = false;
+
+        if (sweepStepsThisR % 500 === 0) {
+          console.log(`  step=${sweepStepsThisR} E=${E_tot.toFixed(4)}`);
+        }
+
+        if (sweepStepsThisR >= STEPS_PER_R) {
+          const R = R_VALUES[sweepIdx];
+          const E_bind = E_tot - (-1.0);  // 2 × E_H = 2 × (-0.5)
+          sweepResults.push({ R, E: E_tot, E_bind, T: E_T, VeK: E_eK, Vee: E_ee, VKK: V_KK });
+          console.log(`  DONE R=${R.toFixed(2)} E=${E_tot.toFixed(4)} E_bind=${E_bind.toFixed(4)} T=${E_T.toFixed(4)} VeK=${E_eK.toFixed(4)} Vee=${E_ee.toFixed(4)} VKK=${V_KK.toFixed(4)}`);
+          sweepIdx++;
+          sweepState = 'next';
+        }
+      })();
+    }
+  }
+
+  if (sweepState === 'done' && sweepResults.length > 0 && !window._logged) {
+    window._logged = true;
+    console.log("\n=== H2 SWEEP COMPLETE (r_c=0) ===");
+    console.log("R(au)  E(Ha)    E_bind   T       V_eK     V_ee     V_KK");
+    for (const r of sweepResults)
+      console.log(`${r.R.toFixed(2)}   ${r.E.toFixed(4)}  ${r.E_bind.toFixed(4)}  ${r.T.toFixed(4)}  ${r.VeK.toFixed(4)}  ${r.Vee.toFixed(4)}  ${r.VKK.toFixed(4)}`);
+    const best = sweepResults.reduce((a, b) => a.E < b.E ? a : b);
+    console.log(`BEST: R=${best.R.toFixed(2)} au  E=${best.E.toFixed(4)}  E_bind=${best.E_bind.toFixed(4)} (exact: R=1.4 au, E=-1.17, E_bind=-0.17)`);
+  }
+
+  // --- Draw E(R) plot ---
+  const plotX = 80, plotY = 50, plotW = 500, plotH = 300;
+  stroke(0); strokeWeight(1); noFill();
+  rect(plotX, plotY, plotW, plotH);
+
+  const Rmin = 0.5, Rmax = 7;
+  let Emin = -1.3, Emax = -0.5;
+  if (sweepResults.length > 1) {
+    Emin = Math.min(...sweepResults.map(r => r.E)) - 0.05;
+    Emax = Math.max(...sweepResults.map(r => r.E)) + 0.05;
+  }
+
+  function mapR(R) { return plotX + (R - Rmin) / (Rmax - Rmin) * plotW; }
+  function mapE(E) { return plotY + plotH - (E - Emin) / (Emax - Emin) * plotH; }
+
+  // Grid
+  stroke(220); strokeWeight(0.5);
+  for (let R = 1; R <= 6; R++) line(mapR(R), plotY, mapR(R), plotY + plotH);
+  for (let E = Math.ceil(Emin * 10) / 10; E <= Emax; E += 0.1)
+    line(plotX, mapE(E), plotX + plotW, mapE(E));
+
+  // E = -1.0 reference line (two separated H atoms)
+  stroke(200, 0, 0, 100); strokeWeight(1);
+  line(plotX, mapE(-1.0), plotX + plotW, mapE(-1.0));
+  fill(200, 0, 0); noStroke(); textSize(9);
+  text("2×E_H = -1.0", plotX + plotW - 70, mapE(-1.0) - 4);
+
+  // Exact H2 minimum
+  stroke(0, 150, 0, 100); strokeWeight(1);
+  line(plotX, mapE(-1.17), plotX + plotW, mapE(-1.17));
+  fill(0, 150, 0); noStroke(); textSize(9);
+  text("exact -1.17", plotX + plotW - 65, mapE(-1.17) - 4);
+
+  // Data curve
+  if (sweepResults.length > 0) {
+    stroke(0, 100, 200); strokeWeight(2); noFill();
+    beginShape();
+    for (const r of sweepResults) vertex(mapR(r.R), mapE(r.E));
+    endShape();
+    noStroke(); fill(0, 100, 200);
+    for (const r of sweepResults) circle(mapR(r.R), mapE(r.E), 7);
+    fill(0); textSize(9); noStroke();
+    for (const r of sweepResults)
+      text(r.E.toFixed(3), mapR(r.R) + 5, mapE(r.E) - 5);
+  }
+
+  // Current point
+  if (sweepState === 'running') {
+    fill(255, 0, 0); noStroke();
+    circle(mapR(R_VALUES[sweepIdx]), mapE(E_tot), 10);
+  }
+
+  // Axis labels
+  fill(0); noStroke(); textSize(11);
+  textAlign(CENTER);
+  text("R (au)", plotX + plotW / 2, plotY + plotH + 35);
+  for (let R = 1; R <= 6; R++) text(R, mapR(R), plotY + plotH + 16);
+  push(); textAlign(CENTER);
+  translate(plotX - 45, plotY + plotH / 2); rotate(-HALF_PI);
+  text("E (Hartree)", 0, 0); pop();
+  textAlign(LEFT); textSize(9);
+  for (let E = Math.ceil(Emin * 10) / 10; E <= Emax; E += 0.1)
+    text(E.toFixed(1), plotX - 35, mapE(E) + 3);
+
+  // Title
+  fill(0); textSize(15); textAlign(CENTER);
+  text("H\u2082 Potential Energy Curve (r_c=0, " + window.USER_NN + "\u00B3, " + window.USER_SCREEN + " au)", plotX + plotW / 2, 28);
+
+  // Status
+  textSize(12); textAlign(LEFT);
+  if (sweepState === 'running') {
+    fill(200, 0, 0);
+    text("R=" + R_VALUES[sweepIdx].toFixed(2) + " au  step " + sweepStepsThisR + "/" + STEPS_PER_R +
+         "  (" + (sweepIdx+1) + "/" + R_VALUES.length + ")  E=" + E_tot.toFixed(4),
+         plotX, plotY + plotH + 52);
+  } else if (sweepState === 'done') {
+    fill(0, 150, 0);
+    const best = sweepResults.reduce((a, b) => a.E < b.E ? a : b);
+    text("Done! E_min=" + best.E.toFixed(4) + " Ha at R=" + best.R.toFixed(2) + " au  E_bind=" + best.E_bind.toFixed(4) + " (exact: -0.17)",
+         plotX, plotY + plotH + 52);
+  }
+
+  // Table
+  if (sweepResults.length > 0) {
+    textSize(9); fill(0); textAlign(LEFT);
+    let ty = plotY + plotH + 68;
+    text("R(au)   E(Ha)     E_bind    T        V_eK      V_ee      V_KK", plotX, ty);
+    for (const r of sweepResults) {
+      ty += 13;
+      if (ty > height - 5) break;
+      text(`${r.R.toFixed(2)}    ${r.E.toFixed(4)}   ${r.E_bind.toFixed(4)}   ${r.T.toFixed(4)}   ${r.VeK.toFixed(4)}   ${r.Vee.toFixed(4)}   ${r.VKK.toFixed(4)}`, plotX, ty);
+    }
+  }
+};
+
+const _origSetup = window.setup;
+window.setup = function() {
+  createCanvas(700, 700);
+  initGPU().then(() => {
+    initDone = true;
+    console.log("GPU init complete, starting H2 sweep (r_c=0)");
+  }).catch(e => {
+    gpuError = e.message;
+    console.error("GPU init error:", e);
+  });
+};
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+</body>
+</html>

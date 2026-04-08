@@ -21,7 +21,7 @@
       document.body.innerHTML = '<pre>ERROR: ' + msg + '\nLine: ' + line + '\nFile: ' + url + '</pre>';
     };
 
-    var bondLengths = [1.0, 1.4, 1.6, 1.8, 2.0, 3.0, 6.0];
+    var bondLengths = [1.2, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.2, 2.5, 3.0, 6.0];
     var sweepIdx = 0;
     var sweepResults = [];
 
@@ -43,7 +43,7 @@
     window.USER_SCREEN = scr;
     window.USER_STEPS = 50000;  // high cap — convergence stops it early
     window.USER_Z = [1, 1];
-    window.USER_RC = [0.1, 0.1];
+    window.USER_RC = [0, 0];
     window.CONVERGENCE_THRESHOLD = 0.01;
 
     // Kolos-Wolniewicz exact energies (Ha) for H2 ground state
@@ -80,41 +80,44 @@
         div.id = 'resultsTable';
         document.body.appendChild(div);
       }
-      // E_bind = -1.04 - E_raw, where -1.04 = 2 * measured single H energy
-      var Ediss = -1.04;
-      var D0_exp = 0.1646;   // measured D_0 = 4.478 eV = 0.1646 Ha
-      var De_KW  = 0.1745;   // KW D_e (D_0 + ZPE) = 4.75 eV = 0.1745 Ha
-      var html = '<table><tr><th>R (au)</th><th>E_raw</th><th>D (Ha)</th><th>D KW</th><th>Err</th><th>Steps</th></tr>';
+      // E_bind = E(R) - E(R=6.0), measured from the last sweep point
+      var Ediss = null;
+      for (var i = sweepResults.length - 1; i >= 0; i--) {
+        if (sweepResults[i].bond >= 5.0) { Ediss = sweepResults[i].E; break; }
+      }
+      var De_KW  = 0.1745;   // KW D_e = 4.75 eV = 0.1745 Ha
+      var html = '<table><tr><th>R (au)</th><th>E_tot</th><th>E_bind</th><th>E_bind KW</th><th>Steps</th></tr>';
       var bestBind = 0, bestIdx = -1;
-      for (var i = 0; i < sweepResults.length; i++) {
-        var eb = Ediss - sweepResults[i].E;
-        if (eb > bestBind) { bestBind = eb; bestIdx = i; }
+      if (Ediss !== null) {
+        for (var i = 0; i < sweepResults.length; i++) {
+          var eb = sweepResults[i].E - Ediss;
+          if (eb < bestBind) { bestBind = eb; bestIdx = i; }
+        }
       }
       for (var i = 0; i < bondLengths.length; i++) {
         if (i < sweepResults.length) {
           var r = sweepResults[i];
-          var eb = Ediss - r.E;
-          var ebKW = -(getExactBind(r.bond));
-          var err = eb - ebKW;
+          var eb = Ediss !== null ? (r.E - Ediss) : 0;
+          var ebKW = getExactBind(r.bond);
           var cls = (i === bestIdx) ? ' class="best"' : '';
-          html += '<tr' + cls + '><td>' + r.bond.toFixed(1) + '</td><td>' + r.E.toFixed(4) + '</td><td>' + eb.toFixed(4) + '</td><td>' + ebKW.toFixed(4) + '</td><td>' + (err >= 0 ? '+' : '') + err.toFixed(4) + '</td><td>' + r.steps + '</td></tr>';
+          html += '<tr' + cls + '><td>' + r.bond.toFixed(1) + '</td><td>' + r.E.toFixed(4) + '</td><td>' + (Ediss !== null ? eb.toFixed(4) : '...') + '</td><td>' + ebKW.toFixed(4) + '</td><td>' + r.steps + '</td></tr>';
         } else {
-          var ebKW = -(getExactBind(bondLengths[i]));
+          var ebKW = getExactBind(bondLengths[i]);
           var marker = (i === sweepIdx) ? '...' : '-';
-          html += '<tr class="pending"><td>' + bondLengths[i].toFixed(1) + '</td><td>' + marker + '</td><td>' + marker + '</td><td>' + ebKW.toFixed(4) + '</td><td>' + marker + '</td><td>' + marker + '</td></tr>';
+          html += '<tr class="pending"><td>' + bondLengths[i].toFixed(1) + '</td><td>' + marker + '</td><td>' + marker + '</td><td>' + ebKW.toFixed(4) + '</td><td>' + marker + '</td></tr>';
         }
       }
       html += '</table>';
-      if (sweepResults.length === bondLengths.length) {
-        html += '<div style="margin-top:10px;font-size:12px;color:#fff">Comparison at equilibrium (R=1.4 au):</div>';
-        html += '<table style="margin-top:4px"><tr><th></th><th>D (Ha)</th><th>D (eV)</th></tr>';
-        html += '<tr><td style="text-align:left;color:#0f0">This work</td><td>' + bestBind.toFixed(4) + '</td><td>' + (bestBind * 27.211).toFixed(2) + '</td></tr>';
-        html += '<tr><td style="text-align:left;color:#0cf">D\u2080 exp</td><td>' + D0_exp.toFixed(4) + '</td><td>' + (D0_exp * 27.211).toFixed(2) + '</td></tr>';
-        html += '<tr><td style="text-align:left;color:#888">D\u2091 KW</td><td>' + De_KW.toFixed(4) + '</td><td>' + (De_KW * 27.211).toFixed(2) + '</td></tr>';
+      if (sweepResults.length === bondLengths.length && Ediss !== null) {
+        var bestR = sweepResults[bestIdx];
+        html += '<div style="margin-top:10px;font-size:12px;color:#fff">Summary:</div>';
+        html += '<table style="margin-top:4px"><tr><th></th><th>Value</th></tr>';
+        html += '<tr><td style="text-align:left;color:#0f0">R_min</td><td>' + bestR.bond.toFixed(1) + ' au (' + (bestR.bond * 0.5292).toFixed(2) + ' \u00c5)</td></tr>';
+        html += '<tr><td style="text-align:left;color:#0f0">E_bind</td><td>' + bestBind.toFixed(4) + ' Ha (' + (bestBind * 27.211).toFixed(2) + ' eV)</td></tr>';
+        html += '<tr><td style="text-align:left;color:#888">E(\u221e) ref</td><td>' + Ediss.toFixed(4) + ' Ha (R=6.0)</td></tr>';
+        html += '<tr><td style="text-align:left;color:#0cf">D\u2091 KW exact</td><td>-' + De_KW.toFixed(4) + ' Ha (-' + (De_KW * 27.211).toFixed(2) + ' eV)</td></tr>';
         html += '</table>';
-        html += '<div style="color:#888;font-size:11px;margin-top:6px">D\u2080 = measured dissociation energy (incl. ZPE)</div>';
-        html += '<div style="color:#888;font-size:11px">D\u2091 = electronic well depth (D\u2080 + ZPE, Kolos-Wolniewicz)</div>';
-        html += '<div style="color:#888;font-size:11px">D = -1.04 - E_raw (dissoc. limit: 2\u00d7-0.52 Ha)</div>';
+        html += '<div style="color:#888;font-size:11px;margin-top:6px">E_bind = E(R_min) \u2212 E(R=6.0)</div>';
       }
       div.innerHTML = html;
     }
@@ -140,7 +143,9 @@
           console.log('  bond=' + sweepResults[i].bond.toFixed(2) + '  E=' + sweepResults[i].E.toFixed(6) + '  steps=' + sweepResults[i].steps);
           if (sweepResults[i].E < bestE) { bestE = sweepResults[i].E; bestIdx = i; }
         }
-        console.log('BEST: bond=' + sweepResults[bestIdx].bond.toFixed(2) + ' au  E=' + bestE.toFixed(6) + '  steps=' + sweepResults[bestIdx].steps + ' (exact: 1.4 au, -1.17 Ha)');
+        var Eref = sweepResults[sweepResults.length - 1].E;
+        var Ebind = bestE - Eref;
+        console.log('BEST: R=' + sweepResults[bestIdx].bond.toFixed(2) + ' au  E=' + bestE.toFixed(6) + '  E_bind=' + Ebind.toFixed(4) + ' Ha  E_ref(R=6)=' + Eref.toFixed(6));
         window.SWEEP_RESULTS = sweepResults;
         window.SWEEP_BEST = bestIdx;
         updateTable();
@@ -148,7 +153,7 @@
     };
 
     var s = document.createElement('script');
-    s.src = 'molecule.js?t=' + Date.now();
+    s.src = 'molecule_h2.js?t=' + Date.now();
     s.onerror = function() { document.body.innerHTML = '<pre style="color:red">Failed to load molecule.js</pre>'; };
     s.onload = function() {
       var p5s = document.createElement('script');

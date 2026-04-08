@@ -32,7 +32,7 @@
     </div>
     <canvas id="placement" width="400" height="400"></canvas>
     <div id="atomList">No atoms placed</div>
-    <div id="info">Right-click to remove last atom</div>
+    <div id="info">Right-click to remove last atom. Min 3 atoms required.</div>
     <div>
       Grid:
       <select id="gridSelect" class="cfg-input">
@@ -137,7 +137,7 @@
         });
         document.getElementById('atomList').textContent = placedAtoms.length + '/' + MAX_PLACE + ': ' + parts.join(' | ');
       }
-      document.getElementById('launch').disabled = placedAtoms.length < 2;
+      document.getElementById('launch').disabled = placedAtoms.length < 3;
     }
 
     document.querySelectorAll('.atom-btn').forEach(function(btn) {
@@ -187,10 +187,10 @@
       status.textContent = 'Loading moleculedynamic.js...';
       document.body.appendChild(status);
       var s = document.createElement('script');
-      s.src = 'moleculedynamic.js?t=' + Date.now();
+      s.src = 'molecule.js?t=' + Date.now();
       s.onerror = function() { document.body.innerHTML = '<pre style="color:red">Failed to load moleculedynamic.js</pre>'; };
       s.onload = function() {
-        status.textContent = 'moleculedynamic.js loaded (NN=' + window.USER_NN + ', NELEC=' + window.USER_Z.filter(function(z){return z>0}).length + '). Loading p5.js...';
+        status.textContent = 'molecule.js loaded (NN=' + window.USER_NN + ', NELEC=' + window.USER_Z.filter(function(z){return z>0}).length + '). Loading p5.js...';
         var p5s = document.createElement('script');
         p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
         p5s.onerror = function() { status.textContent = 'Failed to load p5.js from CDN!'; status.style.color = 'red'; };

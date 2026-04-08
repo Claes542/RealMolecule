@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>H2 RealQM p5 — D=14 (R=1.4 au)</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+</head>
+<body>
+<script>
+let u = [];
+let f = [];
+let K = [];
+let K1 = [];
+let P = [];
+let w = [];
+let charge = [];
+let r = 0;
+let Ekin=0;
+let Epot=0;
+let Etot=0;
+let c=[];
+let norm = [];
+let N=100;
+let N2=50;
+let D=14;
+let C=1;
+let dt;
+let h;
+let t=1;
+let d=0.1;
+let M=3;
+
+// Track convergence
+let Ehist = [];
+
+function setup() {
+  createCanvas(700, 500);
+  h=10/N;
+  dt=d*pow(h,2);
+  for (var m=1;m<M;m++){
+  w[m]=[];
+  u[m]=[];
+  c[m]=1;
+  charge[m]=1;
+  P[m]=[];
+  norm[m]=0;
+  }
+  for (var m=1;m<M;m++){
+  for (var i=0;i<N+1;i++){
+    w[m][i]=[];
+    u[m][i]=[];
+    K[i]=[];
+    K1[i]=[];
+    P[m][i]=[];
+  for (var j=0;j<N+1;j++){
+    w[m][i][j]=[];
+    u[m][i][j]=[];
+    K[i][j]=[];
+    K1[i][j]=[];
+    P[m][i][j]=[];
+  for (var k=0;k<N+1;k++){
+    w[m][i][j][k]=0;
+    u[m][i][j][k]=0;
+    K[i][j][k]=0;
+    K1[i][j][k]=0;
+    P[m][i][j][k]=0;
+    }
+    }
+    }
+}
+
+for (var i=0;i<N+1;i++){
+  for (var j=0;j<N+1;j++){
+  for (var k=0;k<N+1;k++){
+  r=pow((i-N2+D/2)*h,2)+pow((j-N2)*h,2)+pow((k-N2)*h,2)+h*h;
+   r=sqrt(r);
+   K[i][j][k]=1/r;
+   K1[i][j][k]=1/r;
+   if(i<N2){
+   u[1][i][j][k]=exp(-r);
+   w[1][i][j][k]=1;
+   }
+   P[2][i][j][k]=0.5/r;
+   r=pow((i-N2-D/2)*h,2)+pow((j-N2)*h,2)+pow((k-N2)*h,2)+h*h;
+   r=sqrt(r);
+   K[i][j][k]=K[i][j][k]+1/r;
+   if(i>N2){
+   u[2][i][j][k]=exp(-r);
+   w[2][i][j][k]=1;
+   }
+   P[1][i][j][k]=0.5/r;
+   }
+   }
+  }
+}
+
+function draw() {
+  background(220);
+  noStroke();
+
+  if (t<5000){
+  t=t+1;
+  Ekin=0;
+  Epot=0;
+  for (var i=1;i<N;i++){
+  for (var j=1;j<N;j++){
+  for (var k=1;k<N;k++){
+  c[1]=0.5*(u[1][i][j][k]-u[2][i][j][k]);
+  c[2]=0.5*(u[2][i][j][k]-u[1][i][j][k]);
+
+for (var m=1;m<M;m++){
+
+w[m][i][j][k]=w[m][i][j][k]+2*dt*abs(c[m])*(w[m][i+1][j][k]+w[m][i-1][j][k]-6*w[m][i][j][k]+w[m][i][j+1][k]+w[m][i][j-1][k]+w[m][i][j][k+1]+w[m][i][j][k-1])/pow(h,2)+ 10*dt*c[m]*sqrt(pow((w[m][i+1][j][k]-w[m][i-1][j][k])/h,2)+pow((w[m][i][j+1][k]-w[m][i][j-1][k])/h,2)+pow((w[m][i][j][k+1]-w[m][i][j][k-1])/h,2));
+
+u[m][i][j][k]=u[m][i][j][k]+0.5*d*((u[m][i+1][j][k]-u[m][i][j][k])*(w[m][i+1][j][k]+w[m][i][j][k])/2-(u[m][i][j][k]-u[m][i-1][j][k])*(w[m][i][j][k]+w[m][i-1][j][k])/2)+0.5*d*((u[m][i][j+1][k]-u[m][i][j][k])*(w[m][i][j+1][k]+w[m][i][j][k])/2-(u[m][i][j][k]-u[m][i][j-1][k])*(w[m][i][j][k]+w[m][i][j-1][k])/2)+0.5*d*((u[m][i][j][k+1]-u[m][i][j][k])*(w[m][i][j][k+1]+w[m][i][j][k])/2-(u[m][i][j][k]-u[m][i][j][k-1])*(w[m][i][j][k]+w[m][i][j][k-1])/2)+dt*(K[i][j][k]-2*P[m][i][j][k])*u[m][i][j][k]*w[m][i][j][k];
+
+P[1][i][j][k]=P[1][i][j][k]+dt*(P[1][i+1][j][k]-6*P[1][i][j][k]+P[1][i-1][j][k]+P[1][i][j+1][k]+P[1][i][j-1][k]+P[1][i][j][k+1]+P[1][i][j][k-1])/pow(h,2)+2*PI*dt*pow(u[2][i][j][k],2);
+
+P[2][i][j][k]=P[2][i][j][k]+dt*(P[2][i+1][j][k]-6*P[2][i][j][k]+P[2][i-1][j][k]+P[2][i][j+1][k]+P[2][i][j-1][k]+P[2][i][j][k+1]+P[2][i][j][k-1])/pow(h,2)+2*PI*dt*pow(u[1][i][j][k],2);
+
+if (w[m][i][j][k]>0.5){
+Ekin = Ekin+0.5*(pow(u[m][i+1][j][k]-u[m][i][j][k],2)+pow(u[m][i][j+1][k]-u[m][i][j][k],2)+pow(u[m][i][j][k+1]-u[m][i][j][k],2))*h;
+}
+Epot=Epot+(P[m][i][j][k]-K[i][j][k])*pow(u[m][i][j][k],2)*pow(h,3);
+ }
+ }
+ }
+ }
+
+Etot=Ekin+Epot+1/(D*h);
+
+  for (var m=1;m<M;m++){
+  norm[m] = 0;
+  for (var i=1;i<N;i++){
+  for (var j=1;j<N;j++){
+  for (var k=1;k<N;k++){
+  norm[m] = norm[m] + pow(u[m][i][j][k],2)*pow(h,3);
+  }
+  }
+  }
+  for (var i=1;i<N;i++){
+  for (var j=1;j<N;j++){
+  for (var k=1;k<N;k++){
+  u[m][i][j][k]=u[m][i][j][k]/sqrt(norm[m]);
+  }
+  }
+  }
+  }
+
+  // Track convergence
+  if (t % 100 === 0) {
+    Ehist.push({ step: t, E: Etot, T: Ekin, V: Epot });
+    console.log("step=" + t + " E=" + Etot.toFixed(6) + " T=" + Ekin.toFixed(4) + " V=" + Epot.toFixed(4) + " V_KK=" + (1/(D*h)).toFixed(4));
+  }
+  }
+
+  // Draw density
+  if (t/10 - floor(t/10)>0.8){
+  for (var i=1;i<N;i++){
+  for (var j=1;j<N;j++){
+  fill(255,0,0,500*u[1][i][j][N2]);
+  square(4*i,4*j,4);
+  fill(0,0,255,500*u[2][i][j][N2]);
+  square(4*i,4*j,4);
+  }
+  }
+  }
+
+  fill(0);
+  circle(200-2*D,200,10);
+  circle(200+2*D,200,10);
+
+  for (var i=0;i<N;i++){
+  fill(0);
+  ellipse(4*i,200-100*w[1][i][N2][N2],4);
+  ellipse(4*i,200-100*w[2][i][N2][N2],4);
+  fill(255,255,0,255);
+  ellipse(4*i,300-100*u[1][i][N2][N2],4);
+  ellipse(4*i,300-100*u[2][i][N2][N2],4);
+  fill(0,0,255,255);
+  ellipse(4*i,400-100*P[1][i][N2][N2],2);
+  ellipse(4*i,400-100*P[2][i][N2][N2],2);
+  ellipse(4*i,400-40*K[i][N2][N2],4);
+  }
+
+  // Convergence plot
+  if (Ehist.length > 1) {
+    var px = 420, py = 20, pw = 260, ph = 150;
+    fill(255); stroke(0); rect(px, py, pw, ph);
+    noStroke();
+    var emin = Ehist[0].E, emax = Ehist[0].E;
+    for (var i = 0; i < Ehist.length; i++) {
+      if (Ehist[i].E < emin) emin = Ehist[i].E;
+      if (Ehist[i].E > emax) emax = Ehist[i].E;
+    }
+    var pad = Math.max(0.01, (emax - emin) * 0.1);
+    emin -= pad; emax += pad;
+    stroke(0, 100, 200); strokeWeight(2); noFill();
+    beginShape();
+    for (var i = 0; i < Ehist.length; i++) {
+      var x = px + (i / (Ehist.length - 1)) * pw;
+      var y = py + ph - (Ehist[i].E - emin) / (emax - emin) * ph;
+      vertex(x, y);
+    }
+    endShape();
+    noStroke(); fill(0); textSize(10);
+    text("E(t) convergence", px + 5, py + 12);
+    text(emin.toFixed(4), px + 2, py + ph - 2);
+    text(emax.toFixed(4), px + 2, py + 12 + 12);
+    text("step " + Ehist[Ehist.length-1].step, px + pw - 60, py + ph - 2);
+  }
+
+  fill(0); textSize(13);
+  text("H2 RealQM p5  N=" + N + "  D=" + D + " cells  R=" + (D*h).toFixed(2) + " au", 5, 420);
+  text("step=" + t + "  E_tot=" + Etot.toFixed(6) + " Ha", 5, 440);
+  text("T=" + Ekin.toFixed(4) + "  V_eK+V_ee=" + Epot.toFixed(4) + "  V_KK=" + (1/(D*h)).toFixed(4), 5, 458);
+  text("(exact: E=-1.1745 at R=1.4 au)", 5, 476);
+  textSize(11);
+  if (Ehist.length > 1) {
+    var dE = Ehist[Ehist.length-1].E - Ehist[Ehist.length-2].E;
+    text("dE/100steps = " + dE.toExponential(3), 5, 494);
+  }
+}
+</script>
+</body>
+</html>
