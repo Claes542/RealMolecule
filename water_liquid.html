@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// Liquid water: random water molecule positions (no crystal order)
+(function() {
+  var gridN = 200, scr = 30, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;  // angstrom to bohr
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    var gi = Math.round(N2 + x / h);
+    var gj = Math.round(N2 + y / h);
+    var gk = Math.round(N2 + z / h);
+    gi = Math.max(3, Math.min(gridN - 3, gi));
+    gj = Math.max(3, Math.min(gridN - 3, gj));
+    gk = Math.max(3, Math.min(gridN - 3, gk));
+    atoms.push({ i: gi, j: gj, k: gk, Z: Z, el: el });
+  }
+
+  // Place water molecules randomly in a box
+  // Liquid water density: ~33 molecules per 1000 A^3
+  // Box size: use ~12 A cube = 22.7 au cube
+  var boxAu = 10;  // half-box in au
+  var bOH = 0.96 * A;   // O-H bond length
+  var angHOH = 104.5 * Math.PI / 180;
+  var nMol = 64;  // 64 water molecules
+
+  // Random seed
+  var seed = 12345;
+  function rand() { seed = (seed * 16807 + 7) % 2147483647; return seed / 2147483647; }
+
+  var oPositions = [];
+  // Place O atoms randomly, reject if too close to existing
+  var minDist = 2.5 * A;  // minimum O-O distance (~2.5 A)
+  var attempts = 0;
+  while (oPositions.length < nMol && attempts < 100000) {
+    var x = (rand() - 0.5) * 2 * boxAu;
+    var y = (rand() - 0.5) * 2 * boxAu;
+    var z = (rand() - 0.5) * 2 * boxAu;
+    var ok = true;
+    for (var i = 0; i < oPositions.length; i++) {
+      var dx = x - oPositions[i][0], dy = y - oPositions[i][1], dz = z - oPositions[i][2];
+      if (Math.sqrt(dx*dx + dy*dy + dz*dz) < minDist) { ok = false; break; }
+    }
+    if (ok) oPositions.push([x, y, z]);
+    attempts++;
+  }
+
+  console.log('Placed ' + oPositions.length + ' water molecules in ' + attempts + ' attempts');
+
+  // Place each water molecule: O + 2H in random orientation
+  for (var i = 0; i < oPositions.length; i++) {
+    var ox = oPositions[i][0], oy = oPositions[i][1], oz = oPositions[i][2];
+    addAtom(ox, oy, oz, 2, 'O');
+
+    // Random orientation for H atoms
+    var theta = rand() * Math.PI;
+    var phi = rand() * 2 * Math.PI;
+    // First H
+    var hx1 = ox + bOH * Math.sin(theta) * Math.cos(phi);
+    var hy1 = oy + bOH * Math.sin(theta) * Math.sin(phi);
+    var hz1 = oz + bOH * Math.cos(theta);
+    addAtom(hx1, hy1, hz1, 1, 'H');
+    // Second H at HOH angle from first
+    var theta2 = theta + angHOH;
+    var hx2 = ox + bOH * Math.sin(theta2) * Math.cos(phi);
+    var hy2 = oy + bOH * Math.sin(theta2) * Math.sin(phi);
+    var hz2 = oz + bOH * Math.cos(theta2);
+    addAtom(hx2, hy2, hz2, 1, 'H');
+  }
+
+  console.log('Liquid water: ' + oPositions.length + ' molecules, ' + atoms.length + ' atoms');
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_TEMPERATURE_K = 300;
+  window.USER_LANGEVIN_GAMMA = 0.1;
+  window.USER_THERMAL_KICK = 0;  // no kicks — let quantum forces find equilibrium
+  window.USER_N_MOVE = 30;
+  window.USER_ROT_SPEED = 0.005;
+  window.USER_DAMPING = 0.95;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'O') return 0.8;
+    return 0;
+  });
+  window.INIT_ZEFF = 2;
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

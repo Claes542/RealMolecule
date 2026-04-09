@@ -30,7 +30,7 @@
   ];
 
   var oPositions = [];
-  var nc = 2;  // 2×2×2 = 64 O atoms (smaller for dynamics speed)
+  var nc = 3;  // 3×3×3 = 216 O atoms
 
   var x0 = -(nc * aCube) / 2;
   var y0 = -(nc * aCube) / 2;
@@ -196,9 +196,20 @@
   window.USER_DYNAMICS = true;   // start with dynamics ON
   window.USER_FORCE_SCALE = 1.0;
   window.USER_ARROW_SCALE = 200.0;
-  window.USER_TEMPERATURE_K = 300;  // Langevin thermostat at 300 K (above melting)
-  window.USER_LANGEVIN_GAMMA = 0.01;
+  window.USER_TEMPERATURE_K = 1000;  // high T to break H-bonds
+  window.USER_LANGEVIN_GAMMA = 0.2;  // Andersen collision rate
+  window.USER_NUC_SUBSTEPS = 10;
   window.USER_N_MOVE = 30;
+  // Gentle disorder: small kicks for many steps, then relax
+  window.USER_THERMAL_KICK = 0.3;
+  var _kickPhase = setInterval(function() {
+    if (typeof nucStepCount !== 'undefined' && nucStepCount > 50 && window.USER_THERMAL_KICK > 0) {
+      window.USER_THERMAL_KICK = 0;
+      console.log("=== KICKS OFF at step " + nucStepCount + " — E=" + E + " — relaxing ===");
+      clearInterval(_kickPhase);
+    }
+  }, 500);
+  window.USER_ROT_SPEED = 0.005;
   window.USER_GRADP_FORCE = true;
   window.USER_Z = atoms.map(function(a) { return a.Z; });
   window.USER_RC = atoms.map(function(a) {

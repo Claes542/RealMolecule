@@ -4181,25 +4181,32 @@ async function moveNuclei(gpuForces) {
           nucPos[a][d] = Math.max(5, Math.min(NN - 5, nucPos[a][d]));
         }
       }
-      // Andersen thermostat: randomly reassign velocities from Maxwell-Boltzmann
-      // LANGEVIN_GAMMA controls collision frequency (fraction of atoms reassigned per step)
+      // Andersen thermostat: random velocity + position kicks
+      // LANGEVIN_GAMMA controls collision frequency (fraction of atoms kicked per step)
       if (langevinKT > 0) {
-        // Box-Muller for Gaussian random numbers
         function gaussRand() {
           let u1 = Math.random(), u2 = Math.random();
           return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
         }
-        const collisionRate = LANGEVIN_GAMMA;  // fraction of atoms hit per step
+        const collisionRate = LANGEVIN_GAMMA;
         for (let a = 0; a < NELEC; a++) {
           if (Z[a] === 0 && Z_nuc[a] === 0) continue;
           if (frozenAtoms.indexOf(a) >= 0) continue;
           if (Math.random() < collisionRate) {
-            // Reassign velocity from Maxwell-Boltzmann at target T
             const m = nucMass(Z_nuc[a] || Z[a]);
-            const sigma = Math.sqrt(langevinKT / m);  // sqrt(kT/m)
-            nucVel[a][0] = sigma * gaussRand();
-            nucVel[a][1] = sigma * gaussRand();
-            nucVel[a][2] = sigma * gaussRand();
+            const sigma_v = Math.sqrt(langevinKT / m);
+            nucVel[a][0] = sigma_v * gaussRand();
+            nucVel[a][1] = sigma_v * gaussRand();
+            nucVel[a][2] = sigma_v * gaussRand();
+            // Position kick: scale by USER_THERMAL_DISPLACEMENT (grid cells) if set,
+            // otherwise use sigma_v * DT_NUC / hGrid (physically correct but tiny)
+            const sigma_x = window.USER_THERMAL_KICK || (sigma_v * DT_NUC / hGrid);
+            nucPos[a][0] += sigma_x * gaussRand();
+            nucPos[a][1] += sigma_x * gaussRand();
+            nucPos[a][2] += sigma_x * gaussRand();
+            nucPos[a][0] = Math.max(5, Math.min(NN - 5, nucPos[a][0]));
+            nucPos[a][1] = Math.max(5, Math.min(NN - 5, nucPos[a][1]));
+            nucPos[a][2] = Math.max(5, Math.min(NN - 5, nucPos[a][2]));
           }
         }
       }
@@ -4717,6 +4724,13 @@ function draw() {
       fill(0, 255, 200);
       text("Helix: " + (window._helixPct || 0).toFixed(1) + "%  R=" + ((window._helixRadius || 0)*0.529177).toFixed(2) +
         "\u00C5  rise=" + ((window._helixRise || 0)*0.529177).toFixed(2) + "\u00C5  H-bonds=" + (window._helixHbonds || 0), 5, CANVAS_SIZE - 20);
+    }
+
+    // Energy display
+    fill(255, 255, 255);
+    text("E=" + E.toFixed(2) + " Ha  T=" + E_T.toFixed(2) + "  V_eK=" + E_eK.toFixed(2) + "  V_ee=" + E_ee.toFixed(2) + "  V_KK=" + E_KK.toFixed(2), 5, CANVAS_SIZE - 20);
+    if (langevinKT > 0 && window._thermoT !== undefined) {
+      text("T=" + window._thermoT.toFixed(0) + " K (target " + (langevinKT*315775).toFixed(0) + " K)  kick=" + (window.USER_THERMAL_KICK || 0), 5, CANVAS_SIZE - 35);
     }
 
     // Dynamics status
