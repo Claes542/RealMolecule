@@ -621,25 +621,61 @@ Energy
     </div>
   </div>
 
-  <h2>Phase Change: Ice Melting</h2>
+  <h2>Thermodynamics: Temperature and Phase Change</h2>
   <div class="grid">
     <div class="card" style="grid-column:1/-1;border-color:#ff7043">
-      <h3>Ice Ic Melting &mdash; H-Bond Breaking and Reforming</h3>
-      <div class="desc">~64 water molecules (2&times;2&times;2 unit cells) &middot; 200&sup3; / 50 au &middot; Thermal kick + dynamics<br>
-        Start from converged Ice Ic diamond cubic crystal. Random thermal velocities break
-        H-bonds &mdash; surface molecules (3 neighbors) melt first, inner crystal (4 neighbors) holds longer.</div>
-      <table>
-        <tr><th>Property</th><th>Crystal (start)</th><th>Liquid (expected)</th></tr>
-        <tr><td>O&ndash;O distance</td><td class="val">2.76 &Aring; (uniform)</td><td class="ref">2.8&ndash;3.5 &Aring; (disordered)</td></tr>
-        <tr><td>Coordination</td><td class="val">4 (tetrahedral)</td><td class="ref">~3.5 (fluctuating)</td></tr>
-        <tr><td>H-bond lifetime</td><td class="val">&infin; (frozen)</td><td class="ref">~1 ps (dynamic)</td></tr>
-      </table>
-      <div class="desc" style="font-size:13px;margin-top:12px;border-top:1px solid #333;padding-top:10px">
-        <b>Physics:</b> Melting = H-bond breaking and partner switching. The same r<sub>c</sub>=0.8
-        barrier that forms H-bonds at 2.0&nbsp;&Aring; must be overcome by thermal energy for bonds to break.
-        Broken free boundaries (zero density on both sides) are displayed as white lines in the density slice.
+      <h3>Temperature in RealQM</h3>
+      <div class="desc" style="font-size:13px;line-height:1.8">
+        Temperature is defined from the equipartition theorem: T = (2/3) &middot; KE<sub>atom</sub> / k<sub>B</sub>,
+        where KE<sub>atom</sub> = &frac12;mv&sup2; averaged over all active atoms.
+        The Andersen thermostat maintains target T by randomly reassigning individual atom velocities
+        from the Maxwell-Boltzmann distribution.<br><br>
+        <b>Limitation:</b> This is <em>kinetic</em> temperature &mdash; it measures how fast atoms move,
+        not a full thermodynamic temperature. The electronic solver always finds the ground state (T=0 for electrons).
+        Real thermodynamics requires free energy G = E &minus; TS including configurational entropy,
+        which is not explicitly sampled. The quantum forces create deep potential wells that
+        physical kT cannot overcome, so melting requires effective temperatures far above physical values.
       </div>
-      <a class="launch" href="ice_melt.html">Launch simulation</a>
+    </div>
+
+    <div class="card" style="border-color:#ff7043">
+      <h3>Ice vs Liquid Water &mdash; Energy Ordering</h3>
+      <div class="desc">216 water molecules &middot; 3&times;3&times;3 Ice Ic &middot; 200&sup3; / 50 au</div>
+      <table>
+        <tr><th>State</th><th>E (Ha)</th><th>E/molecule</th></tr>
+        <tr><td class="val">Crystal (Ice Ic)</td><td class="val">&minus;16350</td><td>&minus;75.7</td></tr>
+        <tr><td>Disordered (kicked)</td><td>&minus;16056</td><td>&minus;74.3</td></tr>
+        <tr><td>Difference</td><td colspan="2">+294 Ha total (+1.36 Ha/mol)</td></tr>
+      </table>
+      <div class="desc" style="margin-top:8px">
+        E<sub>crystal</sub> &lt; E<sub>liquid</sub> &mdash; correct ordering.
+        Disordered ice is metastable (does not recrystallize).
+      </div>
+      <a class="launch" href="ice_melt.html">Launch ice simulation</a>
+    </div>
+
+    <div class="card" style="border-color:#42a5f5">
+      <h3>Liquid Water &mdash; Self-Organizing H-Bonds</h3>
+      <div class="desc">64 random water molecules &middot; 200&sup3; / 30 au</div>
+      <table>
+        <tr><th>Observation</th><th>Status</th></tr>
+        <tr><td>Covalent O-H bonds</td><td class="val">2 per molecule, stable &#10003;</td></tr>
+        <tr><td>H-bonds form spontaneously</td><td class="val">yellow/red lines &#10003;</td></tr>
+        <tr><td>Stays disordered</td><td class="val">no crystallization &#10003;</td></tr>
+      </table>
+      <a class="launch" href="water_liquid.html">Launch liquid water</a>
+    </div>
+
+    <div class="card" style="border-color:#66bb6a">
+      <h3>Li Metal Cluster &mdash; Thermal Stability</h3>
+      <div class="desc">343 atoms (7&times;7&times;7) &middot; 200&sup3; / 40 au &middot; Andersen thermostat</div>
+      <table>
+        <tr><th>Temperature</th><th>Observation</th></tr>
+        <tr><td>300 K</td><td class="val">Cluster stable, inner atoms vibrate &#10003;</td></tr>
+        <tr><td>500 K</td><td>Corner atoms evaporate (above Li m.p. 454 K)</td></tr>
+        <tr><td>2000 K</td><td>Inner lattice distorts with Andersen kicks</td></tr>
+      </table>
+      <a class="launch" href="li_thermostat.html">Launch Li cluster</a>
     </div>
   </div>
 
