@@ -4154,12 +4154,7 @@ async function moveNuclei(gpuForces) {
         for (let d = 0; d < 3; d++) {
           const gf = d === 0 ? gfx : d === 1 ? gfy : gfz;
           nucVel[g0][d] += gf / totalMass * DT_NUC * forceScale;
-          if (langevinKT > 0) {
-            const sigma = Math.sqrt(2 * LANGEVIN_GAMMA * langevinKT / totalMass * DT_NUC);
-            nucVel[g0][d] += -LANGEVIN_GAMMA * nucVel[g0][d] * DT_NUC + sigma * (Math.random() - 0.5) * Math.sqrt(12);
-          } else {
-            nucVel[g0][d] *= DAMPING;
-          }
+          if (langevinKT <= 0) nucVel[g0][d] *= DAMPING;
           nucVel[g0][d] = Math.max(-MAX_VEL, Math.min(MAX_VEL, nucVel[g0][d]));
         }
         // Move all atoms in group by same displacement
@@ -4172,7 +4167,7 @@ async function moveNuclei(gpuForces) {
         }
       }
     } else {
-      // Per-atom dynamics with optional Langevin thermostat
+      // Per-atom dynamics with optional thermostat
       const frozenAtoms = window.USER_FROZEN_ATOMS || [];
       for (let a = 0; a < NELEC; a++) {
         if (Z[a] === 0 && Z_nuc[a] === 0) continue;
@@ -4180,25 +4175,56 @@ async function moveNuclei(gpuForces) {
         const m = nucMass(Z_nuc[a] || Z[a]);
         for (let d = 0; d < 3; d++) {
           nucVel[a][d] += nucForce[a][d] / m * DT_NUC * forceScale;
-          if (langevinKT > 0) {
-            // Langevin: friction + random force satisfying fluctuation-dissipation
-            // sigma = sqrt(2 * gamma * kT / m * dt)
-            const sigma = Math.sqrt(2 * LANGEVIN_GAMMA * langevinKT / m * DT_NUC);
-            nucVel[a][d] += -LANGEVIN_GAMMA * nucVel[a][d] * DT_NUC + sigma * (Math.random() - 0.5) * Math.sqrt(12);
-          } else {
-            nucVel[a][d] *= DAMPING;
-          }
+          if (langevinKT <= 0) nucVel[a][d] *= DAMPING;
           nucVel[a][d] = Math.max(-MAX_VEL, Math.min(MAX_VEL, nucVel[a][d]));
           nucPos[a][d] += nucVel[a][d] * DT_NUC / hGrid;
           nucPos[a][d] = Math.max(5, Math.min(NN - 5, nucPos[a][d]));
+        }
+      }
+      // Andersen thermostat: randomly reassign velocities from Maxwell-Boltzmann
+      // LANGEVIN_GAMMA controls collision frequency (fraction of atoms reassigned per step)
+      if (langevinKT > 0) {
+        // Box-Muller for Gaussian random numbers
+        function gaussRand() {
+          let u1 = Math.random(), u2 = Math.random();
+          return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+        }
+        const collisionRate = LANGEVIN_GAMMA;  // fraction of atoms hit per step
+        for (let a = 0; a < NELEC; a++) {
+          if (Z[a] === 0 && Z_nuc[a] === 0) continue;
+          if (frozenAtoms.indexOf(a) >= 0) continue;
+          if (Math.random() < collisionRate) {
+            // Reassign velocity from Maxwell-Boltzmann at target T
+            const m = nucMass(Z_nuc[a] || Z[a]);
+            const sigma = Math.sqrt(langevinKT / m);  // sqrt(kT/m)
+            nucVel[a][0] = sigma * gaussRand();
+            nucVel[a][1] = sigma * gaussRand();
+            nucVel[a][2] = sigma * gaussRand();
+          }
         }
       }
     }
   }
 
   nucStepCount++;
-  console.log("Nuc step " + nucStepCount + ": " +
-    nucPos.filter((_, i) => Z[i] > 0).map(p => "(" + p.map(x => x.toFixed(2)).join(",") + ")").join(" "));
+  // Report temperature if thermostat active
+  if (langevinKT > 0) {
+    let _ke = 0, _na = 0;
+    const _frozen = window.USER_FROZEN_ATOMS || [];
+    for (let a = 0; a < NELEC; a++) {
+      if (Z[a] === 0 && Z_nuc[a] === 0) continue;
+      if (_frozen.indexOf(a) >= 0) continue;
+      const _m = nucMass(Z_nuc[a] || Z[a]);
+      _ke += 0.5 * _m * (nucVel[a][0]**2 + nucVel[a][1]**2 + nucVel[a][2]**2);
+      _na++;
+    }
+    const _T = _na > 0 && _ke > 0 ? (2 * _ke / (3 * _na) * 315775) : 0;
+    window._thermoT = _T;
+    console.log("Nuc step " + nucStepCount + " T=" + _T.toFixed(0) + " K (target " + (langevinKT*315775).toFixed(0) + " K) KE=" + _ke.toExponential(3) + " nAtoms=" + _na + " NELEC=" + NELEC);
+  } else {
+    console.log("Nuc step " + nucStepCount + ": " +
+      nucPos.filter((_, i) => Z[i] > 0).map(p => "(" + p.map(x => x.toFixed(2)).join(",") + ")").join(" "));
+  }
 
   // Flag that atom positions changed — draw() will capture frame after rendering
   window._nucUpdated = true;
@@ -4475,7 +4501,7 @@ function draw() {
     // Draw all atoms as 3D projection with auto-rotation
     const fixedYrot = window.USER_VIEW_YROT !== undefined ? window.USER_VIEW_YROT : Math.PI/2;
     const fixedTilt = window.USER_VIEW_TILT !== undefined ? window.USER_VIEW_TILT : Math.PI/4;
-    const t3d = window._view3D_fixed ? fixedYrot : (frameCount || 0) * 0.02;
+    const t3d = window._view3D_fixed ? fixedYrot : (frameCount || 0) * (window.USER_ROT_SPEED || 0.02);
     const tilt = window._view3D_fixed ? fixedTilt : 0.3;
     const cosT = Math.cos(t3d), sinT = Math.sin(t3d);
     const cosT2 = Math.cos(tilt), sinT2 = Math.sin(tilt); // tilt
@@ -4495,10 +4521,11 @@ function draw() {
       return { x: canvMid + rx*scale3, y: canvMid + ry*scale3 };
     }
     const ANG = 0.529177;  // bohr to angstrom
+    const _hidden = window.USER_HIDDEN_ATOMS || [];
     for (let a = 0; a < NELEC; a++) {
-      if (Z[a] === 0) continue;
+      if (Z[a] === 0 || _hidden.indexOf(a) >= 0) continue;
       for (let b = a+1; b < NELEC; b++) {
-        if (Z[b] === 0) continue;
+        if (Z[b] === 0 || _hidden.indexOf(b) >= 0) continue;
         const dx = (nucPos[a][0]-nucPos[b][0])*hGrid;
         const dy = (nucPos[a][1]-nucPos[b][1])*hGrid;
         const dz = (nucPos[a][2]-nucPos[b][2])*hGrid;
@@ -4540,6 +4567,7 @@ function draw() {
     for (let n = 0; n < NELEC; n++) {
       if (Z[n] === 0 && Z_nuc[n] === 0) continue;  // skip empty
       if (Z[n] > 0 && Z_nuc[n] === 0) continue;  // skip electron-only (no kernel)
+      if (_hidden.indexOf(n) >= 0) continue;  // skip hidden atoms
       let ax = nucPos[n][0]-cx3, ay = nucPos[n][1]-cy3, az = nucPos[n][2]-cz3;
       let rx = ax*cosT + az*sinT, rz = -ax*sinT + az*cosT;
       let ry = ay*cosT2 - rz*sinT2, rz2 = ay*sinT2 + rz*cosT2;

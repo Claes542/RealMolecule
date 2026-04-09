@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<pre id="log">Building Li cluster...</pre>
+<script>
+var log = document.getElementById('log');
+window.onerror = function(msg, url, line) {
+  log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
+};
+
+// Small Li cluster: 8 atoms in cube, test Langevin thermostat
+// Li: Z=1 valence electron, r_c=0.5, nearest neighbor ~3.0 Å = 5.7 au
+(function() {
+  var gridN = 200, scr = 40;
+  var h = scr / gridN;
+  var N2 = Math.round(gridN / 2);
+
+  var aLat = 3.8;  // spacing in au (~2.0 Å, near Li BCC nearest-neighbor)
+  var atoms = [];
+
+  // 7x7x7 cube = 343 atoms
+  var nc = 7;
+  for (var iz = 0; iz < nc; iz++) {
+    for (var iy = 0; iy < nc; iy++) {
+      for (var ix = 0; ix < nc; ix++) {
+        var x = (ix - (nc-1)/2) * aLat;
+        var y = (iy - (nc-1)/2) * aLat;
+        var z = (iz - (nc-1)/2) * aLat;
+        atoms.push({
+          i: Math.round(N2 + x / h),
+          j: Math.round(N2 + y / h),
+          k: Math.round(N2 + z / h),
+          Z: 1, el: 'Li'
+        });
+      }
+    }
+  }
+
+  var T_K = 2000;  // high temperature — force melting
+  log.textContent = 'Li cluster: ' + atoms.length + ' atoms, 7x7x7 cube';
+  log.textContent += '\nLattice spacing: ' + (aLat * 0.529177).toFixed(2) + ' A (' + aLat.toFixed(1) + ' au)';
+  log.textContent += '\nLangevin thermostat: T = ' + T_K + ' K';
+  log.textContent += '\n' + gridN + '^3 grid, screen=' + scr + ' au';
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_Z = atoms.map(function() { return 1; });
+  window.USER_RC = atoms.map(function() { return 0.5; });
+  // Freeze surface atoms, only inner atoms feel thermostat
+  var frozen = [];
+  var idx = 0;
+  for (var iz = 0; iz < nc; iz++) {
+    for (var iy = 0; iy < nc; iy++) {
+      for (var ix = 0; ix < nc; ix++) {
+        if (ix === 0 || ix === nc-1 || iy === 0 || iy === nc-1 || iz === 0 || iz === nc-1) {
+          frozen.push(idx);
+        }
+        idx++;
+      }
+    }
+  }
+  window.USER_FROZEN_ATOMS = frozen;
+  window.USER_HIDDEN_ATOMS = frozen;  // hide frozen surface atoms from display
+  window.USER_DYNAMICS = true;
+  window.USER_N_MOVE = 200;
+  window.USER_DT_NUC = 2.0;
+  window.USER_NUC_SUBSTEPS = 20;  // 20 position updates per force evaluation
+  window.USER_TEMPERATURE_K = T_K;
+  window.USER_LANGEVIN_GAMMA = 0.2;  // Andersen collision rate (fraction of atoms randomized per step)
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ROT_SPEED = 0.005;
+})();
+
+// Monitor kinetic energy vs expected 3/2 NkT
+var keHistory = [];
+var origDraw;
+function monitorKE() {
+  if (typeof nucVel === 'undefined' || typeof Z === 'undefined') return;
+  var ke = 0, nActive = 0;
+  for (var a = 0; a < nucVel.length; a++) {
+    if (typeof Z[a] === 'undefined' || Z[a] === 0) continue;
+    var m = ({1:1, 2:16, 3:14, 4:12}[Z[a]] || 1) * 1836;
+    var v2 = nucVel[a][0]*nucVel[a][0] + nucVel[a][1]*nucVel[a][1] + nucVel[a][2]*nucVel[a][2];
+    ke += 0.5 * m * v2;
+    nActive++;
+  }
+  if (nActive === 0) return;
+  var kT_target = window.USER_TEMPERATURE_K / 315775.0;
+  var kT_measured = 2 * ke / (3 * nActive);
+  var T_measured = kT_measured * 315775.0;
+  keHistory.push({ ke: ke, T: T_measured, n: nActive });
+  if (keHistory.length % 10 === 0) {
+    // Average T over last 10 measurements
+    var avgT = 0;
+    var n = Math.min(10, keHistory.length);
+    for (var i = keHistory.length - n; i < keHistory.length; i++) avgT += keHistory[i].T;
+    avgT /= n;
+    console.log('KE=' + ke.toExponential(3) + ' T_measured=' + T_measured.toFixed(0) + ' K (avg=' + avgT.toFixed(0) + ' K, target=' + window.USER_TEMPERATURE_K + ' K)');
+  }
+}
+setInterval(monitorKE, 2000);
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onerror = function() { log.textContent += '\nFailed to load molecule.js!'; };
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
