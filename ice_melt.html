@@ -140,21 +140,7 @@
   var nFree = atoms.length - frozen.length;
   console.log('Frozen: ' + frozen.length + ' corner atoms, ' + nFree + ' free (will melt)');
 
-  // Random thermal velocities for free atoms
-  var initVel = [];
-  var thermalKick = 0.8;  // au — enough to break H-bonds but not eject atoms
-  for (var i = 0; i < atoms.length; i++) {
-    if (frozen.indexOf(i) >= 0) {
-      initVel.push([0, 0, 0]);
-    } else {
-      initVel.push([
-        (Math.random() - 0.5) * thermalKick,
-        (Math.random() - 0.5) * thermalKick,
-        (Math.random() - 0.5) * thermalKick
-      ]);
-    }
-  }
-  window.USER_INIT_VEL = initVel;
+  // No initial kick — Langevin thermostat will equilibrate to target T
 
   // Monitor several O-O distances across the crystal
   var bondPairs = [];
@@ -210,7 +196,8 @@
   window.USER_DYNAMICS = true;   // start with dynamics ON
   window.USER_FORCE_SCALE = 1.0;
   window.USER_ARROW_SCALE = 200.0;
-  window.USER_DAMPING = 0.98;    // slight damping — prevents atom ejection
+  window.USER_TEMPERATURE_K = 300;  // Langevin thermostat at 300 K (above melting)
+  window.USER_LANGEVIN_GAMMA = 0.01;
   window.USER_N_MOVE = 30;
   window.USER_GRADP_FORCE = true;
   window.USER_Z = atoms.map(function(a) { return a.Z; });

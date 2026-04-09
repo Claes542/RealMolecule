@@ -109,6 +109,14 @@ const NUC_SUBSTEPS = window.USER_NUC_SUBSTEPS || (NELEC <= 5 ? 2 : 1);
 const DAMPING = window.USER_DAMPING || 0.98;       // light damping
 const MAX_VEL = NELEC <= 5 ? 0.3 : NELEC > 200 ? 0.03 : 0.1;  // au/au_time
 let forceScale = window.USER_FORCE_SCALE || 1.0;       // adjustable via slider/keys
+// Langevin thermostat: gamma = friction, kT = target temperature in Hartree
+// T(K) = kT * 315775.  Room temp 300K → kT = 0.00095 Ha.  Set USER_TEMPERATURE_K to enable.
+const LANGEVIN_GAMMA = window.USER_LANGEVIN_GAMMA || 0.01;  // friction coefficient (au^-1)
+let langevinKT = 0;  // 0 = thermostat off (pure damping)
+if (window.USER_TEMPERATURE_K) {
+  langevinKT = window.USER_TEMPERATURE_K / 315775.0;
+  console.log("Langevin thermostat: T=" + window.USER_TEMPERATURE_K + " K, kT=" + langevinKT.toExponential(3) + " Ha, gamma=" + LANGEVIN_GAMMA);
+}
 let boundarySpeed = 0.5;    // dt_w for free boundary evolution
 let nucVel = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
 // Apply initial velocities if specified
@@ -4146,7 +4154,12 @@ async function moveNuclei(gpuForces) {
         for (let d = 0; d < 3; d++) {
           const gf = d === 0 ? gfx : d === 1 ? gfy : gfz;
           nucVel[g0][d] += gf / totalMass * DT_NUC * forceScale;
-          nucVel[g0][d] *= DAMPING;
+          if (langevinKT > 0) {
+            const sigma = Math.sqrt(2 * LANGEVIN_GAMMA * langevinKT / totalMass * DT_NUC);
+            nucVel[g0][d] += -LANGEVIN_GAMMA * nucVel[g0][d] * DT_NUC + sigma * (Math.random() - 0.5) * Math.sqrt(12);
+          } else {
+            nucVel[g0][d] *= DAMPING;
+          }
           nucVel[g0][d] = Math.max(-MAX_VEL, Math.min(MAX_VEL, nucVel[g0][d]));
         }
         // Move all atoms in group by same displacement
@@ -4159,7 +4172,7 @@ async function moveNuclei(gpuForces) {
         }
       }
     } else {
-      // Per-atom dynamics (original)
+      // Per-atom dynamics with optional Langevin thermostat
       const frozenAtoms = window.USER_FROZEN_ATOMS || [];
       for (let a = 0; a < NELEC; a++) {
         if (Z[a] === 0 && Z_nuc[a] === 0) continue;
@@ -4167,7 +4180,14 @@ async function moveNuclei(gpuForces) {
         const m = nucMass(Z_nuc[a] || Z[a]);
         for (let d = 0; d < 3; d++) {
           nucVel[a][d] += nucForce[a][d] / m * DT_NUC * forceScale;
-          nucVel[a][d] *= DAMPING;
+          if (langevinKT > 0) {
+            // Langevin: friction + random force satisfying fluctuation-dissipation
+            // sigma = sqrt(2 * gamma * kT / m * dt)
+            const sigma = Math.sqrt(2 * LANGEVIN_GAMMA * langevinKT / m * DT_NUC);
+            nucVel[a][d] += -LANGEVIN_GAMMA * nucVel[a][d] * DT_NUC + sigma * (Math.random() - 0.5) * Math.sqrt(12);
+          } else {
+            nucVel[a][d] *= DAMPING;
+          }
           nucVel[a][d] = Math.max(-MAX_VEL, Math.min(MAX_VEL, nucVel[a][d]));
           nucPos[a][d] += nucVel[a][d] * DT_NUC / hGrid;
           nucPos[a][d] = Math.max(5, Math.min(NN - 5, nucPos[a][d]));
