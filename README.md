@@ -1,4 +1,4 @@
-# RealQM — Molecular Dynamics in the Browser
+# RealQM — Ab Initio Molecular Dynamics
 
 RealQM is based on a new form of Schrodinger's equation which has the form of classical multi-phase continuum mechanics in 3D for a system of non-overlapping electron densities interacting by Coulomb potentials. Computational complexity scales with the number of mesh points in 3D and so offers laptop computational simulation of large molecular systems including ab initio protein folding. Runs entirely in the browser using WebGPU compute shaders on any laptop GPU.
 
