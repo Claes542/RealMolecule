@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Single H — clean solver</title></head>
+<body style="margin:0;background:#eee">
+<script>
+// Single H atom on 100^3/10au — same grid as h2_clean
+const NN = 100, S = NN+1, S2 = S*S, S3 = S*S*S, N2 = 50;
+const h = 10/NN, h2 = h*h, h3 = h*h*h;
+const d = 0.1, dt = d*h2, half_d = 0.5*d;
+
+const K = new Float32Array(S3);
+let u = new Float32Array(S3);
+
+// H atom at center
+for (let i = 0; i <= NN; i++)
+  for (let j = 0; j <= NN; j++)
+    for (let k = 0; k <= NN; k++) {
+      const id = i*S2+j*S+k;
+      const dx = (i-N2)*h, dy = (j-N2)*h, dz = (k-N2)*h;
+      const r = Math.sqrt(dx*dx+dy*dy+dz*dz+0.12*h2);
+      K[id] = 1.0/r;
+      u[id] = Math.exp(-r);
+    }
+
+let E_T=0, E_eK=0, E_tot=0, stepCount=0;
+
+function doStep() {
+  const un = new Float32Array(S3);
+  for (let i=1;i<NN;i++)
+    for (let j=1;j<NN;j++)
+      for (let k=1;k<NN;k++) {
+        const id = i*S2+j*S+k;
+        const uc = u[id];
+        const lap = u[id+S2]+u[id-S2]+u[id+S]+u[id-S]+u[id+1]+u[id-1]-6*uc;
+        un[id] = uc + half_d*lap + dt*K[id]*uc;
+      }
+  let norm = 0;
+  for (let id=0;id<S3;id++) norm += un[id]*un[id]*h3;
+  if (norm>0) { const s=1/Math.sqrt(norm); for (let id=0;id<S3;id++) un[id]*=s; }
+  u = un;
+  stepCount++;
+}
+
+function computeEnergy() {
+  E_T=0; E_eK=0;
+  for (let i=1;i<NN;i++)
+    for (let j=1;j<NN;j++)
+      for (let k=1;k<NN;k++) {
+        const id = i*S2+j*S+k;
+        const v = u[id];
+        const gx = u[id+S2]-v, gy = u[id+S]-v, gz = u[id+1]-v;
+        E_T += 0.5*(gx*gx+gy*gy+gz*gz)*h;
+        E_eK += -K[id]*v*v*h3;
+      }
+  E_tot = E_T + E_eK;
+}
+
+window.setup = function() { createCanvas(400,200); };
+window.draw = function() {
+  background(220);
+  if (stepCount < 5000) { doStep(); if (stepCount%10===0) computeEnergy(); }
+  fill(0); textSize(14);
+  text("Single H atom  100^3/10au  h="+h.toFixed(2), 10, 25);
+  text("step="+stepCount+"  E="+E_tot.toFixed(6), 10, 50);
+  text("T="+E_T.toFixed(4)+"  V_eK="+E_eK.toFixed(4), 10, 72);
+  text("(exact: -0.500)", 10, 94);
+  if (stepCount%200===0) console.log("H atom step="+stepCount+" E="+E_tot.toFixed(6));
+};
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+</body>
+</html>

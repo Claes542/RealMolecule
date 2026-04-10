@@ -14,6 +14,7 @@ const MAX_STEPS = window.USER_STEPS || 2000;
 const NELEC = window.USER_NELEC || 2;
 const USER_RC = window.USER_RC || [];
 const NORM_INTERVAL = 1;
+const POISSON_ITERS = window.POISSON_ITERS || 1;  // P sub-iterations per ITP step
 
 const S = NN + 1;
 const S2 = S * S;
@@ -131,7 +132,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   );
 
   if (inDomain) {
-    // w=0 inside r_c (Neumann BC via w-weighting), u is free everywhere
     if (nucRC > 0.0 && r1_raw < nucRC) {
       w_out[id] = 0.0;
     } else {
@@ -145,8 +145,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
-// Fused w+u update — w=0 enforced inside r_c via mask, level set smooths transition
-// u is free; Neumann BC via w-weighted Laplacian where w→0
+// Fused w+u update — w-weighted Laplacian, front tracking, matching h2_clean.js
 const fusedWU_WGSL = `
 ${paramStructWGSL}
 @group(0) @binding(0) var<uniform> p: P;
@@ -176,38 +175,33 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let c = 0.5 * (u_self[id] - u_other[id]);
   let wc = w_self[id];
 
-  // --- Update w (level set / front tracking) ---
-  // Level set eq evolves w; mask enforces w=0 inside r_c as BC
+  // Update w: front tracking (no clamp, matching p5/clean)
   let lap_w = w_self[id + p.S2] + w_self[id - p.S2]
             + w_self[id + p.S]  + w_self[id - p.S]
             + w_self[id + 1u]   + w_self[id - 1u] - 6.0 * wc;
-
   let gwx = (w_self[id + p.S2] - w_self[id - p.S2]) * p.inv_h;
   let gwy = (w_self[id + p.S]  - w_self[id - p.S])  * p.inv_h;
   let gwz = (w_self[id + 1u]   - w_self[id - 1u])   * p.inv_h;
   let grad_w = sqrt(gwx*gwx + gwy*gwy + gwz*gwz);
-
-  var new_w = clamp(wc + 2.0 * p.dt * abs(c) * lap_w * p.inv_h2 + 10.0 * p.dt * c * grad_w, 0.0, 1.0);
-  new_w *= mask;  // w=0 inside r_c (BC), level set smooths transition outside
+  var new_w = wc + 2.0 * p.dt * abs(c) * lap_w * p.inv_h2 + 10.0 * p.dt * c * grad_w;
+  new_w *= mask;
   w_out[id] = new_w;
 
-  // --- Update u using NEW w at center ---
+  // Update u: w-weighted Laplacian
   let uc = u_self[id];
-
-  let flux_xp = (u_self[id + p.S2] - uc) * (w_self[id + p.S2] + new_w) * 0.5;
-  let flux_xm = (uc - u_self[id - p.S2]) * (new_w + w_self[id - p.S2]) * 0.5;
-  let flux_yp = (u_self[id + p.S] - uc) * (w_self[id + p.S] + new_w) * 0.5;
-  let flux_ym = (uc - u_self[id - p.S]) * (new_w + w_self[id - p.S]) * 0.5;
-  let flux_zp = (u_self[id + 1u] - uc) * (w_self[id + 1u] + new_w) * 0.5;
-  let flux_zm = (uc - u_self[id - 1u]) * (new_w + w_self[id - 1u]) * 0.5;
-
+  let flux_xp = (u_self[id + p.S2] - uc) * (w_self[id + p.S2] + wc) * 0.5;
+  let flux_xm = (uc - u_self[id - p.S2]) * (wc + w_self[id - p.S2]) * 0.5;
+  let flux_yp = (u_self[id + p.S] - uc) * (w_self[id + p.S] + wc) * 0.5;
+  let flux_ym = (uc - u_self[id - p.S]) * (wc + w_self[id - p.S]) * 0.5;
+  let flux_zp = (u_self[id + 1u] - uc) * (w_self[id + 1u] + wc) * 0.5;
+  let flux_zm = (uc - u_self[id - 1u]) * (wc + w_self[id - 1u]) * 0.5;
   let wlap = (flux_xp - flux_xm) + (flux_yp - flux_ym) + (flux_zp - flux_zm);
 
-  u_out[id] = uc + p.half_d * wlap + p.dt * (Kbuf[id] - 2.0 * Pot[id]) * uc * new_w;
+  u_out[id] = uc + p.half_d * wlap + p.dt * (Kbuf[id] - 2.0 * Pot[id]) * uc * wc;
 }
 `;
 
-// Update P for both electrons simultaneously (unchanged)
+// Forward Euler Poisson update (coupled with ITP, same dt)
 const updateP_both_WGSL = `
 ${paramStructWGSL}
 @group(0) @binding(0) var<uniform> p: P;
@@ -346,7 +340,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 // --- GPU State ---
 let device, gpuReady = false, gpuError = null;
-let paramsBuf, initCfgBuf;
+let paramsBuf, initCfgBuf, sorCfgBuf;
 let K_buf;
 let u_buf = [[], []];
 let w_buf = [[], []];
@@ -399,6 +393,13 @@ async function initGPU() {
 
     // Init config uniform
     initCfgBuf = device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | COPY });
+    // SOR color configs: pre-create two buffers for red(0) and black(1)
+    sorCfgBuf = [
+      device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | COPY }),
+      device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | COPY }),
+    ];
+    device.queue.writeBuffer(sorCfgBuf[0], 0, new Uint32Array([0, 0, 0, 0]));  // red
+    device.queue.writeBuffer(sorCfgBuf[1], 0, new Uint32Array([1, 0, 0, 0]));  // black
 
     // Buffers
     K_buf = device.createBuffer({ size: bs, usage: STOR | COPY | COPY_SRC });
@@ -555,7 +556,7 @@ async function initGPU() {
       }
     }
 
-    // P update pass 1
+    // P update pass 1 (SOR Jacobi ping-pong)
     for (let c = 0; c < 2; c++) {
       updateP_pass1_BG[c] = device.createBindGroup({ layout: updateP_both_PL.getBindGroupLayout(0), entries: [
         { binding: 0, resource: { buffer: paramsBuf } },
@@ -721,7 +722,7 @@ function doSteps(nSteps) {
       cp.end();
     }
 
-    // Step 2: P update pass 1 (P buf[0] → buf[1])
+    // Step 2: SOR Jacobi P update (pass 1: buf[0]→buf[1])
     {
       const cp = enc.beginComputePass();
       cp.setPipeline(updateP_both_PL);
@@ -740,7 +741,7 @@ function doSteps(nSteps) {
       cp.end();
     }
 
-    // Step 4: P update pass 2 (P buf[1] → buf[0])
+    // Step 4: SOR Jacobi P update (pass 2: buf[1]→buf[0])
     {
       const cp = enc.beginComputePass();
       cp.setPipeline(updateP_both_PL);
@@ -827,20 +828,29 @@ async function computeEnergy() {
           const v = uArr[m][id];
           const rho = v * v;
           const wv = wArr[m][id];
-          if (wv > 0.5) {
-            const gx = uArr[m][id + S2] - v;
-            const gy = uArr[m][id + S]  - v;
-            const gz = uArr[m][id + 1]  - v;
-            E_T += 0.5 * (gx*gx + gy*gy + gz*gz) * h;
-          }
-          E_eK += -K[id] * rho * h3;
-          E_ee += PArr[m][id] * rho * h3;
-          E_pot += (PArr[m][id] - K[id]) * rho * h3;
+          // w-weighted energy (matching h2_clean.js)
+          const gx = uArr[m][id + S2] - v;
+          const gy = uArr[m][id + S]  - v;
+          const gz = uArr[m][id + 1]  - v;
+          E_T += 0.5 * wv * (gx*gx + gy*gy + gz*gz) * h;
+          E_eK += -K[id] * wv * rho * h3;
+          E_ee += PArr[m][id] * wv * rho * h3;
+          E_pot += (PArr[m][id] - K[id]) * wv * rho * h3;
         }
       }
     }
   }
   E_tot = E_T + E_eK + E_ee + V_KK;
+
+  // Debug: check normalization
+  for (let m = 0; m < NELEC; m++) {
+    let norm = 0;
+    for (let i = 1; i < NN; i++)
+      for (let j = 1; j < NN; j++)
+        for (let k = 1; k < NN; k++)
+          norm += uArr[m][i*S2+j*S+k] ** 2 * h3;
+    console.log("  norm[" + m + "] = " + norm.toFixed(4));
+  }
 
   energyReadBufs.K_read.unmap();
   for (let m = 0; m < NELEC; m++) {
