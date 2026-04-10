@@ -30,6 +30,49 @@
   <p>WebGPU quantum chemistry: from atoms to proteins on real-space grids using
      imaginary time propagation + domain decomposition.</p>
 
+  <h2>H&#8322; Molecule</h2>
+  <div class="grid">
+    <div class="card" style="grid-column:1/-1;border-color:#0cf">
+      <h3>H&#8322; Covalent Bond &mdash; RealQM Per-Electron Solver</h3>
+      <div class="desc">200&sup3; grid &middot; h = 0.05 au &middot; 10 au box &middot; K = Z/&radic;(r&sup2;+h&sup2;) softening &middot;
+        per-electron u, w, P &middot; w-weighted energy &middot; WebGPU</div>
+      <table>
+        <tr><th>Quantity</th><th>RealQM</th><th>Reference</th></tr>
+        <tr><td>E<sub>min</sub></td><td class="val">&minus;1.2086 Ha</td><td class="ref">&minus;1.1745 Ha (KW)</td></tr>
+        <tr><td>E(R=6)</td><td class="val">&minus;1.046 Ha</td><td class="ref">&minus;1.000 Ha (2&times;H)</td></tr>
+        <tr><td>Binding energy E<sub>bind</sub></td><td class="val">&minus;0.164 Ha (&minus;4.46 eV)</td><td class="ref">&minus;0.1745 Ha (&minus;4.75 eV, KW)</td></tr>
+        <tr><td>E<sub>bind</sub> accuracy</td><td class="val" colspan="2">94% of exact well depth</td></tr>
+      </table>
+      <div class="desc" style="margin-top:12px;border-top:1px solid #333;padding-top:10px;line-height:1.7">
+        <b>Method:</b> E<sub>bind</sub> = E<sub>min</sub> &minus; E(R=6), self-referencing from the same solver.
+        Per-electron wavefunctions u<sub>m</sub> with w-weighted Laplacian for natural Neumann BC
+        at domain boundaries. Energy computed with w-weighting:
+        T = &frac12;&Sigma; &int; w|&nabla;u|&sup2;dV, V<sub>eK</sub> = &minus;&Sigma; &int; Kwu&sup2;dV,
+        V<sub>ee</sub> = &Sigma; &int; Pwu&sup2;dV.<br><br>
+        <b>Note on bond length:</b> The experimental H&#8322; bond length (0.741 &Aring;) is determined
+        from rotational spectroscopy, which measures the moment of inertia I = &mu;R&sup2;.
+        The extracted R assumes point nuclei and rigid-rotor corrections.
+        What is measured is the effective distance between centers of rotational mass,
+        not the internuclear distance directly. The E(R) curve at arbitrary R is computed
+        (Kolos-Wolniewicz), not measured &mdash; only R<sub>e</sub> and D&#8320; are experimental.
+      </div>
+      <img src="h2_sweep_screenshot.png" style="max-width:100%;border-radius:6px;margin-top:12px;border:1px solid #333">
+      <a class="launch" href="sweep_h2_gpu_200.html">Launch GPU sweep (200&sup3;)</a>
+      &nbsp;
+      <a class="launch" href="sweep_h2_gpu.html">Launch GPU sweep (100&sup3;)</a>
+      &nbsp;
+      <a class="launch" href="test_h2_clean.html">Launch CPU reference</a>
+      <div class="desc" style="margin-top:12px;border-top:1px solid #333;padding-top:10px;line-height:1.7">
+        <b>Remark:</b> Textbook physics claims that binding energy and kernel distance
+        of computed solutions of Schr&ouml;dinger's equation for H&#8322; agree with
+        experiments to very high precision (6 decimal places), which is used to support
+        an idea that the same is true in general, even though solutions cannot be computed
+        and approximation is needed. RealQM solutions show agreement to lower precision
+        for H&#8322;, which however may represent generality.
+      </div>
+    </div>
+  </div>
+
   <h2>Ab Initio Protein Folding: RealQM vs State of the Art</h2>
   <div class="card" style="border-color:#e040fb;margin-bottom:30px">
     <h3 style="color:#e040fb">Physics-Based Folding Comparison</h3>
@@ -387,59 +430,7 @@
     </div>
   </div>
 
-  <h2>H&#8322; Molecule</h2>
-  <div class="grid">
-    <div class="card" style="grid-column:1/-1;border-color:#0cf">
-      <h3>H&#8322; Covalent Bond &mdash; RealQM Per-Electron Solver</h3>
-      <div class="desc">200&sup3; grid &middot; h = 0.05 au &middot; 10 au box &middot; K = Z/&radic;(r&sup2;+h&sup2;) softening &middot;
-        per-electron u, w, P &middot; w-weighted energy &middot; WebGPU</div>
-      <table>
-        <tr><th>Quantity</th><th>RealQM</th><th>Reference</th></tr>
-        <tr><td>E<sub>min</sub></td><td class="val">&minus;1.2086 Ha</td><td class="ref">&minus;1.1745 Ha (KW)</td></tr>
-        <tr><td>E(R=6)</td><td class="val">&minus;1.046 Ha</td><td class="ref">&minus;1.000 Ha (2&times;H)</td></tr>
-        <tr><td>Binding energy E<sub>bind</sub></td><td class="val">&minus;0.164 Ha (&minus;4.46 eV)</td><td class="ref">&minus;0.1745 Ha (&minus;4.75 eV, KW)</td></tr>
-        <tr><td>E<sub>bind</sub> accuracy</td><td class="val" colspan="2">94% of exact well depth</td></tr>
-      </table>
-      <div class="desc" style="margin-top:12px;border-top:1px solid #333;padding-top:10px;line-height:1.7">
-        <b>Method:</b> E<sub>bind</sub> = E<sub>min</sub> &minus; E(R=6), self-referencing from the same solver.
-        Per-electron wavefunctions u<sub>m</sub> with w-weighted Laplacian for natural Neumann BC
-        at domain boundaries. Energy computed with w-weighting:
-        T = &frac12;&Sigma; &int; w|&nabla;u|&sup2;dV, V<sub>eK</sub> = &minus;&Sigma; &int; Kwu&sup2;dV,
-        V<sub>ee</sub> = &Sigma; &int; Pwu&sup2;dV.<br><br>
-        <b>Note on bond length:</b> The experimental H&#8322; bond length (0.741 &Aring;) is determined
-        from rotational spectroscopy, which measures the moment of inertia I = &mu;R&sup2;.
-        The extracted R assumes point nuclei and rigid-rotor corrections.
-        What is measured is the effective distance between centers of rotational mass,
-        not the internuclear distance directly. The E(R) curve at arbitrary R is computed
-        (Kolos-Wolniewicz), not measured &mdash; only R<sub>e</sub> and D&#8320; are experimental.
-      </div>
-      <img src="h2_sweep_screenshot.png" style="max-width:100%;border-radius:6px;margin-top:12px;border:1px solid #333">
-      <a class="launch" href="sweep_h2_gpu.html">Launch GPU sweep (100&sup3;)</a>
-      &nbsp;
-      <a class="launch" href="sweep_h2_gpu_200.html">Launch GPU sweep (200&sup3;)</a>
-      &nbsp;
-      <a class="launch" href="test_h2_clean.html">Launch CPU reference</a>
-      <div class="desc" style="margin-top:12px;border-top:1px solid #333;padding-top:10px;line-height:1.7">
-        <b>Remark:</b> Textbook physics claims that binding energy and kernel distance
-        of computed solutions of Schr&ouml;dinger's equation for H&#8322; agree with
-        experiments to very high precision (6 decimal places), which is used to support
-        an idea that the same is true in general, even though solutions cannot be computed
-        and approximation is needed. RealQM solutions show agreement to lower precision
-        for H&#8322;, which however may represent generality.
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>Single H atom</h3>
-      <div class="desc">200&sup3; grid, 10 au box, r<sub>c</sub> = 0.1 au</div>
-      <table>
-        <tr><th>Quantity</th><th>Value</th></tr>
-        <tr><td class="ref">Exact energy</td><td>&minus;0.500 Ha</td></tr>
-        <tr><td class="ref">Measured (this grid)</td><td>&minus;0.52 Ha</td></tr>
-      </table>
-      <a class="launch" href="test_1atom.html">Launch simulation</a>
-    </div>
-  </div>
+  <!-- H2 section moved to top -->
 
   <h2>H&#8322;O Water Molecule</h2>
   <div class="grid">
