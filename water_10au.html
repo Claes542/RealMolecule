@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+window.onerror = function(msg, url, line) {
+  document.body.style.color = 'red';
+  document.body.innerHTML = '<pre>ERROR: ' + msg + '\nLine: ' + line + '</pre>';
+};
+(function() {
+  var gridN = 200, scr = 15, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var bOH = 0.96 * A;
+  var angle = 104.5 * Math.PI / 180;
+  var atoms = [];
+
+  function add(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  add(0, 0, 0, 2, 'O');
+  add(bOH * Math.sin(angle/2), -bOH * Math.cos(angle/2), 0, 1, 'H');
+  add(-bOH * Math.sin(angle/2), -bOH * Math.cos(angle/2), 0, 1, 'H');
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 50000;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) { return a.el === 'O' ? 0.8 : 0; });
+  window.USER_BOND_PAIRS = [[0,1,"O-H1:"],[0,2,"O-H2:"],[1,2,"H-H:"]];
+  window.CONVERGENCE_THRESHOLD = 0.001;
+})();
+var s = document.createElement('script');
+s.src = 'molecule_h2.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

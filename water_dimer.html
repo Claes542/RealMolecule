@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// Water dimer (H2O)2 — H-bond binding energy test
+// Experimental: O...O = 2.98 A, H-bond H...O = 1.97 A, E_bind = -5.0 kcal/mol = -0.008 Ha
+(function() {
+  var gridN = 200, scr = 20, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  var bOH = 0.96 * A;
+  var angle = 104.5 * Math.PI / 180;
+
+  // Water 1 (donor): O at left, one H pointing right toward acceptor
+  var x1 = -1.5 * A;
+  addAtom(x1, 0, 0, 2, 'O');                                                    // 0: O1
+  addAtom(x1 + bOH * Math.cos(angle/2), bOH * Math.sin(angle/2), 0, 1, 'H');   // 1: H1a (donor H, pointing right)
+  addAtom(x1 - bOH * Math.sin(angle/2), -bOH * Math.cos(angle/2), 0, 1, 'H');  // 2: H1b
+
+  // Water 2 (acceptor): O at right
+  var x2 = 1.5 * A;
+  addAtom(x2, 0, 0, 2, 'O');                                                     // 3: O2
+  addAtom(x2 + bOH * Math.sin(angle/2), bOH * Math.cos(angle/2), 0, 1, 'H');    // 4: H2a
+  addAtom(x2 + bOH * Math.sin(angle/2), -bOH * Math.cos(angle/2), 0, 1, 'H');   // 5: H2b
+
+  var ooDist = 3.0 * A;  // starting O-O distance in au
+  console.log('Water dimer: O-O start = ' + (3.0).toFixed(2) + ' A (' + ooDist.toFixed(1) + ' au)');
+  console.log('E_monomer = -3.66 Ha (measured), E_bind(expt) = -0.008 Ha (-5.0 kcal/mol)');
+
+  window.USER_BOND_PAIRS = [
+    [0, 3, "O1-O2:"],       // O...O distance
+    [1, 3, "H1a-O2:"],      // H-bond H...O
+    [0, 1, "O1-H1a:"],      // covalent O-H
+    [3, 4, "O2-H2a:"],      // covalent O-H
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: { "O-O": "2.98 A", "H...O": "1.97 A", "O-H": "0.96 A" },
+    energy: "Water dimer binding: -5.0 kcal/mol = -0.008 Ha",
+    binding: "E_dimer - 2*E_monomer, where E_monomer = -3.66 Ha"
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 100000;
+  window.USER_STEPS_PER_FRAME = 10;  // slower but more stable
+  window.USER_DYNAMICS = false;  // static — just converge energy at fixed geometry
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_N_MOVE = 30;
+  window.USER_DAMPING = 0.95;
+  window.FREEZE_BOUNDARY = true;  // fixed domains, no boundary evolution
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    return a.el === 'O' ? 0.8 : 0;
+  });
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
