@@ -117,6 +117,11 @@ if (window.USER_TEMPERATURE_K) {
   langevinKT = window.USER_TEMPERATURE_K / 315775.0;
   console.log("Langevin thermostat: T=" + window.USER_TEMPERATURE_K + " K, kT=" + langevinKT.toExponential(3) + " Ha, gamma=" + LANGEVIN_GAMMA);
 }
+// Expose for runtime temperature control (slider)
+Object.defineProperty(window, 'langevinKT', {
+  get() { return langevinKT; },
+  set(v) { langevinKT = v; }
+});
 let boundarySpeed = 0.5;    // dt_w for free boundary evolution
 let nucVel = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
 // Apply initial velocities if specified

@@ -1,11 +1,61 @@
 <!DOCTYPE html>
-<html><body style="margin:0;background:#000">
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="controls" style="position:fixed;top:10px;left:10px;z-index:100;background:rgba(0,0,0,0.8);padding:12px 16px;border-radius:8px;border:1px solid #333">
+  <div style="font-size:14px;color:#26c6da;margin-bottom:8px">Ice Melting — Temperature</div>
+  <input type="range" id="tempSlider" min="0" max="2000" step="50" value="0" style="width:250px">
+  <span id="tempLabel" style="margin-left:10px;font-size:16px;color:#4fc3f7">0 K</span>
+  <div id="status" style="font-size:11px;color:#888;margin-top:4px"></div>
+</div>
+<script>
+// Temperature slider — updates langevinKT at runtime
+var _sliderReady = setInterval(function() {
+  var slider = document.getElementById('tempSlider');
+  if (!slider) return;
+  clearInterval(_sliderReady);
+  var label = document.getElementById('tempLabel');
+  var statusEl = document.getElementById('status');
+  slider.addEventListener('input', function() {
+    var T = parseInt(this.value);
+    label.textContent = T + ' K';
+    window.USER_TEMPERATURE_K = T;
+    if (typeof window.langevinKT !== 'undefined') {
+      window.langevinKT = T / 315775.0;
+    }
+    // Scale position kicks with temperature — needed to break H-bonds
+    window.USER_THERMAL_KICK = T > 100 ? 0.3 * T / 1000 : 0;
+    if (T < 200) label.style.color = '#4fc3f7';
+    else if (T < 273) label.style.color = '#26c6da';
+    else if (T < 500) label.style.color = '#ff0';
+    else label.style.color = '#ff8800';
+    var note = '';
+    if (T > 273) note = ' (above melting 273 K)';
+    if (T > 373) note = ' (above boiling 373 K)';
+    statusEl.textContent = 'T=' + T + ' K' + note;
+  });
+  setInterval(function() {
+    if (typeof nucVel === 'undefined' || typeof Z === 'undefined') return;
+    var ke = 0, nActive = 0;
+    var frozen = window.USER_FROZEN_ATOMS || [];
+    for (var a = 0; a < nucVel.length; a++) {
+      if (typeof Z[a] === 'undefined' || Z[a] === 0) continue;
+      if (frozen.indexOf(a) >= 0) continue;
+      var mass = (Z[a] === 2 ? 16 : 1) * 1836;
+      var v2 = nucVel[a][0]*nucVel[a][0] + nucVel[a][1]*nucVel[a][1] + nucVel[a][2]*nucVel[a][2];
+      ke += 0.5 * mass * v2;
+      nActive++;
+    }
+    if (nActive === 0) return;
+    var T_meas = (2 * ke / (3 * nActive)) * 315775.0;
+    statusEl.textContent = 'T_target=' + slider.value + ' K, T_measured=' + T_meas.toFixed(0) + ' K, ' + nActive + ' free';
+  }, 2000);
+}, 100);
+</script>
 <script>
 // Ice melting simulation
 // Start from Ice Ic diamond cubic, add thermal energy → watch crystal disorder
 // Smaller system (2×2×2) with thermal kick on all atoms
 (function() {
-  var gridN = 200, scr = 50, N2 = 100;
+  var gridN = 150, scr = 50, N2 = 75;
   var h = scr / gridN;
   var A = 1.8897;
   var atoms = [];
@@ -195,8 +245,8 @@
   window.USER_STEPS = 1000000;
   window.USER_DYNAMICS = true;   // start with dynamics ON
   window.USER_FORCE_SCALE = 1.0;
-  window.USER_ARROW_SCALE = 200.0;
-  window.USER_TEMPERATURE_K = 1000;  // high T to break H-bonds
+  window.USER_ARROW_SCALE = 20.0;
+  window.USER_TEMPERATURE_K = 0;  // start cold, sweep up with slider
   window.USER_LANGEVIN_GAMMA = 0.2;  // Andersen collision rate
   window.USER_NUC_SUBSTEPS = 10;
   window.USER_N_MOVE = 30;
