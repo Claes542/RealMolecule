@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>RealQM Atom Simulator — 6-Shell Structure</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+  <style>
+    body { margin: 0; background: #111; display: flex; justify-content: center; }
+  </style>
+</head>
+<body>
+<script>
+// RealQM Atom Simulator: spherically symmetric N-shell structure (up to 6 shells)
+// Radial 1D solver: u(r) electron density, P(r) Poisson potential, K(r) = Z/r kernel
+// Free boundary between shells established by continuity of u(r)
+// ITP: du/dt = 0.5*(d2u/dr2 + 2/r*du/dr) + K*u - 2*P*u
+
+const MAXSHELLS = 6;
+let u = [], Karr = [], P = [];
+let Z;
+let Es = [2, 0, 0, 0, 0, 0];  // electrons per shell (shell 0 always 2)
+let Ered = [];   // self-interaction reduction (E-1)/E per shell
+let M = [];      // boundary indices: M[0]=0, M[1..NSHELLS] = shell boundaries, M[NSHELLS]=N
+let NSHELLS = 1;
+let N = 400;
+let h, dt, D = 7;
+let fix = 0;
+let diff = 0.001;
+let running = false;
+let step = 0;
+let energy = [0, 0, 0, 0, 0, 0];
+let normu = [0, 0, 0, 0, 0, 0];
+
+// Observed ground state energies
+const observed = {
+  '3:2+1': { E: -7.48, name: 'Li', fix: 0.1, D: 5 },
+  '3:2': { E: -7.28, name: 'Li+', fix: 0.2, D: 5 },
+  '4:2+2': { E: -14.47, name: 'Be', fix: 0.1, D: 5 },
+  '4:2': { E: -13.65, name: 'Be2+', fix: 0.4, D: 5 },
+  '5:2+2+1': { E: -24.53, name: 'B', fix: 0.1, D: 7 },
+  '6:2+2+2': { E: -37.7, name: 'C', fix: 0, D: 7 },
+  '7:2+3+2': { E: -54.6, name: 'N', fix: 0, D: 7 },
+  '8:2+3+3': { E: -74.8, name: 'O', fix: 0, D: 7 },
+  '9:2+4+3': { E: -99.8, name: 'F', fix: 0, D: 7 },
+  '10:2+4+4': { E: -128.5, name: 'Ne', fix: 0, D: 7 },
+  // Extended atoms (6 shells possible)
+  '11:2+4+4+1': { E: -162.0, name: 'Na', fix: 0, D: 10 },
+  '12:2+4+4+2': { E: -198.0, name: 'Mg', fix: 0, D: 10 },
+  '18:2+4+4+4+4': { E: -527.5, name: 'Ar', fix: 0, D: 10 },
+  '36:2+4+4+4+4+4+4+4+4+4': { E: -2752, name: 'Kr', fix: 0, D: 12 },
+};
+
+let sliderZ, sliders = [], btnStart, btnReset;
+const shellColors = [
+  [255, 60, 60],    // shell 0: red
+  [60, 200, 60],    // shell 1: green
+  [80, 80, 255],    // shell 2: blue
+  [255, 200, 0],    // shell 3: yellow
+  [200, 60, 200],   // shell 4: magenta
+  [60, 200, 200],   // shell 5: cyan
+];
+
+function configKey() {
+  let parts = [Z + ':' + Es[0]];
+  for (let s = 1; s < MAXSHELLS; s++) {
+    if (Es[s] > 0) parts.push(Es[s]);
+    else break;
+  }
+  return parts.join('+');
+}
+
+function shellString() {
+  let s = '' + Es[0];
+  for (let i = 1; i < MAXSHELLS; i++) {
+    if (Es[i] > 0) s += '+' + Es[i];
+    else break;
+  }
+  return s;
+}
+
+function setup() {
+  createCanvas(750, 550);
+
+  sliderZ = createSlider(2, 36, 4, 1);
+  sliderZ.position(20, 520);
+  sliderZ.style('width', '100px');
+
+  for (let s = 0; s < MAXSHELLS - 1; s++) {
+    let sl = createSlider(0, 4, s === 0 ? 2 : (s === 1 ? 1 : 0), 1);
+    sl.position(160 + s * 90, 520);
+    sl.style('width', '70px');
+    sliders[s] = sl;
+  }
+
+  btnStart = createButton('Start');
+  btnStart.position(620, 517);
+  btnStart.style('font-size', '14px');
+  btnStart.style('padding', '4px 16px');
+  btnStart.mousePressed(startSimulation);
+
+  btnReset = createButton('Reset');
+  btnReset.position(680, 517);
+  btnReset.style('font-size', '14px');
+  btnReset.style('padding', '4px 16px');
+  btnReset.mousePressed(function() { running = false; });
+}
+
+function readSliders() {
+  Z = sliderZ.value();
+  Es[0] = 2;  // shell 0 always 2
+  for (let s = 0; s < MAXSHELLS - 1; s++) {
+    Es[s + 1] = sliders[s].value();
+  }
+  // Count active shells
+  NSHELLS = 1;
+  for (let s = 1; s < MAXSHELLS; s++) {
+    if (Es[s] > 0) NSHELLS = s + 1;
+    else break;
+  }
+  // Compute Ered
+  for (let s = 0; s < MAXSHELLS; s++) {
+    Ered[s] = Es[s] > 1 ? (Es[s] - 1) / Es[s] : 0;
+  }
+}
+
+function initArrays() {
+  readSliders();
+
+  // Look up known config
+  let key = configKey();
+  let ref = observed[key];
+  if (ref) { fix = ref.fix; D = ref.D; }
+  else { fix = 0; D = Z > 12 ? 12 : (Z > 5 ? 7 : 5); }
+
+  h = D / N;
+  dt = 0.5 * h * h;
+
+  // Shell boundaries: evenly spaced initially
+  M = [0];
+  for (let s = 1; s < NSHELLS; s++) {
+    M[s] = Math.round(s * N / NSHELLS);
+  }
+  M[NSHELLS] = N;
+  // Unused shells get boundary at N
+  for (let s = NSHELLS + 1; s <= MAXSHELLS; s++) {
+    M[s] = N;
+  }
+
+  // Init u and K
+  for (let i = 0; i <= N; i++) {
+    u[i] = exp(-Z * i * h);
+    P[i] = 0;
+  }
+  u[N] = 0;
+
+  Karr[0] = 0;
+  for (let i = 1; i <= N; i++) {
+    Karr[i] = Z / (i * h + fix * h);
+  }
+
+  computePoisson();
+  step = 0;
+  for (let s = 0; s < MAXSHELLS; s++) { energy[s] = 0; normu[s] = 0; }
+}
+
+function computePoisson() {
+  for (let i = 1; i <= N; i++) {
+    P[i] = 0;
+    // Find which shell this point belongs to
+    let myShell = -1;
+    for (let s = 0; s < NSHELLS; s++) {
+      if (i > M[s] && i <= M[s + 1]) { myShell = s; break; }
+    }
+    if (myShell < 0) continue;
+
+    // Sum contributions from all shells
+    for (let s = 0; s < NSHELLS; s++) {
+      let iStart = M[s] + (s === 0 ? 1 : 1);
+      let iEnd = M[s + 1];
+      // Self-interaction reduction within same shell, full coupling across shells
+      let factor = (s === myShell) ? 0.5 * Ered[s] : 0.5;
+
+      for (let j = iStart; j <= iEnd; j++) {
+        let rj = j * h;
+        let ri = i * h;
+        let rho_j = u[j] * u[j] * rj * rj * h;
+        if (j < i) {
+          P[i] += factor * rho_j / ri;
+        } else {
+          P[i] += factor * rho_j / rj;
+        }
+      }
+    }
+  }
+}
+
+function startSimulation() {
+  initArrays();
+  running = true;
+}
+
+function draw() {
+  background(20);
+
+  if (!running) {
+    drawSetupScreen();
+    return;
+  }
+
+  // Free boundary tracking: continuity of u at each M[s]
+  for (let s = 1; s < NSHELLS; s++) {
+    if (M[s] < M[s + 1] - 2 && M[s] > M[s - 1] + 2) {
+      if (u[M[s]] > u[M[s] + 1] + diff) M[s]++;
+      if (u[M[s]] < u[M[s] + 1] - diff) M[s]--;
+    }
+  }
+
+  // 20 macro steps x 5 Poisson updates per frame
+  for (let m = 0; m < 20; m++) {
+    for (let k = 0; k < 5; k++) {
+      // Neumann BC at origin
+      u[0] = u[1] / (1 - Z * h);
+
+      // ITP update for each shell
+      for (let s = 0; s < NSHELLS; s++) {
+        let lo = M[s];
+        let hi = M[s + 1];
+        energy[s] = 0;
+
+        // Neumann BC at shell boundaries
+        if (s === 0) {
+          u[hi] = u[hi - 1];
+        } else {
+          u[lo + 1] = u[lo + 2];
+          u[hi] = u[hi - 1];
+        }
+
+        let iStart = (s === 0) ? 1 : lo + 2;
+        let iEnd = hi;
+
+        for (let i = iStart; i < iEnd; i++) {
+          // Shell 0: centered 1st deriv (u[i+1]-u[i-1]), others: forward (u[i+1]-u[i])
+          let du_dr = (s === 0) ? (u[i + 1] - u[i - 1]) : (u[i + 1] - u[i]);
+          u[i] += 0.5 * dt * (u[i + 1] - 2 * u[i] + u[i - 1]) / (h * h)
+                + 0.5 * dt * du_dr / (h * i * h)
+                + dt * Karr[i] * u[i] - dt * 2 * P[i] * u[i];
+
+          let gr = (u[i + 1] - u[i - 1]) / (2 * h);
+          energy[s] += (0.5 * gr * gr - Karr[i] * u[i] * u[i] + P[i] * u[i] * u[i]) * (i * h) * (i * h) * h;
+        }
+      }
+
+      // Poisson update
+      computePoisson();
+    }
+
+    // Normalization per shell
+    for (let s = 0; s < NSHELLS; s++) {
+      let lo = M[s];
+      let hi = M[s + 1];
+      let iStart = (s === 0) ? 0 : lo + 1;
+      normu[s] = 0;
+      for (let i = iStart; i <= hi; i++) normu[s] += (u[i] * i * h) * (u[i] * i * h) * h;
+      if (normu[s] > 0) {
+        let scale = sqrt(Es[s]) / sqrt(normu[s]);
+        for (let i = iStart; i <= hi; i++) u[i] *= scale;
+      }
+    }
+  }
+  step++;
+
+  // --- Visualization ---
+  let plotX = 60, plotY = 30, plotW = 660, plotH = 300;
+  let rScale = plotW / N, uScale = 80;
+
+  // Grid lines
+  stroke(40);
+  for (let i = 0; i <= 5; i++) {
+    let x = plotX + i * plotW / 5;
+    line(x, plotY, x, plotY + plotH);
+  }
+  let baseY = plotY + plotH * 0.6;
+  stroke(60);
+  line(plotX, baseY, plotX + plotW, baseY);
+
+  // Shell boundary lines
+  for (let s = 1; s < NSHELLS; s++) {
+    stroke(shellColors[s][0], shellColors[s][1], shellColors[s][2], 100);
+    let bx = plotX + M[s] * rScale;
+    line(bx, plotY, bx, plotY + plotH);
+  }
+
+  // u(r) — red
+  noStroke();
+  for (let i = 0; i <= N; i++) {
+    fill(255, 60, 60);
+    ellipse(plotX + i * rScale, baseY - u[i] * uScale, 3);
+  }
+
+  // P(r) — cyan
+  for (let i = 1; i <= N; i++) {
+    fill(0, 200, 200, 180);
+    ellipse(plotX + i * rScale, baseY + P[i] * uScale * 0.5, 2);
+  }
+
+  // K(r) — blue
+  for (let i = 1; i <= N; i++) {
+    fill(80, 80, 255, 150);
+    let kv = min(Karr[i], 50);
+    ellipse(plotX + i * rScale, baseY + kv * uScale * 0.1, 2);
+  }
+
+  // Title
+  fill(255);
+  noStroke();
+  textSize(14);
+  textStyle(BOLD);
+  let key = configKey();
+  let ref = observed[key];
+  let title = 'Z=' + Z + ', shells: ' + shellString();
+  if (ref) title += ' (' + ref.name + ')';
+  text(title, plotX, plotY - 10);
+  textStyle(NORMAL);
+
+  // Info below plot
+  textSize(12);
+  let iy = plotY + plotH + 20;
+
+  // Legend
+  fill(255, 60, 60); text('u(r)', plotX, iy);
+  fill(0, 200, 200); text('P(r)', plotX + 40, iy);
+  fill(80, 80, 255); text('K(r)', plotX + 80, iy);
+
+  // Boundaries
+  let bx = plotX + 130;
+  for (let s = 1; s < NSHELLS; s++) {
+    fill(shellColors[s][0], shellColors[s][1], shellColors[s][2]);
+    text('bdy' + s + '=' + (M[s] * h).toFixed(2), bx, iy);
+    bx += 100;
+  }
+
+  // Shell energies
+  iy += 18;
+  fill(200);
+  let ex = plotX;
+  for (let s = 0; s < NSHELLS; s++) {
+    text('E' + (s + 1) + '=' + energy[s].toFixed(3), ex, iy);
+    ex += 110;
+  }
+
+  // Total energy
+  iy += 18;
+  let etot = 0;
+  for (let s = 0; s < NSHELLS; s++) etot += energy[s];
+  textSize(14);
+  fill(255);
+  text('E_total = ' + etot.toFixed(4) + ' Ha', plotX, iy);
+  if (ref) {
+    fill(150);
+    text('(observed: ' + ref.E.toFixed(1) + ' Ha)', plotX + 220, iy);
+    let err = abs(etot - ref.E);
+    fill(err < 2 ? [100, 255, 100] : [255, 100, 100]);
+    text('diff: ' + err.toFixed(2), plotX + 440, iy);
+  }
+
+  // Norms
+  iy += 16;
+  fill(120);
+  textSize(11);
+  let ns = 'step ' + step;
+  for (let s = 0; s < NSHELLS; s++) ns += '  n' + (s + 1) + '=' + normu[s].toFixed(2);
+  text(ns, plotX, iy);
+
+  // r-axis
+  fill(120);
+  textSize(11);
+  for (let i = 0; i <= 5; i++) {
+    text((i * D / 5).toFixed(1), plotX + i * plotW / 5 - 8, baseY + 12);
+  }
+  text('r (au)', plotX + plotW - 30, baseY + 12);
+}
+
+function drawSetupScreen() {
+  readSliders();
+
+  // Shell circles
+  noStroke();
+  for (let s = NSHELLS - 1; s >= 0; s--) {
+    fill(shellColors[s][0], shellColors[s][1], shellColors[s][2], 50 + s * 10);
+    ellipse(375, 240, 60 + s * 50);
+  }
+  fill(255);
+  ellipse(375, 240, 8);
+
+  // Shell labels on circles
+  textSize(12);
+  for (let s = 0; s < NSHELLS; s++) {
+    fill(shellColors[s][0], shellColors[s][1], shellColors[s][2]);
+    text(Es[s], 380 + s * 25, 242);
+  }
+
+  // Title
+  fill(100, 200, 255);
+  textSize(16);
+  textStyle(BOLD);
+  text('RealQM Atom Simulator', 50, 30);
+  textStyle(NORMAL);
+  textSize(13);
+  fill(200);
+  text('Up to 6 shells in spherical symmetry', 50, 50);
+  text('Shell 1: 2 electrons (fixed). Shells 2-6: 0-4 electrons each.', 50, 75);
+  text('Choose Z and shell occupations, press Start', 50, 100);
+
+  // Electron configurations
+  textSize(12);
+  fill(180);
+  let configs = [
+    ['Li', '3', '2+1'], ['Be', '4', '2+2'], ['B', '5', '2+2+1'],
+    ['C', '6', '2+2+2'], ['N', '7', '2+3+2'], ['O', '8', '2+3+3'],
+    ['F', '9', '2+4+3'], ['Ne', '10', '2+4+4'],
+    ['Na', '11', '2+4+4+1'], ['Mg', '12', '2+4+4+2'], ['Ar', '18', '2+4+4+4+4'],
+  ];
+  for (let i = 0; i < configs.length; i++) {
+    text(configs[i][0] + ' Z=' + configs[i][1] + ': ' + configs[i][2], 50, 320 + i * 15);
+  }
+
+  // Current selection
+  fill(255, 200, 0);
+  textSize(13);
+  text('Z=' + Z, 20, 515);
+  for (let s = 0; s < MAXSHELLS - 1; s++) {
+    text('E' + (s + 2) + '=' + Es[s + 1], 155 + s * 90, 515);
+  }
+
+  // Show config and reference
+  let key = configKey();
+  let ref = observed[key];
+  fill(100, 255, 100);
+  textSize(14);
+  text('Config: ' + shellString() + ' = ' + Es.slice(0, NSHELLS).reduce((a, b) => a + b, 0) + ' electrons', 50, 130);
+  if (ref) {
+    text(ref.name + ' (observed: ' + ref.E + ' Ha)', 50, 150);
+  }
+}
+</script>
+</body>
+</html>
