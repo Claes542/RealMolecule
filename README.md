@@ -2,19 +2,7 @@
 
 RealQM is based on a new form of Schrodinger's equation which has the form of classical multi-phase continuum mechanics in 3D for a system of non-overlapping electron densities interacting by Coulomb potentials. Computational complexity scales with the number of mesh points in 3D and so offers laptop computational simulation of large molecular systems including ab initio protein folding. Runs entirely in the browser using WebGPU compute shaders on any laptop GPU.
 
-**[Launch the demo gallery](https://claes542.github.io/RealMolecule/gallery.html)** (requires Chrome 113+ or Safari 17+ with WebGPU)
-
-View the gallery: https://claes542.github.io/RealMolecule/gallery.html
-
-## What it does
-
-- Solves for electron density on a 3D grid (up to 300³) using imaginary-time diffusion
-- Voronoi-like domain decomposition with free boundary evolution
-- Multigrid Poisson solver for electron-electron repulsion
-- Self-interaction correction (SIC)
-- Nuclear dynamics with velocity Verlet integration
-- Real-time visualization via max-projection density rendering
-- All computation runs on the GPU via WebGPU compute shaders (WGSL)
+**[Go to Demo Gallery](https://claes542.github.io/RealMolecule/gallery.html)** (requires Chrome 113+ or Safari 17+ with WebGPU)
 
 ## Quick start
 
