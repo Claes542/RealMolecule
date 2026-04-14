@@ -161,7 +161,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   let myL = label[id];
 
-  // Inside r_c (pseudopotential): U = 0 (Dirichlet)
+  // Inside r_c (pseudopotential): U = 0, Neumann BC at r_c surface
   if (isInsideRc(i, j, k, myL)) {
     Uo[id] = 0.0;
     return;
@@ -886,11 +886,20 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
   let u = U[idx];
   let lbl = label[idx];
   let Zlbl = atoms[lbl].Z;
-  out[i * SS + j] = u * u;
+
+  // Hide density inside r_c
+  let rc = atoms[lbl].rc;
+  var dens = u * u;
+  if (rc > 0.0) {
+    let dx = (f32(i) - f32(atoms[lbl].posI)) * p.h;
+    let dy = (f32(j) - f32(atoms[lbl].posJ)) * p.h;
+    let dz = (f32(sk) - f32(atoms[lbl].posK)) * p.h;
+    if (sqrt(dx*dx + dy*dy + dz*dz) < rc) { dens = 0.0; }
+  }
+  out[i * SS + j] = dens;
   out[SS * SS + i * SS + j] = Zlbl;
 
   // Boundary: only where density exists (skip empty Voronoi regions)
-  let dens = u * u;
   var bnd = 0.0;
   if (dens > 1e-6) {
     if (i > 1u && i < p.NN - 1u) {
