@@ -65,7 +65,7 @@ let E_min = Infinity;
 const PROTEIN_COUNT = window.USER_PROTEIN_COUNT || NELEC;  // atoms with force arrows
 let screenAu = window.USER_SCREEN || 10;
 let hGrid = screenAu / NN, h2v = hGrid * hGrid, h3v = hGrid * hGrid * hGrid;
-const dv = NELEC > 500 ? 0.01 : NELEC > 100 ? 0.03 : 0.12;  // smaller timestep for large systems
+const dv = window.USER_DV || (NELEC > 500 ? 0.01 : NELEC > 100 ? 0.03 : 0.12);  // smaller timestep for large systems
 let dtv = dv * h2v, half_dv = 0.5 * dv;
 const CANVAS_SIZE = window.USER_CANVAS || 700;
 const PX = CANVAS_SIZE / NN;
@@ -4513,8 +4513,10 @@ function draw() {
     // Draw all atoms as 3D projection with auto-rotation
     const fixedYrot = window.USER_VIEW_YROT !== undefined ? window.USER_VIEW_YROT : Math.PI/2;
     const fixedTilt = window.USER_VIEW_TILT !== undefined ? window.USER_VIEW_TILT : Math.PI/4;
-    const t3d = window._view3D_fixed ? fixedYrot : (frameCount || 0) * (window.USER_ROT_SPEED || 0.02);
-    const tilt = window._view3D_fixed ? fixedTilt : 0.3;
+    if (window._view3D_yrot === undefined) window._view3D_yrot = fixedYrot;
+    if (window._view3D_tilt === undefined) window._view3D_tilt = fixedTilt;
+    const t3d = window._view3D_fixed ? window._view3D_yrot : (frameCount || 0) * (window.USER_ROT_SPEED || 0.02);
+    const tilt = window._view3D_fixed ? window._view3D_tilt : 0.3;
     const cosT = Math.cos(t3d), sinT = Math.sin(t3d);
     const cosT2 = Math.cos(tilt), sinT2 = Math.sin(tilt); // tilt
     const cx3 = NN / 2, cy3 = NN / 2, cz3 = NN / 2;
@@ -4593,6 +4595,26 @@ function draw() {
       const sz = at.z <= 1 ? 5 : 10;
       fill(col[0], col[1], col[2], 200);
       circle(at.sx, at.sy, sz);
+    }
+
+    // Draw highlighted bond pair lines in 3D
+    if (window.USER_BOND_PAIRS) {
+      const bp = window.USER_BOND_PAIRS;
+      const _hid = window.USER_HIDDEN_ATOMS || [];
+      function proj3D(n) {
+        let ax = nucPos[n][0]-cx3, ay = nucPos[n][1]-cy3, az = nucPos[n][2]-cz3;
+        let rx = ax*cosT + az*sinT, rz = -ax*sinT + az*cosT;
+        let ry = ay*cosT2 - rz*sinT2;
+        return { sx: canvMid + rx*scale3, sy: canvMid + ry*scale3 };
+      }
+      stroke(255, 255, 0, 200); strokeWeight(2);
+      for (let b = 0; b < bp.length; b++) {
+        const a1 = bp[b][0], a2 = bp[b][1];
+        if (_hid.indexOf(a1) >= 0 || _hid.indexOf(a2) >= 0) continue;
+        const p1 = proj3D(a1), p2 = proj3D(a2);
+        line(p1.sx, p1.sy, p2.sx, p2.sy);
+      }
+      noStroke();
     }
 
     // Ribbon overlay: colored backbone trace through Ca atoms
@@ -4734,6 +4756,33 @@ function draw() {
     // Energy display
     fill(255, 255, 255);
     text("E=" + E.toFixed(2) + " Ha  T=" + E_T.toFixed(2) + "  V_eK=" + E_eK.toFixed(2) + "  V_ee=" + E_ee.toFixed(2) + "  V_KK=" + E_KK.toFixed(2), 5, CANVAS_SIZE - 20);
+
+    // Binding energy display (if atom reference energies available)
+    const atomERef = window._atomEnergies || (function() {
+      try {
+        const s = localStorage.getItem('realqm_atom_energies');
+        if (s) { window._atomEnergies = JSON.parse(s); return window._atomEnergies; }
+      } catch(e) {}
+      return null;
+    })();
+    if (atomERef) {
+      let Edis = 0, countMissing = 0;
+      for (let n = 0; n < NELEC; n++) {
+        if (Z_orig[n] === 0 && (Z_nuc[n] === undefined || Z_nuc[n] === 0)) continue;
+        const el = (atomLabels[n] || '').charAt(0).toUpperCase();
+        if (atomERef[el] !== undefined) {
+          Edis += atomERef[el];
+        } else {
+          countMissing++;
+        }
+      }
+      if (countMissing === 0) {
+        const eBind = E - Edis;
+        fill(100, 255, 200);
+        text("E_disassembled=" + Edis.toFixed(2) + "  E_bind=" + eBind.toFixed(3) + " Ha = " + (eBind*27.211).toFixed(2) + " eV",
+             5, CANVAS_SIZE - 50);
+      }
+    }
     if (langevinKT > 0 && window._thermoT !== undefined) {
       text("T=" + window._thermoT.toFixed(0) + " K (target " + (langevinKT*315775).toFixed(0) + " K)  kick=" + (window.USER_THERMAL_KICK || 0), 5, CANVAS_SIZE - 35);
     }
@@ -5102,13 +5151,30 @@ function keyPressed() {
     var el = document.getElementById('forceScaleVal');
     if (el) el.textContent = ' ' + forceScale.toFixed(1) + 'x';
   }
-  const scrollStep = Math.max(1, Math.round(NN / 60));
-  if (keyCode === UP_ARROW) {
-    sliceK = Math.min(NN - 1, sliceK + scrollStep);
-    updateParamsBuf();
-  }
-  if (keyCode === DOWN_ARROW) {
-    sliceK = Math.max(1, sliceK - scrollStep);
-    updateParamsBuf();
+  // In 3D fixed mode, arrow keys rotate the view; otherwise scroll slice (UP/DOWN only)
+  if (window._view3D && window._view3D_fixed) {
+    const rotStep = Math.PI / 36;  // 5 degrees
+    if (keyCode === LEFT_ARROW) {
+      window._view3D_yrot = (window._view3D_yrot || Math.PI/2) - rotStep;
+    }
+    if (keyCode === RIGHT_ARROW) {
+      window._view3D_yrot = (window._view3D_yrot || Math.PI/2) + rotStep;
+    }
+    if (keyCode === UP_ARROW) {
+      window._view3D_tilt = (window._view3D_tilt || Math.PI/4) - rotStep;
+    }
+    if (keyCode === DOWN_ARROW) {
+      window._view3D_tilt = (window._view3D_tilt || Math.PI/4) + rotStep;
+    }
+  } else {
+    const scrollStep = Math.max(1, Math.round(NN / 60));
+    if (keyCode === UP_ARROW) {
+      sliceK = Math.min(NN - 1, sliceK + scrollStep);
+      updateParamsBuf();
+    }
+    if (keyCode === DOWN_ARROW) {
+      sliceK = Math.max(1, sliceK - scrollStep);
+      updateParamsBuf();
+    }
   }
 }
