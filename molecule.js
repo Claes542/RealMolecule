@@ -95,7 +95,7 @@ function dispatchLinear(pass, totalCells) {
 
 const STEPS_PER_FRAME = window.USER_STEPS_PER_FRAME || (NELEC <= 5 ? 50 : NELEC <= 15 ? 50 : NELEC <= 30 ? 50 : NELEC <= 100 ? 5 : 2);
 const W_STEPS_PER_FRAME = Math.max(1, STEPS_PER_FRAME);  // match U steps per frame
-const BOUNDARY_INTERVAL = window.USER_BOUNDARY_INTERVAL || 1;  // 1 = every step (p5-like)
+const BOUNDARY_INTERVAL = 20;
 const NORM_INTERVAL = 20;
 const POISSON_INTERVAL = window.USER_POISSON_INTERVAL || 50;
 const USE_DIRECT_POTHER = NELEC <= 5;  // direct per-electron Poisson solve (no SIC needed)
@@ -185,7 +185,6 @@ ${atomStructWGSL}
 @group(0) @binding(4) var<storage, read> Pi: array<f32>;
 @group(0) @binding(5) var<storage, read_write> Uo: array<f32>;
 @group(0) @binding(6) var<storage, read> atoms: array<Atom>;
-@group(0) @binding(7) var<storage, read> Wfield: array<f32>;
 
 fn distToAtom(ci: u32, cj: u32, ck: u32, n: u32) -> f32 {
   let dx = (f32(ci) - f32(atoms[n].posI)) * p.h;
@@ -244,40 +243,30 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let l_kp = label[id + 1u];   let excl_kp = isInsideRc(i, j, k+1u, l_kp);
   let l_km = label[id - 1u];   let excl_km = isInsideRc(i, j, k-1u, l_km);
 
-  // Smoothed characteristic function: w based on signed distance to Voronoi boundary
-  // w=1 deep inside own domain, w=0.5 at boundary, w=0 outside, smooth over ~2-3 cells
-  let hw = 8.0 * p.h;  // smoothing half-width (8 grid cells)  // smoothing half-width (~3 grid cells)
+  // Smooth W cutoff: Neumann BC near other electrons' nuclei
+  // w(r) blends neighbor toward uc (flat) near other nucleus
+  let w_c = ${W_CUTOFF.toFixed(6)};
   var w_ip: f32 = 1.0; var w_im: f32 = 1.0;
   var w_jp: f32 = 1.0; var w_jm: f32 = 1.0;
   var w_kp: f32 = 1.0; var w_km: f32 = 1.0;
-  {
-    let mx = f32(atoms[myL].posI); let my2 = f32(atoms[myL].posJ); let mz = f32(atoms[myL].posK);
+  if (w_c > 0.0) {
+    let hw = 2.0 * p.h;
     for (var n: u32 = 0u; n < ${NELEC}u; n++) {
       if (n == myL) { continue; }
       let ax = f32(atoms[n].posI); let ay = f32(atoms[n].posJ); let az = f32(atoms[n].posK);
-
-      // Signed distance to boundary for each neighbor cell:
-      // sd = (d_to_other - d_to_self) / 2, positive inside own domain
-      let sd_ip = (sqrt((f32(i+1u)-ax)*(f32(i+1u)-ax) + (f32(j)-ay)*(f32(j)-ay) + (f32(k)-az)*(f32(k)-az))
-                 - sqrt((f32(i+1u)-mx)*(f32(i+1u)-mx) + (f32(j)-my2)*(f32(j)-my2) + (f32(k)-mz)*(f32(k)-mz))) * 0.5 * p.h;
-      let sd_im = (sqrt((f32(i-1u)-ax)*(f32(i-1u)-ax) + (f32(j)-ay)*(f32(j)-ay) + (f32(k)-az)*(f32(k)-az))
-                 - sqrt((f32(i-1u)-mx)*(f32(i-1u)-mx) + (f32(j)-my2)*(f32(j)-my2) + (f32(k)-mz)*(f32(k)-mz))) * 0.5 * p.h;
-      let sd_jp = (sqrt((f32(i)-ax)*(f32(i)-ax) + (f32(j+1u)-ay)*(f32(j+1u)-ay) + (f32(k)-az)*(f32(k)-az))
-                 - sqrt((f32(i)-mx)*(f32(i)-mx) + (f32(j+1u)-my2)*(f32(j+1u)-my2) + (f32(k)-mz)*(f32(k)-mz))) * 0.5 * p.h;
-      let sd_jm = (sqrt((f32(i)-ax)*(f32(i)-ax) + (f32(j-1u)-ay)*(f32(j-1u)-ay) + (f32(k)-az)*(f32(k)-az))
-                 - sqrt((f32(i)-mx)*(f32(i)-mx) + (f32(j-1u)-my2)*(f32(j-1u)-my2) + (f32(k)-mz)*(f32(k)-mz))) * 0.5 * p.h;
-      let sd_kp = (sqrt((f32(i)-ax)*(f32(i)-ax) + (f32(j)-ay)*(f32(j)-ay) + (f32(k+1u)-az)*(f32(k+1u)-az))
-                 - sqrt((f32(i)-mx)*(f32(i)-mx) + (f32(j)-my2)*(f32(j)-my2) + (f32(k+1u)-mz)*(f32(k+1u)-mz))) * 0.5 * p.h;
-      let sd_km = (sqrt((f32(i)-ax)*(f32(i)-ax) + (f32(j)-ay)*(f32(j)-ay) + (f32(k-1u)-az)*(f32(k-1u)-az))
-                 - sqrt((f32(i)-mx)*(f32(i)-mx) + (f32(j)-my2)*(f32(j)-my2) + (f32(k-1u)-mz)*(f32(k-1u)-mz))) * 0.5 * p.h;
-
-      // Smoothstep: w = 3t² - 2t³ (C1 continuous, zero derivative at edges)
-      let t_ip = clamp(sd_ip / hw + 0.5, 0.0, 1.0); w_ip = min(w_ip, t_ip * t_ip * (3.0 - 2.0 * t_ip));
-      let t_im = clamp(sd_im / hw + 0.5, 0.0, 1.0); w_im = min(w_im, t_im * t_im * (3.0 - 2.0 * t_im));
-      let t_jp = clamp(sd_jp / hw + 0.5, 0.0, 1.0); w_jp = min(w_jp, t_jp * t_jp * (3.0 - 2.0 * t_jp));
-      let t_jm = clamp(sd_jm / hw + 0.5, 0.0, 1.0); w_jm = min(w_jm, t_jm * t_jm * (3.0 - 2.0 * t_jm));
-      let t_kp = clamp(sd_kp / hw + 0.5, 0.0, 1.0); w_kp = min(w_kp, t_kp * t_kp * (3.0 - 2.0 * t_kp));
-      let t_km = clamp(sd_km / hw + 0.5, 0.0, 1.0); w_km = min(w_km, t_km * t_km * (3.0 - 2.0 * t_km));
+      // w(r) for each neighbor position
+      let d_ip = sqrt((f32(i+1u)-ax)*(f32(i+1u)-ax) + (f32(j)-ay)*(f32(j)-ay) + (f32(k)-az)*(f32(k)-az)) * p.h;
+      let d_im = sqrt((f32(i-1u)-ax)*(f32(i-1u)-ax) + (f32(j)-ay)*(f32(j)-ay) + (f32(k)-az)*(f32(k)-az)) * p.h;
+      let d_jp = sqrt((f32(i)-ax)*(f32(i)-ax) + (f32(j+1u)-ay)*(f32(j+1u)-ay) + (f32(k)-az)*(f32(k)-az)) * p.h;
+      let d_jm = sqrt((f32(i)-ax)*(f32(i)-ax) + (f32(j-1u)-ay)*(f32(j-1u)-ay) + (f32(k)-az)*(f32(k)-az)) * p.h;
+      let d_kp = sqrt((f32(i)-ax)*(f32(i)-ax) + (f32(j)-ay)*(f32(j)-ay) + (f32(k+1u)-az)*(f32(k+1u)-az)) * p.h;
+      let d_km = sqrt((f32(i)-ax)*(f32(i)-ax) + (f32(j)-ay)*(f32(j)-ay) + (f32(k-1u)-az)*(f32(k-1u)-az)) * p.h;
+      w_ip = min(w_ip, clamp((d_ip - w_c + hw) / (2.0 * hw), 0.0, 1.0));
+      w_im = min(w_im, clamp((d_im - w_c + hw) / (2.0 * hw), 0.0, 1.0));
+      w_jp = min(w_jp, clamp((d_jp - w_c + hw) / (2.0 * hw), 0.0, 1.0));
+      w_jm = min(w_jm, clamp((d_jm - w_c + hw) / (2.0 * hw), 0.0, 1.0));
+      w_kp = min(w_kp, clamp((d_kp - w_c + hw) / (2.0 * hw), 0.0, 1.0));
+      w_km = min(w_km, clamp((d_km - w_c + hw) / (2.0 * hw), 0.0, 1.0));
     }
   }
 
@@ -930,20 +919,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
     // Skip points inside r_c exclusion sphere (pseudopotential atoms only)
     if (isInsideExcl(i, j, k, myL)) { cell = cell + stride; continue; }
 
-    // w-weighted energy: smooth characteristic function at cell center
-    let hw_e = 8.0 * p.h;
-    let mx_e = f32(atoms[myL].posI); let my_e = f32(atoms[myL].posJ); let mz_e = f32(atoms[myL].posK);
-    var wc_e: f32 = 1.0;
-    for (var ne: u32 = 0u; ne < ${NELEC}u; ne++) {
-      if (ne == myL) { continue; }
-      let ax_e = f32(atoms[ne].posI); let ay_e = f32(atoms[ne].posJ); let az_e = f32(atoms[ne].posK);
-      let d_other_e = sqrt((f32(i)-ax_e)*(f32(i)-ax_e) + (f32(j)-ay_e)*(f32(j)-ay_e) + (f32(k)-az_e)*(f32(k)-az_e));
-      let d_self_e  = sqrt((f32(i)-mx_e)*(f32(i)-mx_e) + (f32(j)-my_e)*(f32(j)-my_e) + (f32(k)-mz_e)*(f32(k)-mz_e));
-      let sd_e = (d_other_e - d_self_e) * 0.5 * p.h;
-      let te = clamp(sd_e / hw_e + 0.5, 0.0, 1.0);
-      wc_e = min(wc_e, te * te * (3.0 - 2.0 * te));
-    }
-
     // Gradients: zero if neighbor is inside any exclusion sphere (Neumann BC)
     let sameL_ip = label[id + p.S2] == myL && !isInsideExcl(i+1u, j, k, myL);
     let sameL_jp = label[id + p.S]  == myL && !isInsideExcl(i, j+1u, k, myL);
@@ -951,9 +926,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
     let a = select(0.0, U[id + p.S2] - v, sameL_ip);
     let b = select(0.0, U[id + p.S]  - v, sameL_jp);
     let c = select(0.0, U[id + 1u]   - v, sameL_kp);
-    sn[lid * NR]        += 0.5 * wc_e * (a * a + b * b + c * c) * p.h;
-    sn[lid * NR + 1u]   += -K[id] * wc_e * rho * p.h3;
-    sn[lid * NR + 2u]   += Pv[id] * wc_e * rho * p.h3;
+    sn[lid * NR]        += 0.5 * (a * a + b * b + c * c) * p.h;
+    sn[lid * NR + 1u]   += -K[id] * rho * p.h3;
+    sn[lid * NR + 2u]   += Pv[id] * rho * p.h3;
 
     // Electronic dipole: -∫ ρ(r)·r dV  (negative sign applied on CPU)
     let xi = f32(i) * p.h;
@@ -1078,20 +1053,20 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
   if (j == 0u) {
     let lineIdx = i * p.S2 + sk * p.S + sk;
     out[3u * SS * SS + i] = K[lineIdx];
-    // Compute smoothed characteristic function w along the line
+    // Compute w(r) cutoff analytically
+    let w_c = ${W_CUTOFF.toFixed(6)};
     var wVal: f32 = 1.0;
-    {
-      let hw = 8.0 * p.h;  // smoothing half-width (8 grid cells)
+    if (w_c > 0.0) {
+      let hw = 2.0 * p.h;
       let lbl = label[lineIdx];
-      let mx = f32(atoms[lbl].posI); let my2 = f32(atoms[lbl].posJ); let mz = f32(atoms[lbl].posK);
       for (var n: u32 = 0u; n < ${NELEC}u; n++) {
         if (n == lbl) { continue; }
-        let ax = f32(atoms[n].posI); let ay = f32(atoms[n].posJ); let az = f32(atoms[n].posK);
-        let d_other = sqrt((f32(i)-ax)*(f32(i)-ax) + (f32(sk)-ay)*(f32(sk)-ay) + (f32(sk)-az)*(f32(sk)-az));
-        let d_self  = sqrt((f32(i)-mx)*(f32(i)-mx) + (f32(sk)-my2)*(f32(sk)-my2) + (f32(sk)-mz)*(f32(sk)-mz));
-        let sd = (d_other - d_self) * 0.5 * p.h;
-        let tw = clamp(sd / hw + 0.5, 0.0, 1.0);
-        wVal = min(wVal, tw * tw * (3.0 - 2.0 * tw));
+        let dx = (f32(i) - f32(atoms[n].posI)) * p.h;
+        let dy = (f32(sk) - f32(atoms[n].posJ)) * p.h;
+        let dz = (f32(sk) - f32(atoms[n].posK)) * p.h;
+        let d = sqrt(dx*dx + dy*dy + dz*dz);
+        let s = clamp((d - w_c + hw) / (2.0 * hw), 0.0, 1.0);
+        wVal = min(wVal, s * s * (3.0 - 2.0 * s));
       }
     }
     out[3u * SS * SS + SS + i] = wVal;
