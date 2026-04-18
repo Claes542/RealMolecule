@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <title>Molecule Builder — RealQM Red-Black GPU</title>
+  <style>
+    body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; overflow: hidden; flex-direction: column; }
+    canvas { border: none; }
+    #config { color: #fff; font-family: monospace; font-size: 14px; text-align: center; }
+    .atom-btn { padding: 8px 16px; margin: 4px; font-size: 16px; cursor: pointer; border: 2px solid #555; background: #222; color: #fff; border-radius: 4px; }
+    .atom-btn.selected { border-color: #0f0; background: #040; }
+    .atom-btn:hover { background: #333; }
+    #placement { border: 1px solid #555; cursor: crosshair; display: block; margin: 8px auto; }
+    #info { color: #aaa; margin: 4px; }
+    #atomList { color: #ff0; min-height: 20px; }
+    .action-btn { background: #060; color: #fff; border: 2px solid #0a0; padding: 12px 36px; font-size: 20px; font-weight: bold; cursor: pointer; margin: 8px; border-radius: 6px; }
+    .action-btn:hover { background: #080; border-color: #0f0; }
+    .action-btn:disabled { background: #222; color: #555; border-color: #333; cursor: default; }
+    .cfg-input { width: 50px; background: #222; color: #fff; border: 1px solid #555; padding: 4px; font-size: 14px; }
+    #stepsInput { width: 60px; }
+    select.cfg-input { width: auto; }
+  </style>
+</head>
+<body>
+  <div id="config">
+    <p id="header">Select atom, then click to place (2D slice, z = screen/2):</p>
+    <div>
+      <button class="atom-btn" data-el="H">H</button>
+      <button class="atom-btn" data-el="He">He</button>
+      <button class="atom-btn" data-el="Li">Li</button>
+      <button class="atom-btn" data-el="C">C</button>
+      <button class="atom-btn" data-el="N">N</button>
+      <button class="atom-btn" data-el="O">O</button>
+      <button class="atom-btn" data-el="F">F</button>
+      <button class="atom-btn" data-el="Ne">Ne</button>
+    </div>
+    <div style="display:flex;gap:12px;align-items:flex-start;justify-content:center">
+      <canvas id="placement" width="400" height="400"></canvas>
+      <div style="display:flex;flex-direction:column;gap:8px;min-width:140px">
+        <button class="action-btn" id="launch" disabled>Launch</button>
+        <button class="action-btn" id="clearBtn" style="background:#600;border-color:#a00">Clear</button>
+        <div id="info" style="font-size:11px">Right-click to remove last atom</div>
+        <div style="font-size:12px">
+          Grid:
+          <select id="gridSelect" class="cfg-input">
+            <option value="100" data-screen="10">100&sup3; (fast)</option>
+            <option value="150" data-screen="10">150&sup3;</option>
+            <option value="200" data-screen="10" selected>200&sup3;</option>
+            <option value="300" data-screen="15">300&sup3; (slow)</option>
+          </select><br>
+          Screen: <input id="screenInput" class="cfg-input" type="number" value="10" min="2" max="40" step="1"> au<br>
+          Steps: <input id="stepsInput" class="cfg-input" type="number" value="15000" min="1000" max="1000000" step="1000">
+        </div>
+        <div id="atomList" style="font-size:11px">No atoms placed</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    window.onerror = function(msg, url, line, col, err) {
+      var pre = document.createElement('pre');
+      pre.style.cssText = 'color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
+      pre.textContent = 'ERROR: ' + msg + '\n  at ' + url + ':' + line + ':' + col +
+        (err && err.stack ? '\n\n' + err.stack : '');
+      document.body.insertBefore(pre, document.body.firstChild);
+    };
+    window.addEventListener('unhandledrejection', function(e) {
+      var pre = document.createElement('pre');
+      pre.style.cssText = 'color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
+      pre.textContent = 'UNHANDLED REJECTION: ' + (e.reason && e.reason.stack || e.reason);
+      document.body.insertBefore(pre, document.body.firstChild);
+    });
+
+    // Element → { Z_eff, rc_excl, ne (orbital count), norm (per-orbital occupation) }
+    // One orbital per atom; double-occupied via norm=2 when the atom has a paired pair.
+    // rc_excl freezes a core region (effective pseudopotential for heavier atoms).
+    var ELEMENTS = {
+      'H':  { Z: 1, rc_excl: 0,   ne: 1, norm: 1, color: '#fff' },
+      'He': { Z: 2, rc_excl: 0.3, ne: 1, norm: 2, color: '#ff0' },
+      'Li': { Z: 1, rc_excl: 0.6, ne: 1, norm: 1, color: '#fa0' },
+      'C':  { Z: 4, rc_excl: 0.3, ne: 1, norm: 2, color: '#4f4' },
+      'N':  { Z: 3, rc_excl: 0.3, ne: 1, norm: 2, color: '#48f' },
+      'O':  { Z: 2, rc_excl: 0.5, ne: 1, norm: 2, color: '#f44' },
+      'F':  { Z: 1, rc_excl: 0.5, ne: 1, norm: 2, color: '#0ff' },
+      'Ne': { Z: 8, rc_excl: 0.5, ne: 1, norm: 2, color: '#f0f' },
+    };
+
+    var selectedEl = null;
+    var placedAtoms = [];
+    var GRID_N = 200;
+    var MAX_PLACE = 8;  // bounded by MAX_RIVALS in solver
+    var cvs = document.getElementById('placement');
+    var ctx = cvs.getContext('2d');
+
+    function updateHeader() {
+      document.getElementById('header').textContent =
+        GRID_N + '^3 grid — place up to ' + MAX_PLACE + ' atoms (2D view, z = N/2):';
+    }
+
+    document.getElementById('gridSelect').addEventListener('change', function() {
+      var opt = this.options[this.selectedIndex];
+      GRID_N = parseInt(this.value);
+      document.getElementById('screenInput').value = opt.dataset.screen;
+      updateHeader();
+      drawPlacement();
+      updateList();
+    });
+
+    function drawPlacement() {
+      var screenAu = parseFloat(document.getElementById('screenInput').value) || 10;
+      ctx.fillStyle = '#111';
+      ctx.fillRect(0, 0, 400, 400);
+      ctx.strokeStyle = '#222';
+      var pxPerAu = 400 / screenAu;
+      for (var a = 0; a <= screenAu; a++) {
+        var p = Math.round(a * pxPerAu);
+        ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, 400); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(400, p); ctx.stroke();
+      }
+      ctx.strokeStyle = '#555';
+      ctx.strokeRect(0, 0, 400, 400);
+
+      // Bonds
+      if (placedAtoms.length >= 2) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctx.lineWidth = 1;
+        for (var a = 0; a < placedAtoms.length; a++) {
+          for (var b = a + 1; b < placedAtoms.length; b++) {
+            ctx.beginPath();
+            ctx.moveTo(placedAtoms[a].px, placedAtoms[a].py);
+            ctx.lineTo(placedAtoms[b].px, placedAtoms[b].py);
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Atoms
+      for (var i = 0; i < placedAtoms.length; i++) {
+        var at = placedAtoms[i];
+        var e = ELEMENTS[at.el];
+        ctx.fillStyle = e.color;
+        ctx.beginPath();
+        ctx.arc(at.px, at.py, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 14px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(at.el, at.px, at.py - 14);
+        ctx.font = '10px monospace';
+        ctx.fillStyle = '#aaa';
+        ctx.fillText('Z=' + e.Z + ' ne=' + e.norm, at.px, at.py + 22);
+      }
+    }
+
+    function updateList() {
+      var screenAu = parseFloat(document.getElementById('screenInput').value) || 10;
+      if (placedAtoms.length === 0) {
+        document.getElementById('atomList').textContent = 'No atoms placed';
+      } else {
+        var parts = placedAtoms.map(function(a) {
+          var au_x = (a.px * screenAu / 400).toFixed(1);
+          var au_y = (a.py * screenAu / 400).toFixed(1);
+          return a.el + '(' + au_x + ',' + au_y + ')';
+        });
+        document.getElementById('atomList').textContent =
+          placedAtoms.length + '/' + MAX_PLACE + ': ' + parts.join(' | ');
+      }
+      document.getElementById('launch').disabled = placedAtoms.length < 2;
+    }
+
+    document.querySelectorAll('.atom-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.atom-btn').forEach(function(b) { b.classList.remove('selected'); });
+        this.classList.add('selected');
+        selectedEl = this.dataset.el;
+      });
+    });
+
+    cvs.addEventListener('click', function(e) {
+      if (!selectedEl || placedAtoms.length >= MAX_PLACE) return;
+      var rect = cvs.getBoundingClientRect();
+      placedAtoms.push({ px: e.clientX - rect.left, py: e.clientY - rect.top, el: selectedEl });
+      drawPlacement();
+      updateList();
+    });
+
+    cvs.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+      if (placedAtoms.length > 0) { placedAtoms.pop(); drawPlacement(); updateList(); }
+    });
+
+    document.getElementById('screenInput').addEventListener('change', function() { drawPlacement(); updateList(); });
+    document.getElementById('clearBtn').addEventListener('click', function() { placedAtoms = []; drawPlacement(); updateList(); });
+
+    document.getElementById('launch').addEventListener('click', function() {
+      var screenAu = parseFloat(document.getElementById('screenInput').value) || 10;
+      var steps = parseInt(document.getElementById('stepsInput').value) || 15000;
+      var h = screenAu / GRID_N;
+      var N2 = Math.round(GRID_N / 2);
+
+      // Translate placed atoms → USER_NUCLEI (one orbital per atom, in z=N2 plane)
+      var nuclei = [];
+      var normTargets = [];
+      var nelec = 0;
+      for (var i = 0; i < placedAtoms.length; i++) {
+        var at = placedAtoms[i];
+        var e = ELEMENTS[at.el];
+        var gi = Math.round(at.px * GRID_N / 400);
+        var gj = Math.round(at.py * GRID_N / 400);
+        var nuc = { i: gi, j: gj, k: N2, Z: e.Z, rc: 0.8, ne: e.ne };
+        if (e.rc_excl > 0) nuc.rc_excl = e.rc_excl;
+        nuclei.push(nuc);
+        normTargets.push(e.norm);
+        nelec += e.ne;
+      }
+
+      window.USER_NN = GRID_N;
+      window.USER_SCREEN = screenAu;
+      window.USER_NELEC = nelec;
+      window.USER_STEPS = steps;
+      window.USER_NUCLEI = nuclei;
+      window.USER_NORM_TARGETS = normTargets;
+      window.USER_MOL_NAME = placedAtoms.map(function(a) { return a.el; }).join('');
+      window.NO_NUC_REPULSION = false;
+
+      console.log('Molecule: ' + window.USER_MOL_NAME +
+        ', ' + nuclei.length + ' nuclei, ' + nelec + ' orbitals, ' +
+        'total electrons = ' + normTargets.reduce(function(a,b){return a+b;}, 0));
+
+      document.getElementById('config').style.display = 'none';
+      var status = document.createElement('pre');
+      status.style.color = '#0f0';
+      status.textContent = 'Loading realqm_rb.js...';
+      document.body.appendChild(status);
+
+      var s = document.createElement('script');
+      s.src = 'realqm_rb.js?t=' + Date.now();
+      s.onerror = function() { status.textContent = 'Failed to load realqm_rb.js'; status.style.color = 'red'; };
+      s.onload = function() {
+        status.textContent = 'realqm_rb.js loaded. Loading p5.js...';
+        var p5s = document.createElement('script');
+        p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+        p5s.onerror = function() { status.textContent = 'Failed to load p5.js from CDN'; status.style.color = 'red'; };
+        p5s.onload = function() { status.remove(); };
+        document.body.appendChild(p5s);
+      };
+      document.body.appendChild(s);
+    });
+
+    updateHeader();
+    drawPlacement();
+  </script>
+</body>
+</html>
