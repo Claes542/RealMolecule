@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <title>O3 ozone — mol_fast (bent, 3×O+3 non-split)</title>
+  <style>body { margin: 0; background: #000; }</style>
+</head><body>
+<div id="loadStatus" style="color:#ff0;font-family:monospace;padding:20px;font-size:14px">HTML loaded, fetching solver…</div>
+<script>
+  window.onerror = function(msg, url, line, col, err) {
+    var pre = document.createElement('pre');
+    pre.style.cssText = 'color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
+    pre.textContent = 'ERROR: ' + msg + '\n  at ' + url + ':' + line + ':' + col +
+      (err && err.stack ? '\n\n' + err.stack : '');
+    document.body.insertBefore(pre, document.body.firstChild);
+  };
+  (function() {
+    var N = 200;
+    var urlScr = parseFloat(new URLSearchParams(location.search).get('scr'));
+    var scr = isFinite(urlScr) ? urlScr : 14;
+    var h = scr / N;
+    var N2 = Math.round(N / 2);
+
+    // O3 bent: O-O bond = 1.28 Å = 2.42 au, O-O-O angle = 116.8°
+    var urlBond = parseFloat(new URLSearchParams(location.search).get('bond'));
+    var bond = isFinite(urlBond) ? urlBond : 2.42;
+    var angle = 116.8 * Math.PI / 180;
+    var half = angle / 2;
+    var hx = bond * Math.sin(half);
+    var hy = bond * Math.cos(half);
+
+    window.USER_NN = N;
+    window.USER_SCREEN = scr;
+    window.USER_STEPS = 100000;
+    window.USER_NUCLEI = [
+      { i: N2,                      j: N2,                      k: N2, Z: 3, rc: 0.5 },  // central O
+      { i: N2 + Math.round(hx / h), j: N2 + Math.round(hy / h), k: N2, Z: 3, rc: 0.5 },  // terminal O
+      { i: N2 - Math.round(hx / h), j: N2 + Math.round(hy / h), k: N2, Z: 3, rc: 0.5 },  // terminal O
+    ];
+    window.USER_NORM_TARGETS = [3, 3, 3];   // 3·O(+3) = 9 valence electrons
+  })();
+
+  var status = document.getElementById('loadStatus');
+  var s = document.createElement('script');
+  s.src = 'mol_fast.js?t=' + Date.now();
+  s.onload = function() {
+    status.textContent += '\nmol_fast.js loaded';
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    p.onload = function() { status.textContent += '\np5.js loaded — simulation should start'; };
+    p.onerror = function() { status.textContent += '\nFAILED to load p5.js'; status.style.color = '#f44'; };
+    document.body.appendChild(p);
+  };
+  s.onerror = function() { status.textContent += '\nFAILED to load mol_fast.js'; status.style.color = '#f44'; };
+  document.body.appendChild(s);
+</script>
+</body></html>

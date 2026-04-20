@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <title>NH3 — mol_fast (fused-update generic small-molecule solver)</title>
+  <style>body { margin: 0; background: #000; }</style>
+</head><body>
+<div id="loadStatus" style="color:#ff0;font-family:monospace;padding:20px;font-size:14px">HTML loaded, fetching solver…</div>
+<script>
+  window.onerror = function(msg, url, line, col, err) {
+    var pre = document.createElement('pre');
+    pre.style.cssText = 'color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
+    pre.textContent = 'ERROR: ' + msg + '\n  at ' + url + ':' + line + ':' + col +
+      (err && err.stack ? '\n\n' + err.stack : '');
+    document.body.insertBefore(pre, document.body.firstChild);
+  };
+  (function() {
+    var N = 200;
+    var urlScr = parseFloat(new URLSearchParams(location.search).get('scr'));
+    var scr = isFinite(urlScr) ? urlScr : 12;
+    var h = scr / N;
+    var N2 = Math.round(N / 2);
+
+    // NH3 pyramid: N-H = 1.912 au, H-N-H = 107.8°
+    // Override bond via URL: ?bond=3.824 for dissociated reference
+    var urlBond = parseFloat(new URLSearchParams(location.search).get('bond'));
+    var bond = isFinite(urlBond) ? urlBond : 1.912;
+    var alpha = 107.8 * Math.PI / 180;
+    var cosTheta = Math.sqrt((Math.cos(alpha) + 0.5) / 1.5);
+    var sinTheta = Math.sqrt(1 - cosTheta * cosTheta);
+    var rPerp  = bond * sinTheta / h;   // grid units, in j-k plane
+    var rAxial = bond * cosTheta / h;   // grid units, along -i
+
+    // N at center; H umbrella opening toward -i
+    var ni = N2, nj = N2, nk = N2;
+    var h1 = { i: Math.round(ni - rAxial), j: Math.round(nj + rPerp), k: N2 };
+    var h2 = { i: Math.round(ni - rAxial),
+               j: Math.round(nj + rPerp * Math.cos(2*Math.PI/3)),
+               k: Math.round(nk + rPerp * Math.sin(2*Math.PI/3)) };
+    var h3 = { i: Math.round(ni - rAxial),
+               j: Math.round(nj + rPerp * Math.cos(4*Math.PI/3)),
+               k: Math.round(nk + rPerp * Math.sin(4*Math.PI/3)) };
+
+    window.USER_NN = N;
+    window.USER_SCREEN = scr;
+    window.USER_STEPS = 100000;
+    // Thomas-Fermi Pauli-like penalty. Canonical ≈ 4.79; override via ?aTF=N.
+    var urlAlpha = parseFloat(new URLSearchParams(location.search).get('aTF'));
+    window.USER_ALPHA_TF = isFinite(urlAlpha) ? urlAlpha : 4.79;
+    // Kinetic coefficient (standard 0.5). Override via ?kc=0.7 etc.
+    var urlKC = parseFloat(new URLSearchParams(location.search).get('kc'));
+    if (isFinite(urlKC)) window.USER_KINETIC_COEFF = urlKC;
+    // Multi-occupancy kinetic multiplier (default 1). Override via ?kcm=3 to boost N only.
+    var urlKCM = parseFloat(new URLSearchParams(location.search).get('kcm'));
+    if (isFinite(urlKCM)) window.USER_KC_MULTI = urlKCM;
+    // ?sic=0 keeps full self-Hartree for N (no pair-count reduction)
+    var urlSic = new URLSearchParams(location.search).get('sic');
+    window.USER_FULL_SELF = (urlSic === '0');
+    window.USER_NUCLEI = [
+      { i: ni,   j: nj,   k: nk,   Z: 3, rc: 0.5 },  // N (pseudo, Li-like valence shell)
+      { i: h1.i, j: h1.j, k: h1.k, Z: 1, rc: 0.0 },
+      { i: h2.i, j: h2.j, k: h2.k, Z: 1, rc: 0.0 },
+      { i: h3.i, j: h3.j, k: h3.k, Z: 1, rc: 0.0 },
+    ];
+    window.USER_NORM_TARGETS = [3, 1, 1, 1];  // N 2p³ valence (3e⁻) + 3× H singly-occupied = 6e⁻
+  })();
+
+  var status = document.getElementById('loadStatus');
+  var s = document.createElement('script');
+  s.src = 'mol_fast.js?t=' + Date.now();
+  s.onload = function() {
+    status.textContent += '\nmol_fast.js loaded';
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    p.onload = function() { status.textContent += '\np5.js loaded — simulation should start'; };
+    p.onerror = function() { status.textContent += '\nFAILED to load p5.js'; status.style.color = '#f44'; };
+    document.body.appendChild(p);
+  };
+  s.onerror = function() { status.textContent += '\nFAILED to load mol_fast.js'; status.style.color = '#f44'; };
+  document.body.appendChild(s);
+</script>
+</body></html>
