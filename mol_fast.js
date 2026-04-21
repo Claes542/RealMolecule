@@ -25,7 +25,18 @@ console.log("[mol_fast.js] script loaded");
   if (rawNuclei.length > MAX_ATOMS) {
     throw new Error("mol_fast: MAX_ATOMS = " + MAX_ATOMS + ", got " + rawNuclei.length);
   }
-  const nuclei = rawNuclei.map(n => ({ i: n.i, j: n.j, k: n.k, Z: n.Z, rc: n.rc || 0 }));
+  const nuclei = rawNuclei.map(n => ({
+    i: n.i, j: n.j, k: n.k, Z: n.Z,
+    rc: n.rc || 0, r_out: n.r_out || 0, tilt_y: n.tilt_y || 0, tilt_x: n.tilt_x || 0, hs: n.hs || 0,
+    z_init: (n.z_init !== undefined ? n.z_init : (n.Z > 0 ? n.Z : 1)),
+    // Shell-split fields: split_type ∈ {'sphere','hemi','third','tetra'}, split_idx = 0..N-1,
+    // split_axis = normalized 3-vector (default [1,0,0] for hemi, [0,0,1] for third).
+    split: n.split || 'sphere',
+    split_idx: n.split_idx || 0,
+    split_axis: n.split_axis || [1, 0, 0],
+    split_fix: (n.split_fix !== undefined ? n.split_fix : true),  // true=enforce every step; false=init only
+    atom_id: (n.atom_id !== undefined ? n.atom_id : null),  // for grouping orbitals of same atom
+  }));
   const N_ATOMS = nuclei.length;
   const NELEC = N_ATOMS;
   const normTargets = window.USER_NORM_TARGETS || nuclei.map(() => 1);
@@ -63,6 +74,15 @@ console.log("[mol_fast.js] script loaded");
   const VCYCLE_INTERVAL = window.USER_VCYCLE_INTERVAL || 50;
   const COARSE_ITERS = window.USER_COARSE_ITERS || 10;
   const VCYCLE_ENABLED = window.USER_VCYCLE !== false;
+  // Shell mode: if true, rc applies ONLY to the orbital's own slot (per-orbital cutoff).
+  // Used for intra-atomic shell separation (e.g., Li 1s² + 2s¹). Default false → per-atom cutoff.
+  const SHELL_MODE = window.USER_SHELL_MODE === true;
+  // Pauli-like local repulsion strength: V_Pauli_m = β · Σ_{n≠m} u_n²(x).
+  // Represents orbital orthogonality pressure missing in Voronoi non-overlap scheme.
+  const BETA_PAULI = window.USER_BETA_PAULI !== undefined ? window.USER_BETA_PAULI : 0;
+  // Step at which r_out cutoffs are released (become free). undefined = never.
+  const R_OUT_RELEASE_STEP = window.USER_R_OUT_RELEASE_STEP;
+  let rOutEnforce = true;  // toggled to false when tStep >= release step
 
   console.log("mol_fast: NN=" + NN + ", NELEC=" + NELEC + ", screen=" + screenAu + " au, h=" + hv.toFixed(4) +
               ", V-cycle=" + (VCYCLE_ENABLED ? "ON (every " + VCYCLE_INTERVAL + " steps, NC=" + NC + ")" : "OFF"));
@@ -80,8 +100,30 @@ struct P {
   rcs:   array<vec4<f32>, ${MAX_ATOMS}>,   // (rc, norm_target, _, _)
 }`;
 
+  // Per-orbital outer-radius cutoff (optional). r_out > 0 confines orbital m to r < r_out around its atom.
+  // Templated into the update shader at compile time (simpler than adding to paramsBuf).
+  const routArr = nuclei.map(n => (n.r_out || 0).toFixed(6)).join(', ');
+  const hsArr = nuclei.map(n => (n.hs || 0).toFixed(1)).join(', ');
+  // Split fields templated as const arrays for shader enforcement.
+  const splitTypeCode = { 'sphere': 0, 'hemi': 2, 'third': 3, 'tetra': 4 };
+  const splitTypeArr = nuclei.map(n => splitTypeCode[n.split] || 0).join('u, ') + 'u';
+  const splitIdxArr = nuclei.map(n => (n.split_idx || 0)).join('u, ') + 'u';
+  const splitFixArr = nuclei.map(n => n.split_fix ? '1u' : '0u').join(', ');
+  const splitAxArr = nuclei.map(n => {
+    const v = n.split_axis || [1, 0, 0];
+    const L = Math.hypot(v[0], v[1], v[2]) || 1;
+    return `vec3<f32>(${(v[0]/L).toFixed(6)}, ${(v[1]/L).toFixed(6)}, ${(v[2]/L).toFixed(6)})`;
+  }).join(', ');
+  console.log("mol_fast SHELL_MODE=" + SHELL_MODE + ", R_OUT=[" + routArr + "], HS=[" + hsArr + "]");
+
   const updateWGSL = `
 ${paramStructWGSL}
+const R_OUT = array<f32, ${NELEC}>(${routArr});
+const HS = array<f32, ${NELEC}>(${hsArr});  // halfspace: -1 = i < midplane, +1 = i > midplane, 0 = unrestricted
+const SPLIT_TYPE = array<u32, ${NELEC}>(${splitTypeArr});  // 0=sphere, 2=hemi, 3=third, 4=tetra
+const SPLIT_IDX = array<u32, ${NELEC}>(${splitIdxArr});
+const SPLIT_AX = array<vec3<f32>, ${NELEC}>(${splitAxArr});
+const SPLIT_FIX = array<u32, ${NELEC}>(${splitFixArr});  // 1=enforce every step, 0=init only
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read> K: array<f32>;
 @group(0) @binding(2) var<storage, read> Ui: array<f32>;
@@ -125,12 +167,67 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let gy = (wjp - wjm) * p.inv_h;
   let gz = (wkp - wkm) * p.inv_h;
   var nw = wc
-    + 0.25 * p.dt * abs(cm) * lw
-    + 5.0  * p.dt * cm * sqrt(gx * gx + gy * gy + gz * gz);
+    + 0.05 * p.dt * abs(cm) * lw
+    + 1.0  * p.dt * cm * sqrt(gx * gx + gy * gy + gz * gz);
   nw = clamp(nw, 0.0, 1.0);
 
-  // --- Per-atom smooth rc cusp on w (no distance-based Voronoi —
-  //     front-tracking via c = u_self - max(u_other) handles domain competition)
+  // --- Smooth rc cusp on w. SHELL_MODE=${SHELL_MODE}: ${SHELL_MODE ? "per-orbital (only own rc)" : "per-atom (any atom's rc)"}
+  ${SHELL_MODE ? `
+  // Shell mode — only this orbital's own rc applies, from its own atom center.
+  // Also applies R_OUT (per-orbital outer-radius confinement) if set.
+  let rc_m = p.rcs[m].x;              // rc always enforced (shell boundary fixed)
+  let ro_m = R_OUT[m] * p.R_out;      // r_out released after USER_R_OUT_RELEASE_STEP
+  {
+    let atom_m = p.atoms[m];
+    let dxm = f32(i) - atom_m.x;
+    let dym = f32(j) - atom_m.y;
+    let dzm = f32(k) - atom_m.z;
+    let r_m = sqrt(dxm*dxm + dym*dym + dzm*dzm) * p.h;
+    if (rc_m > 0.0 && r_m < rc_m) {
+      let edge = rc_m - 3.0 * p.h;
+      let t = clamp((r_m - edge) / (rc_m - edge), 0.0, 1.0);
+      nw = min(nw, t * t * (3.0 - 2.0 * t));
+    }
+    if (ro_m > 0.0 && r_m > ro_m) {
+      // Hard outer cutoff — orbital confined to r < ro_m (enforced every step).
+      nw = select(0.0, nw, r_m <= ro_m + p.h);
+    }
+    // Enforce angular split (hemi/third/tetra) every step — keeps halves/sectors sharp.
+    let s_type = SPLIT_TYPE[m];
+    let s_fix = SPLIT_FIX[m];
+    if (s_type != 0u && s_fix == 1u) {
+      let ax = SPLIT_AX[m];
+      let rel = vec3<f32>(dxm, dym, dzm);
+      let sidx = SPLIT_IDX[m];
+      var inSector: bool = true;
+      if (s_type == 2u) {
+        let dotA = dot(rel, ax);
+        if (sidx == 0u) { inSector = dotA < 0.0; } else { inSector = dotA >= 0.0; }
+      } else if (s_type == 3u) {
+        let dotA = dot(rel, ax);
+        let pp = rel - dotA * ax;
+        var e1: vec3<f32>;
+        if (abs(ax.z) < 0.9) { e1 = normalize(vec3<f32>(ax.y, -ax.x, 0.0)); }
+        else                  { e1 = normalize(vec3<f32>(0.0, ax.z, -ax.y)); }
+        let e2 = cross(ax, e1);
+        let theta = atan2(dot(pp, e2), dot(pp, e1));
+        let sector = u32(floor((theta + 3.141592653589793) / 2.094395102393195)) % 3u;
+        inSector = (sector == sidx);
+      } else if (s_type == 4u) {
+        if (r_m > 1e-6) {
+          let ur = rel / r_m;
+          var bestV: u32 = 0u;
+          var bestD: f32 = dot(vec3<f32>( 1.0,  1.0,  1.0), ur);
+          let d1 = dot(vec3<f32>( 1.0, -1.0, -1.0), ur); if (d1 > bestD) { bestD = d1; bestV = 1u; }
+          let d2 = dot(vec3<f32>(-1.0,  1.0, -1.0), ur); if (d2 > bestD) { bestD = d2; bestV = 2u; }
+          let d3 = dot(vec3<f32>(-1.0, -1.0,  1.0), ur); if (d3 > bestD) { bestD = d3; bestV = 3u; }
+          inSector = (bestV == sidx);
+        }
+      }
+      if (!inSector) { nw = 0.0; }
+    }
+  }` : `
+  // Frozen-core mode — all atoms' rc apply to the current orbital's nw.
   for (var a: u32 = 0u; a < ${N_ATOMS}u; a++) {
     let atom = p.atoms[a];
     let dx = f32(i) - atom.x;
@@ -143,7 +240,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       let t = clamp((r - edge) / (rc_a - edge), 0.0, 1.0);
       nw = min(nw, t * t * (3.0 - 2.0 * t));
     }
-  }
+  }`}
   Wo[o + id] = nw;
 
   // --- u evolution: w-weighted Laplacian + (K - V_Hartree_other)·u·w ---
@@ -165,8 +262,19 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   // Per-atom directional tilt: V_tilt = -α·y (biases density toward +y for α>0, -y for α<0)
   let tilt_y = p.rcs[m].w;
+  let tilt_x = p.rcs[m].z;
+  let x_au = (f32(i) - f32(p.N2)) * p.h;
   let y_au = (f32(j) - f32(p.N2)) * p.h;
-  let V_tilt = -tilt_y * y_au;
+  let V_tilt = -tilt_x * x_au - tilt_y * y_au;
+
+  // Pauli-like local repulsion: V = β·Σ_{n≠m} u_n². Pushes m's density away from other orbitals' regions.
+  var rho_other: f32 = 0.0;
+  for (var n: u32 = 0u; n < ${NELEC}u; n++) {
+    if (n == m) { continue; }
+    let un = Ui[n * p.S3 + id];
+    rho_other += un * un;
+  }
+  let V_Pauli = ${BETA_PAULI.toFixed(6)} * rho_other;
 
   let uip = Ui[o + id + p.S2]; let uim = Ui[o + id - p.S2];
   let ujp = Ui[o + id + p.S];  let ujm = Ui[o + id - p.S];
@@ -178,7 +286,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     + hd * ((uip - uc) * (wip + nw) * 0.5 - (uc - uim) * (nw + wim) * 0.5)
     + hd * ((ujp - uc) * (wjp + nw) * 0.5 - (uc - ujm) * (nw + wjm) * 0.5)
     + hd * ((ukp - uc) * (wkp + nw) * 0.5 - (uc - ukm) * (nw + wkm) * 0.5)
-    + p.dt * (K[id] - Vother - V_TF - V_tilt) * uc * wc;
+    + p.dt * (K[id] - Vother - V_TF - V_tilt - V_Pauli) * uc * wc;
   Uo[o + id] = u_new;
 
   // --- Poisson: each P_m sourced by electron m's OWN density u_m² ---
@@ -424,7 +532,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let di = (f32(i) - p.atoms[a].x) * p.h;
     let dj = (f32(j) - p.atoms[a].y) * p.h;
     let dk = (f32(k) - p.atoms[a].z) * p.h;
-    let r_soft = sqrt(di*di + dj*dj + dk*dk + 0.04 * p.h2);
+    let r_soft = sqrt(di*di + dj*dj + dk*dk + 2.0 * p.h2);  // softening ε² = 2·h² (template-style)
     Kval += Z_a / r_soft;
   }
   K[id] = Kval;
@@ -453,7 +561,7 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
     let idx2D = m * p.S3 + i * p.S2 + j * p.S + p.N2;
     let uv = U[idx2D];
     let wv = W[idx2D];
-    out[m * SS * SS + i * SS + j] = select(0.0, uv, wv > 0.0);
+    out[m * SS * SS + i * SS + j] = select(0.0, uv, wv > 0.1);
     // Line through center along i-axis at j=N2, k=N2.
     if (j == 0u) {
       let idxLine = i * p.S2 + p.N2 * p.S + p.N2;
@@ -683,7 +791,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     u[4] = N2;
     f[8] = hv; f[9] = h2v; f[10] = 1 / hv; f[11] = 1 / h2v;
     f[12] = dtv; f[13] = half_dv; f[14] = h3v; f[15] = 2 * Math.PI;
-    f[16] = 3.0;  // R_out (u/w cutoff radius in au — large default)
+    f[16] = rOutEnforce ? 1.0 : 0.0;  // multiplier for R_OUT[m] — toggle r_out cutoffs on/off globally
     f[17] = 1.0;  // voronoi on
     f[18] = (window.USER_ALPHA_TF !== undefined) ? window.USER_ALPHA_TF : 0.0;  // Thomas-Fermi Pauli coeff (default off)
     f[19] = window.USER_FULL_SELF ? 1.0 : 0.0;  // 1 ⇒ keep full self-Hartree for multi-occupancy (no SIC reduction)
@@ -704,7 +812,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       if (a < N_ATOMS) {
         f[off + 0] = nuclei[a].rc;
         f[off + 1] = normTargets[a];
-        f[off + 3] = nuclei[a].tilt_y || 0;  // per-atom directional-tilt strength (V = -α·y-offset)
+        f[off + 3] = nuclei[a].tilt_y || 0;  // per-atom tilt strength along +y (V = -α·y)
+        f[off + 2] = nuclei[a].tilt_x || 0;  // per-atom tilt strength along +x (V = -α·x)
       }
     }
     // line-plot j offset (grid cells from N2) packed into last rcs slot .z
@@ -712,12 +821,54 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     device.queue.writeBuffer(paramsBuf, 0, buf);
   }
 
+  // Returns true if cell at (dx, dy, dz) relative to atom (r = distance, must be >0) is owned by
+  // an orbital with given split_type, split_idx, split_axis. Default 'sphere' (no angular restriction).
+  function inSplit(dx, dy, dz, r, split, split_idx, split_axis) {
+    if (split === 'sphere' || split === 1 || r < 1e-6) return true;
+    const ax = split_axis || [1, 0, 0];
+    const axLen = Math.hypot(ax[0], ax[1], ax[2]) || 1;
+    const a0 = ax[0] / axLen, a1 = ax[1] / axLen, a2 = ax[2] / axLen;
+    if (split === 'hemi' || split === 2) {
+      const dot = dx * a0 + dy * a1 + dz * a2;
+      return split_idx === 0 ? dot < 0 : dot >= 0;
+    }
+    if (split === 'third' || split === 3) {
+      // Project onto plane perpendicular to axis
+      const dot = dx * a0 + dy * a1 + dz * a2;
+      const px = dx - dot * a0, py = dy - dot * a1, pz = dz - dot * a2;
+      // Pick two perpendicular in-plane axes
+      let e1x, e1y, e1z;
+      if (Math.abs(a2) < 0.9) { e1x = a1; e1y = -a0; e1z = 0; }
+      else                    { e1x = 0;  e1y = a2; e1z = -a1; }
+      const e1Len = Math.hypot(e1x, e1y, e1z) || 1;
+      e1x /= e1Len; e1y /= e1Len; e1z /= e1Len;
+      const e2x = a1 * e1z - a2 * e1y, e2y = a2 * e1x - a0 * e1z, e2z = a0 * e1y - a1 * e1x;
+      const pe1 = px * e1x + py * e1y + pz * e1z;
+      const pe2 = px * e2x + py * e2y + pz * e2z;
+      const theta = Math.atan2(pe2, pe1);
+      const sector = Math.floor((theta + Math.PI) / (2 * Math.PI / 3)) % 3;
+      return sector === split_idx;
+    }
+    if (split === 'tetra' || split === 4) {
+      const vs = [[1,1,1], [1,-1,-1], [-1,1,-1], [-1,-1,1]];
+      const ur0 = dx / r, ur1 = dy / r, ur2 = dz / r;
+      let bestV = 0, bestDot = -Infinity;
+      for (let iv = 0; iv < 4; iv++) {
+        const v = vs[iv];
+        const d = v[0] * ur0 + v[1] * ur1 + v[2] * ur2;
+        if (d > bestDot) { bestDot = d; bestV = iv; }
+      }
+      return bestV === split_idx;
+    }
+    return true;
+  }
+
   function uploadInitialData() {
     const Kd = new Float32Array(S3);
     const Ud = new Float32Array(NELEC * S3);
     const Wd = new Float32Array(NELEC * S3);
     const Pd = new Float32Array(NELEC * S3);
-    const soft = 0.04 * h2v;
+    const soft = 2 * h2v;  // kernel-smoothing ε² = 2·h² (template-style softening)
     const R_init = 3.0;  // au — initial u/w extent
 
     for (let i = 0; i <= NN; i++) {
@@ -736,10 +887,23 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             const r_soft = Math.sqrt(dx * dx + dy * dy + dz * dz + soft);
             const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
             K_acc += nuclei[a].Z / r_soft;
-            const uHere = Math.exp(-nuclei[a].Z * r);
+            const zInit = nuclei[a].z_init;  // per-atom init decay rate (from user override or Z fallback)
+            const uHere = Math.exp(-zInit * r);
             rList.push(r);
             uList.push(uHere);
-            if (uHere > bestU) { bestU = uHere; bestM = a; }
+            // Weight by Slater-normalized amplitude √(target·Z_init³) so inner shells (high Z·target)
+            // correctly dominate near their nucleus. This gives physical shell boundaries automatically.
+            const uWeighted = Math.sqrt((normTargets[a] || 1) * zInit * zInit * zInit) * uHere;
+            // Skip atoms whose r_out is violated (cell beyond their confinement) — lets outer shells win there.
+            const roa = nuclei[a].r_out || 0;
+            const eligibleR = !(roa > 0 && r > roa + hv);
+            // Halfspace: skip atom if cell is on wrong side of the bond midplane (init only).
+            const hsa = nuclei[a].hs || 0;
+            const midI0 = (nuclei[0].i + nuclei[N_ATOMS - 1].i) / 2;
+            const eligibleHS = (hsa === 0) || ((hsa > 0) === (i > midI0));
+            // Split: check orbital's angular sector (sphere/hemi/third/tetra)
+            const eligibleSplit = inSplit(dx, dy, dz, r, nuclei[a].split, nuclei[a].split_idx, nuclei[a].split_axis);
+            if (eligibleR && eligibleHS && eligibleSplit && uWeighted > bestU) { bestU = uWeighted; bestM = a; }
           }
           Kd[id] = K_acc;
           // u-init: each u_m = exp(-Z_m·r_m) at every cell (smooth, with rc smoothcut
@@ -757,11 +921,15 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
           // w-init: best-wins hard partition (only the winner gets w=1; others 0).
           if (bestM >= 0 && rList[bestM] < R_init) {
             const rc_b = nuclei[bestM].rc;
+            const ro_b = nuclei[bestM].r_out || 0;
             let wCut = 1.0;
             if (rc_b > 0 && rList[bestM] < rc_b) {
               const edge = rc_b - 3 * hv;
               const t = Math.max(0, Math.min(1, (rList[bestM] - edge) / (rc_b - edge)));
               wCut = t * t * (3 - 2 * t);
+            }
+            if (ro_b > 0 && rList[bestM] > ro_b + hv) {
+              wCut = 0;  // hard cutoff at r_out + 1 cell
             }
             Wd[bestM * S3 + id] = wCut;
           }
@@ -772,6 +940,24 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
           for (let m = 0; m < N_ATOMS; m++) {
             Pd[m * S3 + id] = 0.5 * nuclei[m].Z / (rList[m] + h2v);
           }
+        }
+      }
+    }
+    // Pre-normalize each orbital to its target occupancy so runtime cm-dynamics uses
+    // correctly-weighted amplitudes from step 0 (otherwise raw exp(-Zr) = 1 at r=0 for all,
+    // outer orbitals with small Z would win the best-wins competition everywhere during the
+    // first 20 steps before the periodic normalizer kicks in).
+    for (let m = 0; m < N_ATOMS; m++) {
+      let norm = 0;
+      for (let i = 0; i < S3; i++) {
+        norm += Ud[m * S3 + i] * Ud[m * S3 + i];
+      }
+      norm *= h3v;
+      const tgt = normTargets[m];
+      if (norm > 0 && tgt > 0) {
+        const scale = Math.sqrt(tgt / norm);
+        for (let i = 0; i < S3; i++) {
+          Ud[m * S3 + i] *= scale;
         }
       }
     }
@@ -975,6 +1161,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   async function doSteps(n) {
     const t0 = performance.now();
+    // Check if r_out release step is reached and switch off enforcement.
+    if (R_OUT_RELEASE_STEP !== undefined && rOutEnforce && tStep >= R_OUT_RELEASE_STEP) {
+      rOutEnforce = false;
+      writeParams();
+      console.log("r_out released at step " + tStep);
+    }
     const enc = device.createCommandEncoder();
     for (let s = 0; s < n; s++) {
       const next = 1 - cur;
@@ -1091,7 +1283,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         const dx = (nuclei[a].i - nuclei[b].i) * hv;
         const dy = (nuclei[a].j - nuclei[b].j) * hv;
         const dz = (nuclei[a].k - nuclei[b].k) * hv;
-        const r2 = dx * dx + dy * dy + dz * dz + 0.04 * h2v;
+        const r2 = dx * dx + dy * dy + dz * dz + h2v;  // softening ε² = h²
         const inv_r3 = 1 / (r2 * Math.sqrt(r2));
         const pref = nuclei[a].Z * nuclei[b].Z * inv_r3;
         nucForce[a][0] += pref * dx;
@@ -1138,7 +1330,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   // ===== p5.js integration =====
-  const ELEC_COLORS = [[255,50,50],[50,255,50],[50,100,255],[255,200,0],[200,50,255],[0,255,200],[255,100,200],[150,255,150]];
+  // [R, G, B, display_brightness_multiplier]
+  const ELEC_COLORS = [[255,50,50,1],[0,255,0,1],[50,100,255,8],[255,200,0,8],[200,50,255,8],[0,255,200,8],[255,100,200,8],[150,255,150,8]];
+  // Filter 2D density plot to a single orbital index (from URL ?show=N). undefined = show all.
+  const SHOW_ORBITAL = (function() {
+    const s = new URLSearchParams(location.search).get('show');
+    const n = parseInt(s);
+    return isFinite(n) ? n : -1;  // -1 = show all
+  })();
 
   // 3D view state (WEBGL buffer)
   let view3D = null;
@@ -1175,8 +1374,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
           const px = PX * i, py = PX * j;
           let r = 0, g = 0, b = 0;
           for (let m = 0; m < NELEC; m++) {
-            const v = 500 * sliceData[m * S * S + i * S + j];
+            if (SHOW_ORBITAL >= 0 && m !== SHOW_ORBITAL) continue;
             const col = ELEC_COLORS[m % ELEC_COLORS.length];
+            const brightMult = col[3] !== undefined ? col[3] : 1;
+            const v = 500 * brightMult * sliceData[m * S * S + i * S + j];
             r += v * col[0] / 255;
             g += v * col[1] / 255;
             b += v * col[2] / 255;
@@ -1257,7 +1458,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     text(distLines.join("  "), 5, 400);
     // Dynamics status — on its own line (y=578) below the energy line (y=565)
     fill(dynamicsEnabled ? [0, 255, 0] : [150, 150, 150]);
-    text("dyn=" + (dynamicsEnabled ? "ON" : "off") + "  [press D to toggle]", 5, 578);
+    text("dyn=" + (dynamicsEnabled ? "ON" : "off") + "  SHELL=" + SHELL_MODE + "  R_OUT=[" + routArr + "]", 5, 578);
     // Force magnitudes per atom (atomic units of force ≈ Hartree/Bohr)
     var Fparts = [];
     var Fmax = 0;

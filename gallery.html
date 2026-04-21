@@ -424,6 +424,29 @@ w += dt&middot;|c|&middot;&Delta;w + dt&middot;c&middot;|&nabla;w|        <span 
   <h2>Molecules</h2>
   <p class="desc">Static electron density calculations and nuclear dynamics on 200&sup3; grids.</p>
   <div class="grid">
+    <a class="card" href="mol_fast_lih3.html?bond=3.02" style="border-color:#b388ff;grid-column:1/-1">
+      <h3 style="color:#b388ff">LiH &mdash; RealQM VB-mix analysis: covalent vs ionic basis states</h3>
+      <div class="desc">LiH tested in TWO pure configurations: (a) neutral Li + H (split 1s&sup2; hemi + 2s sphere + H 1s), (b) ionic Li&sup+; + H&sup-; (both as 1s&sup2; hemi-split). Real LiH is a <b>quantum superposition</b> of these; RealQM's non-overlap scheme can only compute each limit separately, not the mix. We then linearly combine to match observed dipole and expose the resonance gap.</div>
+      <table style="font-size:11px;color:#aaa;margin-top:8px;border-collapse:collapse;width:100%">
+        <tr style="color:#b388ff;border-bottom:1px solid #333">
+          <th style="text-align:left;padding:2px 8px">Configuration</th><th>E (Ha)</th><th>&mu; (D)</th><th>Notes</th>
+        </tr>
+        <tr><td style="padding:2px 8px">Pure covalent (Li + H neutral, split-shell)</td><td>&minus;7.74</td><td>2.77</td><td>Basis state 1</td></tr>
+        <tr style="color:#0f0"><td style="padding:2px 8px">Pure ionic (Li&sup+; + H&sup-;, 1s&sup2; hemi both)</td><td>&minus;8.02</td><td>7.43</td><td>Basis state 2</td></tr>
+        <tr><td style="padding:2px 8px"><b>Linear mix (67% ion, 33% cov) &mdash; matches &mu;_expt</b></td><td><b>&minus;7.93</b></td><td><b>5.88</b></td><td>c&sup2; solved from dipole</td></tr>
+        <tr><td style="padding:2px 8px">Experimental LiH (CCSD(T)/exact)</td><td>&minus;8.07</td><td>5.88</td><td>Reference</td></tr>
+      </table>
+      <table style="font-size:11px;color:#aaa;margin-top:10px;border-collapse:collapse;width:100%">
+        <tr style="color:#b388ff;border-bottom:1px solid #333">
+          <th style="text-align:left;padding:2px 8px">Mix weight comparison</th><th>Ionic fraction</th><th>Covalent fraction</th>
+        </tr>
+        <tr><td style="padding:2px 8px">RealQM (from linear combination matching &mu;)</td><td>67%</td><td>33%</td></tr>
+        <tr><td style="padding:2px 8px">Standard QM / VB (textbook)</td><td>~77%</td><td>~23%</td></tr>
+      </table>
+      <div class="desc" style="margin-top:10px;border-top:1px solid #333;padding-top:8px"><b style="color:#b388ff">The resonance gap:</b> real LiH sits <b>0.14 Ha (3.8 eV)</b> below the linear mix (−8.07 vs −7.93). This is the quantum-mechanical <b>cross term</b> 2c&sub1;c&sub2;&lang;cov|H|ion&rang; &mdash; stabilization from orbital interference the pure states don't have. Without it, the bond wouldn't form: E(atoms at &infin;) &approx; &minus;7.95 Ha, linear mix &minus;7.93 Ha (unbound by 0.02 Ha!). Real LiH's 2.4 eV bond dissociation energy depends critically on this resonance stabilization. <b>RealQM's non-overlap Voronoi scheme</b> can produce either pure basis state but not their superposition &mdash; the 3.8 eV resonance is fundamentally unreachable. For polar covalent bonds, standard LCAO with delocalized MOs is structurally required; for strongly ionic solids (NaCl) or weakly polar covalent (H&sub2;, N&sub2;), RealQM's pure-state limits should give good answers directly.</div>
+      <span class="tag tag-small">LiH</span>
+      <span class="tag tag-mol">mol_fast</span>
+    </a>
     <a class="card" href="mol_fast_h2o.html" style="border-color:#26c6da;grid-column:1/-1">
       <h3 style="color:#26c6da">H2O non-split (+3 kernel) &mdash; best binding + dipole + geometry trio</h3>
       <div class="desc">Water with O treated as single 3-electron orbital (Z=3, r_c=0.5, target=3 &mdash; Li-like pseudo) and 2 singly-occupied H orbitals. Bent geometry locked at experimental H-O-H = 104.5&deg;; O-H bond scanned. <code>mol_fast.js</code>, no TF correction. <b>Best result of the non-split series:</b> closest binding to experiment, and top-tier dipole.</div>

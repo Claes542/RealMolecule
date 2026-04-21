@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <title>Atom with split shells — Li, Be, C, N, O (2/3/4-split support)</title>
+  <style>body { margin: 0; background: #000; }</style>
+</head><body>
+<div id="loadStatus" style="color:#ff0;font-family:monospace;padding:20px;font-size:14px">HTML loaded, fetching solver…</div>
+<script>
+  window.onerror = function(msg, url, line, col, err) {
+    var pre = document.createElement('pre');
+    pre.style.cssText = 'color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
+    pre.textContent = 'ERROR: ' + msg + '\n  at ' + url + ':' + line + ':' + col +
+      (err && err.stack ? '\n\n' + err.stack : '');
+    document.body.insertBefore(pre, document.body.firstChild);
+  };
+  (function() {
+    var N = 200;
+    var urlScr = parseFloat(new URLSearchParams(location.search).get('scr'));
+    var scr = isFinite(urlScr) ? urlScr : 14;
+    var N2 = Math.round(N / 2);
+
+    // Atom selector: ?atom=Li (default), Be, B, C, N, O
+    var atom = (new URLSearchParams(location.search).get('atom') || 'Li');
+    var rcOut = parseFloat(new URLSearchParams(location.search).get('rcOut'));
+    if (!isFinite(rcOut)) rcOut = 0.6;  // 2s radial node
+
+    var nuclei = [];
+    function addShell(Z, z_init, target, rc, r_out, split, count, split_axis) {
+      // Add `count` orbitals at (N2, N2, N2) representing one shell split into count equal pieces.
+      for (var idx = 0; idx < count; idx++) {
+        var kernelZ = (nuclei.length === 0) ? Z : 0;  // only first slot carries the +Z kernel
+        nuclei.push({
+          i: N2, j: N2, k: N2, Z: kernelZ, rc: rc || 0, r_out: r_out || 0,
+          z_init: z_init, split: split, split_idx: idx, split_axis: split_axis || [1, 0, 0],
+        });
+      }
+    }
+
+    if (atom === 'Li') {
+      // Li: 1s² (2-split) + 2s¹ (1-split), Z=3
+      addShell(3, 3, 1, 0, 0, 'hemi', 2);                  // 1s hemi × 2
+      addShell(0, 1, 1, rcOut, 0, 'sphere', 1);            // 2s sphere × 1
+    } else if (atom === 'Be') {
+      // Be: 1s² (2-split) + 2s² (2-split), Z=4
+      addShell(4, 4, 1, 0, 0, 'hemi', 2);
+      addShell(0, 1, 1, rcOut, 0, 'hemi', 2, [0, 1, 0]);   // 2s hemi along y-axis (orthogonal to 1s)
+    } else if (atom === 'B') {
+      // B: 1s² + 2s² + 2p¹, Z=5
+      addShell(5, 5, 1, 0, 0, 'hemi', 2);
+      addShell(0, 2, 1, rcOut, 0, 'hemi', 2, [0, 1, 0]);
+      addShell(0, 1, 1, 1.3, 0, 'sphere', 1);              // 2p single, further out
+    } else if (atom === 'C') {
+      // C: Z=6. ?mode=2+2+2 (default) or ?mode=2+4
+      var cMode = new URLSearchParams(location.search).get('mode') || '2+2+2';
+      if (cMode === '2+4') {
+        // 1s² (hemi) + [2s²+2p²] (4-split tetra)
+        addShell(6, 6, 1, 0, 0, 'hemi', 2);
+        addShell(0, 1.8, 1, rcOut, 0, 'tetra', 4);
+      } else {
+        addShell(6, 6, 1, 0, 0, 'hemi', 2);
+        addShell(0, 2.5, 1, rcOut, 0, 'hemi', 2, [0, 1, 0]);
+        addShell(0, 1.5, 1, 1.3, 0, 'hemi', 2, [0, 0, 1]);
+      }
+    } else if (atom === 'N') {
+      // N: 1s² + 2s² + 2p³ (3-split), Z=7
+      addShell(7, 7, 1, 0, 0, 'hemi', 2);
+      addShell(0, 3, 1, rcOut, 0, 'hemi', 2, [0, 1, 0]);
+      addShell(0, 1.8, 1, 1.3, 0, 'third', 3, [1, 0, 0]);  // 2p third around x-axis
+    } else if (atom === 'O') {
+      // O: 1s² + 2s² + 2p⁴ (4-split), Z=8
+      addShell(8, 8, 1, 0, 0, 'hemi', 2);
+      addShell(0, 3.5, 1, rcOut, 0, 'hemi', 2, [0, 1, 0]);
+      addShell(0, 2, 1, 1.3, 0, 'tetra', 4);
+    } else {
+      alert('Unknown atom: ' + atom);
+      return;
+    }
+
+    window.USER_NN = N;
+    window.USER_SCREEN = scr;
+    window.USER_STEPS = 100000;
+    window.USER_SHELL_MODE = true;
+    window.USER_NUCLEI = nuclei;
+    window.USER_NORM_TARGETS = nuclei.map(function() { return 1; });  // all single-occupancy (full SIC)
+    console.log('Atom ' + atom + ': ' + nuclei.length + ' orbitals, total electrons = ' + nuclei.length);
+  })();
+
+  var status = document.getElementById('loadStatus');
+  var s = document.createElement('script');
+  s.src = 'mol_fast.js?t=' + Date.now();
+  s.onload = function() {
+    status.textContent += '\nmol_fast.js loaded';
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    p.onload = function() { status.textContent += '\np5.js loaded — simulation should start'; };
+    p.onerror = function() { status.textContent += '\nFAILED to load p5.js'; status.style.color = '#f44'; };
+    document.body.appendChild(p);
+  };
+  s.onerror = function() { status.textContent += '\nFAILED to load mol_fast.js'; status.style.color = '#f44'; };
+  document.body.appendChild(s);
+</script>
+</body></html>

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <title>LiH 3-orbital (Li⁺ core + σ bond + H outer)</title>
+  <style>body { margin: 0; background: #000; }</style>
+</head><body>
+<div id="loadStatus" style="color:#ff0;font-family:monospace;padding:20px;font-size:14px">HTML loaded, fetching solver…</div>
+<script>
+  window.onerror = function(msg, url, line, col, err) {
+    var pre = document.createElement('pre');
+    pre.style.cssText = 'color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
+    pre.textContent = 'ERROR: ' + msg + '\n  at ' + url + ':' + line + ':' + col +
+      (err && err.stack ? '\n\n' + err.stack : '');
+    document.body.insertBefore(pre, document.body.firstChild);
+  };
+  (function() {
+    var N = 200;
+    var urlScr = parseFloat(new URLSearchParams(location.search).get('scr'));
+    var scr = isFinite(urlScr) ? urlScr : 14;
+    var h = scr / N;
+    var N2 = Math.round(N / 2);
+
+    // LiH: Li-H bond ≈ 3.02 au (1.60 Å experimental)
+    var urlBond = parseFloat(new URLSearchParams(location.search).get('bond'));
+    var bond = isFinite(urlBond) ? urlBond : 3.02;
+    var di = Math.round(bond / h / 2);  // half-bond in cells
+    // Li outer electron offset from Li nucleus (in cells). Default 0 = coincident with Li core;
+    // target-weighted best-wins init creates the shell ordering automatically (inner dominates small r).
+    var urlDLi = parseFloat(new URLSearchParams(location.search).get('dLi'));
+    var dLi = isFinite(urlDLi) ? Math.round(urlDLi) : 0;
+    // Li outer rc: 0.6 au default — 2s radial node position from atom_shells Li model (per-orbital in SHELL_MODE).
+    var urlRcLo = parseFloat(new URLSearchParams(location.search).get('rcLo'));
+    var rcLo = isFinite(urlRcLo) ? urlRcLo : 0.6;
+    // Enable per-orbital rc cutoff (shell model) — Li-outer's rc=0.6 applies only to its own w, not core's.
+    window.USER_SHELL_MODE = true;
+    // Release H's r_out cutoff after 5000 steps (override with ?release=N)
+    var urlRelease = parseFloat(new URLSearchParams(location.search).get('release'));
+    window.USER_R_OUT_RELEASE_STEP = isFinite(urlRelease) ? urlRelease : 5000;
+    // Pauli-like local repulsion disabled by default (user found it unphysical).
+    var urlBeta = parseFloat(new URLSearchParams(location.search).get('beta'));
+    window.USER_BETA_PAULI = isFinite(urlBeta) ? urlBeta : 0;
+    // H z_init controls H orbital's init decay. Bigger = tighter H → plane shifts right toward H.
+    var urlZH = parseFloat(new URLSearchParams(location.search).get('zH'));
+    var zH = isFinite(urlZH) ? urlZH : 1.5;
+
+    window.USER_NN = N;
+    window.USER_SCREEN = scr;
+    window.USER_STEPS = 100000;
+    // Strategy: Li⁺ (+2 kernel, 2-electron 1s² core, non-split) + H⁻ split into 2 shells (1+1 electrons).
+    // Halfspace partition: Li on left of bond midplane, H's two shells on right.
+    //   - slot 0: Li⁺ nucleus (Z=2 screened kernel), target=2, non-split — 1s² on Li
+    //   - slot 1: H inner (Z=1 kernel at H_pos), target=1 — inner 1s shell
+    //   - slot 2: H outer (Z=0 ghost at H_pos, rc=0.5 excludes inner), target=1 — outer shell around H
+    // 4-orbital split-Li-core model (mirrors user's template):
+    //   slot 0: Li core LEFT half (Z=3 kernel at Li_pos-1), target=1
+    //   slot 1: Li core RIGHT half (Z=0 ghost at Li_pos+1, z_init=3 tight), target=1
+    //   slot 2: Li outer 2s (Z=0 ghost at Li_pos, rc=1.0 inner-shell wall), target=1
+    //   slot 3: H 1s (Z=1 kernel at H_pos), target=1
+    // Each orbital target=1 → full SIC (no intra-pair fudge). Total 4 electrons = neutral Li + neutral H.
+    // Ionic Li⁺H⁻ model: Li 1s² (hemi-split, 2 orbitals) + H⁻ 1s² (hemi-split, 2 orbitals).
+    // Each orbital target=1, total 4 electrons. Li = 2 electrons (Li⁺), H = 2 electrons (H⁻).
+    window.USER_NUCLEI = [
+      { i: N2 - di, j: N2, k: N2, Z: 3, rc: 0.0, z_init: 3.0, split: 'hemi', split_idx: 0, split_axis: [1,0,0] },  // Li 1s left
+      { i: N2 - di, j: N2, k: N2, Z: 0, rc: 0.0, z_init: 3.0, split: 'hemi', split_idx: 1, split_axis: [1,0,0] },  // Li 1s right
+      { i: N2 + di, j: N2, k: N2, Z: 1, rc: 0.0, z_init: 1.0, split: 'hemi', split_idx: 0, split_axis: [1,0,0], split_fix: false },  // H⁻ 1s left — free after init
+      { i: N2 + di, j: N2, k: N2, Z: 0, rc: 0.0, z_init: 1.0, split: 'hemi', split_idx: 1, split_axis: [1,0,0], split_fix: false },  // H⁻ 1s right — free after init
+    ];
+    window.USER_NORM_TARGETS = [1, 1, 1, 1];
+  })();
+
+  var status = document.getElementById('loadStatus');
+  var s = document.createElement('script');
+  s.src = 'mol_fast.js?t=' + Date.now();
+  s.onload = function() {
+    status.textContent += '\nmol_fast.js loaded';
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    p.onload = function() { status.textContent += '\np5.js loaded — simulation should start'; };
+    p.onerror = function() { status.textContent += '\nFAILED to load p5.js'; status.style.color = '#f44'; };
+    document.body.appendChild(p);
+  };
+  s.onerror = function() { status.textContent += '\nFAILED to load mol_fast.js'; status.style.color = '#f44'; };
+  document.body.appendChild(s);
+</script>
+</body></html>
