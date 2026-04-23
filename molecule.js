@@ -1,6 +1,6 @@
 // Molecule Quantum Simulation — WebGPU Compute Shaders + Nuclear Dynamics
 // Up to 10 atoms placed interactively, 3D geometry
-console.log("molecule.js loaded v2 — direct Pother + h² softening");
+console.log("molecule.js loaded v3 — shear body force available via USER_SHEAR_RATE");
 const NN = window.USER_NN || 200;
 const S = NN + 1;
 const S2 = S * S;
@@ -98,7 +98,7 @@ const W_STEPS_PER_FRAME = Math.max(1, STEPS_PER_FRAME);  // match U steps per fr
 const BOUNDARY_INTERVAL = 20;
 const NORM_INTERVAL = 20;
 const POISSON_INTERVAL = window.USER_POISSON_INTERVAL || 50;
-const USE_DIRECT_POTHER = NELEC <= 5;  // direct per-electron Poisson solve (no SIC needed)
+const USE_DIRECT_POTHER = (window.USER_DIRECT_POTHER !== undefined) ? window.USER_DIRECT_POTHER : (NELEC <= 5);  // direct per-electron Poisson solve (no SIC needed)
 const SIC_INTERVAL = NELEC <= 15 ? 1 : NELEC <= 30 ? 5 : 999999;  // SIC in dynamics to remove self-interaction from wavefunction evolution
 const SIC_JACOBI = NELEC <= 15 ? 50 : 10;
 
@@ -4141,6 +4141,46 @@ async function moveNuclei(gpuForces) {
   // Format: [[a0,a1,...], [a2,a3,...], ...] — atom indices per group
   const rigidGroups = window.USER_RIGID_GROUPS;
 
+  // Harmonic H-O-H angle restoring force: V = ½·k·(θ−θ0)² per water triplet.
+  // Prevents drift of water's bend angle away from 104.5° in reduced-O models.
+  const triplets = window.USER_WATER_TRIPLETS;
+  if (triplets && triplets.length > 0) {
+    const theta0 = (window.USER_HOH_EQ || 104.5) * Math.PI / 180;
+    const kBend = window.USER_BEND_K !== undefined ? window.USER_BEND_K : 1.5;  // Ha/rad²
+    for (let t = 0; t < triplets.length; t++) {
+      const o = triplets[t][0], h1 = triplets[t][1], h2 = triplets[t][2];
+      const r1x = (nucPos[h1][0] - nucPos[o][0]) * hGrid;
+      const r1y = (nucPos[h1][1] - nucPos[o][1]) * hGrid;
+      const r1z = (nucPos[h1][2] - nucPos[o][2]) * hGrid;
+      const r3x = (nucPos[h2][0] - nucPos[o][0]) * hGrid;
+      const r3y = (nucPos[h2][1] - nucPos[o][1]) * hGrid;
+      const r3z = (nucPos[h2][2] - nucPos[o][2]) * hGrid;
+      const d1 = Math.sqrt(r1x*r1x + r1y*r1y + r1z*r1z);
+      const d3 = Math.sqrt(r3x*r3x + r3y*r3y + r3z*r3z);
+      if (d1 < 1e-6 || d3 < 1e-6) continue;
+      const u1x = r1x/d1, u1y = r1y/d1, u1z = r1z/d1;
+      const u3x = r3x/d3, u3y = r3y/d3, u3z = r3z/d3;
+      let cos = u1x*u3x + u1y*u3y + u1z*u3z;
+      if (cos > 0.9999) cos = 0.9999;
+      if (cos < -0.9999) cos = -0.9999;
+      const theta = Math.acos(cos);
+      const sinT = Math.sin(theta);
+      if (sinT < 1e-6) continue;
+      const coeff = kBend * (theta - theta0) / sinT;
+      const f1x = coeff * (u3x - cos*u1x) / d1;
+      const f1y = coeff * (u3y - cos*u1y) / d1;
+      const f1z = coeff * (u3z - cos*u1z) / d1;
+      const f3x = coeff * (u1x - cos*u3x) / d3;
+      const f3y = coeff * (u1y - cos*u3y) / d3;
+      const f3z = coeff * (u1z - cos*u3z) / d3;
+      nucForce[h1][0] += f1x; nucForce[h1][1] += f1y; nucForce[h1][2] += f1z;
+      nucForce[h2][0] += f3x; nucForce[h2][1] += f3y; nucForce[h2][2] += f3z;
+      nucForce[o][0]  -= (f1x + f3x);
+      nucForce[o][1]  -= (f1y + f3y);
+      nucForce[o][2]  -= (f1z + f3z);
+    }
+  }
+
   for (let sub = 0; sub < NUC_SUBSTEPS; sub++) {
     if (rigidGroups) {
       // Rigid group dynamics: average force over group, move all atoms together
@@ -4174,10 +4214,37 @@ async function moveNuclei(gpuForces) {
     } else {
       // Per-atom dynamics with optional thermostat
       const frozenAtoms = window.USER_FROZEN_ATOMS || [];
+      // Optional shear body force: F_x = m · shearRate · (y - y_center).
+      // Produces steady-state v_x ∝ (y - y_center) under Langevin damping.
+      const shearRate = window.USER_SHEAR_RATE || 0;
+      let shearYC = 0;
+      if (shearRate !== 0) {
+        let yS = 0, nS = 0;
+        for (let a = 0; a < NELEC; a++) {
+          if (Z[a] === 0 && Z_nuc[a] === 0) continue;
+          if (frozenAtoms.indexOf(a) >= 0) continue;
+          yS += nucPos[a][1]; nS++;
+        }
+        shearYC = nS > 0 ? yS / nS : 0;
+        window._shearYC = shearYC;
+      }
       for (let a = 0; a < NELEC; a++) {
         if (Z[a] === 0 && Z_nuc[a] === 0) continue;
         if (frozenAtoms.indexOf(a) >= 0) continue;
         const m = nucMass(Z_nuc[a] || Z[a]);
+        if (shearRate !== 0) {
+          // nucPos is in grid cells; multiply by hGrid to get au. F in Ha/au.
+          const yA_au = (nucPos[a][1] - shearYC) * hGrid;
+          const fShear = m * shearRate * yA_au;
+          nucForce[a][0] += fShear;
+          if (nucForceTotal[a]) nucForceTotal[a][0] += fShear;  // make visible in arrows
+          // Work done by TOTAL force (electronic + nuclear + shear) this substep: F · v · dt.
+          const dt_au = DT_NUC;
+          const wDx = nucForce[a][0] * nucVel[a][0] * dt_au;
+          const wDy = nucForce[a][1] * nucVel[a][1] * dt_au;
+          const wDz = nucForce[a][2] * nucVel[a][2] * dt_au;
+          window._shearWork = (window._shearWork || 0) + wDx + wDy + wDz;
+        }
         for (let d = 0; d < 3; d++) {
           nucVel[a][d] += nucForce[a][d] / m * DT_NUC * forceScale;
           if (langevinKT <= 0) nucVel[a][d] *= DAMPING;
@@ -4845,6 +4912,14 @@ function draw() {
   fill(vcycleEnabled ? [0,255,0] : [255,100,0]);
   const solverName = useLOBPCG ? "LOBPCG" : useCheb ? "Chebyshev" : "ITP";
   text("V-cycle: " + (vcycleEnabled ? "ON" : "OFF") + " (" + vcycleCount + ")  Solver: " + solverName + " [L=LOBPCG C=Cheb]", 5, 65);
+  if (window._hohStats) {
+    fill(180, 255, 180); textSize(13);
+    text(window._hohStats, 5, 95);
+  }
+  if (window.USER_SHEAR_RATE) {
+    fill(0, 230, 255); textSize(14);
+    text("W_total = " + (window._shearWork || 0).toExponential(3) + " Ha  (shear rate=" + window.USER_SHEAR_RATE.toExponential(2) + ")", 5, 80);
+  }
 
   // Fold angle measurement
   if (window.USER_FOLD_ATOMS) {

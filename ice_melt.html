@@ -1,11 +1,32 @@
 <!DOCTYPE html>
 <html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
-<div id="controls" style="position:fixed;top:10px;left:10px;z-index:100;background:rgba(0,0,0,0.8);padding:12px 16px;border-radius:8px;border:1px solid #333">
+<div id="controls" style="position:fixed;bottom:10px;left:10px;z-index:100;background:rgba(0,0,0,0.8);padding:12px 16px;border-radius:8px;border:1px solid #333">
   <div style="font-size:14px;color:#26c6da;margin-bottom:8px">Ice Melting — Temperature</div>
   <input type="range" id="tempSlider" min="0" max="2000" step="50" value="0" style="width:250px">
   <span id="tempLabel" style="margin-left:10px;font-size:16px;color:#4fc3f7">0 K</span>
   <div id="status" style="font-size:11px;color:#888;margin-top:4px"></div>
+  <div style="font-size:13px;color:#00e5ff;margin-top:10px">Shear rate</div>
+  <input type="range" id="shearSlider" min="0" max="100" step="1" value="0" style="width:250px">
+  <span id="shearLabel" style="margin-left:10px;font-size:14px;color:#00e5ff">0</span>
 </div>
+<script>
+(function() {
+  var _sheRdy = setInterval(function() {
+    var sh = document.getElementById('shearSlider');
+    if (!sh) return;
+    clearInterval(_sheRdy);
+    var lbl = document.getElementById('shearLabel');
+    // Map slider 0..100 → shear rate 0..1e-4 (log-linear-ish)
+    function sliderToRate(v) { return v === 0 ? 0 : Math.pow(10, (v - 100) / 25) * 1e-4; }
+    sh.addEventListener('input', function() {
+      var v = parseInt(this.value);
+      var r = sliderToRate(v);
+      window.USER_SHEAR_RATE = r;
+      lbl.textContent = r === 0 ? '0' : r.toExponential(2);
+    });
+  }, 100);
+})();
+</script>
 <script>
 // Temperature slider — updates langevinKT at runtime
 var _sliderReady = setInterval(function() {
@@ -123,6 +144,8 @@ var _sliderReady = setInterval(function() {
     addAtom(validO[i][0], validO[i][1], validO[i][2], 2, 'O');
   }
 
+  // Track which H's belong to which O (for H-O-H triplet identification)
+  var hIndicesPerO = validO.map(function() { return []; });
   // Place H toward 2 nearest O neighbors (ice rules)
   for (var i = 0; i < validO.length; i++) {
     var dists = [];
@@ -141,6 +164,7 @@ var _sliderReady = setInterval(function() {
       if (dists[k].d > dOO * 1.2) break;
       if (dists[k].j > i) {
         var scale = bOH / dists[k].d;
+        hIndicesPerO[i].push(atoms.length);
         addAtom(validO[i][0] + dists[k].dx * scale,
                 validO[i][1] + dists[k].dy * scale,
                 validO[i][2] + dists[k].dz * scale, 1, 'H');
@@ -151,6 +175,7 @@ var _sliderReady = setInterval(function() {
       if (dists[k].d > dOO * 1.2) break;
       if (dists[k].j <= i) {
         var scale = bOH / dists[k].d;
+        hIndicesPerO[i].push(atoms.length);
         addAtom(validO[i][0] + dists[k].dx * scale,
                 validO[i][1] + dists[k].dy * scale,
                 validO[i][2] + dists[k].dz * scale, 1, 'H');
@@ -259,6 +284,42 @@ var _sliderReady = setInterval(function() {
       clearInterval(_kickPhase);
     }
   }, 500);
+  // Build water triplets for H-O-H angle tracking using the per-O H index list recorded during placement.
+  var waterTriplets = [];
+  for (var wi = 0; wi < oIndices.length; wi++) {
+    if (hIndicesPerO[wi].length === 2) {
+      waterTriplets.push([oIndices[wi], hIndicesPerO[wi][0], hIndicesPerO[wi][1]]);
+    }
+  }
+  console.log('Water triplets: ' + waterTriplets.length);
+  window.USER_WATER_TRIPLETS = waterTriplets;
+  // Start a monitor that reports H-O-H angle stats every 2s.
+  setInterval(function() {
+    if (typeof nucPos === 'undefined') return;
+    var angles = [];
+    for (var t = 0; t < waterTriplets.length; t++) {
+      var o = waterTriplets[t][0], h1 = waterTriplets[t][1], h2 = waterTriplets[t][2];
+      if (!nucPos[o] || !nucPos[h1] || !nucPos[h2]) continue;
+      var a1x = nucPos[h1][0] - nucPos[o][0], a1y = nucPos[h1][1] - nucPos[o][1], a1z = nucPos[h1][2] - nucPos[o][2];
+      var a2x = nucPos[h2][0] - nucPos[o][0], a2y = nucPos[h2][1] - nucPos[o][1], a2z = nucPos[h2][2] - nucPos[o][2];
+      var dot = a1x*a2x + a1y*a2y + a1z*a2z;
+      var m1 = Math.sqrt(a1x*a1x + a1y*a1y + a1z*a1z);
+      var m2 = Math.sqrt(a2x*a2x + a2y*a2y + a2z*a2z);
+      if (m1 > 0 && m2 > 0) angles.push(Math.acos(Math.max(-1, Math.min(1, dot / (m1 * m2)))) * 180 / Math.PI);
+    }
+    if (angles.length === 0) return;
+    angles.sort(function(a,b) { return a-b; });
+    var mean = angles.reduce(function(s,a) {return s+a;}, 0) / angles.length;
+    var med = angles[Math.floor(angles.length/2)];
+    window._hohStats = 'H-O-H: min=' + angles[0].toFixed(1) + '° med=' + med.toFixed(1) + '° mean=' + mean.toFixed(1) + '° max=' + angles[angles.length-1].toFixed(1) + '° (n=' + angles.length + ')';
+    console.log(window._hohStats);
+  }, 2000);
+
+  // Shear body force: F_x = m · shearRate · (y - y_center), applied by molecule.js each step.
+  // URL ?shear=0.001 (units: 1/au-time²). Default 0 = no shear.
+  var urlShear = parseFloat(new URLSearchParams(location.search).get('shear'));
+  window.USER_SHEAR_RATE = isFinite(urlShear) ? urlShear : 0;
+  if (window.USER_SHEAR_RATE !== 0) console.log('Shear body force: rate=' + window.USER_SHEAR_RATE);
   window.USER_ROT_SPEED = 0.005;
   window.USER_GRADP_FORCE = true;
   window.USER_Z = atoms.map(function(a) { return a.Z; });
