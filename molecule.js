@@ -4141,6 +4141,25 @@ async function moveNuclei(gpuForces) {
   // Format: [[a0,a1,...], [a2,a3,...], ...] — atom indices per group
   const rigidGroups = window.USER_RIGID_GROUPS;
 
+  // Harmonic bond-length constraints: V = ½·k·(r-r0)² for each [i, j, r0, k].
+  // USER_BOND_CONSTRAINTS = [[i, j, r0_au, k_Ha/au²], ...]
+  const bondConstraints = window.USER_BOND_CONSTRAINTS;
+  if (bondConstraints && bondConstraints.length > 0) {
+    for (let bc = 0; bc < bondConstraints.length; bc++) {
+      const i1 = bondConstraints[bc][0], i2 = bondConstraints[bc][1];
+      const r0 = bondConstraints[bc][2], kBond = bondConstraints[bc][3];
+      const rx = (nucPos[i1][0] - nucPos[i2][0]) * hGrid;
+      const ry = (nucPos[i1][1] - nucPos[i2][1]) * hGrid;
+      const rz = (nucPos[i1][2] - nucPos[i2][2]) * hGrid;
+      const r = Math.sqrt(rx*rx + ry*ry + rz*rz);
+      if (r < 1e-8) continue;
+      const ux = rx/r, uy = ry/r, uz = rz/r;
+      const f = -kBond * (r - r0);  // restoring magnitude (negative if stretched)
+      nucForce[i1][0] += f * ux; nucForce[i1][1] += f * uy; nucForce[i1][2] += f * uz;
+      nucForce[i2][0] -= f * ux; nucForce[i2][1] -= f * uy; nucForce[i2][2] -= f * uz;
+    }
+  }
+
   // Harmonic H-O-H angle restoring force: V = ½·k·(θ−θ0)² per water triplet.
   // Prevents drift of water's bend angle away from 104.5° in reduced-O models.
   const triplets = window.USER_WATER_TRIPLETS;

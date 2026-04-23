@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>Dipeptide Gly-Gly in water</title>
+  <style>body { margin: 0; background: #000; color: #fff; font-family: monospace; }</style>
+</head><body>
+<div id="info" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.8);padding:10px;border:1px solid #333;border-radius:6px;max-width:440px;font-size:12px;z-index:100">
+  <div style="color:#ffa;font-weight:bold">Dipeptide Gly-Gly in water</div>
+  Gly-Gly: H<sub>2</sub>N-CH<sub>2</sub>-CO-NH-CH<sub>2</sub>-COOH with ~10 waters.
+  Watch: peptide-bond stability, C=O ⋯ H-N intramolecular H-bond (β-turn-like),
+  water solvation of polar groups.
+</div>
+<script>
+(function() {
+  var gridN = 200, scr = 22, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, el, Z) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  var ax = A;
+  // Gly-Gly extended approximate coords (Å):
+  // Residue 1 (N-term): NH2-Cα(H2)-C(=O)-
+  // Peptide bond: -N(H)-
+  // Residue 2 (C-term): -Cα(H2)-C(=O)-OH
+  addAtom(-4.5 * ax,  1.0 * ax, 0, 'N', 3);   // 0: N-term amine N
+  addAtom(-5.3 * ax,  1.6 * ax, 0, 'H', 1);   // 1: N-H
+  addAtom(-4.3 * ax,  0.0 * ax, 0, 'H', 1);   // 2: N-H
+  addAtom(-3.3 * ax,  1.7 * ax, 0, 'C', 4);   // 3: Cα1
+  addAtom(-3.2 * ax,  2.7 * ax, 0.6 * ax, 'H', 1); // 4: Cα-H
+  addAtom(-3.2 * ax,  2.7 * ax, -0.6 * ax, 'H', 1); // 5: Cα-H
+  addAtom(-2.1 * ax,  1.0 * ax, 0, 'C', 4);   // 6: C of peptide C=O
+  addAtom(-2.1 * ax, -0.2 * ax, 0, 'O', 2);   // 7: peptide C=O
+  addAtom(-0.9 * ax,  1.6 * ax, 0, 'N', 3);   // 8: peptide N
+  addAtom(-0.9 * ax,  2.6 * ax, 0, 'H', 1);   // 9: peptide N-H
+  addAtom( 0.2 * ax,  0.9 * ax, 0, 'C', 4);   // 10: Cα2
+  addAtom( 0.3 * ax,  0.0 * ax, 0.6 * ax, 'H', 1); // 11: Cα-H
+  addAtom( 0.3 * ax,  0.0 * ax, -0.6 * ax, 'H', 1); // 12: Cα-H
+  addAtom( 1.4 * ax,  1.6 * ax, 0, 'C', 4);   // 13: C-term carboxyl C
+  addAtom( 1.4 * ax,  2.8 * ax, 0, 'O', 2);   // 14: C=O
+  addAtom( 2.5 * ax,  0.9 * ax, 0, 'O', 2);   // 15: C-OH
+  addAtom( 3.4 * ax,  1.4 * ax, 0, 'H', 1);   // 16: OH
+
+  // 8 waters arranged around polar groups
+  var waterTriplets = [];
+  var bOH = 0.96 * A;
+  var waterPos = [
+    [-5.8, 0.0, 0.5],    // near N-term NH2
+    [-6.0, 2.5, 0],      // N-term side
+    [-1.0, -1.5, 0],     // near peptide O
+    [-0.5, 3.5, 0.5],    // near peptide H
+    [1.5, 4.0, 0],       // near C-term C=O
+    [3.5, -0.5, 0.5],    // near C-term OH
+    [4.2, 2.0, 0],       // C-term side
+    [0, 0, 2.5]          // out of plane
+  ];
+  waterPos.forEach(function(p) {
+    var wAng = (p[0] * 7.3 + p[1] * 11.1 + p[2] * 3.7) % (2 * Math.PI);
+    var idx = atoms.length;
+    addAtom(p[0] * ax, p[1] * ax, p[2] * ax, 'O', 2);
+    addAtom(p[0] * ax + bOH * Math.cos(wAng + 0.9), p[1] * ax + bOH * Math.sin(wAng + 0.9), p[2] * ax, 'H', 1);
+    addAtom(p[0] * ax + bOH * Math.cos(wAng - 0.9), p[1] * ax + bOH * Math.sin(wAng - 0.9), p[2] * ax, 'H', 1);
+    waterTriplets.push([idx, idx + 1, idx + 2]);
+  });
+
+  window.USER_WATER_TRIPLETS = waterTriplets;
+  window.USER_BEND_K = 1.5;
+
+  // Harmonic bond-length constraints for peptide backbone (experimental r0, k=2 Ha/au²).
+  // Prevents the reduced-kernel model from over-stretching bonds under water forces.
+  var kB = 2.0;  // bond constraint stiffness (Ha/au²)
+  window.USER_BOND_CONSTRAINTS = [
+    [0, 3,  2.78, kB],   // N-term N - Cα1  (1.47 Å)
+    [3, 6,  2.91, kB],   // Cα1 - C(peptide) (1.54 Å)
+    [6, 7,  2.33, kB],   // C=O peptide (1.23 Å)
+    [6, 8,  2.52, kB],   // peptide C-N (1.33 Å — PRIMARY target to prevent breaking)
+    [8, 10, 2.78, kB],   // peptide N - Cα2 (1.47 Å)
+    [10,13, 2.91, kB],   // Cα2 - C(carboxyl) (1.54 Å)
+    [13,14, 2.33, kB],   // C=O terminal (1.23 Å)
+    [13,15, 2.50, kB],   // C-OH single (1.32 Å)
+    [15,16, 1.81, kB],   // O-H (0.96 Å)
+    [0, 1,  1.91, kB],   // N-H terminal (1.01 Å)
+    [0, 2,  1.91, kB],   // N-H terminal (1.01 Å)
+    [8, 9,  1.91, kB],   // peptide N-H (1.01 Å)
+    [3, 4,  2.06, kB],   // Cα-H (1.09 Å)
+    [3, 5,  2.06, kB],
+    [10,11, 2.06, kB],
+    [10,12, 2.06, kB]
+  ];
+
+  // Watch: peptide C=O to peptide N-H (intramolecular β-turn-ish)
+  window.USER_BOND_PAIRS = [
+    [7, 9, "C=O ⋯ N-H (intra):"],
+    [6, 8, "peptide C-N:"],
+    [15, 16, "COOH O-H:"]
+  ];
+  window.USER_BOND_MAX_AU = 6.0;
+
+  // Monitor intramolecular potential H-bond
+  setInterval(function() {
+    if (typeof nucPos === 'undefined' || !nucPos[7] || !nucPos[9]) return;
+    function dist(i, j) {
+      var dx = (nucPos[i][0] - nucPos[j][0]) * h;
+      var dy = (nucPos[i][1] - nucPos[j][1]) * h;
+      var dz = (nucPos[i][2] - nucPos[j][2]) * h;
+      return Math.sqrt(dx*dx + dy*dy + dz*dz);
+    }
+    var dIntra = dist(7, 9);  // peptide C=O to peptide N-H
+    var dPept = dist(6, 8);   // peptide C-N bond
+    window._ooDist = 'intra C=O⋯H = ' + (dIntra/A).toFixed(2) + ' Å  |  peptide C-N = ' + (dPept/A).toFixed(2) + ' Å';
+  }, 500);
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  setInterval(function() {
+    if (typeof phaseSteps !== 'undefined' && phaseSteps > 5000 && typeof dynamicsEnabled !== 'undefined' && !dynamicsEnabled) {
+      window.dynamicsEnabled = true;
+    }
+  }, 500);
+  window.USER_FORCE_SCALE = 1.0;
+  setInterval(function() {
+    if (typeof nucStepCount !== 'undefined' && nucStepCount > 2000 && window.USER_FORCE_SCALE < 5) {
+      window.USER_FORCE_SCALE = 10.0;
+    }
+  }, 200);
+  window.USER_ARROW_SCALE = 50.0;
+  window.USER_TEMPERATURE_K = 0;
+  window.USER_LANGEVIN_GAMMA = 0.2;
+  window.USER_NUC_SUBSTEPS = 10;
+  window.USER_N_MOVE = 30;
+  window.USER_THERMAL_KICK = 0;
+  window.USER_ROT_SPEED = 0.005;
+  window.USER_GRADP_FORCE = true;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'C') return 0.3;
+    if (a.el === 'N') return 0.3;
+    if (a.el === 'O') return 0.4;
+    return 0;
+  });
+  window.INIT_ZEFF = 2;
+  console.log('Dipeptide Gly-Gly: ' + atoms.length + ' atoms (17 peptide + ' + (waterPos.length*3) + ' water)');
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
