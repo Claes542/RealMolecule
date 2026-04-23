@@ -24,7 +24,7 @@ while (r_cut.length < MAX_ATOMS) r_cut.push(0);
 const Z_nuc = window.USER_Z_NUC || _uz.map(z => z);
 while (Z_nuc.length < MAX_ATOMS) Z_nuc.push(0);
 let R_out = 0.5;   // au, unused legacy
-let curvReg = 0.15;  // curvature regularization for free boundary
+let curvReg = (window.USER_CURV_REG !== undefined) ? window.USER_CURV_REG : 0.15;  // curvature regularization for free boundary
 let Z = [..._uz];
 let Ne = [..._uz];
 const Z_orig = [..._uz];
@@ -4915,6 +4915,10 @@ function draw() {
   if (window._hohStats) {
     fill(180, 255, 180); textSize(13);
     text(window._hohStats, 5, 95);
+  }
+  if (window._ooDist) {
+    fill(255, 200, 100); textSize(13);
+    text(window._ooDist, 5, 320);
   }
   if (window.USER_SHEAR_RATE) {
     fill(0, 230, 255); textSize(14);

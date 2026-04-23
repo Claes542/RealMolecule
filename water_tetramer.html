@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>Water tetramer — 4 waters → cyclic ring</title>
+  <style>body { margin: 0; background: #000; color: #fff; font-family: monospace; }</style>
+</head><body>
+<div id="info" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.8);padding:10px;border:1px solid #333;border-radius:6px;max-width:420px;font-size:12px;z-index:100">
+  <div style="color:#ffa;font-weight:bold">Water Tetramer (cyclic)</div>
+  4 waters at square ring vertices, each donor → next clockwise. URL <b>?R=N</b> = radius.
+  Cyclic tetramer O-O ≈ 5.3 au (2.8 Å) ⇒ R ≈ 3.75. Tetramer has less ring strain than trimer.
+</div>
+<script>
+(function() {
+  var gridN = 200, scr = 24, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  var urlR = parseFloat(new URLSearchParams(location.search).get('R'));
+  var R = isFinite(urlR) ? urlR : 3.75;
+
+  var waterTriplets = [];
+  function addWaterAt(theta) {
+    var bOH = 0.96 * A, angW = 104.5 * Math.PI / 180;
+    var ox = R * Math.cos(theta), oy = R * Math.sin(theta), oz = 0;
+    // Donor H: rotated 90° (toward next CW water)
+    var donorAng = theta + Math.PI / 2;
+    var h1x = ox + bOH * Math.cos(donorAng), h1y = oy + bOH * Math.sin(donorAng), h1z = 0;
+    // H2: out of plane (+z)
+    var h2x = ox + bOH * Math.cos(theta + Math.PI) * Math.sin(angW),
+        h2y = oy + bOH * Math.sin(theta + Math.PI) * Math.sin(angW),
+        h2z = bOH * Math.cos(angW);
+    var oIdx = atoms.length;
+    addAtom(ox, oy, oz, 2, 'O');
+    addAtom(h1x, h1y, h1z, 1, 'H');
+    addAtom(h2x, h2y, h2z, 1, 'H');
+    waterTriplets.push([oIdx, oIdx + 1, oIdx + 2]);
+  }
+
+  for (var i = 0; i < 4; i++) addWaterAt(i * Math.PI / 2);
+
+  window.USER_WATER_TRIPLETS = waterTriplets;
+  window.USER_BEND_K = 1.5;
+
+  // Monitor 4 O-O distances around ring
+  setInterval(function() {
+    if (typeof nucPos === 'undefined') return;
+    function dist(i, j) {
+      if (!nucPos[i] || !nucPos[j]) return 0;
+      var dx = (nucPos[i][0] - nucPos[j][0]) * h;
+      var dy = (nucPos[i][1] - nucPos[j][1]) * h;
+      var dz = (nucPos[i][2] - nucPos[j][2]) * h;
+      return Math.sqrt(dx*dx + dy*dy + dz*dz);
+    }
+    var o = waterTriplets.map(function(t) { return t[0]; });
+    var d01 = dist(o[0], o[1]), d12 = dist(o[1], o[2]), d23 = dist(o[2], o[3]), d30 = dist(o[3], o[0]);
+    window._ooDist = 'ring: [' + d01.toFixed(2) + ', ' + d12.toFixed(2) + ', ' + d23.toFixed(2) + ', ' + d30.toFixed(2) + '] au  (target 5.3)';
+  }, 500);
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  setInterval(function() {
+    if (typeof phaseSteps !== 'undefined' && phaseSteps > 5000 && typeof dynamicsEnabled !== 'undefined' && !dynamicsEnabled) {
+      window.dynamicsEnabled = true;
+    }
+  }, 500);
+  window.USER_FORCE_SCALE = 1.0;
+  setInterval(function() {
+    if (typeof nucStepCount !== 'undefined' && nucStepCount > 2000 && window.USER_FORCE_SCALE < 15) {
+      window.USER_FORCE_SCALE = 20.0;
+    }
+  }, 200);
+  window.USER_ARROW_SCALE = 50.0;
+  window.USER_TEMPERATURE_K = 0;
+  window.USER_LANGEVIN_GAMMA = 0.2;
+  window.USER_NUC_SUBSTEPS = 10;
+  window.USER_N_MOVE = 30;
+  window.USER_THERMAL_KICK = 0;
+  window.USER_ROT_SPEED = 0.005;
+  window.USER_GRADP_FORCE = true;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'O') return 0.8;
+    return 0;
+  });
+  window.INIT_ZEFF = 2;
+  console.log('Tetramer: 4 waters, R=' + R + ' au');
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

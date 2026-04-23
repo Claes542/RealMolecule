@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>Water dimer — do two isolated H2O find each other?</title>
+  <style>body { margin: 0; background: #000; color: #fff; font-family: monospace; }</style>
+</head><body>
+<div id="info" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.8);padding:10px;border:1px solid #333;border-radius:6px;max-width:420px;font-size:12px;z-index:100">
+  <div style="color:#ff0;font-weight:bold">Water find test v2 — sweep mode</div>
+  Two H<sub>2</sub>O start at <b>?sep=N</b> au. Donor-acceptor oriented.
+  Bend constraint k=1.5. Target = 5.6 au (2.95 Å).<br>
+  Sweep:
+  <a href="?sep=5.6" style="color:#4fc3f7">5.6</a> (equilib) ·
+  <a href="?sep=6.6" style="color:#4fc3f7">6.6</a> (3.5 Å) ·
+  <a href="?sep=7.6" style="color:#4fc3f7">7.6</a> (4 Å) ·
+  <a href="?sep=8.5" style="color:#4fc3f7">8.5</a> (4.5 Å) ·
+  <a href="?sep=9.5" style="color:#4fc3f7">9.5</a> (5 Å)
+</div>
+<script>
+(function() {
+  var gridN = 150, scr = 30, N2 = 75;
+  var h = scr / gridN;
+  var A = 1.8897;  // Å→au
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+  var waterTriplets = [];
+  function addDonor(ox, oy, oz) {
+    // Donor: H1 along +x axis → acceptor's O; H2 off-axis (back-left).
+    var bOH = 0.96 * A, angW = 104.5 * Math.PI / 180;
+    var oIdx = atoms.length;
+    addAtom(ox, oy, oz, 2, 'O');
+    addAtom(ox + bOH, oy, oz, 1, 'H');                                           // H1 along axis
+    addAtom(ox - bOH * Math.cos(angW), oy + bOH * Math.sin(angW), oz, 1, 'H');   // H2 off-axis (+y tilt)
+    waterTriplets.push([oIdx, oIdx + 1, oIdx + 2]);
+  }
+  function addAcceptor(ox, oy, oz) {
+    // Acceptor: O faces -x (toward donor), both H's tilted back toward +x (away from donor).
+    var bOH = 0.96 * A, angW = 104.5 * Math.PI / 180;
+    var oIdx = atoms.length;
+    addAtom(ox, oy, oz, 2, 'O');
+    addAtom(ox + bOH * Math.sin(angW/2), oy + bOH * Math.cos(angW/2), oz, 1, 'H');
+    addAtom(ox + bOH * Math.sin(angW/2), oy - bOH * Math.cos(angW/2), oz, 1, 'H');
+    waterTriplets.push([oIdx, oIdx + 1, oIdx + 2]);
+  }
+
+  // URL ?sep=N (au). Sweep: try 5.6, 6.6, 7.6, 8.5, 9.5 (= ~2.95, 3.5, 4.0, 4.5, 5.0 Å).
+  var urlSep = parseFloat(new URLSearchParams(location.search).get('sep'));
+  var sep = isFinite(urlSep) ? urlSep : 6.6;  // default 3.5 Å
+  // Show actual sep + fs values in info panel
+  document.getElementById('info').insertAdjacentHTML('beforeend',
+    '<div style="color:#ffa;margin-top:6px">initial sep = <b>' + sep.toFixed(2) + ' au</b> (' + (sep / 1.8897).toFixed(2) + ' Å)</div>');
+  // Linear O-H···O H-bond: donor's H along axis → acceptor's O.
+  addDonor(-sep/2, 0, 0);
+  addAcceptor(+sep/2, 0, 0);
+
+  window.USER_WATER_TRIPLETS = waterTriplets;
+  window.USER_BEND_K = 1.5;
+  // Free-boundary curvature regularization (higher = smoother, less jagged w domain).
+  // molecule.js default 0.15; we can go higher for small/isolated domains.
+  var urlCurv = parseFloat(new URLSearchParams(location.search).get('curv'));
+  if (isFinite(urlCurv)) window.USER_CURV_REG = urlCurv;
+
+  // Monitor O-O distance AND intermolecular H⋯O distance (donor H1 to acceptor O)
+  setInterval(function() {
+    if (typeof nucPos === 'undefined') return;
+    var o1 = waterTriplets[0][0], o2 = waterTriplets[1][0];
+    var h1 = waterTriplets[0][1];  // donor's axial H
+    if (!nucPos[o1] || !nucPos[o2] || !nucPos[h1]) return;
+    function dist(i, j) {
+      var dx = (nucPos[i][0] - nucPos[j][0]) * h;
+      var dy = (nucPos[i][1] - nucPos[j][1]) * h;
+      var dz = (nucPos[i][2] - nucPos[j][2]) * h;
+      return Math.sqrt(dx*dx + dy*dy + dz*dz);
+    }
+    var dOO = dist(o1, o2);
+    var dHO = dist(h1, o2);
+    window._ooDist = 'O-O: ' + dOO.toFixed(2) + ' au (' + (dOO/A).toFixed(2) + ' Å)  |  H⋯O: ' + dHO.toFixed(2) + ' au (' + (dHO/A).toFixed(2) + ' Å, H-bond=1.9)';
+  }, 500);
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;  // off for first 5000 steps so electrons relax at fixed geometry
+  setInterval(function() {
+    if (typeof phaseSteps !== 'undefined' && phaseSteps > 5000 && typeof dynamicsEnabled !== 'undefined' && !dynamicsEnabled) {
+      window.dynamicsEnabled = true;
+      console.log('water_find: electrons relaxed, dynamics ON at phaseSteps=' + phaseSteps);
+    }
+  }, 500);
+  var urlFS = parseFloat(new URLSearchParams(location.search).get('fs'));
+  var initialFS = isFinite(urlFS) ? urlFS : 1.0;
+  window.USER_FORCE_SCALE = initialFS;
+  // Ramp: start at 10×, step up to 20× after 1000 nuclear steps.
+  var urlRamp = new URLSearchParams(location.search).get('ramp');
+  var rampOn = urlRamp !== '0';  // default ON; ?ramp=0 to disable
+  if (rampOn) {
+    window.USER_FORCE_SCALE = 1.0;
+    var _rampDone = false;
+    setInterval(function() {
+      if (typeof nucStepCount !== 'undefined' && nucStepCount > 2000 && !_rampDone) {
+        window.USER_FORCE_SCALE = 20.0;
+        _rampDone = true;
+        console.log('Ramp: force scale → 20× at step ' + nucStepCount);
+      }
+    }, 200);
+  }
+  document.getElementById('info').insertAdjacentHTML('beforeend',
+    '<div style="color:#ffa">force ramp: 1× for 2000 steps, then 20× (disable ?ramp=0)</div>');
+  window.USER_ARROW_SCALE = 50.0;
+  window.USER_TEMPERATURE_K = 0;   // no thermal noise — purely forces
+  window.USER_LANGEVIN_GAMMA = 0.2;
+  window.USER_NUC_SUBSTEPS = 10;
+  window.USER_N_MOVE = 30;
+  window.USER_THERMAL_KICK = 0;
+  window.USER_ROT_SPEED = 0.005;
+  window.USER_GRADP_FORCE = true;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'O') return 0.8;
+    return 0;
+  });
+  window.INIT_ZEFF = 2;
+  console.log('Water find test: 2 waters, O-O init=' + sep + ' au, bendK=1.5');
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
