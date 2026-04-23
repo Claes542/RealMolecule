@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>Glycine in water — zwitterion formation</title>
+  <style>body { margin: 0; background: #000; color: #fff; font-family: monospace; }</style>
+</head><body>
+<div id="info" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.8);padding:10px;border:1px solid #333;border-radius:6px;max-width:440px;font-size:12px;z-index:100">
+  <div style="color:#ffa;font-weight:bold">Glycine zwitterion test</div>
+  URL: <a href="?state=neutral" style="color:#4fc3f7">?state=neutral</a> (H on COOH) ·
+       <a href="?state=zwitterion" style="color:#4fc3f7">?state=zwitterion</a> (H on NH3+)
+  Neutral glycine H<sub>2</sub>N-CH<sub>2</sub>-COOH in a water shell. Real water stabilizes the
+  <b>zwitterion</b> <sup>+</sup>H<sub>3</sub>N-CH<sub>2</sub>-COO<sup>−</sup> by ~10 kcal/mol.
+  Watch the H of COOH — does it transfer to NH<sub>2</sub> (intramolecular) or through water
+  (Grotthuss-like)?
+</div>
+<script>
+(function() {
+  var gridN = 200, scr = 18, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, el, Z) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  // Start state: 'neutral' (default, H on COOH) or 'zwitterion' (H on NH3+, no COOH H)
+  var startState = new URLSearchParams(location.search).get('state') || 'neutral';
+  var ax = A;
+  // Core glycine skeleton (same for both)
+  addAtom(-0.5 * ax,  1.2 * ax, 0,          'N', 3);          // 0: amine N
+  addAtom(-1.4 * ax,  1.6 * ax, 0,          'H', 1);          // 1: N-H
+  addAtom(-0.1 * ax,  2.0 * ax, 0,          'H', 1);          // 2: N-H
+  addAtom( 0.5 * ax,  0.0 * ax, 0,          'C', 4);          // 3: Cα
+  addAtom( 1.2 * ax,  0.0 * ax, 0.9 * ax,   'H', 1);          // 4: Cα-H
+  addAtom( 1.2 * ax,  0.0 * ax, -0.9 * ax,  'H', 1);          // 5: Cα-H
+  addAtom(-0.3 * ax, -1.2 * ax, 0,          'C', 4);          // 6: carboxyl C
+  addAtom(-1.5 * ax, -1.2 * ax, 0,          'O', 2);          // 7: C=O
+  addAtom( 0.4 * ax, -2.3 * ax, 0,          'O', 2);          // 8: C-O(H or -)
+  // H on either COOH (neutral) or NH3+ (zwitterion) — always atom 9 for tracking
+  if (startState === 'zwitterion') {
+    addAtom(-0.2 * ax,  1.9 * ax, 0.6 * ax,  'H', 1);         // 9: 3rd H on NH3+
+  } else {
+    addAtom( 1.3 * ax, -2.3 * ax, 0,          'H', 1);        // 9: COOH-H (neutral form)
+  }
+
+  // Water shell around glycine
+  var waterTriplets = [];
+  var bOH = 0.96 * A, halfAng = 52.25 * Math.PI / 180;
+  var waterPositions = [
+    // Hydrate NH2 (above)
+    [-2.0, 2.8, 0],  [-1.0, 3.5, 0.5],
+    // Between NH2 and COOH (bridge water)
+    [2.5, -1.0, 0.5],
+    // Hydrate COOH
+    [2.0, -3.2, 0],  [-0.5, -3.8, 0.5],  [-2.8, -2.0, 0.5],
+    // Lateral
+    [3.0, 1.0, 0],  [-3.5, 0.5, 0],
+    // Out of plane
+    [0, 0, 2.5],  [0, -1, -2.5]
+  ];
+  waterPositions.forEach(function(p) {
+    var wAng = (p[0] * 7.3 + p[1] * 11.1 + p[2] * 3.7) % (2 * Math.PI);
+    var wOIdx = atoms.length;
+    addAtom(p[0] * ax, p[1] * ax, p[2] * ax, 'O', 2);
+    addAtom(p[0] * ax + bOH * Math.cos(wAng + halfAng), p[1] * ax + bOH * Math.sin(wAng + halfAng), p[2] * ax, 'H', 1);
+    addAtom(p[0] * ax + bOH * Math.cos(wAng - halfAng), p[1] * ax + bOH * Math.sin(wAng - halfAng), p[2] * ax, 'H', 1);
+    waterTriplets.push([wOIdx, wOIdx + 1, wOIdx + 2]);
+  });
+
+  window.USER_WATER_TRIPLETS = waterTriplets;
+  window.USER_BEND_K = 1.5;
+  // Highlight key bonds/distances: N-Htransfer, COOH-O-Htransfer, N-C(carb) across backbone
+  window.USER_BOND_PAIRS = [
+    [0, 9, "N⋯H_transfer:"],
+    [8, 9, "O⋯H_transfer:"],
+    [0, 6, "N-C_carbox:"]
+  ];
+
+  // Monitor: N-H(9) distance if proton transfers to N; O(8)-H(9) if stays on COOH
+  setInterval(function() {
+    if (typeof nucPos === 'undefined' || !nucPos[0] || !nucPos[8] || !nucPos[9]) return;
+    function dist(i, j) {
+      var dx = (nucPos[i][0] - nucPos[j][0]) * h;
+      var dy = (nucPos[i][1] - nucPos[j][1]) * h;
+      var dz = (nucPos[i][2] - nucPos[j][2]) * h;
+      return Math.sqrt(dx*dx + dy*dy + dz*dz);
+    }
+    var dNH = dist(0, 9);        // N - H_transfer
+    var dOH = dist(8, 9);        // O(carboxyl) - H_transfer
+    window._ooDist = 'H_transfer: O-H = ' + dOH.toFixed(2) + ' au (covalent if <2) | N-H = ' + dNH.toFixed(2) + ' au (zwitterion if <2)';
+  }, 500);
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  setInterval(function() {
+    if (typeof phaseSteps !== 'undefined' && phaseSteps > 5000 && typeof dynamicsEnabled !== 'undefined' && !dynamicsEnabled) {
+      window.dynamicsEnabled = true;
+      console.log('glycine: dynamics ON');
+    }
+  }, 500);
+  window.USER_FORCE_SCALE = 1.0;
+  setInterval(function() {
+    if (typeof nucStepCount !== 'undefined' && nucStepCount > 2000 && window.USER_FORCE_SCALE < 5) {
+      window.USER_FORCE_SCALE = 10.0;
+    }
+  }, 200);
+  window.USER_ARROW_SCALE = 50.0;
+  window.USER_TEMPERATURE_K = 0;
+  window.USER_LANGEVIN_GAMMA = 0.2;
+  window.USER_NUC_SUBSTEPS = 10;
+  window.USER_N_MOVE = 30;
+  window.USER_THERMAL_KICK = 0;
+  window.USER_ROT_SPEED = 0.005;
+  window.USER_GRADP_FORCE = true;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'C') return 0.3;
+    if (a.el === 'N') return 0.3;
+    if (a.el === 'O') return 0.4;
+    return 0;
+  });
+  window.INIT_ZEFF = 2;
+  console.log('Glycine in water: ' + atoms.length + ' atoms (10 solute + ' + (waterPositions.length * 3) + ' water)');
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

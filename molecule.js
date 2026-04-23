@@ -4675,9 +4675,16 @@ function draw() {
         return { sx: canvMid + rx*scale3, sy: canvMid + ry*scale3 };
       }
       stroke(255, 255, 0, 200); strokeWeight(2);
+      const bondMaxAu = window.USER_BOND_MAX_AU || 4.0;  // hide line when distance > this (au)
       for (let b = 0; b < bp.length; b++) {
         const a1 = bp[b][0], a2 = bp[b][1];
         if (_hid.indexOf(a1) >= 0 || _hid.indexOf(a2) >= 0) continue;
+        // Measure actual distance — if bond is broken (distance large), skip the line
+        const dx = (nucPos[a1][0] - nucPos[a2][0]) * hGrid;
+        const dy = (nucPos[a1][1] - nucPos[a2][1]) * hGrid;
+        const dz = (nucPos[a1][2] - nucPos[a2][2]) * hGrid;
+        const dAu = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        if (dAu > bondMaxAu) continue;
         const p1 = proj3D(a1), p2 = proj3D(a2);
         line(p1.sx, p1.sy, p2.sx, p2.sy);
       }
