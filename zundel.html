@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>Zundel cation H5O2+ — shared-proton dynamics</title>
+  <style>body { margin: 0; background: #000; color: #fff; font-family: monospace; }</style>
+</head><body>
+<div id="info" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.8);padding:10px;border:1px solid #333;border-radius:6px;max-width:440px;font-size:12px;z-index:100">
+  <div style="color:#ffa;font-weight:bold">Zundel cation H<sub>5</sub>O<sub>2</sub><sup>+</sup></div>
+  Two waters with a shared proton between them (O–H–O). Proton should oscillate between
+  both O's; equilibrium at the midpoint for symmetric Zundel or biased to one O for Eigen-like.
+  URL <b>?dOO=N</b> (au): O-O distance (default 4.8, experimental Zundel 4.6-5.0 au).
+</div>
+<script>
+(function() {
+  var gridN = 150, scr = 15, N2 = 75;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, el, Z) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  var urlD = parseFloat(new URLSearchParams(location.search).get('dOO'));
+  var dOO = isFinite(urlD) ? urlD : 4.8;
+  var halfD = dOO / 2;
+
+  // Symmetric Zundel: shared H at midpoint
+  var bOH = 0.96 * A, angW = 104.5 * Math.PI / 180;
+  // O1 on left, O2 on right; outer H's tilted away from shared H (avoiding collision)
+  addAtom(-halfD, 0, 0, 'O', 2);                                        // 0: O1
+  addAtom(-halfD - bOH * Math.sin(angW/2), bOH * Math.cos(angW/2), 0, 'H', 1);   // 1: O1-H (upper)
+  addAtom(-halfD - bOH * Math.sin(angW/2), -bOH * Math.cos(angW/2), 0, 'H', 1);  // 2: O1-H (lower)
+  addAtom(+halfD, 0, 0, 'O', 2);                                        // 3: O2
+  addAtom(+halfD + bOH * Math.sin(angW/2), bOH * Math.cos(angW/2), 0, 'H', 1);   // 4: O2-H (upper)
+  addAtom(+halfD + bOH * Math.sin(angW/2), -bOH * Math.cos(angW/2), 0, 'H', 1);  // 5: O2-H (lower)
+  addAtom(0, 0, 0, 'H', 1);                                              // 6: shared proton
+
+  // Bond highlights: the O-H_shared distances on both sides
+  window.USER_BOND_PAIRS = [
+    [0, 6, "O1-H_s:"],
+    [3, 6, "O2-H_s:"]
+  ];
+  window.USER_BOND_MAX_AU = 3.5;  // hide line if >3.5 au
+
+  // Monitor both O-H_shared distances; asymmetric = Eigen form, symmetric midpoint = Zundel
+  setInterval(function() {
+    if (typeof nucPos === 'undefined' || !nucPos[0] || !nucPos[3] || !nucPos[6]) return;
+    function dist(i, j) {
+      var dx = (nucPos[i][0] - nucPos[j][0]) * h;
+      var dy = (nucPos[i][1] - nucPos[j][1]) * h;
+      var dz = (nucPos[i][2] - nucPos[j][2]) * h;
+      return Math.sqrt(dx*dx + dy*dy + dz*dz);
+    }
+    var d1 = dist(0, 6), d2 = dist(3, 6), dOO_now = dist(0, 3);
+    var asym = d1 - d2;
+    window._ooDist = 'O1-H = ' + d1.toFixed(2) + ', O2-H = ' + d2.toFixed(2) + ', |Δ| = ' + Math.abs(asym).toFixed(2) + ', O-O = ' + dOO_now.toFixed(2);
+  }, 500);
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  setInterval(function() {
+    if (typeof phaseSteps !== 'undefined' && phaseSteps > 5000 && typeof dynamicsEnabled !== 'undefined' && !dynamicsEnabled) {
+      window.dynamicsEnabled = true;
+    }
+  }, 500);
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 50.0;
+  window.USER_TEMPERATURE_K = 0;
+  window.USER_LANGEVIN_GAMMA = 0.2;
+  window.USER_NUC_SUBSTEPS = 10;
+  window.USER_N_MOVE = 30;
+  window.USER_THERMAL_KICK = 0;
+  window.USER_ROT_SPEED = 0.005;
+  window.USER_GRADP_FORCE = true;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'O') return 0.6;
+    return 0;
+  });
+  window.INIT_ZEFF = 2;
+  console.log('Zundel H5O2+: dOO=' + dOO + ' au initial');
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
