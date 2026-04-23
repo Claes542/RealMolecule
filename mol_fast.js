@@ -114,6 +114,19 @@ struct P {
     const L = Math.hypot(v[0], v[1], v[2]) || 1;
     return `vec3<f32>(${(v[0]/L).toFixed(6)}, ${(v[1]/L).toFixed(6)}, ${(v[2]/L).toFixed(6)})`;
   }).join(', ');
+  const splitRotArr = nuclei.map(n => (n.split_rot || 0).toFixed(6)).join(', ');
+  const rInArr = nuclei.map(n => (n.r_in || 0).toFixed(6)).join(', ');
+  // Split-group ID: orbitals with same ID share SIC (treated as one shell).
+  // Auto-group split siblings at identical (i,j,k) with same split type.
+  const splitGroupArr = nuclei.map((n, idx) => {
+    if (!n.split || n.split === 'sphere') return idx;  // own group
+    // Find earliest index with same (i,j,k) and split type
+    for (let j = 0; j < idx; j++) {
+      const m = nuclei[j];
+      if (m.split === n.split && m.i === n.i && m.j === n.j && m.k === n.k) return j;
+    }
+    return idx;
+  }).join('u, ') + 'u';
   console.log("mol_fast SHELL_MODE=" + SHELL_MODE + ", R_OUT=[" + routArr + "], HS=[" + hsArr + "]");
 
   const updateWGSL = `
@@ -123,6 +136,9 @@ const HS = array<f32, ${NELEC}>(${hsArr});  // halfspace: -1 = i < midplane, +1 
 const SPLIT_TYPE = array<u32, ${NELEC}>(${splitTypeArr});  // 0=sphere, 2=hemi, 3=third, 4=tetra
 const SPLIT_IDX = array<u32, ${NELEC}>(${splitIdxArr});
 const SPLIT_AX = array<vec3<f32>, ${NELEC}>(${splitAxArr});
+const SPLIT_ROT = array<f32, ${NELEC}>(${splitRotArr});  // angular offset (rad) for 'third' sector boundaries
+const R_IN = array<f32, ${NELEC}>(${rInArr});  // inner-shell boundary: w forced to 1 for r < r_in
+const SPLIT_GROUP = array<u32, ${NELEC}>(${splitGroupArr});  // group id — orbitals with same id share SIC (one shell)
 const SPLIT_FIX = array<u32, ${NELEC}>(${splitFixArr});  // 1=enforce every step, 0=init only
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read> K: array<f32>;
@@ -188,6 +204,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       let t = clamp((r_m - edge) / (rc_m - edge), 0.0, 1.0);
       nw = min(nw, t * t * (3.0 - 2.0 * t));
     }
+    let rin_m = R_IN[m];  // kept for sector-skip check below
     if (ro_m > 0.0 && r_m > ro_m) {
       // Hard outer cutoff — orbital confined to r < ro_m (enforced every step).
       nw = select(0.0, nw, r_m <= ro_m + p.h);
@@ -195,6 +212,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // Enforce angular split (hemi/third/tetra) every step — keeps halves/sectors sharp.
     let s_type = SPLIT_TYPE[m];
     let s_fix = SPLIT_FIX[m];
+    // Skip angular enforcement within one grid cell of the origin (atan2 is ambiguous there).
+    // This keeps all split-sibling orbitals symmetric in the very core.
     if (s_type != 0u && s_fix == 1u) {
       let ax = SPLIT_AX[m];
       let rel = vec3<f32>(dxm, dym, dzm);
@@ -210,7 +229,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         if (abs(ax.z) < 0.9) { e1 = normalize(vec3<f32>(ax.y, -ax.x, 0.0)); }
         else                  { e1 = normalize(vec3<f32>(0.0, ax.z, -ax.y)); }
         let e2 = cross(ax, e1);
-        let theta = atan2(dot(pp, e2), dot(pp, e1));
+        var theta = atan2(dot(pp, e2), dot(pp, e1)) - SPLIT_ROT[m];
+        if (theta < -3.141592653589793) { theta = theta + 6.283185307179586; }
+        if (theta >  3.141592653589793) { theta = theta - 6.283185307179586; }
         let sector = u32(floor((theta + 3.141592653589793) / 2.094395102393195)) % 3u;
         inSector = (sector == sidx);
       } else if (s_type == 4u) {
@@ -247,14 +268,20 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   // V_Hartree_other (felt by electron m) = 2·(P_total - f_m·P_m)
   // where f_m = 1/N_m accounts for pair counting in multi-occupancy orbitals.
   var P_total_id: f32 = 0.0;
+  // P_group: sum of P over all orbitals sharing this orbital's SPLIT_GROUP (shared-SIC across split siblings).
+  var P_group_id: f32 = 0.0;
+  let my_group = SPLIT_GROUP[m];
   for (var n: u32 = 0u; n < ${NELEC}u; n++) {
-    P_total_id += Pi[n * p.S3 + id];
+    let Pn = Pi[n * p.S3 + id];
+    P_total_id += Pn;
+    if (SPLIT_GROUP[n] == my_group) { P_group_id += Pn; }
   }
   let selfN = p.rcs[m].y;
   // fm: fraction of P_m to subtract from V_felt for SIC. full_self=1 keeps all self-Hartree (fm=0) for multi-occ.
   let fm_multi = select(1.0 / selfN, 0.0, p.full_self > 0.5);
   let fm = select(1.0, fm_multi, selfN > 1.0);
-  let Vother = 2.0 * (P_total_id - fm * Pi[o + id]);
+  // Vother subtracts the group density (not just own P_m): split siblings treated as one shell.
+  let Vother = 2.0 * (P_total_id - fm * P_group_id);
 
   // Thomas-Fermi Pauli-like penalty: V_TF = alpha·ρ^(2/3), active only for multi-occupancy
   let rho_m = uc * uc;
@@ -823,7 +850,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   // Returns true if cell at (dx, dy, dz) relative to atom (r = distance, must be >0) is owned by
   // an orbital with given split_type, split_idx, split_axis. Default 'sphere' (no angular restriction).
-  function inSplit(dx, dy, dz, r, split, split_idx, split_axis) {
+  function inSplit(dx, dy, dz, r, split, split_idx, split_axis, split_rot) {
     if (split === 'sphere' || split === 1 || r < 1e-6) return true;
     const ax = split_axis || [1, 0, 0];
     const axLen = Math.hypot(ax[0], ax[1], ax[2]) || 1;
@@ -845,7 +872,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       const e2x = a1 * e1z - a2 * e1y, e2y = a2 * e1x - a0 * e1z, e2z = a0 * e1y - a1 * e1x;
       const pe1 = px * e1x + py * e1y + pz * e1z;
       const pe2 = px * e2x + py * e2y + pz * e2z;
-      const theta = Math.atan2(pe2, pe1);
+      let theta = Math.atan2(pe2, pe1) - (split_rot || 0);
+      if (theta < -Math.PI) theta += 2 * Math.PI;
+      if (theta >  Math.PI) theta -= 2 * Math.PI;
       const sector = Math.floor((theta + Math.PI) / (2 * Math.PI / 3)) % 3;
       return sector === split_idx;
     }
@@ -902,7 +931,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             const midI0 = (nuclei[0].i + nuclei[N_ATOMS - 1].i) / 2;
             const eligibleHS = (hsa === 0) || ((hsa > 0) === (i > midI0));
             // Split: check orbital's angular sector (sphere/hemi/third/tetra)
-            const eligibleSplit = inSplit(dx, dy, dz, r, nuclei[a].split, nuclei[a].split_idx, nuclei[a].split_axis);
+            const eligibleSplit = inSplit(dx, dy, dz, r, nuclei[a].split, nuclei[a].split_idx, nuclei[a].split_axis, nuclei[a].split_rot);
             if (eligibleR && eligibleHS && eligibleSplit && uWeighted > bestU) { bestU = uWeighted; bestM = a; }
           }
           Kd[id] = K_acc;
@@ -1300,6 +1329,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let moved = false;
     for (let a = 0; a < N_ATOMS; a++) {
       if (nuclei[a].Z <= 0) continue;
+      if (nuclei[a].fixed) continue;
       const m = nucMass[a];
       for (let d = 0; d < 3; d++) {
         nucVel[a][d] = NUC_DAMPING * (nucVel[a][d] + dt * nucForce[a][d] / m);
@@ -1456,6 +1486,24 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       }
     }
     text(distLines.join("  "), 5, 400);
+    // User-specified angle (USER_ANGLE_ATOMS = [center, arm1, arm2])
+    if (window.USER_ANGLE_ATOMS && window.USER_ANGLE_ATOMS.length >= 3) {
+      var aa = window.USER_ANGLE_ATOMS;
+      var c = nuclei[aa[0]], a1 = nuclei[aa[1]], a2 = nuclei[aa[2]];
+      if (c && a1 && a2) {
+        var v1x = (a1.i - c.i) * hv, v1y = (a1.j - c.j) * hv, v1z = (a1.k - c.k) * hv;
+        var v2x = (a2.i - c.i) * hv, v2y = (a2.j - c.j) * hv, v2z = (a2.k - c.k) * hv;
+        var d1 = Math.hypot(v1x, v1y, v1z);
+        var d2 = Math.hypot(v2x, v2y, v2z);
+        if (d1 > 0 && d2 > 0) {
+          var cosA = (v1x*v2x + v1y*v2y + v1z*v2z) / (d1 * d2);
+          cosA = Math.max(-1, Math.min(1, cosA));
+          var angleDeg = Math.acos(cosA) * 180 / Math.PI;
+          fill(255, 220, 150);
+          text("angle " + aa[1] + "-" + aa[0] + "-" + aa[2] + " = " + angleDeg.toFixed(1) + "°", 5, 388);
+        }
+      }
+    }
     // Dynamics status — on its own line (y=578) below the energy line (y=565)
     fill(dynamicsEnabled ? [0, 255, 0] : [150, 150, 150]);
     text("dyn=" + (dynamicsEnabled ? "ON" : "off") + "  SHELL=" + SHELL_MODE + "  R_OUT=[" + routArr + "]", 5, 578);

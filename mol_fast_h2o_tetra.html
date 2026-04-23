@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <title>H2O — 3-split (H to red, H to blue, green = lone pair), O fixed</title>
+  <style>body { margin: 0; background: #000; }</style>
+</head><body>
+<div id="loadStatus" style="color:#ff0;font-family:monospace;padding:20px;font-size:14px">HTML loaded, fetching solver…</div>
+<script>
+  window.onerror = function(msg, url, line, col, err) {
+    var pre = document.createElement('pre');
+    pre.style.cssText = 'color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
+    pre.textContent = 'ERROR: ' + msg + '\n  at ' + url + ':' + line + ':' + col +
+      (err && err.stack ? '\n\n' + err.stack : '');
+    document.body.insertBefore(pre, document.body.firstChild);
+  };
+  (function() {
+    var N = 200;
+    var urlScr = parseFloat(new URLSearchParams(location.search).get('scr'));
+    var scr = isFinite(urlScr) ? urlScr : 12;
+    var h = scr / N;
+    var N2 = Math.round(N / 2);
+
+    // H2O geometry: O-H = 1.814 au, H-O-H = 104.5°
+    var urlBond = parseFloat(new URLSearchParams(location.search).get('bond'));
+    var bond = isFinite(urlBond) ? urlBond : 1.814;
+    var urlAng = parseFloat(new URLSearchParams(location.search).get('ang'));
+    var ang = (isFinite(urlAng) ? urlAng : 104.5) * Math.PI / 180;
+    var hx = bond * Math.sin(ang / 2);
+    var hy = bond * Math.cos(ang / 2);
+    var dxCells = Math.round(hx / h);
+    var dyCells = Math.round(hy / h);
+
+    // 3-split around z-axis (no rotation). Sector centers in lab:
+    //   idx 0 → +x-y direction (RED slot)
+    //   idx 1 → +y direction (GREEN slot — lone pair)
+    //   idx 2 → -x-y direction (BLUE slot)
+    // Attach H's along the red (+x-y) and blue (-x-y) sector centers;
+    // leave green (+y) as the lone pair side.
+    window.USER_NN = N;
+    window.USER_SCREEN = scr;
+    window.USER_STEPS = 100000;
+    window.USER_SHELL_MODE = true;
+    window.USER_NUCLEI = [
+      { i: N2, j: N2, k: N2, Z: 3, rc: 0.5, z_init: 2.0, split: 'third', split_idx: 0, split_axis: [0, 0, 1], fixed: true },  // red: bond → H1 (+x-y)
+      { i: N2, j: N2, k: N2, Z: 0, rc: 0.5, z_init: 2.0, split: 'third', split_idx: 1, split_axis: [0, 0, 1], fixed: true },  // green: lone pair (+y)
+      { i: N2, j: N2, k: N2, Z: 0, rc: 0.5, z_init: 2.0, split: 'third', split_idx: 2, split_axis: [0, 0, 1], fixed: true },  // blue: bond → H2 (-x-y)
+      { i: N2 + dxCells, j: N2 - dyCells, k: N2, Z: 1, rc: 0.0 },  // H1 at (+x, -y)
+      { i: N2 - dxCells, j: N2 - dyCells, k: N2, Z: 1, rc: 0.0 },  // H2 at (-x, -y)
+    ];
+    window.USER_NORM_TARGETS = [1, 1, 1, 1, 1];
+    window.USER_DYNAMICS = true;  // H's free to move; O still fixed via `fixed: true`
+    window.USER_ANGLE_ATOMS = [0, 3, 4];  // O, H1, H2
+  })();
+
+  var status = document.getElementById('loadStatus');
+  var s = document.createElement('script');
+  s.src = 'mol_fast.js?t=' + Date.now();
+  s.onload = function() {
+    status.textContent += '\nmol_fast.js loaded';
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    p.onload = function() { status.textContent += '\np5.js loaded — simulation should start'; };
+    p.onerror = function() { status.textContent += '\nFAILED to load p5.js'; status.style.color = '#f44'; };
+    document.body.appendChild(p);
+  };
+  s.onerror = function() { status.textContent += '\nFAILED to load mol_fast.js'; status.style.color = '#f44'; };
+  document.body.appendChild(s);
+</script>
+</body></html>

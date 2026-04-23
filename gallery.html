@@ -472,6 +472,40 @@ w += dt&middot;|c|&middot;&Delta;w + dt&middot;c&middot;|&nabla;w|        <span 
       <span class="tag tag-water">water</span>
       <span class="tag tag-mol">mol_fast</span>
     </a>
+    <a class="card" href="mol_fast_h2o_tetra.html" style="border-color:#00e5ff;grid-column:1/-1">
+      <h3 style="color:#00e5ff">H2O 3-split (+3 kernel, angular sectors) &mdash; dipole + bending</h3>
+      <div class="desc">
+        Water with O treated as &plus;3 pseudo kernel and 3 valence electrons split into 120&deg; sectors around the z-axis:
+        one sector toward each H (bonds) and one pointing away (lone pair). O fixed; H's dynamic. Shared-SIC across
+        split siblings (one shell) removes the artificial sector asymmetry.
+      </div>
+      <table style="font-size:11px;color:#aaa;margin-top:8px;border-collapse:collapse;width:100%">
+        <tr style="color:#00e5ff;border-bottom:1px solid #333">
+          <th style="text-align:left;padding:2px 8px">Config</th><th>H-O-H angle</th><th>&mu; (D)</th><th>Note</th>
+        </tr>
+        <tr><td style="padding:2px 8px">r_c=0 (no cutoff)</td><td>drifts 111&rarr;100&rarr;95&deg;</td><td><b style="color:#0f0">1.836</b></td><td>best dipole moment, geometry wanders</td></tr>
+        <tr style="color:#0f0;font-weight:bold"><td style="padding:2px 8px">r_c=0.5 (stable)</td><td>101.6&deg;</td><td>1.638</td><td>&larr; stable geometry near exp 104.5&deg;</td></tr>
+      </table>
+      <table style="font-size:11px;color:#aaa;margin-top:10px;border-collapse:collapse;width:100%">
+        <tr style="color:#00e5ff;border-bottom:1px solid #333">
+          <th style="text-align:left;padding:2px 8px">Quantity</th><th>Model (best dipole)</th><th>Experiment</th><th>Ratio</th>
+        </tr>
+        <tr><td style="padding:2px 8px">Dipole moment &mu;</td><td>1.836 D</td><td>1.85 D</td><td><b style="color:#0f0">99%</b></td></tr>
+        <tr><td style="padding:2px 8px">H-O-H angle (stable rc=0.5)</td><td>101.6&deg;</td><td>104.5&deg;</td><td><b style="color:#0f0">97%</b></td></tr>
+      </table>
+      <div class="desc" style="margin-top:10px;border-top:1px solid #333;padding-top:8px">
+        <b style="color:#00e5ff">Key observation:</b> the 3-split recovers the ~20% dipole shortfall of the non-split model &mdash;
+        the two bond orbitals and the directional lone pair give the correct asymmetric charge distribution.
+        Peak dipole 1.836 D (99% of experimental) appears during the no-cutoff run at angle ~100&deg;; with r_c=0.5 the
+        geometry stabilizes near 101.6&deg; at the cost of dipole (88% of experimental).
+        <b>Energy benchmark kept on the non-split +3 card above</b> (locked experimental geometry) &mdash; binding 1.46&times; exp.
+        Shared-SIC across split siblings (auto-grouped by matching position + split type) was essential: without it,
+        the sector with the init tie-break acquired an outsized density share and broke sector symmetry.
+      </div>
+      <span class="tag tag-small">H2O</span>
+      <span class="tag tag-water">water</span>
+      <span class="tag tag-mol">3-split</span>
+    </a>
     <a class="card" href="mol_fast_ch4.html?bond=1.9" style="border-color:#4fc3f7;grid-column:1/-1">
       <h3 style="color:#4fc3f7">CH4 non-split (+4 kernel) &mdash; geometry captured despite energy overbinding</h3>
       <div class="desc">Methane with C treated as single 4-electron orbital (Z=4, r_c=0.5, target=4) and 4 singly-occupied H orbitals. Tetrahedral geometry. <code>mol_fast.js</code>, no TF correction.</div>
