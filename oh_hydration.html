@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>OH⁻ hydration — hydroxide anion + 2 waters</title>
+  <style>body { margin: 0; background: #000; }</style>
+</head><body>
+<div id="loadStatus" style="color:#ff0;font-family:monospace;padding:20px;font-size:14px">Loading…</div>
+<script>
+  window.onerror = function(msg, url, line, col, err) {
+    var pre = document.createElement('pre');
+    pre.style.cssText = 'color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
+    pre.textContent = 'ERROR: ' + msg + '\n  at ' + url + ':' + line + ':' + col;
+    document.body.insertBefore(pre, document.body.firstChild);
+  };
+  (function() {
+    var N = 140;
+    var scr = 14;
+    var h = scr / N;
+    var N2 = Math.round(N / 2);
+    var A = 1.8897;
+
+    // OH- = O (Z=1, target=2, net -1 contribution) + H (Z=1, target=1).
+    // Total: kernel +2, 3 electrons, net -1 ✓
+    // O at origin; H at +x 0.96 Å
+    var rOH = 0.96 * A;
+    var rOHcells = Math.round(rOH / h);
+    var rHB = 2.6 * A;  // OH⁻⋯HOH H-bond: O-O ~2.6 Å (strong)
+    var rHBcells = Math.round(rHB / h);
+
+    var nuclei = [
+      { i: N2, j: N2, k: N2, Z: 1, rc: 0.5, z_init: 2.0, split: 'sphere' },         // O of OH⁻ (target=2)
+      { i: N2 + rOHcells, j: N2, k: N2, Z: 1, rc: 0.0, z_init: 1.0, split: 'sphere' }   // H of OH⁻ (target=1)
+    ];
+    var targets = [2, 1];
+
+    // 2 waters H-bonded to OH⁻ via their H → OH⁻'s O. Place waters along ±y.
+    [+1, -1].forEach(function(sy) {
+      var oy = sy * rHBcells;
+      // Water O at (0, ±rHB, 0)
+      nuclei.push({ i: N2, j: N2 + oy, k: N2, Z: 2, rc: 0.0, z_init: 3.0, split: 'sphere' });
+      targets.push(1);
+      // H1 of water: pointing toward OH⁻'s O (back along -y toward origin)
+      nuclei.push({
+        i: N2,
+        j: N2 + sy * (rHBcells - rOHcells),
+        k: N2, Z: 1, rc: 0.0, z_init: 1.0, split: 'sphere'
+      });
+      targets.push(1);
+      // H2 of water: tangential, along +x
+      nuclei.push({
+        i: N2 + Math.round(rOHcells * 0.8),
+        j: N2 + sy * (rHBcells + Math.round(rOHcells * 0.3)),
+        k: N2, Z: 1, rc: 0.0, z_init: 1.0, split: 'sphere'
+      });
+      targets.push(1);
+    });
+
+    window.USER_NN = N;
+    window.USER_SCREEN = scr;
+    window.USER_STEPS = 50000;
+    window.USER_SHELL_MODE = true;
+    window.USER_NUCLEI = nuclei;
+    window.USER_NORM_TARGETS = targets;
+    window.USER_DYNAMICS = false;
+    console.log('OH- hydration: OH- + 2 waters, ' + nuclei.length + ' atoms total');
+  })();
+
+  var status = document.getElementById('loadStatus');
+  var s = document.createElement('script');
+  s.src = 'mol_fast.js?t=' + Date.now();
+  s.onload = function() {
+    status.textContent += '\nmol_fast.js loaded';
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    p.onload = function() { status.remove(); };
+    document.body.appendChild(p);
+  };
+  document.body.appendChild(s);
+</script>
+</body></html>
