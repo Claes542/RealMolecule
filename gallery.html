@@ -48,8 +48,8 @@ footer a { color: #4fc3f7; text-decoration: none; }
 
 <!-- REALQM REGIME MAP -->
 <div class="section">
-  <h2>RealQM &mdash; Where It Works, Where It Doesn't</h2>
-  <p class="desc">Mapping the regime of the reduced-kernel Voronoi-partition scheme. Tests below build up from atoms → bonds → H-bond networks → proteins, marking where the model captures real chemistry and where it runs into its limits.</p>
+  <h2>RealQM Snapshot Today</h2>
+  <p class="desc">Tests below build up from atoms → bonds → H-bond networks → proteins, marking where the model captures real chemistry and where it runs into its limits.</p>
   <div class="grid" style="grid-template-columns:1fr 1fr 1fr;gap:16px">
     <div class="card" style="border-color:#66bb6a;background:#0a1a0a;cursor:default">
       <h3 style="color:#66bb6a;font-size:15px">✓ Works cleanly</h3>
@@ -76,22 +76,56 @@ footer a { color: #4fc3f7; text-decoration: none; }
         <b>Binding energies</b> &mdash; ~1.5-2× experimental (qualitative only)
       </div>
     </div>
-    <div class="card" style="border-color:#ef5350;background:#1a0000;cursor:default">
-      <h3 style="color:#ef5350;font-size:15px">✗ Outside the regime</h3>
+    <div class="card" style="border-color:#ba68c8;background:#180a1a;cursor:default">
+      <h3 style="color:#ba68c8;font-size:15px">Protein folding &mdash; what is captured</h3>
       <div class="desc" style="line-height:1.6">
-        <b>Blind protein folding</b> &mdash; chignolin extended stays extended; dispersion missing<br>
-        <b>True anions (−1 charge)</b> &mdash; Cl&supminus;: loose electron delocalizes to nearest cation (fails reliably)<br>
-        <b>Van der Waals / dispersion</b> &mdash; mean-field can't capture r&supminus;6 attraction (fix: add D3-style correction)<br>
-        <b>Chemical-accuracy energies</b> &mdash; need correlation (DFT/CCSD(T) domain)<br>
-        <b>Spectroscopy</b> &mdash; vibrational modes need finer timestep than we resolve<br>
-        <b>Hydrophobic collapse</b> &mdash; cooperative many-body water entropy not captured at our scale<br>
-        <b>Cooperative folding</b> &mdash; needs all of the above to combine
+        <b>Peptide backbone integrity</b> &mdash; C-N peptide bond held at 1.33-1.5 Å with harmonic constraint (k=2 Ha/au&sup2;)<br>
+        <b>Backbone &ndash; water H-bonds</b> &mdash; formamide+H&sub2;O at 3.0 Å confirms peptide C=O solvation works<br>
+        <b>Secondary-structure H-bonds</b> &mdash; pairwise C=O⋯H-N recognition formation demonstrated in dimer and formamide tests<br>
+        <b>Directional dipole interactions</b> &mdash; favorable donor-acceptor orientation pulls partners in from 4 Å<br>
+        <b>Ion &ndash; residue coordination</b> &mdash; Na&sup+; shell around a charged center forms correctly (relevant to salt bridges and cofactors)<br>
+        <b>Bend-preserving water</b> &mdash; 104.5° pinned per water; H-bond network geometry realistic during folding dynamics<br>
+        <b>Local conformational fluctuation</b> &mdash; side chains and loops sample local basins freely<br>
+        <b>Reactive events at active sites</b> &mdash; proton transfer, acid/base chemistry can happen in place where the geometry is already close<br>
+        <b>What still requires biases</b>: blind collapse from extended state (no dispersion), hydrophobic aggregation (many-body water entropy), and full fold completion &mdash; the native contacts must be already near for finishing.
       </div>
     </div>
   </div>
   <p class="desc" style="margin-top:16px;font-size:12px;border-top:1px solid #222;padding-top:10px">
     <b>Bottom line</b>: RealQM is <b>fast reactive mean-field chemistry at protein scale</b>. Where reactions, structures and ion solvations dominate, it delivers qualitative-to-semi-quantitative results at ~10&#8308;× AIMD speed. Where dispersion, correlation, or cooperative many-body effects dominate, standard QM methods remain better. The niche: <b>what AIMD can't reach and classical MD can't include</b>.
   </p>
+</div>
+
+<!-- REALQM HIERARCHICAL MODEL -->
+<div class="section">
+  <h2>RealQM Hierarchical Model</h2>
+  <div class="grid" style="grid-template-columns:1fr">
+    <div class="card" style="border-color:#4fc3f7;background:#0a1824;cursor:default">
+      <div class="desc" style="line-height:1.7;font-size:13px;color:#ccc">
+        RealQM builds a hierarchy of atomic models from a basic parameter-free ab initio atomic model
+        in terms of pointwise nuclei surrounded by non-overlapping unit electron densities interacting
+        by Coulomb potentials (there is a corresponding nucleus model).
+        <br><br>
+        <b style="color:#4fc3f7">Level 1</b> &mdash; RealQM describes ab initio an atom as a nucleus of charge Z surrounded by N unit
+        electron densities organized into a system of non-overlapping inner shells surrounded by an
+        outermost shell containing valence electrons as primary actors in formation of molecules as
+        collections of atoms, all organized from a minimal energy packing principle.
+        <br><br>
+        <b style="color:#4fc3f7">Level 2</b> &mdash; The inner electron shells are homogenized into spherically symmetric densities
+        of total charge matching total number of electrons in the shell.
+        <br><br>
+        <b style="color:#4fc3f7">Level 3</b> &mdash; All inner shells together with the nucleus are replaced by a pseudo nucleus
+        of certain charge and radius, thus describing an atom as a pseudo kernel with outer valence
+        shell, leaving an atom model in terms of 1&ndash;4 valence electrons.
+        <br><br>
+        <b style="color:#4fc3f7">Level 4</b> &mdash; Molecules as collections of Level-3 atoms.
+        <br><br>
+        The model on a level is determined by comparison with the prior level and observation.
+        Altogether a hierarchy of models starting from a parameter-free ab initio model with successive
+        reduction within model or by observation.
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- TOP LINKS -->
