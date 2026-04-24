@@ -46,6 +46,54 @@ footer a { color: #4fc3f7; text-decoration: none; }
 
 <div class="warn">Requires WebGPU: Chrome 113+, Edge 113+, or Safari 17+. Large molecules need a modern GPU with ~1 GB memory.</div>
 
+<!-- REALQM REGIME MAP -->
+<div class="section">
+  <h2>RealQM &mdash; Where It Works, Where It Doesn't</h2>
+  <p class="desc">Mapping the regime of the reduced-kernel Voronoi-partition scheme. Tests below build up from atoms → bonds → H-bond networks → proteins, marking where the model captures real chemistry and where it runs into its limits.</p>
+  <div class="grid" style="grid-template-columns:1fr 1fr 1fr;gap:16px">
+    <div class="card" style="border-color:#66bb6a;background:#0a1a0a;cursor:default">
+      <h3 style="color:#66bb6a;font-size:15px">✓ Works cleanly</h3>
+      <div class="desc" style="line-height:1.6">
+        <b>Atoms</b> &mdash; Li&ndash;Rn energies within ~1% via shell-split model<br>
+        <b>Diatomics</b> &mdash; H&sub2; E<sub>bind</sub>=-0.17 Ha matches exp<br>
+        <b>Molecules</b> &mdash; H&sub2;O, NH&sub3;, CH&sub4;: dipole 80-99% exp, angle &plusmn;5%<br>
+        <b>H-bond pairwise</b> &mdash; water dimer, formamide+H&sub2;O from 4 Å form H-bond at correct distance<br>
+        <b>Cyclic tetramer</b> &mdash; O-O at 3.0 Å (exp 2.8)<br>
+        <b>Zundel H&sub5;O&sub2;&sup+;</b> &mdash; symmetric shared proton stable<br>
+        <b>Ion solvation</b> &mdash; Na&sup+;(H&sub2;O)&sub6; octahedral shell at 2.37 Å (exp 2.40)<br>
+        <b>Reactive chemistry</b> &mdash; proton transfer (HF/H&sub2;O, HCl/NH&sub3;), salt dissolution (NaCl)<br>
+        <b>Dynamics at scale</b> &mdash; 216-water ice melting, water under shear, all at ns timescales unreachable by AIMD
+      </div>
+    </div>
+    <div class="card" style="border-color:#ff9800;background:#1a1000;cursor:default">
+      <h3 style="color:#ff9800;font-size:15px">◐ Partial / with caveats</h3>
+      <div class="desc" style="line-height:1.6">
+        <b>Peptides with bond constraints</b> &mdash; Gly-Gly backbone intact (C-N = 1.49 Å with harmonic bonds). Needs experimental r&sub;0; not pure ab initio.<br>
+        <b>β-turn tetrapeptide</b> &mdash; chain curls slowly, doesn't fully close (no cooperative driver)<br>
+        <b>Glycine zwitterion</b> &mdash; COOH deprotonates ✓ but NH&sub;3&sup+; doesn't form (charge stabilization weak)<br>
+        <b>Proton chain cascade</b> &mdash; chain structure OK, clean Grotthuss hops hard to track<br>
+        <b>Short-range stability</b> &mdash; Na&sup+; shell recovers from compression, but slowly (Pauli floor is weak)<br>
+        <b>Binding energies</b> &mdash; ~1.5-2× experimental (qualitative only)
+      </div>
+    </div>
+    <div class="card" style="border-color:#ef5350;background:#1a0000;cursor:default">
+      <h3 style="color:#ef5350;font-size:15px">✗ Outside the regime</h3>
+      <div class="desc" style="line-height:1.6">
+        <b>Blind protein folding</b> &mdash; chignolin extended stays extended; dispersion missing<br>
+        <b>True anions (−1 charge)</b> &mdash; Cl&supminus;: loose electron delocalizes to nearest cation (fails reliably)<br>
+        <b>Van der Waals / dispersion</b> &mdash; mean-field can't capture r&supminus;6 attraction (fix: add D3-style correction)<br>
+        <b>Chemical-accuracy energies</b> &mdash; need correlation (DFT/CCSD(T) domain)<br>
+        <b>Spectroscopy</b> &mdash; vibrational modes need finer timestep than we resolve<br>
+        <b>Hydrophobic collapse</b> &mdash; cooperative many-body water entropy not captured at our scale<br>
+        <b>Cooperative folding</b> &mdash; needs all of the above to combine
+      </div>
+    </div>
+  </div>
+  <p class="desc" style="margin-top:16px;font-size:12px;border-top:1px solid #222;padding-top:10px">
+    <b>Bottom line</b>: RealQM is <b>fast reactive mean-field chemistry at protein scale</b>. Where reactions, structures and ion solvations dominate, it delivers qualitative-to-semi-quantitative results at ~10&#8308;× AIMD speed. Where dispersion, correlation, or cooperative many-body effects dominate, standard QM methods remain better. The niche: <b>what AIMD can't reach and classical MD can't include</b>.
+  </p>
+</div>
+
 <!-- TOP LINKS -->
 <div class="section">
   <div class="grid">

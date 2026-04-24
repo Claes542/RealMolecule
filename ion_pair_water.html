@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>Na⁺ Cl⁻ ion pair in water</title>
+  <style>body { margin: 0; background: #000; color: #fff; font-family: monospace; }</style>
+</head><body>
+<div id="info" style="position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.8);padding:10px;border:1px solid #333;border-radius:6px;max-width:440px;font-size:12px;z-index:100">
+  <div style="color:#ffa;font-weight:bold">Na⁺ + Cl⁻ ion pair in water</div>
+  URL <b>?dNaCl=N</b> (Å): Na-Cl starting distance. Start as CIP (3 Å), SShIP (5 Å), or
+  SSIP (7 Å). Watch if the pair stays associated or separates under dynamics + water shell.<br>
+  <b>Caveat</b>: reduced kernel gives each atom formal +1 model charge. Cl here is Z=2 (ghost-like anion
+  surrogate) — attractive via electronic polarization, not a true −1.
+</div>
+<script>
+(function() {
+  var gridN = 200, scr = 24, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, el, Z) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  var urlD = parseFloat(new URLSearchParams(location.search).get('dNaCl'));
+  var dNaCl = isFinite(urlD) ? urlD : 3.0;  // Å, 3 = CIP, 5 = SShIP, 7 = SSIP
+  var halfD = dNaCl * A / 2;
+
+  // Na+: Z=2 kernel + 1 electron → net +1 model charge
+  var naIdx = atoms.length;
+  addAtom(-halfD, 0, 0, 'Na', 2);
+  // Cl-: two co-located slots (Z=1 + Z=0) with 2 electrons → net -1 model charge
+  var clIdx = atoms.length;
+  addAtom(+halfD, 0, 0, 'Cl', 1);     // kernel +1 slot
+  var clExtraIdx = atoms.length;
+  addAtom(+halfD, 0, 0, 'Cl', 0);     // ghost slot with extra electron
+
+  // Water shell around the pair — 20 waters roughly filling a sphere of ~6 Å
+  var waterTriplets = [];
+  var bOH = 0.96 * A;
+  var waterPositions = [];
+  for (var r = 3.5; r <= 6.5; r += 1.5) {
+    for (var th = 0; th < 2 * Math.PI; th += Math.PI / 4) {
+      for (var ph = Math.PI / 4; ph < Math.PI; ph += Math.PI / 3) {
+        waterPositions.push([r * Math.sin(ph) * Math.cos(th), r * Math.sin(ph) * Math.sin(th), r * Math.cos(ph)]);
+      }
+    }
+  }
+  // Keep 20 waters, filter too close to ions
+  var kept = [];
+  waterPositions.forEach(function(p) {
+    var dNa = Math.sqrt(Math.pow(p[0] + dNaCl/2, 2) + p[1]*p[1] + p[2]*p[2]);
+    var dCl = Math.sqrt(Math.pow(p[0] - dNaCl/2, 2) + p[1]*p[1] + p[2]*p[2]);
+    if (dNa > 2.5 && dCl > 2.5 && kept.length < 20) kept.push(p);
+  });
+  kept.forEach(function(p) {
+    var wAng = (p[0] * 7.3 + p[1] * 11.1 + p[2] * 3.7) % (2 * Math.PI);
+    var idx = atoms.length;
+    addAtom(p[0] * A, p[1] * A, p[2] * A, 'O', 2);
+    addAtom(p[0] * A + bOH * Math.cos(wAng + 0.9), p[1] * A + bOH * Math.sin(wAng + 0.9), p[2] * A, 'H', 1);
+    addAtom(p[0] * A + bOH * Math.cos(wAng - 0.9), p[1] * A + bOH * Math.sin(wAng - 0.9), p[2] * A, 'H', 1);
+    waterTriplets.push([idx, idx + 1, idx + 2]);
+  });
+
+  window.USER_WATER_TRIPLETS = waterTriplets;
+  window.USER_BEND_K = 1.5;
+
+  window.USER_BOND_PAIRS = [[naIdx, clIdx, "Na-Cl:"]];
+  window.USER_BOND_MAX_AU = 16.0;
+
+  setInterval(function() {
+    if (typeof nucPos === 'undefined' || !nucPos[naIdx] || !nucPos[clIdx]) return;
+    var dx = (nucPos[naIdx][0] - nucPos[clIdx][0]) * h;
+    var dy = (nucPos[naIdx][1] - nucPos[clIdx][1]) * h;
+    var dz = (nucPos[naIdx][2] - nucPos[clIdx][2]) * h;
+    var d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+    window._ooDist = 'Na-Cl = ' + d.toFixed(2) + ' au (' + (d/A).toFixed(2) + ' Å)  [CIP~3, SShIP~5, SSIP~7 Å]';
+  }, 500);
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  setInterval(function() {
+    if (typeof phaseSteps !== 'undefined' && phaseSteps > 5000 && typeof dynamicsEnabled !== 'undefined' && !dynamicsEnabled) {
+      window.dynamicsEnabled = true;
+    }
+  }, 500);
+  window.USER_FORCE_SCALE = 1.0;
+  setInterval(function() {
+    if (typeof nucStepCount !== 'undefined' && nucStepCount > 2000 && window.USER_FORCE_SCALE < 5) {
+      window.USER_FORCE_SCALE = 10.0;
+    }
+  }, 200);
+  window.USER_ARROW_SCALE = 30.0;
+  window.USER_TEMPERATURE_K = 0;
+  window.USER_LANGEVIN_GAMMA = 0.2;
+  window.USER_NUC_SUBSTEPS = 10;
+  window.USER_N_MOVE = 30;
+  window.USER_THERMAL_KICK = 0;
+  window.USER_ROT_SPEED = 0.005;
+  window.USER_GRADP_FORCE = true;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'O') return 0.6;
+    if (a.el === 'Na' || a.el === 'Cl') return 0.4;
+    return 0;
+  });
+  window.INIT_ZEFF = 2;
+  console.log('Na+Cl- in water: d_NaCl = ' + dNaCl + ' Å initial, ' + kept.length + ' waters');
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
