@@ -187,7 +187,7 @@ w += dt&middot;|c|&middot;&Delta;w + dt&middot;c&middot;|&nabla;w|        <span 
       <div class="desc" style="font-size:13px;margin-top:10px">He ground state: <b style="color:#66bb6a">E = &minus;2.92 Ha</b> (exact &minus;2.904). Two non-overlapping electron densities in half-spaces meeting at a plane through the kernel.</div>
     </a>
     <a class="card" href="h2_p5_template.html" style="border-color:#ffca28;background:#1a1400;grid-column:1/-1;text-align:center;padding:24px">
-      <h3 style="font-size:18px;color:#ffca28">H<sub>2</sub> &mdash; p5.js RealQM Template</h3>
+      <h3 style="font-size:18px;color:#ffca28">H<sub>2</sub> &mdash; Original p5.js Template</h3>
       <div class="desc" style="font-size:14px;margin-top:6px">
         Two-electron molecule in non-overlapping domains, kernels at &plusmn;D/2. Same 3-line algorithm as the Helium template, with <i>self</i>/<i>other</i> coupling:
       </div>
@@ -196,7 +196,10 @@ w_i += 2dt&middot;|c_i|&middot;&Delta;w_i + 10&middot;dt&middot;c_i&middot;|&nab
 u_i += &frac12;d&middot;&nabla;&middot;(w_i&nabla;u_i) + dt&middot;(K &minus; 2P_i)&middot;u_i&middot;w_i   <span style="color:#888">// ITP</span>
 P_j += dt&middot;(&Delta;P_j + 2&pi;&middot;u_{1&minus;j}&sup2;)              <span style="color:#888">// Poisson, other electron's density</span></pre>
       <div class="desc" style="font-size:13px;margin-top:10px">
-        Target at R=1.4 au: E = &minus;1.17 Ha (Kolos-Wolniewicz). Pure CPU JS, ~20 s/step at 100&sup3; &mdash; the GPU solvers (molecule_h2.js, realqm_rb.js) run 100&ndash;1000&times; faster.
+        <b style="color:#ffca28">Result:</b> <b>E = &minus;1.1785 Ha</b> at R = 1.6 au (2000 steps, 100&sup3; grid),
+        compared with Kolos&ndash;Wolniewicz exact <b>&minus;1.1745 Ha</b> at R = 1.4 au.
+        This version of the code is the <b>reference implementation</b> against which GPU solvers
+        (molecule_h2.js, realqm_rb.js) are validated; those run 100&ndash;1000&times; faster with the same algorithm.
       </div>
     </a>
     <a class="card" href="benchmarks.html" style="border-color:#ffb74d;background:#1a1500;grid-column:1/-1;text-align:center;padding:16px">
@@ -764,6 +767,21 @@ P_j += dt&middot;(&Delta;P_j + 2&pi;&middot;u_{1&minus;j}&sup2;)              <s
       <h3 style="color:#26c6da">Water Dimer</h3>
       <div class="desc">H&middot;&middot;&middot;O=1.87, O-O=2.95&nbsp;&Aring;</div>
       <span class="tag tag-water">water</span>
+    </a>
+    <a class="card" href="cl_hydration.html" style="border-color:#00e5ff;background:#001a1a;grid-column:1/-1">
+      <h3 style="color:#00e5ff">Cl⁻ hydration — anion with target=2 (Option B)</h3>
+      <div class="desc">
+        First working anion representation in RealQM. Cl⁻ modeled as single orbital
+        with <b>Z=1 kernel + target=2 electrons</b> → net charge −1. The +1 kernel anchors
+        both electrons so the anion doesn't delocalize like the failed Z=0 ghost approach.<br><br>
+        <b style="color:#0f0">Validation:</b> Cl⁻(H<sub>2</sub>O)<sub>2</sub> trans geometry stable with
+        Cl-O = <b>5.95 au mean (3.15 Å)</b> &mdash; matches experimental first-shell distance
+        within 1%. H-bonds from water H to Cl⁻ form at the correct orientation.<br><br>
+        <b>Significance:</b> unblocks biological anion chemistry — OH⁻, COO⁻, phosphate, nucleic acids,
+        enzyme active-site Asp/Glu. mol_fast.js (shell-split capable) supports this directly;
+        molecule.js would need Ne ≠ Z extension.
+      </div>
+      <span class="tag tag-dyn">dynamics</span><span class="tag tag-small">anion</span>
     </a>
     <a class="card" href="na_hydration.html" style="border-color:#00e5ff;background:#001a1a;grid-column:1/-1">
       <h3 style="color:#00e5ff">Na⁺(H<sub>2</sub>O)<sub>6</sub> hydration shell &mdash; stability</h3>

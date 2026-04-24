@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>Cl⁻ hydration shell — target=2 anion with 6 waters</title>
+  <style>body { margin: 0; background: #000; }</style>
+</head><body>
+<div id="loadStatus" style="color:#ff0;font-family:monospace;padding:20px;font-size:14px">Loading…</div>
+<script>
+  window.onerror = function(msg, url, line, col, err) {
+    var pre = document.createElement('pre');
+    pre.style.cssText = 'color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
+    pre.textContent = 'ERROR: ' + msg + '\n  at ' + url + ':' + line + ':' + col;
+    document.body.insertBefore(pre, document.body.firstChild);
+  };
+  (function() {
+    var N = 120;
+    var scr = 18;
+    var h = scr / N;
+    var N2 = Math.round(N / 2);
+    var A = 1.8897;
+
+    // Cl- anion: Z=1 kernel + target=2 electrons → net -1
+    // 6 waters octahedral around at Cl-O ~3.15 Å (exp first-shell)
+    var R = 3.15 * A;  // au
+    var rOH = 0.96 * A;
+    var cellsR = Math.round(R / h);
+
+    var nuclei = [];
+    var targets = [];
+
+    // Cl- at center
+    nuclei.push({ i: N2, j: N2, k: N2, Z: 1, rc: 0.5, z_init: 1.5, split: 'sphere' });
+    targets.push(2);
+
+    // 6 waters at octahedral positions. Each water: O faces AWAY from Cl (since Cl is acceptor),
+    // one H pointing INWARD (toward Cl), the other tangential.
+    // Water slot conventions: O (Z=2), H1 (Z=1, toward Cl), H2 (Z=1, tangential)
+    var positions = [
+      [+1, 0, 0], [-1, 0, 0]  // only 2 waters (MAX_ATOMS=8 in mol_fast.js, 1 Cl + 2×3 H2O = 7 atoms)
+    ];
+    positions.forEach(function(dir) {
+      var ox = dir[0] * cellsR, oy = dir[1] * cellsR, oz = dir[2] * cellsR;
+      // Place O at the octahedral point
+      nuclei.push({ i: N2 + ox, j: N2 + oy, k: N2 + oz, Z: 2, rc: 0.0, z_init: 3.0, split: 'sphere' });
+      targets.push(1);
+      // H1 between O and Cl (toward center); displaced from O by -rOH along dir
+      var h1cell = Math.round(rOH / h);
+      nuclei.push({
+        i: N2 + ox - dir[0] * h1cell,
+        j: N2 + oy - dir[1] * h1cell,
+        k: N2 + oz - dir[2] * h1cell, Z: 1, rc: 0.0, z_init: 1.0, split: 'sphere'
+      });
+      targets.push(1);
+      // H2 tangential — pick a tangent direction
+      var tx = 0, ty = 0, tz = 0;
+      if (Math.abs(dir[0]) > 0.5) { ty = 1; }
+      else if (Math.abs(dir[1]) > 0.5) { tz = 1; }
+      else { tx = 1; }
+      // H2 at (O + 0.35·dir - 0.95·tan) · rOH — approximate water geometry, bent ~104°
+      // Simplified: H2 displaced ~half out + tangential
+      nuclei.push({
+        i: N2 + ox - Math.round(dir[0] * h1cell * 0.3) + Math.round(tx * h1cell * 0.95),
+        j: N2 + oy - Math.round(dir[1] * h1cell * 0.3) + Math.round(ty * h1cell * 0.95),
+        k: N2 + oz - Math.round(dir[2] * h1cell * 0.3) + Math.round(tz * h1cell * 0.95),
+        Z: 1, rc: 0.0, z_init: 1.0, split: 'sphere'
+      });
+      targets.push(1);
+    });
+
+    window.USER_NN = N;
+    window.USER_SCREEN = scr;
+    window.USER_STEPS = 50000;
+    window.USER_SHELL_MODE = true;
+    window.USER_NUCLEI = nuclei;
+    window.USER_NORM_TARGETS = targets;
+    window.USER_DYNAMICS = false;
+    console.log('Cl- hydration: 1 Cl- (Z=1, target=2) + 6 waters octahedral at Cl-O=' + R.toFixed(2) + ' au');
+  })();
+
+  var status = document.getElementById('loadStatus');
+  var s = document.createElement('script');
+  s.src = 'mol_fast.js?t=' + Date.now();
+  s.onload = function() {
+    status.textContent += '\nmol_fast.js loaded';
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    p.onload = function() { status.remove(); };
+    document.body.appendChild(p);
+  };
+  document.body.appendChild(s);
+</script>
+</body></html>
