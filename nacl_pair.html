@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>Na⁺ + Cl⁻ ion pair (proper anion) with 2 waters</title>
+  <style>body { margin: 0; background: #000; }</style>
+</head><body>
+<div id="loadStatus" style="color:#ff0;font-family:monospace;padding:20px;font-size:14px">Loading…</div>
+<script>
+  window.onerror = function(msg, url, line, col, err) {
+    var pre = document.createElement('pre');
+    pre.style.cssText = 'color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
+    pre.textContent = 'ERROR: ' + msg + '\n  at ' + url + ':' + line + ':' + col;
+    document.body.insertBefore(pre, document.body.firstChild);
+  };
+  (function() {
+    var N = 150;
+    var scr = 16;
+    var h = scr / N;
+    var N2 = Math.round(N / 2);
+    var A = 1.8897;
+
+    var urlD = parseFloat(new URLSearchParams(location.search).get('dNaCl'));
+    var dNaCl = isFinite(urlD) ? urlD : 3.0;  // Å; 3 = CIP, 5 = SShIP
+    var halfD = dNaCl * A / 2;
+    var halfCells = Math.round(halfD / h);
+
+    // Na+ at -x, Cl- at +x
+    var nuclei = [
+      { i: N2 - halfCells, j: N2, k: N2, Z: 2, rc: 0.4, z_init: 2.0, split: 'sphere' },  // Na+
+      { i: N2 + halfCells, j: N2, k: N2, Z: 1, rc: 0.5, z_init: 1.5, split: 'sphere' }   // Cl-
+    ];
+    var targets = [1, 2];  // Na+ = 1e, Cl- = 2e (net -1)
+
+    // 2 waters flanking, above and below (y-direction)
+    var rOH = 0.96 * A, yOff = 3.5 * A;
+    var yCells = Math.round(yOff / h);
+    var rOHcells = Math.round(rOH / h);
+    [+1, -1].forEach(function(sy) {
+      // O above/below the Na-Cl axis
+      nuclei.push({ i: N2, j: N2 + sy * yCells, k: N2, Z: 2, rc: 0.0, z_init: 3.0, split: 'sphere' });
+      targets.push(1);
+      nuclei.push({ i: N2 - Math.round(rOHcells * 0.6), j: N2 + sy * (yCells - Math.round(rOHcells * 0.3)), k: N2, Z: 1, rc: 0.0, z_init: 1.0, split: 'sphere' });
+      targets.push(1);
+      nuclei.push({ i: N2 + Math.round(rOHcells * 0.6), j: N2 + sy * (yCells - Math.round(rOHcells * 0.3)), k: N2, Z: 1, rc: 0.0, z_init: 1.0, split: 'sphere' });
+      targets.push(1);
+    });
+
+    window.USER_NN = N;
+    window.USER_SCREEN = scr;
+    window.USER_STEPS = 50000;
+    window.USER_SHELL_MODE = true;
+    window.USER_NUCLEI = nuclei;
+    window.USER_NORM_TARGETS = targets;
+    window.USER_DYNAMICS = true;
+    console.log('Na+Cl- pair: d_NaCl=' + dNaCl + ' A initial, ' + nuclei.length + ' atoms');
+  })();
+
+  var status = document.getElementById('loadStatus');
+  var s = document.createElement('script');
+  s.src = 'mol_fast.js?t=' + Date.now();
+  s.onload = function() {
+    status.textContent += '\nmol_fast.js loaded';
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    p.onload = function() { status.remove(); };
+    document.body.appendChild(p);
+  };
+  document.body.appendChild(s);
+</script>
+</body></html>
