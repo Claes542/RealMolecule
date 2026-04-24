@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>Na⁺ hydration shell — octahedral assembly</title>
+  <style>body { margin: 0; background: #000; color: #fff; font-family: monospace; }</style>
+</head><body>
+<div id="info" style="position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.8);padding:10px;border:1px solid #333;border-radius:6px;max-width:440px;font-size:12px;z-index:100">
+  <div style="color:#ffa;font-weight:bold">Na⁺(H<sub>2</sub>O)<sub>6</sub> hydration shell</div>
+  6 waters around Na⁺ with O's pointing toward the cation.
+  Experimental Na-O distance: ~2.4 Å (4.5 au). Watch if octahedral shell stays intact.<br>
+  URL <b>?R=N</b> (au) = initial Na-O distance.
+</div>
+<script>
+(function() {
+  var gridN = 180, scr = 22, N2 = 90;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, el, Z) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  // Na+ at center: Z=2 in reduced model (kernel + 1 remaining electron → net +1 charge)
+  var naIdx = atoms.length;
+  addAtom(0, 0, 0, 'Na', 2);
+
+  var urlR = parseFloat(new URLSearchParams(location.search).get('R'));
+  var R = isFinite(urlR) ? urlR : 4.5;  // Na-O distance in au
+
+  var waterTriplets = [];
+  var bOH = 0.96 * A;
+  var angH = 52.25 * Math.PI / 180;
+
+  // 6 octahedral water positions; each water's O points at Na+, H's tilted away
+  var positions = [
+    [+R, 0, 0, -1, 0, 0],    // +x: O faces -x (toward Na+)
+    [-R, 0, 0, +1, 0, 0],    // -x: O faces +x
+    [0, +R, 0, 0, -1, 0],    // +y
+    [0, -R, 0, 0, +1, 0],
+    [0, 0, +R, 0, 0, -1],    // +z
+    [0, 0, -R, 0, 0, +1]
+  ];
+  positions.forEach(function(p) {
+    var ox = p[0], oy = p[1], oz = p[2];
+    // Tangent direction (a perpendicular to the Na-O direction) for H spacing
+    // Use the last 3 entries as the "from O toward Na" direction
+    var dirX = p[3], dirY = p[4], dirZ = p[5];
+    // H's sit on opposite side from Na, tilted ±perp
+    // Simplify: for +x water, H's at (+x +small, 0, ±bOH·cos(angH))
+    var oIdx = atoms.length;
+    addAtom(ox, oy, oz, 'O', 2);
+    if (Math.abs(dirX) > 0.5) {
+      addAtom(ox - dirX * bOH * Math.sin(angH), 0 + bOH * Math.cos(angH), 0, 'H', 1);
+      addAtom(ox - dirX * bOH * Math.sin(angH), 0 - bOH * Math.cos(angH), 0, 'H', 1);
+    } else if (Math.abs(dirY) > 0.5) {
+      addAtom(0 + bOH * Math.cos(angH), oy - dirY * bOH * Math.sin(angH), 0, 'H', 1);
+      addAtom(0 - bOH * Math.cos(angH), oy - dirY * bOH * Math.sin(angH), 0, 'H', 1);
+    } else {
+      addAtom(0 + bOH * Math.cos(angH), 0, oz - dirZ * bOH * Math.sin(angH), 'H', 1);
+      addAtom(0 - bOH * Math.cos(angH), 0, oz - dirZ * bOH * Math.sin(angH), 'H', 1);
+    }
+    waterTriplets.push([oIdx, oIdx + 1, oIdx + 2]);
+  });
+
+  window.USER_WATER_TRIPLETS = waterTriplets;
+  window.USER_BEND_K = 1.5;
+
+  // Highlight all 6 Na-O distances
+  window.USER_BOND_PAIRS = waterTriplets.map(function(t, i) { return [naIdx, t[0], "Na-O" + (i+1) + ":"]; });
+  window.USER_BOND_MAX_AU = 8.0;
+
+  // Monitor mean Na-O distance (first shell coordination)
+  setInterval(function() {
+    if (typeof nucPos === 'undefined' || !nucPos[naIdx]) return;
+    function dist(i, j) {
+      if (!nucPos[i] || !nucPos[j]) return 0;
+      var dx = (nucPos[i][0] - nucPos[j][0]) * h;
+      var dy = (nucPos[i][1] - nucPos[j][1]) * h;
+      var dz = (nucPos[i][2] - nucPos[j][2]) * h;
+      return Math.sqrt(dx*dx + dy*dy + dz*dz);
+    }
+    var ds = waterTriplets.map(function(t) { return dist(naIdx, t[0]); });
+    var mean = ds.reduce(function(s,x){return s+x;},0) / ds.length;
+    var minD = Math.min.apply(null, ds), maxD = Math.max.apply(null, ds);
+    window._ooDist = 'Na-O: mean=' + mean.toFixed(2) + ' [' + minD.toFixed(2) + '-' + maxD.toFixed(2) + '] au (target 4.5)';
+  }, 500);
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  setInterval(function() {
+    if (typeof phaseSteps !== 'undefined' && phaseSteps > 5000 && typeof dynamicsEnabled !== 'undefined' && !dynamicsEnabled) {
+      window.dynamicsEnabled = true;
+    }
+  }, 500);
+  window.USER_FORCE_SCALE = 1.0;
+  setInterval(function() {
+    if (typeof nucStepCount !== 'undefined' && nucStepCount > 2000 && window.USER_FORCE_SCALE < 20) {
+      window.USER_FORCE_SCALE = 50.0;
+    }
+  }, 200);
+  window.USER_ARROW_SCALE = 30.0;
+  window.USER_TEMPERATURE_K = 0;
+  window.USER_LANGEVIN_GAMMA = 0.2;
+  window.USER_NUC_SUBSTEPS = 10;
+  window.USER_N_MOVE = 30;
+  window.USER_THERMAL_KICK = 0;
+  window.USER_ROT_SPEED = 0.005;
+  window.USER_GRADP_FORCE = true;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'O') return 0.6;
+    if (a.el === 'Na') return 0.4;
+    return 0;
+  });
+  window.INIT_ZEFF = 2;
+  console.log('Na+(H2O)6: R=' + R + ' au initial');
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

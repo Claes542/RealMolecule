@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>Proton chain cascade — Grotthuss shuttle</title>
+  <style>body { margin: 0; background: #000; color: #fff; font-family: monospace; }</style>
+</head><body>
+<div id="info" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.8);padding:10px;border:1px solid #333;border-radius:6px;max-width:440px;font-size:12px;z-index:100">
+  <div style="color:#ffa;font-weight:bold">Proton cascade along water chain</div>
+  5 waters in a linear chain with one extra H (H<sub>3</sub>O<sup>+</sup>) on the leftmost.
+  Grotthuss: proton hops rightward through the chain via O-H⋯O — at each step, a new H
+  transfers from current H<sub>3</sub>O<sup>+</sup> to the next neighbor.
+</div>
+<script>
+(function() {
+  var gridN = 200, scr = 30, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, el, Z) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+  var ax = A;
+
+  // 5 waters in linear chain along x, O-O ≈ 5 au (2.65 Å) for easy hopping
+  var nWaters = 5;
+  var ooSep = 5.0 / ax;  // in Å  → 5 au
+
+  var waterTriplets = [];
+  var oIndices = [];
+  var bOH = 0.96;  // Å
+
+  for (var w = 0; w < nWaters; w++) {
+    var ox = (w - (nWaters - 1) / 2) * ooSep;  // center chain on origin
+    var oIdx = atoms.length;
+    oIndices.push(oIdx);
+    addAtom(ox * ax, 0, 0, 'O', 2);
+    // First water has 3 H's (H3O+); others have 2. Layout:
+    // H "front" — pointing toward next O (+x direction, axial)
+    // H "back" — tilted back, below plane
+    var axialOffset = bOH * 0.6;  // partial x-component for axial H
+    var yOffset = bOH * 0.8;
+    var zOffset = 0;
+    if (w === 0) {
+      // H3O+: 3 H's: one axial forward, two tilted back
+      addAtom((ox + axialOffset) * ax, 0, 0, 'H', 1);                        // axial (toward O2)
+      addAtom((ox - axialOffset * 0.5) * ax, +yOffset * ax, 0, 'H', 1);      // back-upper
+      addAtom((ox - axialOffset * 0.5) * ax, -yOffset * ax, 0, 'H', 1);      // back-lower
+      waterTriplets.push([oIdx, oIdx + 1, oIdx + 2]);  // only track first 2 H's as O-H-H triplet
+    } else {
+      // H2O: 2 H's. For intermediate waters, one axial forward, one tilted back-perpendicular.
+      // For last water, both H's tilted back (no forward H needed).
+      if (w < nWaters - 1) {
+        addAtom((ox + axialOffset) * ax, 0, 0, 'H', 1);                      // axial (toward next O)
+        addAtom((ox - axialOffset * 0.5) * ax, +yOffset * ax, 0, 'H', 1);    // back
+      } else {
+        addAtom((ox - axialOffset) * ax, +yOffset * ax, 0, 'H', 1);          // both tilted back
+        addAtom((ox - axialOffset) * ax, -yOffset * ax, 0, 'H', 1);
+      }
+      waterTriplets.push([oIdx, oIdx + 1, oIdx + 2]);
+    }
+  }
+
+  window.USER_WATER_TRIPLETS = waterTriplets;
+  window.USER_BEND_K = 1.5;
+
+  // Highlight: axial H's that will shuttle — between adjacent O's
+  var bp = [];
+  for (var w = 0; w < nWaters - 1; w++) {
+    // First H of water w (the axial one) to next O
+    bp.push([oIndices[w] + 1, oIndices[w + 1], "O" + (w+1) + "⋯H" + (w+1) + ":"]);
+  }
+  window.USER_BOND_PAIRS = bp;
+  window.USER_BOND_MAX_AU = 6.0;
+
+  // Monitor: axial-H positions between each pair of O's
+  setInterval(function() {
+    if (typeof nucPos === 'undefined') return;
+    function dist(i, j) {
+      if (!nucPos[i] || !nucPos[j]) return 0;
+      var dx = (nucPos[i][0] - nucPos[j][0]) * h;
+      var dy = (nucPos[i][1] - nucPos[j][1]) * h;
+      var dz = (nucPos[i][2] - nucPos[j][2]) * h;
+      return Math.sqrt(dx*dx + dy*dy + dz*dz);
+    }
+    var dists = [];
+    for (var w = 0; w < nWaters - 1; w++) {
+      dists.push(dist(oIndices[w] + 1, oIndices[w + 1]).toFixed(2));
+    }
+    window._ooDist = 'H→O(next) distances (au): ' + dists.join(', ');
+  }, 500);
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  setInterval(function() {
+    if (typeof phaseSteps !== 'undefined' && phaseSteps > 5000 && typeof dynamicsEnabled !== 'undefined' && !dynamicsEnabled) {
+      window.dynamicsEnabled = true;
+    }
+  }, 500);
+  window.USER_FORCE_SCALE = 1.0;
+  setInterval(function() {
+    if (typeof nucStepCount !== 'undefined' && nucStepCount > 2000 && window.USER_FORCE_SCALE < 5) {
+      window.USER_FORCE_SCALE = 10.0;
+    }
+  }, 200);
+  window.USER_ARROW_SCALE = 50.0;
+  window.USER_TEMPERATURE_K = 0;
+  window.USER_LANGEVIN_GAMMA = 0.2;
+  window.USER_NUC_SUBSTEPS = 10;
+  window.USER_N_MOVE = 30;
+  window.USER_THERMAL_KICK = 0;
+  window.USER_ROT_SPEED = 0.005;
+  window.USER_GRADP_FORCE = true;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'O') return 0.6;
+    return 0;
+  });
+  window.INIT_ZEFF = 2;
+  console.log('Proton chain: ' + nWaters + ' waters, ' + atoms.length + ' atoms');
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>β-turn tetrapeptide (Gly-Gly-Gly-Gly) in water</title>
+  <style>body { margin: 0; background: #000; color: #fff; font-family: monospace; }</style>
+</head><body>
+<div id="info" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.8);padding:10px;border:1px solid #333;border-radius:6px;max-width:440px;font-size:12px;z-index:100">
+  <div style="color:#ffa;font-weight:bold">β-turn tetrapeptide (Gly)<sub>4</sub></div>
+  Chain pre-bent into a U-shape. Residue 1 C=O faces residue 4 N-H across ~4 Å.
+  β-turn H-bond (1⋯4) should form at ~1.9 Å if the model captures secondary structure.
+  All backbone bonds constrained (k=2 Ha/au²). Bend constraint on waters.
+</div>
+<script>
+(function() {
+  var gridN = 220, scr = 26, N2 = 110;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, el, Z) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+  var ax = A;
+
+  // Residue layout: TIGHT pre-bent U-shape for β-turn H-bond at ~3 Å initial.
+  var caPos = [
+    [-2.5,  0.0, 0],   // res 1
+    [-1.2,  1.8, 0],   // res 2 (turn)
+    [ 1.2,  1.8, 0],   // res 3 (turn)
+    [ 2.5,  0.0, 0]    // res 4
+  ];
+  // Backbone atom indices tracked by residue
+  var resAtoms = [[], [], [], []];
+
+  function addResidue(r, isNterm, isCterm) {
+    var cax = caPos[r][0], cay = caPos[r][1], caz = 0;
+    // Orient N and C based on chain direction
+    // For U-shape: res 1 goes left-to-right+up; res 2 curves; res 3 curves back; res 4 right-to-left+down
+    var yDir = r < 2 ? 1 : -1;  // chain direction flips at midpoint conceptually
+    // Simplified: place N "back" of Cα (towards previous residue), C "forward" (towards next)
+    var nDir = [-1, -1, 1, 1][r];  // which direction the N sits from Cα
+    var cDir = -nDir;
+    var nX = cax + nDir * 0.75, nY = cay + 0.4 * nDir;
+    var cX = cax + cDir * 0.75, cY = cay + 0.4 * cDir;
+    // Orient C=O of res 1 and N-H of res 4 to FACE EACH OTHER across the turn (inside the U).
+    // For β-turn H-bond: res 1 O points +y (into U), res 4 N-H points +y (into U too).
+    var oYshift = [+1, +1, -1, -1][r];  // O on top for res 1,2; bottom for res 3,4
+    var oX = cX + cDir * 0.5, oY = cY + oYshift * 0.5;
+    // N-H: pointing INWARD (into U-center), so y opposite to O
+    var nhX = nX + nDir * 0.2, nhY = nY - oYshift * 0.8;
+
+    // N
+    var nIdx = atoms.length; addAtom(nX * ax, nY * ax, 0, 'N', 3); resAtoms[r].push(nIdx);
+    // N-H (1 for internal, 2 for Nterm)
+    var nhIdx = atoms.length; addAtom(nhX * ax, nhY * ax, 0, 'H', 1); resAtoms[r].push(nhIdx);
+    if (isNterm) {
+      var nh2Idx = atoms.length; addAtom(nX * ax - 0.5 * ax, nY * ax + 0.8 * ax, 0, 'H', 1); resAtoms[r].push(nh2Idx);
+    }
+    // Cα
+    var caIdx = atoms.length; addAtom(cax * ax, cay * ax, 0, 'C', 4); resAtoms[r].push(caIdx);
+    // Cα-H's
+    var ha1 = atoms.length; addAtom(cax * ax, cay * ax, 0.9 * ax, 'H', 1); resAtoms[r].push(ha1);
+    var ha2 = atoms.length; addAtom(cax * ax, cay * ax, -0.9 * ax, 'H', 1); resAtoms[r].push(ha2);
+    // C (peptide or carboxyl)
+    var cIdx = atoms.length; addAtom(cX * ax, cY * ax, 0, 'C', 4); resAtoms[r].push(cIdx);
+    // O
+    var oIdx = atoms.length; addAtom(oX * ax, oY * ax, 0, 'O', 2); resAtoms[r].push(oIdx);
+    // C-term extras: second O (OH) + H
+    if (isCterm) {
+      var o2Idx = atoms.length; addAtom(cX * ax + 1.0 * ax, cY * ax, 0, 'O', 2); resAtoms[r].push(o2Idx);
+      var ohIdx = atoms.length; addAtom(cX * ax + 1.8 * ax, cY * ax, 0, 'H', 1); resAtoms[r].push(ohIdx);
+    }
+    return { n: nIdx, nh: nhIdx, ca: caIdx, c: cIdx, o: oIdx };
+  }
+
+  var resInfo = [];
+  for (var r = 0; r < 4; r++) resInfo.push(addResidue(r, r === 0, r === 3));
+
+  // Waters scattered around
+  var waterTriplets = [];
+  var bOH = 0.96 * A;
+  var waterPos = [
+    [-4.5, -1.5, 0.5],  [-3.0, 3.0, 0],
+    [ 0,    3.5, 0.5],  [ 4.5, -1.5, 0],
+    [ 0,   -2.5, 0.5],  [ 0,    0, 2.5],
+    [ 0,    0, -2.5],   [-4,   -3, 0],
+    [ 4,   -3, 0],      [ 0,   -4, 0]
+  ];
+  waterPos.forEach(function(p) {
+    var wAng = (p[0] * 7.3 + p[1] * 11.1 + p[2] * 3.7) % (2 * Math.PI);
+    var idx = atoms.length;
+    addAtom(p[0] * ax, p[1] * ax, p[2] * ax, 'O', 2);
+    addAtom(p[0] * ax + bOH * Math.cos(wAng + 0.9), p[1] * ax + bOH * Math.sin(wAng + 0.9), p[2] * ax, 'H', 1);
+    addAtom(p[0] * ax + bOH * Math.cos(wAng - 0.9), p[1] * ax + bOH * Math.sin(wAng - 0.9), p[2] * ax, 'H', 1);
+    waterTriplets.push([idx, idx + 1, idx + 2]);
+  });
+
+  window.USER_WATER_TRIPLETS = waterTriplets;
+  window.USER_BEND_K = 1.5;
+
+  // Backbone bond constraints
+  var kB = 2.0;
+  var bc = [];
+  for (var r = 0; r < 4; r++) {
+    var ri = resInfo[r];
+    bc.push([ri.n, ri.ca, 2.78, kB]);   // N-Cα
+    bc.push([ri.ca, ri.c, 2.91, kB]);   // Cα-C
+    bc.push([ri.c, ri.o, 2.33, kB]);    // C=O
+    bc.push([ri.n, ri.nh, 1.91, kB]);   // N-H
+    // Peptide bond to next residue
+    if (r < 3) bc.push([ri.c, resInfo[r+1].n, 2.52, kB]);  // C-N peptide
+  }
+  window.USER_BOND_CONSTRAINTS = bc;
+
+  // β-turn H-bond pair: res 1 C=O (resInfo[0].o) ⋯ res 4 N-H (resInfo[3].nh)
+  window.USER_BOND_PAIRS = [
+    [resInfo[0].o, resInfo[3].nh, "turn C=O⋯N-H:"],
+    [resInfo[0].c, resInfo[1].n, "pept 1-2:"],
+    [resInfo[2].c, resInfo[3].n, "pept 3-4:"]
+  ];
+  window.USER_BOND_MAX_AU = 7.0;
+
+  setInterval(function() {
+    if (typeof nucPos === 'undefined') return;
+    function dist(i, j) {
+      if (!nucPos[i] || !nucPos[j]) return 0;
+      var dx = (nucPos[i][0] - nucPos[j][0]) * h;
+      var dy = (nucPos[i][1] - nucPos[j][1]) * h;
+      var dz = (nucPos[i][2] - nucPos[j][2]) * h;
+      return Math.sqrt(dx*dx + dy*dy + dz*dz);
+    }
+    var dTurn = dist(resInfo[0].o, resInfo[3].nh);
+    var dCO_CaN = dist(resInfo[0].c, resInfo[3].ca);
+    window._ooDist = 'turn C=O⋯N-H = ' + (dTurn/A).toFixed(2) + ' Å (target 1.9)  |  Cα1-Cα4 = ' + (dist(resInfo[0].ca, resInfo[3].ca)/A).toFixed(2) + ' Å';
+  }, 500);
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  setInterval(function() {
+    if (typeof phaseSteps !== 'undefined' && phaseSteps > 5000 && typeof dynamicsEnabled !== 'undefined' && !dynamicsEnabled) {
+      window.dynamicsEnabled = true;
+    }
+  }, 500);
+  window.USER_FORCE_SCALE = 1.0;
+  setInterval(function() {
+    if (typeof nucStepCount !== 'undefined' && nucStepCount > 2000 && window.USER_FORCE_SCALE < 5) {
+      window.USER_FORCE_SCALE = 10.0;
+    }
+  }, 200);
+  window.USER_ARROW_SCALE = 30.0;
+  window.USER_TEMPERATURE_K = 0;
+  window.USER_LANGEVIN_GAMMA = 0.2;
+  window.USER_NUC_SUBSTEPS = 10;
+  window.USER_N_MOVE = 30;
+  window.USER_THERMAL_KICK = 0;
+  window.USER_ROT_SPEED = 0.005;
+  window.USER_GRADP_FORCE = true;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'C') return 0.3;
+    if (a.el === 'N') return 0.3;
+    if (a.el === 'O') return 0.4;
+    return 0;
+  });
+  window.INIT_ZEFF = 2;
+  console.log('β-turn tetrapeptide: ' + atoms.length + ' atoms (' + bc.length + ' bond constraints, ' + waterTriplets.length + ' waters)');
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
