@@ -310,16 +310,21 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
-// Red-black Poisson update for ONE electron — IN-PLACE
-// P[m] is driven by rho_total - u_self^2  (= sum of other electrons' densities)
+// Red-black Poisson update for ONE electron — IN-PLACE.
+// P[m] is driven by rho_total − selfFrac·u_self²: for singly-occupied orbitals
+// (selfN ≤ 1) we fully remove self-interaction; for multi-occupancy (selfN > 1)
+// we keep (n−1)/n of the self-density so the real intra-orbital pair repulsion
+// stays in the potential. selfN = ∫u_self² is read from the norm-target uniform.
 const updateP_RB_WGSL = `
 ${paramStructWGSL}
 struct ColorCfg { color: u32, _p0: u32, _p1: u32, _p2: u32 }
+struct NormCfg { tgt: f32, _p0: u32, _p1: u32, _p2: u32 }
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read_write> Pm: array<f32>;
 @group(0) @binding(2) var<storage, read> u_self: array<f32>;
 @group(0) @binding(3) var<storage, read> rho_total: array<f32>;
 @group(0) @binding(4) var<uniform> ccfg: ColorCfg;
+@group(0) @binding(5) var<uniform> ncfg: NormCfg;
 
 ${cellIdxWGSL}
 @compute @workgroup_size(${WG_SIZE})
@@ -339,9 +344,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let lap_P = Pm[id + p.S2] + Pm[id - p.S2]
             + Pm[id + p.S]  + Pm[id - p.S]
             + Pm[id + 1u]   + Pm[id - 1u] - 6.0 * Pc;
-  // Source: density of all OTHER electrons = rho_total - u_self^2
   let us = u_self[id];
-  let rho_others = max(rho_total[id] - us * us, 0.0);
+  let selfN = ncfg.tgt;
+  let selfFrac = select(1.0, 1.0 / selfN, selfN > 1.0);
+  let rho_others = max(rho_total[id] - selfFrac * us * us, 0.0);
   Pm[id] = Pc + p.dt * (lap_P * p.inv_h2 + p.TWO_PI * rho_others);
 }
 `;
@@ -638,7 +644,23 @@ async function initGPU() {
     }
 
     gpuReady = true;
-    console.log("RealQM Red-Black GPU initialized");
+    console.log("RealQM Red-Black GPU initialized, nuclei=" + nuclei.length + ", NELEC=" + NELEC);
+    // Debug: read back initial u/w to confirm init worked
+    for (let m = 0; m < NELEC; m++) {
+      const dbgBuf = device.createBuffer({ size: S3*4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+      const dbgEnc = device.createCommandEncoder();
+      dbgEnc.copyBufferToBuffer(u_buf[m], 0, dbgBuf, 0, S3*4);
+      device.queue.submit([dbgEnc.finish()]);
+      await dbgBuf.mapAsync(GPUMapMode.READ);
+      const uInit = new Float32Array(dbgBuf.getMappedRange().slice(0));
+      dbgBuf.unmap(); dbgBuf.destroy();
+      let maxU = 0, nzU = 0;
+      for (let i2 = 0; i2 < uInit.length; i2++) {
+        if (uInit[i2] > maxU) maxU = uInit[i2];
+        if (uInit[i2] > 1e-6) nzU++;
+      }
+      console.log('[init debug] electron ' + m + ': max_u=' + maxU.toFixed(4) + ', nonzero_cells=' + nzU);
+    }
   } catch (e) {
     gpuError = e.message;
     console.error("GPU init failed:", e);
@@ -821,7 +843,8 @@ function createBindGroups() {
     }
   }
 
-  // Poisson: per electron, per color
+  // Poisson: per electron, per color. binding 5 carries the occupation (norm target)
+  // used by the SIC (n-1)/n factor in the shader.
   for (let m = 0; m < NELEC; m++) {
     poissonBG[m] = [];
     for (let color = 0; color < 2; color++) {
@@ -831,6 +854,7 @@ function createBindGroups() {
         { binding: 2, resource: { buffer: u_buf[m] } },
         { binding: 3, resource: { buffer: rhoTotalBuf } },
         { binding: 4, resource: { buffer: colorBuf[color] } },
+        { binding: 5, resource: { buffer: normCfgBuf[m] } },
       ]});
     }
   }
@@ -1082,6 +1106,23 @@ window.draw = function() {
     doSteps(STEPS_PER_FRAME);
   }
 
+  // DEBUG: log once to diagnose static display
+  if (!window._debugLogged && sliceData) {
+    window._debugLogged = true;
+    var _maxU = 0, _maxW = 0, _maxUW = 0, _nonzero = 0;
+    for (var _i = 0; _i < sliceData.length; _i++) {
+      if (sliceData[_i] > _maxU) _maxU = sliceData[_i];
+      if (sliceData[_i] > 1e-6) _nonzero++;
+    }
+    for (var _j = 0; _j < S*S; _j++) {
+      for (var _m = 0; _m < NELEC; _m++) {
+        var _u = sliceData[_j * SLICE_STRIDE + _m*3];
+        var _w = sliceData[_j * SLICE_STRIDE + _m*3 + 1];
+        if (_u * _w > _maxUW) _maxUW = _u * _w;
+      }
+    }
+    console.log('[rb debug] sliceData len=' + sliceData.length + ' nonzero=' + _nonzero + ' max_val=' + _maxU.toFixed(4) + ' max_u*w=' + _maxUW.toFixed(4) + ' stepCount=' + stepCount);
+  }
   if (!readbackPending && (frameCount % 3 === 0 || stepCount >= MAX_STEPS)) {
     readbackPending = true;
     (async function() {
@@ -1093,6 +1134,12 @@ window.draw = function() {
         gpuError = "Readback: " + e.message;
       }
       readbackPending = false;
+      // Expose latest energies + step count for external sweep pages
+      window.__realqm = {
+        stepCount, maxSteps: MAX_STEPS,
+        E_T, E_eK, E_ee, V_KK, E_tot,
+        done: stepCount >= MAX_STEPS,
+      };
     })();
   }
 

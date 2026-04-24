@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>H2 on mol_fast.js</title>
+  <style>body { margin: 0; background: #000; }</style>
+</head><body>
+<div id="loadStatus" style="color:#ff0;font-family:monospace;padding:20px;font-size:14px">Loading…</div>
+<script>
+  window.onerror = function(msg, url, line, col, err) {
+    var pre = document.createElement('pre');
+    pre.style.cssText = 'color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
+    pre.textContent = 'ERROR: ' + msg + '\n  at ' + url + ':' + line + ':' + col;
+    document.body.insertBefore(pre, document.body.firstChild);
+  };
+  (function() {
+    var N = 200;
+    var scr = 8;
+    var h = scr / N;
+    var N2 = Math.round(N / 2);
+
+    var urlSep = parseFloat(new URLSearchParams(location.search).get('sep'));
+    var sep = isFinite(urlSep) ? urlSep : 1.4;  // H-H separation in au
+    var di = Math.round(sep / h / 2);
+
+    window.USER_NN = N;
+    window.USER_SCREEN = scr;
+    window.USER_STEPS = 50000;
+    window.USER_NUCLEI = [
+      { i: N2 - di, j: N2, k: N2, Z: 1, rc: 0.0, z_init: 1.0 },
+      { i: N2 + di, j: N2, k: N2, Z: 1, rc: 0.0, z_init: 1.0 }
+    ];
+    window.USER_NORM_TARGETS = [1, 1];
+    window.USER_DYNAMICS = true;
+  })();
+
+  var status = document.getElementById('loadStatus');
+  var s = document.createElement('script');
+  s.src = 'mol_fast.js?t=' + Date.now();
+  s.onload = function() {
+    status.textContent += '\nmol_fast.js loaded';
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    p.onload = function() { status.remove(); };
+    document.body.appendChild(p);
+  };
+  document.body.appendChild(s);
+</script>
+</body></html>

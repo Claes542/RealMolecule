@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>H2 — molecule.js test</title>
+  <style>body { margin: 0; background: #000; color: #fff; font-family: monospace; }</style>
+</head><body>
+<div id="info" style="position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.8);padding:10px;border:1px solid #333;border-radius:6px;max-width:440px;font-size:12px;z-index:100">
+  <div style="color:#ffa;font-weight:bold">H<sub>2</sub> molecule on molecule.js</div>
+  Two H atoms at initial sep=1.4 au (~0.74 Å = H<sub>2</sub> equilibrium bond).
+  URL <b>?sep=N</b> (au): try 1.4 (equil), 2.0 (stretched), 3.0 (well apart).
+  In the reduced model each H = Z=1 kernel + 1 electron. Two H's give 2 kernel + 2 electrons = neutral ✓.
+</div>
+<script>
+(function() {
+  var gridN = 100, scr = 8, N2 = 50;
+  var h = scr / gridN;
+  var atoms = [];
+
+  function addAtom(x, y, z, el, Z) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  var urlSep = parseFloat(new URLSearchParams(location.search).get('sep'));
+  var sep = isFinite(urlSep) ? urlSep : 1.4;  // H-H starting distance in au
+
+  addAtom(-sep/2, 0, 0, 'H', 1);
+  addAtom(+sep/2, 0, 0, 'H', 1);
+
+  window.USER_BOND_PAIRS = [[0, 1, "H-H:"]];
+  window.USER_BOND_MAX_AU = 6.0;
+
+  setInterval(function() {
+    if (typeof nucPos === 'undefined' || !nucPos[0] || !nucPos[1]) return;
+    var dx = (nucPos[0][0] - nucPos[1][0]) * h;
+    var dy = (nucPos[0][1] - nucPos[1][1]) * h;
+    var dz = (nucPos[0][2] - nucPos[1][2]) * h;
+    var d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+    window._ooDist = 'H-H = ' + d.toFixed(3) + ' au (target 1.4 au = 0.74 Å for H2 bond)';
+  }, 500);
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;  // converge electrons first
+  setInterval(function() {
+    if (typeof phaseSteps !== 'undefined' && phaseSteps > 3000 && typeof dynamicsEnabled !== 'undefined' && !dynamicsEnabled) {
+      window.dynamicsEnabled = true;
+    }
+  }, 500);
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 100.0;
+  window.USER_TEMPERATURE_K = 0;
+  window.USER_LANGEVIN_GAMMA = 0.2;
+  window.USER_NUC_SUBSTEPS = 10;
+  window.USER_N_MOVE = 30;
+  window.USER_THERMAL_KICK = 0;
+  window.USER_ROT_SPEED = 0.005;
+  window.USER_GRADP_FORCE = true;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) { return 0; });
+  window.INIT_ZEFF = 1;
+  console.log('H2 test: sep=' + sep + ' au initial');
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

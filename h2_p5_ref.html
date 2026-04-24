@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>H2 RealQM — pure p5.js reference</title>
+<style>body { margin: 0; background: #fff; }</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<script>
+let u = [];
+let f = [];
+let K = [];
+let K1 = [];
+let P = [];
+let w = [];
+let charge = [];
+let r = 0;
+let Ekin = 0;
+let Epot = 0;
+let Etot = 0;
+let c = [];
+let norm = [];
+let N = 100;
+let N2 = 50;
+let D = 20;
+let C = 1;
+let dt;
+let h;
+let t = 1;
+let d = 0.1;
+let M = 3;
+
+function setup() {
+  createCanvas(400, 400);
+  h = 10 / N;
+  dt = d * pow(h, 2);
+  for (var m = 1; m < M; m++) {
+    w[m] = [];
+    u[m] = [];
+    c[m] = 1;
+    charge[m] = 1;
+    P[m] = [];
+    norm[m] = 0;
+  }
+  for (var m = 1; m < M; m++) {
+    for (var i = 0; i < N + 1; i++) {
+      w[m][i] = [];
+      u[m][i] = [];
+      K[i] = [];
+      K1[i] = [];
+      P[m][i] = [];
+      for (var j = 0; j < N + 1; j++) {
+        w[m][i][j] = [];
+        u[m][i][j] = [];
+        K[i][j] = [];
+        K1[i][j] = [];
+        P[m][i][j] = [];
+        for (var k = 0; k < N + 1; k++) {
+          w[m][i][j][k] = 0;
+          u[m][i][j][k] = 0;
+          K[i][j][k] = 0;
+          K1[i][j][k] = 0;
+          P[m][i][j][k] = 0;
+        }
+      }
+    }
+  }
+
+  for (var i = 0; i < N + 1; i++) {
+    for (var j = 0; j < N + 1; j++) {
+      for (var k = 0; k < N + 1; k++) {
+        r = pow((i - N2 + D / 2) * h, 2) + pow((j - N2) * h, 2) + pow((k - N2) * h, 2) + h * h;
+        r = sqrt(r);
+        K[i][j][k] = 1 / r;
+        K1[i][j][k] = 1 / r;
+        if (i < N2) {
+          u[1][i][j][k] = exp(-r);
+          w[1][i][j][k] = 1;
+        }
+        P[2][i][j][k] = 0.5 / r;
+        r = pow((i - N2 - D / 2) * h, 2) + pow((j - N2) * h, 2) + pow((k - N2) * h, 2) + h * h;
+        r = sqrt(r);
+        K[i][j][k] = K[i][j][k] + 1 / r;
+        if (i > N2) {
+          u[2][i][j][k] = exp(-r);
+          w[2][i][j][k] = 1;
+        }
+        P[1][i][j][k] = 0.5 / r;
+      }
+    }
+  }
+}
+
+function draw() {
+  background(220);
+  noStroke();
+
+  if (t < 1300) {
+    t = t + 1;
+    Ekin = 0;
+    Epot = 0;
+    for (var i = 1; i < N; i++) {
+      for (var j = 1; j < N; j++) {
+        for (var k = 1; k < N; k++) {
+          c[1] = 0.5 * (u[1][i][j][k] - u[2][i][j][k]);
+          c[2] = 0.5 * (u[2][i][j][k] - u[1][i][j][k]);
+
+          for (var m = 1; m < M; m++) {
+            // Front tracking of electron characteristic functions
+            w[m][i][j][k] = w[m][i][j][k] + 2 * dt * abs(c[m]) * (w[m][i + 1][j][k] + w[m][i - 1][j][k] - 6 * w[m][i][j][k] + w[m][i][j + 1][k] + w[m][i][j - 1][k] + w[m][i][j][k + 1] + w[m][i][j][k - 1]) / pow(h, 2) + 10 * dt * c[m] * sqrt(pow((w[m][i + 1][j][k] - w[m][i - 1][j][k]) / h, 2) + pow((w[m][i][j + 1][k] - w[m][i][j - 1][k]) / h, 2) + pow((w[m][i][j][k + 1] - w[m][i][j][k - 1]) / h, 2));
+
+            // Update of electron density functions - Hom Neumann problem per electron
+            u[m][i][j][k] = u[m][i][j][k] + 0.5 * d * ((u[m][i + 1][j][k] - u[m][i][j][k]) * (w[m][i + 1][j][k] + w[m][i][j][k]) / 2 - (u[m][i][j][k] - u[m][i - 1][j][k]) * (w[m][i][j][k] + w[m][i - 1][j][k]) / 2) + 0.5 * d * ((u[m][i][j + 1][k] - u[m][i][j][k]) * (w[m][i][j + 1][k] + w[m][i][j][k]) / 2 - (u[m][i][j][k] - u[m][i][j - 1][k]) * (w[m][i][j][k] + w[m][i][j - 1][k]) / 2) + 0.5 * d * ((u[m][i][j][k + 1] - u[m][i][j][k]) * (w[m][i][j][k + 1] + w[m][i][j][k]) / 2 - (u[m][i][j][k] - u[m][i][j][k - 1]) * (w[m][i][j][k] + w[m][i][j][k - 1]) / 2) + dt * (K[i][j][k] - 2 * P[m][i][j][k]) * u[m][i][j][k] * w[m][i][j][k];
+
+            // Solve Poisson equation for electron potentials
+            P[1][i][j][k] = P[1][i][j][k] + dt * (P[1][i + 1][j][k] - 6 * P[1][i][j][k] + P[1][i - 1][j][k] + P[1][i][j + 1][k] + P[1][i][j - 1][k] + P[1][i][j][k + 1] + P[1][i][j][k - 1]) / pow(h, 2) + 2 * PI * dt * pow(u[2][i][j][k], 2);
+            P[2][i][j][k] = P[2][i][j][k] + dt * (P[2][i + 1][j][k] - 6 * P[2][i][j][k] + P[2][i - 1][j][k] + P[2][i][j + 1][k] + P[2][i][j - 1][k] + P[2][i][j][k + 1] + P[2][i][j][k - 1]) / pow(h, 2) + 2 * PI * dt * pow(u[1][i][j][k], 2);
+
+            // Compute electron energy
+            if (w[m][i][j][k] > 0.5) {
+              Ekin = Ekin + 0.5 * (pow(u[m][i + 1][j][k] - u[m][i][j][k], 2) + pow(u[m][i][j + 1][k] - u[m][i][j][k], 2) + pow(u[m][i][j][k + 1] - u[m][i][j][k], 2)) * h;
+            }
+            Epot = Epot + (P[m][i][j][k] - K[i][j][k]) * pow(u[m][i][j][k], 2) * pow(h, 3);
+          }
+        }
+      }
+    }
+
+    // Add kernel repulsion energy
+    Etot = Ekin + Epot + 1 / (D * h);
+
+    // Normalisation of charge densities
+    for (var m = 1; m < M; m++) {
+      norm[m] = 0;
+      for (var i = 1; i < N; i++) {
+        for (var j = 1; j < N; j++) {
+          for (var k = 1; k < N; k++) {
+            norm[m] = norm[m] + pow(u[m][i][j][k], 2) * pow(h, 3);
+          }
+        }
+      }
+      for (var i = 1; i < N; i++) {
+        for (var j = 1; j < N; j++) {
+          for (var k = 1; k < N; k++) {
+            u[m][i][j][k] = u[m][i][j][k] / sqrt(norm[m]);
+          }
+        }
+      }
+    }
+  }
+
+  // Plots
+  if (t / 10 - floor(t / 10) > 0.8) {
+    for (var i = 1; i < N; i++) {
+      for (var j = 1; j < N; j++) {
+        fill(255, 0, 0, 500 * u[1][i][j][N2]);
+        square(4 * i, 4 * j, 4);
+        fill(255, 0, 0, 500 * u[2][i][j][N2]);
+        square(4 * i, 4 * j, 4);
+      }
+    }
+  }
+  fill(255, 255, 255, 255);
+  fill(0);
+  circle(200 - 2 * D, 200, 10);
+  circle(200 + 2 * D, 200, 10);
+
+  for (var i = 0; i < N; i++) {
+    fill(0);
+    ellipse(4 * i, 200 - 100 * w[1][i][N2][N2], 4);
+    ellipse(4 * i, 200 - 100 * w[2][i][N2][N2], 4);
+    fill(255, 255, 0, 255);
+    ellipse(4 * i, 300 - 100 * u[1][i][N2][N2], 4);
+    ellipse(4 * i, 300 - 100 * u[2][i][N2][N2], 4);
+    fill(0, 0, 255, 255);
+    ellipse(4 * i, 400 - 100 * P[1][i][N2][N2], 2);
+    ellipse(4 * i, 400 - 100 * P[2][i][N2][N2], 2);
+    ellipse(4 * i, 400 - 40 * K[i][N2][N2], 4);
+  }
+
+  fill(0);
+  text(t, 100, 378);
+  text(Ekin, 140, 255);
+  text(Epot, 140, 270);
+  text(Etot, 140, 285);
+  text(D / 10, 100, 240);
+  text("Kernel distance = ", 5, 240);
+  text("atomic units", 120, 240);
+  text("time step =", 5, 378);
+  text("(ref -1.17 Hartree)", 270, 285);
+
+  text("Total energy", 5, 285);
+  text("Kinetic energy", 5, 255);
+  text("Potential energy", 5, 270);
+  text("H2 RealQM 3d 100^3: u = sum_i u_i, u_i non-overlap wavef elect i=1,2.", 5, 20);
+  text("w_i charac func for supp of u_i updated by front track on fixed grid.", 5, 40);
+  text("Minimise E = sum_i integral (0.5*(w_i*|grad(u_i)|^2-K*u_i^2+P_i*u_i^2)dx.", 5, 60);
+  text("over u_i with continuity of u across free bdy updated by front track w_i.", 5, 80);
+  text("H_i = - 0.5*Laplacian - K(x) + 2*P_i(x).", 5, 120);
+  text("K(x) kernel potential, P_i(x) electron potentials.", 5, 100);
+  text("P_1(x) = integral dy*u_2(y)^2/(2*|x-y|) acting on u_1 et cet.", 5, 160);
+  text("Compute E by time stepping du_i/dt = -H_iu_i + normalisation.", 5, 140);
+  text("Compute P_1 by solving -Laplacian P_1 =2*PI*(u_2^2) et cet", 5, 180);
+  text("Vary distance D = 15-45 between kernels to minimize total energy.", 5, 320);
+  text("Kernel distance = 1.4-6 au at minimum energy = -1.17", 5, 340);
+  text("red/yellow: u_1,u_2, blue:potentials (scaled) black:charac func, mid cut,", 5, 360);
+  text("Update charac func w_i by front track: dw_i/dt+jump*abs(grad w_i)=0.", 5, 220);
+}
+</script>
+</body>
+</html>

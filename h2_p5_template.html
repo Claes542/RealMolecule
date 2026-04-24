@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>H2 — p5.js RealQM template (Claude)</title>
+  <style>body { margin: 0; background: #fff; font-family: monospace; }</style>
+</head><body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<script>
+// ============================================================
+// H2 RealQM — minimal p5.js template (cleaned)
+// Two electrons in non-overlapping domains, kernels at ±D/2.
+// Algorithm (per step):
+//   c_i = u_self - u_other   (advection driver for domain front)
+//   w_i += 2dt·|c_i|·Δw_i + 10·dt·c_i·|∇w_i|    (front track)
+//   u_i += ½d·∇·(w_i∇u_i) + dt·(K − 2P_i)·u_i·w_i  (ITP eigensolve)
+//   P_1 += dt·(ΔP_1 + 2π·u_2²)                 (Poisson for e1 from e2's density)
+//   P_2 += dt·(ΔP_2 + 2π·u_1²)
+//   normalise u_i each step
+// ============================================================
+
+const N = 100, N2 = 50, TSTOP = 1300;
+const h = 10 / N, d = 0.1, dt = d * h * h;
+let D = 20;  // kernel separation (grid cells); physical = D·h au
+let t = 0, Ekin = 0, Epot = 0, Etot = 0;
+
+// Fields: u[i][x][y][z], w[i][x][y][z], P[i][x][y][z] for electrons i=0,1; K[x][y][z].
+let u = [[], []], w = [[], []], P = [[], []], K = [];
+
+function zero3D() {
+  const a = new Array(N + 1);
+  for (let i = 0; i <= N; i++) {
+    a[i] = new Array(N + 1);
+    for (let j = 0; j <= N; j++) a[i][j] = new Float32Array(N + 1);
+  }
+  return a;
+}
+
+function setup() {
+  createCanvas(720, 560);
+  // Allocate
+  for (let m = 0; m < 2; m++) { u[m] = zero3D(); w[m] = zero3D(); P[m] = zero3D(); }
+  K = zero3D();
+
+  // Initial conditions
+  for (let i = 0; i <= N; i++) for (let j = 0; j <= N; j++) for (let k = 0; k <= N; k++) {
+    // Kernel 1 at (-D/2, 0, 0)
+    let r1 = Math.sqrt(((i - N2 + D / 2) * h) ** 2 + ((j - N2) * h) ** 2 + ((k - N2) * h) ** 2 + h * h);
+    // Kernel 2 at (+D/2, 0, 0)
+    let r2 = Math.sqrt(((i - N2 - D / 2) * h) ** 2 + ((j - N2) * h) ** 2 + ((k - N2) * h) ** 2 + h * h);
+    K[i][j][k] = 1 / r1 + 1 / r2;
+    // Each electron localised on its own kernel; w = 1 in left/right half
+    if (i < N2) { u[0][i][j][k] = Math.exp(-r1); w[0][i][j][k] = 1; }
+    if (i > N2) { u[1][i][j][k] = Math.exp(-r2); w[1][i][j][k] = 1; }
+    // Initial guess for Hartree potentials: point-charge
+    P[0][i][j][k] = 0.5 / r2;
+    P[1][i][j][k] = 0.5 / r1;
+  }
+}
+
+function draw() {
+  background(245);
+  noStroke();
+
+  if (t < TSTOP) {
+    t++;
+    Ekin = 0; Epot = 0;
+
+    // Evolve interior cells
+    for (let i = 1; i < N; i++) for (let j = 1; j < N; j++) for (let k = 1; k < N; k++) {
+      const c0 = 0.5 * (u[0][i][j][k] - u[1][i][j][k]);
+      const c1 = -c0;
+      for (let m = 0; m < 2; m++) {
+        const W = w[m], U = u[m], Pm = P[m];
+        const cm = m === 0 ? c0 : c1;
+        // Laplacian of w (front track diffusion + advection)
+        const lapW = (W[i+1][j][k] + W[i-1][j][k] - 6*W[i][j][k] + W[i][j+1][k] + W[i][j-1][k] + W[i][j][k+1] + W[i][j][k-1]) / (h * h);
+        const gradWx = (W[i+1][j][k] - W[i-1][j][k]) / h;
+        const gradWy = (W[i][j+1][k] - W[i][j-1][k]) / h;
+        const gradWz = (W[i][j][k+1] - W[i][j][k-1]) / h;
+        const gradW = Math.sqrt(gradWx*gradWx + gradWy*gradWy + gradWz*gradWz);
+        W[i][j][k] += 2 * dt * Math.abs(cm) * lapW + 10 * dt * cm * gradW;
+
+        // w-weighted Laplacian of u (ITP with Neumann BC at free boundary)
+        const uc = U[i][j][k], wc = W[i][j][k];
+        const fluxXp = (U[i+1][j][k] - uc) * (W[i+1][j][k] + wc) / 2;
+        const fluxXm = (uc - U[i-1][j][k]) * (wc + W[i-1][j][k]) / 2;
+        const fluxYp = (U[i][j+1][k] - uc) * (W[i][j+1][k] + wc) / 2;
+        const fluxYm = (uc - U[i][j-1][k]) * (wc + W[i][j-1][k]) / 2;
+        const fluxZp = (U[i][j][k+1] - uc) * (W[i][j][k+1] + wc) / 2;
+        const fluxZm = (uc - U[i][j][k-1]) * (wc + W[i][j][k-1]) / 2;
+        const wlap = (fluxXp - fluxXm) + (fluxYp - fluxYm) + (fluxZp - fluxZm);
+        U[i][j][k] += 0.5 * d * wlap + dt * (K[i][j][k] - 2 * Pm[i][j][k]) * uc * wc;
+      }
+
+      // Poisson for P — sourced by the OTHER electron's density (this electron feels potential from other)
+      P[0][i][j][k] += dt * ((P[0][i+1][j][k] + P[0][i-1][j][k] - 6*P[0][i][j][k] + P[0][i][j+1][k] + P[0][i][j-1][k] + P[0][i][j][k+1] + P[0][i][j][k-1]) / (h * h) + 2 * Math.PI * u[1][i][j][k] * u[1][i][j][k]);
+      P[1][i][j][k] += dt * ((P[1][i+1][j][k] + P[1][i-1][j][k] - 6*P[1][i][j][k] + P[1][i][j+1][k] + P[1][i][j-1][k] + P[1][i][j][k+1] + P[1][i][j][k-1]) / (h * h) + 2 * Math.PI * u[0][i][j][k] * u[0][i][j][k]);
+
+      // Energies (integrate over the electron's domain w > 0.5)
+      for (let m = 0; m < 2; m++) {
+        if (w[m][i][j][k] > 0.5) {
+          Ekin += 0.5 * ((u[m][i+1][j][k] - u[m][i][j][k]) ** 2 + (u[m][i][j+1][k] - u[m][i][j][k]) ** 2 + (u[m][i][j][k+1] - u[m][i][j][k]) ** 2) * h;
+        }
+        Epot += (P[m][i][j][k] - K[i][j][k]) * u[m][i][j][k] * u[m][i][j][k] * (h * h * h);
+      }
+    }
+
+    // Nuclear repulsion 1/R_12
+    Etot = Ekin + Epot + 1 / (D * h);
+
+    // Normalize each electron to integral u² = 1
+    for (let m = 0; m < 2; m++) {
+      let s = 0;
+      for (let i = 1; i < N; i++) for (let j = 1; j < N; j++) for (let k = 1; k < N; k++) {
+        s += u[m][i][j][k] * u[m][i][j][k] * (h * h * h);
+      }
+      const inv = 1 / Math.sqrt(s);
+      for (let i = 1; i < N; i++) for (let j = 1; j < N; j++) for (let k = 1; k < N; k++) {
+        u[m][i][j][k] *= inv;
+      }
+    }
+  }
+
+  // --- Plots ---
+  // 2D density projection (z = N2 slice)
+  if ((t % 10) === 0) {
+    for (let i = 1; i < N; i++) for (let j = 1; j < N; j++) {
+      fill(255, 0, 0, 500 * u[0][i][j][N2]);
+      square(4 * i, 4 * j, 4);
+      fill(0, 0, 255, 500 * u[1][i][j][N2]);
+      square(4 * i, 4 * j, 4);
+    }
+  }
+  // Nuclei
+  fill(0); noStroke();
+  circle(4 * (N2 - D / 2), 4 * N2, 10);
+  circle(4 * (N2 + D / 2), 4 * N2, 10);
+
+  // 1D line plots along i-axis (j=N2, k=N2)
+  for (let i = 0; i < N; i++) {
+    fill(0);
+    ellipse(4 * i, 200 - 100 * w[0][i][N2][N2], 3);
+    ellipse(4 * i, 200 - 100 * w[1][i][N2][N2], 3);
+    fill(255, 200, 0);
+    ellipse(4 * i, 300 - 100 * u[0][i][N2][N2], 3);
+    ellipse(4 * i, 300 - 100 * u[1][i][N2][N2], 3);
+    fill(0, 0, 200);
+    ellipse(4 * i, 400 - 100 * P[0][i][N2][N2], 2);
+    ellipse(4 * i, 400 - 100 * P[1][i][N2][N2], 2);
+    ellipse(4 * i, 400 - 40 * K[i][N2][N2], 3);
+  }
+
+  // Labels + numeric readout
+  fill(0); textSize(11);
+  text("H2 RealQM — minimal p5.js template", 5, 14);
+  text("u_i: non-overlap electron amplitudes (red/blue 2D, yellow 1D)", 5, 30);
+  text("w_i: characteristic function, front-tracked (black 1D)", 5, 46);
+  text("P_i: Hartree potential from OTHER electron (blue 1D)", 5, 62);
+  text("K: total kernel attraction (large dots 1D)", 5, 78);
+  text("Kernel-kernel distance D·h = " + (D * h).toFixed(2) + " au (H2 eq 1.4)", 5, 98);
+  text("E_kin   = " + Ekin.toFixed(4) + " Ha", 5, 440);
+  text("E_pot   = " + Epot.toFixed(4) + " Ha", 5, 454);
+  text("E_total = " + Etot.toFixed(4) + " Ha   (Kolos-Wolniewicz ref = -1.1745 at R=1.4)", 5, 468);
+  text("step " + t + " / " + TSTOP, 5, 486);
+  text("N=" + N + "³ grid, h=" + h.toFixed(4) + " au,  dt=" + dt.toExponential(2), 5, 502);
+  text("Algorithm:", 5, 524);
+  fill(80); textSize(10);
+  text("w_i += 2dt·|c_i|·Δw_i + 10·dt·c_i·|∇w_i|        (front track)", 20, 538);
+  text("u_i += ½d·∇·(w_i∇u_i) + dt·(K − 2P_i)·u_i·w_i   (ITP)", 20, 550);
+  text("P_j += dt·(ΔP_j + 2π·u_{1-j}²)                  (Poisson)", 20, 562);
+}
+</script>
+</body></html>

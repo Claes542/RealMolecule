@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>H2 — realqm_rb direct (no builder UI)</title>
+  <style>body { margin: 0; background: #000; color: #fff; font-family: monospace; }</style>
+</head><body>
+<div id="info" style="position:fixed;top:10px;left:10px;background:rgba(0,0,0,0.8);padding:8px 14px;color:#ffa;font-size:13px;z-index:100;border:1px solid #333;border-radius:4px">
+  H<sub>2</sub> on realqm_rb.js (no builder UI). URL ?sep=N (au) for H-H separation.
+</div>
+<script>
+(function() {
+  var urlSep = parseFloat(new URLSearchParams(location.search).get('sep'));
+  var sep = isFinite(urlSep) ? urlSep : 1.4;  // H-H in au
+
+  var GRID_N = 100;
+  var SCREEN = 8;  // au
+  var h = SCREEN / GRID_N;
+  var N2 = Math.round(GRID_N / 2);
+  var dI = Math.round(sep / h / 2);
+
+  window.USER_NN = GRID_N;
+  window.USER_SCREEN = SCREEN;
+  window.USER_NELEC = 2;
+  window.USER_STEPS = parseInt(new URLSearchParams(location.search).get('steps')) || 30000;
+  window.USER_NUCLEI = [
+    { i: N2 - dI, j: N2, k: N2, Z: 1, rc: 0, ne: 1 },
+    { i: N2 + dI, j: N2, k: N2, Z: 1, rc: 0, ne: 1 }
+  ];
+  window.USER_NORM_TARGETS = [1, 1];
+  window.USER_MOL_NAME = 'H2';
+  window.NO_NUC_REPULSION = false;
+  console.log('H2 direct launch: sep=' + sep + ' au, ' + window.USER_STEPS + ' steps');
+})();
+
+var s = document.createElement('script');
+s.src = 'realqm_rb.js?t=' + Date.now();
+s.onload = function() {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

@@ -196,16 +196,20 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let l_kp = label[id + 1u];   let excl_kp = isInsideRc(i, j, k+1u, l_kp) || isInsideAnalytical(i, j, k+1u, myL);
   let l_km = label[id - 1u];   let excl_km = isInsideRc(i, j, k-1u, l_km) || isInsideAnalytical(i, j, k-1u, myL);
 
-  let u_ip = select(uc, Ui[id + p.S2], l_ip == myL && !excl_ip);
-  let u_im = select(uc, Ui[id - p.S2], l_im == myL && !excl_im);
-  let u_jp = select(uc, Ui[id + p.S],  l_jp == myL && !excl_jp);
-  let u_jm = select(uc, Ui[id - p.S],  l_jm == myL && !excl_jm);
-  let u_kp = select(uc, Ui[id + 1u],   l_kp == myL && !excl_kp);
-  let u_km = select(uc, Ui[id - 1u],   l_km == myL && !excl_km);
+  // Robin BC at Voronoi inter-orbital boundary: ∂u/∂n = -ROBIN_K · u.
+  // Finite-difference fallback value for cross-boundary neighbor: uc · (1 - K·h)
+  // (reduces to Neumann when ROBIN_K=0, Dirichlet when ROBIN_K·h → 1).
+  let robinFac = 1.0 - ${window.ROBIN_K !== undefined ? window.ROBIN_K.toFixed(4) : '1.0'} * p.h;
+  let ucRobin = uc * robinFac;
+  let u_ip = select(ucRobin, Ui[id + p.S2], l_ip == myL && !excl_ip);
+  let u_im = select(ucRobin, Ui[id - p.S2], l_im == myL && !excl_im);
+  let u_jp = select(ucRobin, Ui[id + p.S],  l_jp == myL && !excl_jp);
+  let u_jm = select(ucRobin, Ui[id - p.S],  l_jm == myL && !excl_jm);
+  let u_kp = select(ucRobin, Ui[id + 1u],   l_kp == myL && !excl_kp);
+  let u_km = select(ucRobin, Ui[id - 1u],   l_km == myL && !excl_km);
 
   let lap = u_ip + u_im + u_jp + u_jm + u_kp + u_km - 6.0 * uc;
 
-  // Full nuclear potential (all nuclei) minus other-electron repulsion (no self-repulsion)
   Uo[id] = uc + p.half_d * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;
 }
 `;
@@ -291,12 +295,15 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let l_kp = label[id + 1u];   let excl_kp = isInsideRc(i, j, k+1u, l_kp) || isInsideAnalytical(i, j, k+1u, myL);
   let l_km = label[id - 1u];   let excl_km = isInsideRc(i, j, k-1u, l_km) || isInsideAnalytical(i, j, k-1u, myL);
 
-  let u_ip = select(uc, Ui[id + p.S2], l_ip == myL && !excl_ip);
-  let u_im = select(uc, Ui[id - p.S2], l_im == myL && !excl_im);
-  let u_jp = select(uc, Ui[id + p.S],  l_jp == myL && !excl_jp);
-  let u_jm = select(uc, Ui[id - p.S],  l_jm == myL && !excl_jm);
-  let u_kp = select(uc, Ui[id + 1u],   l_kp == myL && !excl_kp);
-  let u_km = select(uc, Ui[id - 1u],   l_km == myL && !excl_km);
+  // Robin BC at Voronoi inter-orbital boundary (same convention as updateU)
+  let robinFac = 1.0 - ${window.ROBIN_K !== undefined ? window.ROBIN_K.toFixed(4) : '1.0'} * p.h;
+  let ucRobin = uc * robinFac;
+  let u_ip = select(ucRobin, Ui[id + p.S2], l_ip == myL && !excl_ip);
+  let u_im = select(ucRobin, Ui[id - p.S2], l_im == myL && !excl_im);
+  let u_jp = select(ucRobin, Ui[id + p.S],  l_jp == myL && !excl_jp);
+  let u_jm = select(ucRobin, Ui[id - p.S],  l_jm == myL && !excl_jm);
+  let u_kp = select(ucRobin, Ui[id + 1u],   l_kp == myL && !excl_kp);
+  let u_km = select(ucRobin, Ui[id - 1u],   l_km == myL && !excl_km);
 
   let lap = u_ip + u_im + u_jp + u_jm + u_kp + u_km - 6.0 * uc;
 
@@ -441,10 +448,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
-// Subtract per-domain self-potential from Pother at points in that domain
+// Subtract per-domain self-potential from Pother at points in that domain.
+// For orbitals with occupation n=Zeff>1 we only remove the 1/n "fake" self-interaction
+// piece; the (n-1)/n piece is kept as the real intra-orbital pair repulsion.
+// Zeff is packed as the float bits in slot 1 of the DomIdx uniform.
 const subtractPselfWGSL = `
 ${paramStructWGSL}
-struct DomIdx { idx: u32, _p0: u32, _p1: u32, _p2: u32 }
+struct DomIdx { idx: u32, Zeff_bits: u32, _p1: u32, _p2: u32 }
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read> Pm: array<f32>;
 @group(0) @binding(2) var<storage, read_write> Pother: array<f32>;
@@ -463,7 +473,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = (cell / (NM * NM)) + 1u;
   let id = i * p.S2 + j * p.S + k;
   if (label[id] == dom.idx) {
-    Pother[id] -= Pm[id];
+    let Zeff = bitcast<f32>(dom.Zeff_bits);
+    let frac = select(1.0, 1.0 / Zeff, Zeff > 1.0);
+    Pother[id] -= Pm[id] * frac;
   }
 }
 `;
@@ -708,8 +720,17 @@ ${atomStructWGSL}
 @group(0) @binding(6) var<storage, read> atoms: array<Atom>;
 
 fn isInsideExcl(ci: u32, cj: u32, ck: u32, lbl: u32) -> bool {
-  let _keep = atoms[lbl].rc;  // keep atoms binding alive
+  // Don't skip cells — u=0 inside r_c naturally contributes 0 to V terms
   return false;
+}
+fn isInsideRcEnergy(ci: u32, cj: u32, ck: u32, lbl: u32) -> bool {
+  // For gradient zeroing at r_c boundary (Neumann BC in energy, matching ITP)
+  let rc = atoms[lbl].rc;
+  if (rc <= 0.0) { return false; }
+  let dx = (f32(ci) - f32(atoms[lbl].posI)) * p.h;
+  let dy = (f32(cj) - f32(atoms[lbl].posJ)) * p.h;
+  let dz = (f32(ck) - f32(atoms[lbl].posK)) * p.h;
+  return sqrt(dx*dx + dy*dy + dz*dz) < rc;
 }
 
 var<workgroup> sn: array<f32, ${NRED_E * REDUCE_WG}>;
@@ -740,10 +761,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
     // Skip points inside exclusion sphere max(r_c, R_SING) — replaced by analytical correction
     if (isInsideExcl(i, j, k, myL)) { cell = cell + stride; continue; }
 
-    // Gradients: zero if neighbor is inside any exclusion sphere (Neumann BC)
-    let sameL_ip = label[id + p.S2] == myL && !isInsideExcl(i+1u, j, k, myL);
-    let sameL_jp = label[id + p.S]  == myL && !isInsideExcl(i, j+1u, k, myL);
-    let sameL_kp = label[id + 1u]   == myL && !isInsideExcl(i, j, k+1u, myL);
+    // Gradients: zero if either endpoint (current or neighbor) is inside r_c.
+    // U=0 inside r_c is a boundary condition, not a physical value — the forward
+    // difference U_out - 0 across the r_c shell would otherwise produce a spurious
+    // kinetic-energy cliff all around the exclusion sphere.
+    let insideSelf = isInsideRcEnergy(i, j, k, myL);
+    let sameL_ip = label[id + p.S2] == myL && !insideSelf && !isInsideRcEnergy(i+1u, j, k, myL);
+    let sameL_jp = label[id + p.S]  == myL && !insideSelf && !isInsideRcEnergy(i, j+1u, k, myL);
+    let sameL_kp = label[id + 1u]   == myL && !insideSelf && !isInsideRcEnergy(i, j, k+1u, myL);
     let a = select(0.0, U[id + p.S2] - v, sameL_ip);
     let b = select(0.0, U[id + p.S]  - v, sameL_jp);
     let c = select(0.0, U[id + 1u]   - v, sameL_kp);
@@ -1759,7 +1784,11 @@ async function initGPU() {
     if (SIC_INTERVAL < 999999) {
       for (let m = 0; m < NELEC; m++) {
         domainBufs[m] = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-        device.queue.writeBuffer(domainBufs[m], 0, new Uint32Array([m, 0, 0, 0]));
+        // slot 0: domain index (u32). slot 1: Zeff as float-bits (for subtractPself SIC factor).
+        const buf = new ArrayBuffer(16);
+        new Uint32Array(buf, 0, 1)[0] = m;
+        new Float32Array(buf, 4, 1)[0] = Z[m] || 1.0;
+        device.queue.writeBuffer(domainBufs[m], 0, buf);
       }
     }
     // Multigrid buffers
@@ -2126,7 +2155,10 @@ async function initGPU() {
     for (let m = 0; m < NELEC; m++) {
       if (!domainBufs[m]) {
         domainBufs[m] = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-        device.queue.writeBuffer(domainBufs[m], 0, new Uint32Array([m, 0, 0, 0]));
+        const buf = new ArrayBuffer(16);
+        new Uint32Array(buf, 0, 1)[0] = m;
+        new Float32Array(buf, 4, 1)[0] = Z[m] || 1.0;
+        device.queue.writeBuffer(domainBufs[m], 0, buf);
       }
     }
 
@@ -2352,8 +2384,8 @@ async function doSteps(n) {
 
     cur = next;
 
-    // Nuclear force computation at N_MOVE intervals — gradient of P directly
-    if (dynamicsEnabled && (tStep + s + 1) % N_MOVE === 0) {
+    // Nuclear force computation at N_MOVE intervals — gradient of P directly (always compute for display)
+    if ((tStep + s + 1) % N_MOVE === 0) {
       cp = enc.beginComputePass();
       cp.setPipeline(gradPtotalPL);
       cp.setBindGroup(0, gradPtotalBG[cur]);
@@ -3288,15 +3320,16 @@ function draw() {
   for (let n = 0; n < NELEC; n++) {
     if (Z[n] > 0) {
       circle(nucPos[n][0] * PX, nucPos[n][1] * PX, 6);
-      // Draw force arrows when dynamics enabled
-      if (dynamicsEnabled && nucForce[n]) {
+      // Force arrows always shown; dimmer when dynamics off
+      if (nucForce[n]) {
         const fx = nucForce[n][0], fy = nucForce[n][1];
         const fmag = Math.sqrt(fx*fx + fy*fy);
         if (fmag > 1e-8) {
           const arrowScale = 100;
           const ax = nucPos[n][0] * PX + fx * arrowScale;
           const ay = nucPos[n][1] * PX + fy * arrowScale;
-          stroke(0, 255, 0); strokeWeight(1);
+          stroke(dynamicsEnabled ? 255 : 180, dynamicsEnabled ? 0 : 80, dynamicsEnabled ? 0 : 80);
+          strokeWeight(1.5);
           line(nucPos[n][0] * PX, nucPos[n][1] * PX, ax, ay);
         }
       }
@@ -3325,6 +3358,15 @@ function draw() {
   // Dynamics status
   fill(dynamicsEnabled ? [0,255,255] : [150,150,150]);
   text("Dynamics: " + (dynamicsEnabled ? "ON" : "OFF") + " (nucStep=" + nucStepCount + ")  Force=" + forceScale.toFixed(1) + "x  [D toggle, +/- force]", 5, 80);
+  // H-H kernel distance (first 2 atoms with Z>0)
+  if (NELEC >= 2 && Z[0] > 0 && Z[1] > 0 && nucPos[0] && nucPos[1]) {
+    const dx = (nucPos[0][0] - nucPos[1][0]) * hGrid;
+    const dy = (nucPos[0][1] - nucPos[1][1]) * hGrid;
+    const dz = (nucPos[0][2] - nucPos[1][2]) * hGrid;
+    const dAu = Math.sqrt(dx*dx + dy*dy + dz*dz);
+    fill(255, 200, 100);
+    text("kernel distance: " + dAu.toFixed(3) + " au (" + (dAu * 0.529177).toFixed(3) + " Å, target 1.4 au)", 5, 95);
+  }
 
   // r_c values
   fill(200, 180, 255);

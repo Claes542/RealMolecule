@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>H2 dynamic formation — molecule_h2.js</title>
+  <style>body { margin: 0; background: #000; color: #fff; font-family: monospace; }</style>
+</head><body>
+<div id="info" style="position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.8);padding:8px 14px;color:#ffa;font-size:13px;z-index:100;border:1px solid #333;border-radius:4px;max-width:340px">
+  H<sub>2</sub> dynamic on molecule_h2.js. Start two H's at ?sep=N au; press <b>D</b> to toggle dynamics.
+  Target bond: 1.4 au. ROBIN_K=0 → pure Neumann BC at free boundary.
+</div>
+<script>
+(function() {
+  var urlSep = parseFloat(new URLSearchParams(location.search).get('sep'));
+  var sep = isFinite(urlSep) ? urlSep : 2.0;
+
+  var N = 200, scr = 10;
+  var hg = scr / N;
+  var halfCells = Math.round(0.5 * sep / hg);
+  var ci = Math.round(5.0 / hg);
+  var cj = ci;
+
+  window.USER_NN = N;
+  window.USER_ATOMS = [
+    { i: ci - halfCells, j: cj, Z: 1, el: 'H' },
+    { i: ci + halfCells, j: cj, Z: 1, el: 'H' }
+  ];
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 100000;
+  window.USER_Z = [1, 1];
+  window.USER_RC = [0, 0];
+  window.ROBIN_K = 0;  // 0 = homogeneous Neumann at inter-orbital boundary (default was 1.0 = Robin)
+  window.USER_DYNAMICS = false;  // press D to toggle; converge electrons first
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 100.0;
+  window.USER_TEMPERATURE_K = 0;
+  window.USER_N_MOVE = 30;
+  window.USER_NUC_SUBSTEPS = 10;
+  window.USER_THERMAL_KICK = 0;
+  window.USER_ROT_SPEED = 0.005;
+  console.log('H2 dynamic: sep=' + sep + ' au initial, press D to start nuclear dynamics');
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule_h2.js?t=' + Date.now();
+s.onload = function() {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
