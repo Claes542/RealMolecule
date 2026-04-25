@@ -96,6 +96,32 @@ footer a { color: #4fc3f7; text-decoration: none; }
   </p>
 </div>
 
+<!-- FORCES VS ENERGY -->
+<div class="section">
+  <h2>Forces vs Energy in Quantum Dynamics</h2>
+  <div class="grid" style="grid-template-columns:1fr">
+    <div class="card" style="border-color:#26c6da;background:#0a1820;cursor:default">
+      <div class="desc" style="line-height:1.7;font-size:13px;color:#ccc">
+        RealQM dynamics is based on <b style="color:#26c6da">forces on kernels computed as gradients of electronic potentials</b>,
+        which represents real physics &mdash; nuclei feel electrostatic gradients of the actual electron field at their position.
+        <br><br>
+        Standard QM is based on <b>gradients of total energies</b>, which is not real physics because physics does not
+        carry a record of energy &mdash; nature does not "know" the value of the system's energy at each step; it only knows
+        the local field gradients.
+        <br><br>
+        RealQM computes total energy or binding energy with low accuracy (~0.1 Ha)
+        but <b>does not use this information for dynamics</b>. Forces give precise distributed information for dynamics,
+        while energy-based dynamics appears to offer less precise dynamics.
+        <br><br>
+        Energy connects to thermodynamics, so RealQM <b>with thermodynamics appears to require calibration</b>
+        (e.g., scale relative to experimental binding energies, or hand the converged geometry to DFT/CCSD(T) for
+        precise energetics). For mechanism, structure, equilibrium geometry, recognition, and reactive pathways,
+        forces alone deliver the answer.
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- REALQM HIERARCHICAL MODEL -->
 <div class="section">
   <h2>RealQM Hierarchical Model</h2>
@@ -185,6 +211,23 @@ footer a { color: #4fc3f7; text-decoration: none; }
 P += dt&middot;(&Delta;P + 2&pi;&middot;u&sup2;)              <span style="color:#888">// Poisson solve</span>
 w += dt&middot;|c|&middot;&Delta;w + dt&middot;c&middot;|&nabla;w|        <span style="color:#888">// front tracking</span></pre>
       <div class="desc" style="font-size:13px;margin-top:10px">He ground state: <b style="color:#66bb6a">E = &minus;2.92 Ha</b> (exact &minus;2.904). Two non-overlapping electron densities in half-spaces meeting at a plane through the kernel.</div>
+    </a>
+    <a class="card" href="mol_fast_h2.html?sep=1.6" style="border-color:#ffca28;background:#1a1400;grid-column:1/-1">
+      <h3 style="color:#ffca28">H<sub>2</sub> binding via mol_fast.js — 88% of Kolos-Wolniewicz</h3>
+      <div class="desc">
+        Two H atoms (Z=1 kernel + 1 electron each, net 0 per atom) on mol_fast.js, screen 10 au.
+        Static geometry energies:
+        <table style="font-size:11px;color:#aaa;margin-top:8px;border-collapse:collapse">
+          <tr style="color:#ffca28;border-bottom:1px solid #333"><th style="text-align:left;padding:2px 8px">Geometry</th><th>E (Ha)</th><th>K-W exact (Ha)</th><th>Diff</th></tr>
+          <tr><td style="padding:2px 8px">sep=1.6 au (near eq)</td><td>−1.22</td><td>−1.17</td><td>−0.05 (4% deeper)</td></tr>
+          <tr><td style="padding:2px 8px">sep=6 au (dissociated)</td><td>−1.07</td><td>−1.00</td><td>−0.07 (7% deeper)</td></tr>
+          <tr style="color:#0f0;font-weight:bold"><td style="padding:2px 8px">E_bind = E(eq) − E(far)</td><td>−0.15</td><td>−0.17</td><td><b>88% of exact</b></td></tr>
+        </table>
+        First quantitatively accurate H<sub>2</sub> binding result in this collection.
+        Confirms mol_fast.js handles homonuclear covalent bonds when atoms have proper neutral
+        kernel + electron count (1+1 each).
+      </div>
+      <span class="tag tag-mol">mol_fast</span><span class="tag tag-small">H2</span>
     </a>
     <a class="card" href="h2_p5_template.html" style="border-color:#ffca28;background:#1a1400;grid-column:1/-1;text-align:center;padding:24px">
       <h3 style="font-size:18px;color:#ffca28">H<sub>2</sub> &mdash; Original p5.js Template</h3>

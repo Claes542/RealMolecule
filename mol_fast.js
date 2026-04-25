@@ -559,7 +559,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let di = (f32(i) - p.atoms[a].x) * p.h;
     let dj = (f32(j) - p.atoms[a].y) * p.h;
     let dk = (f32(k) - p.atoms[a].z) * p.h;
-    let r_soft = sqrt(di*di + dj*dj + dk*dk + 2.0 * p.h2);  // softening ε² = 2·h² (template-style)
+    let r_soft = sqrt(di*di + dj*dj + dk*dk + 4.0 * p.h2);  // softening ε² = 4·h²
     Kval += Z_a / r_soft;
   }
   K[id] = Kval;
@@ -897,7 +897,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     const Ud = new Float32Array(NELEC * S3);
     const Wd = new Float32Array(NELEC * S3);
     const Pd = new Float32Array(NELEC * S3);
-    const soft = 2 * h2v;  // kernel-smoothing ε² = 2·h² (template-style softening)
+    const soft = 4 * h2v;  // kernel-smoothing ε² = 4·h²
     const R_init = 3.0;  // au — initial u/w extent
 
     for (let i = 0; i <= NN; i++) {
