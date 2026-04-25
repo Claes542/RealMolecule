@@ -4264,17 +4264,29 @@ async function moveNuclei(gpuForces) {
           const wDz = nucForce[a][2] * nucVel[a][2] * dt_au;
           window._shearWork = (window._shearWork || 0) + wDx + wDy + wDz;
         }
-        for (let d = 0; d < 3; d++) {
-          nucVel[a][d] += nucForce[a][d] / m * DT_NUC * forceScale;
-          if (langevinKT <= 0) nucVel[a][d] *= DAMPING;
-          nucVel[a][d] = Math.max(-MAX_VEL, Math.min(MAX_VEL, nucVel[a][d]));
-          nucPos[a][d] += nucVel[a][d] * DT_NUC / hGrid;
-          nucPos[a][d] = Math.max(5, Math.min(NN - 5, nucPos[a][d]));
+        if (window.USER_BROWNIAN) {
+          // Overdamped Langevin: x_new = x + F·dt/γ + √(2 kT dt/γ)·gaussRand()
+          const gammaBD = window.USER_BROWNIAN_GAMMA || 1.0;
+          const driftCoeff = DT_NUC * forceScale / gammaBD;
+          const noiseCoeff = Math.sqrt(2 * Math.max(langevinKT, 0) * DT_NUC / gammaBD);
+          function gR_BD() { let u1 = Math.random(), u2 = Math.random(); return Math.sqrt(-2*Math.log(u1)) * Math.cos(2*Math.PI*u2); }
+          for (let d = 0; d < 3; d++) {
+            const dx = (nucForce[a][d] * driftCoeff + noiseCoeff * gR_BD()) / hGrid;
+            nucPos[a][d] += dx;
+            nucPos[a][d] = Math.max(5, Math.min(NN - 5, nucPos[a][d]));
+          }
+        } else {
+          for (let d = 0; d < 3; d++) {
+            nucVel[a][d] += nucForce[a][d] / m * DT_NUC * forceScale;
+            if (langevinKT <= 0) nucVel[a][d] *= DAMPING;
+            nucVel[a][d] = Math.max(-MAX_VEL, Math.min(MAX_VEL, nucVel[a][d]));
+            nucPos[a][d] += nucVel[a][d] * DT_NUC / hGrid;
+            nucPos[a][d] = Math.max(5, Math.min(NN - 5, nucPos[a][d]));
+          }
         }
       }
-      // Andersen thermostat: random velocity + position kicks
-      // LANGEVIN_GAMMA controls collision frequency (fraction of atoms kicked per step)
-      if (langevinKT > 0) {
+      // Andersen thermostat: random velocity + position kicks (skipped when Brownian active)
+      if (langevinKT > 0 && !window.USER_BROWNIAN) {
         function gaussRand() {
           let u1 = Math.random(), u2 = Math.random();
           return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
@@ -4941,6 +4953,10 @@ function draw() {
   if (window._hohStats) {
     fill(180, 255, 180); textSize(13);
     text(window._hohStats, 5, 95);
+  }
+  if (window._hbStats) {
+    fill(255, 200, 100); textSize(13);
+    text(window._hbStats, 5, 140);
   }
   if (window._ooDist) {
     fill(255, 200, 100); textSize(13);

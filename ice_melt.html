@@ -8,6 +8,11 @@
   <div style="font-size:13px;color:#00e5ff;margin-top:10px">Shear rate</div>
   <input type="range" id="shearSlider" min="0" max="100" step="1" value="0" style="width:250px">
   <span id="shearLabel" style="margin-left:10px;font-size:14px;color:#00e5ff">0</span>
+  <div style="font-size:13px;color:#ffb3ff;margin-top:10px">Thermostat:
+    <label style="margin-left:8px;cursor:pointer"><input type="radio" name="thermo" value="andersen" checked> Andersen</label>
+    <label style="margin-left:8px;cursor:pointer"><input type="radio" name="thermo" value="brownian"> Brownian</label>
+    <span id="thermoStatus" style="margin-left:10px;color:#aaa;font-size:11px">(γ=1.0)</span>
+  </div>
 </div>
 <script>
 (function() {
@@ -23,6 +28,28 @@
       var r = sliderToRate(v);
       window.USER_SHEAR_RATE = r;
       lbl.textContent = r === 0 ? '0' : r.toExponential(2);
+    });
+  }, 100);
+  // Thermostat radio: live-toggle Andersen ↔ Brownian
+  var _thReady = setInterval(function() {
+    var radios = document.querySelectorAll('input[name="thermo"]');
+    if (radios.length === 0) return;
+    clearInterval(_thReady);
+    var stat = document.getElementById('thermoStatus');
+    radios.forEach(function(r) {
+      r.addEventListener('change', function() {
+        if (this.value === 'brownian') {
+          window.USER_BROWNIAN = true;
+          window.USER_BROWNIAN_GAMMA = window.USER_BROWNIAN_GAMMA || 1.0;
+          stat.textContent = '(BD γ=' + window.USER_BROWNIAN_GAMMA + ')';
+          stat.style.color = '#ffb3ff';
+        } else {
+          window.USER_BROWNIAN = false;
+          stat.textContent = '(Andersen)';
+          stat.style.color = '#aaa';
+        }
+        console.log('Thermostat → ' + this.value);
+      });
     });
   }, 100);
 })();
@@ -314,6 +341,45 @@ var _sliderReady = setInterval(function() {
     window._hohStats = 'H-O-H: min=' + angles[0].toFixed(1) + '° med=' + med.toFixed(1) + '° mean=' + mean.toFixed(1) + '° max=' + angles[angles.length-1].toFixed(1) + '° (n=' + angles.length + ')';
     console.log(window._hohStats);
   }, 2000);
+
+  // H-bond counter: average # H-bonded neighbors per water + flux (breaks/forms per second)
+  var prevBonded = new Set();
+  var lastCheckTime = Date.now();
+  setInterval(function() {
+    if (typeof nucPos === 'undefined') return;
+    var oIdxs = waterTriplets.map(function(t) { return t[0]; });
+    var nW = oIdxs.length;
+    if (nW < 2) return;
+    var hbCutoffAu = 3.5 * 1.8897;  // 3.5 Å in au
+    var c2 = hbCutoffAu * hbCutoffAu;
+    var currentBonded = new Set();
+    var totalHB = 0;
+    for (var i = 0; i < nW; i++) {
+      var o1 = oIdxs[i];
+      if (!nucPos[o1]) continue;
+      for (var j = i + 1; j < nW; j++) {
+        var o2 = oIdxs[j];
+        if (!nucPos[o2]) continue;
+        var dx = (nucPos[o1][0] - nucPos[o2][0]) * h;
+        var dy = (nucPos[o1][1] - nucPos[o2][1]) * h;
+        var dz = (nucPos[o1][2] - nucPos[o2][2]) * h;
+        if (dx*dx + dy*dy + dz*dz < c2) {
+          currentBonded.add(i + ',' + j);
+          totalHB += 2;
+        }
+      }
+    }
+    var nHB = totalHB / nW;
+    var breaks = 0, forms = 0;
+    prevBonded.forEach(function(p) { if (!currentBonded.has(p)) breaks++; });
+    currentBonded.forEach(function(p) { if (!prevBonded.has(p)) forms++; });
+    var dt = (Date.now() - lastCheckTime) / 1000;
+    var brkRate = breaks / dt, fmRate = forms / dt;
+    prevBonded = currentBonded;
+    lastCheckTime = Date.now();
+    window._hbStats = 'n_HB = ' + nHB.toFixed(2) + ' (ice 4.0 / liq ~3.4) | breaks/s = ' + brkRate.toFixed(1) + '  forms/s = ' + fmRate.toFixed(1);
+  }, 1000);
+  window._hbStats = 'n_HB = ... (computing)';
 
   // Shear body force: F_x = m · shearRate · (y - y_center), applied by molecule.js each step.
   // URL ?shear=0.001 (units: 1/au-time²). Default 0 = no shear.
