@@ -136,6 +136,48 @@ footer a { color: #4fc3f7; text-decoration: none; }
         no two-electron integrals, no orbital-coefficient bookkeeping, no analytic gradient machinery.
         The whole solver is ~10 compute shaders (ITP, Poisson, front track, normalization, energy reduce, force gradient)
         wrapped in straightforward JavaScript. The simplification is what enables interactive chemistry on a laptop.
+        <br><br>
+        <b style="color:#ba68c8">Computing resources for typical jobs:</b>
+        <table style="font-size:11px;color:#aaa;margin-top:6px;border-collapse:collapse;width:100%">
+          <tr style="color:#ba68c8;border-bottom:1px solid #333">
+            <th style="text-align:left;padding:3px 6px">Job</th>
+            <th style="text-align:left;padding:3px 6px">RealQM</th>
+            <th style="text-align:left;padding:3px 6px">Standard QM/DFT</th>
+          </tr>
+          <tr>
+            <td style="padding:3px 6px">Single H<sub>2</sub>O equilibrium energy + dipole</td>
+            <td style="padding:3px 6px">1 GPU laptop, &lt;1 min</td>
+            <td style="padding:3px 6px">1 CPU, ~minutes (CCSD(T): hours)</td>
+          </tr>
+          <tr>
+            <td style="padding:3px 6px">Water dimer geometry + binding</td>
+            <td style="padding:3px 6px">1 GPU, ~minute</td>
+            <td style="padding:3px 6px">1 CPU, hours; CCSD(T): ~day</td>
+          </tr>
+          <tr>
+            <td style="padding:3px 6px">Na<sup>+</sup>(H<sub>2</sub>O)<sub>6</sub> + dynamics 1 ps</td>
+            <td style="padding:3px 6px">1 GPU, &lt;1 min interactive</td>
+            <td style="padding:3px 6px">DFT-MD: 16-32 cores, hours</td>
+          </tr>
+          <tr>
+            <td style="padding:3px 6px">216-water cluster, dynamics, 1 ns</td>
+            <td style="padding:3px 6px">1 GPU, hours real-time</td>
+            <td style="padding:3px 6px">DFT-MD: 64-256 cores HPC, weeks</td>
+          </tr>
+          <tr>
+            <td style="padding:3px 6px">Protein folding small peptide (chignolin), &micro;s</td>
+            <td style="padding:3px 6px">1 GPU, hours (with biases)</td>
+            <td style="padding:3px 6px">DFT-MD: <i>not feasible</i>; classical Anton: weeks</td>
+          </tr>
+          <tr>
+            <td style="padding:3px 6px">Protein-in-water 100 residues + 5000 H<sub>2</sub>O, ns</td>
+            <td style="padding:3px 6px">1 GPU, day-scale</td>
+            <td style="padding:3px 6px"><i>impossible</i> at full DFT; classical MD: cluster, days</td>
+          </tr>
+        </table>
+        <div style="margin-top:8px;font-size:11px;color:#888">
+          Hardware: RealQM uses a consumer GPU via WebGPU (~10 TFLOPS, &lt;500 W). Standard packages typically run on CPU clusters (~100&ndash;10000 cores, kW-MW total power), or on dedicated GPU clusters via specialized codes. Speedup factor 10<sup>2</sup>&ndash;10<sup>4</sup>&times; per equivalent calculation, accuracy traded for accessibility.
+        </div>
       </div>
     </div>
   </div>
