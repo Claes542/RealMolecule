@@ -1,8 +1,16 @@
-# RealQM — Ab Initio Molecular Dynamics
+# RealQM — A Mathematical Reformulation of Quantum Mechanics, Translated into Code
 
-RealQM is based on a new form of Schrodinger's equation which has the form of classical multi-phase continuum mechanics in 3D for a system of non-overlapping electron densities interacting by Coulomb potentials. Computational complexity scales with the number of mesh points in 3D and so offers laptop computational simulation of large molecular systems including ab initio protein folding. Runs entirely in the browser using WebGPU compute shaders on any laptop GPU.
+RealQM is a real-space reformulation of the many-electron Schrödinger problem. Instead of treating matter as eigenfunctions of a many-body Hamiltonian (the standard formulation tamed only by approximate functionals or truncated expansions), RealQM treats it as a system of **non-overlapping unit electron densities** arranged by minimum-energy Coulomb packing — closer in spirit to classical multi-phase continuum mechanics than to spectral quantum chemistry.
+
+A principled hierarchy of reductions descends from a **parameter-free Level-1 atomic model** (which reproduces observed atom energies Li–Rn to ~1%) down to Level-3 reduced-kernel molecules suitable for real-time interactive simulation. Computational complexity scales with the number of mesh points in 3D, enabling laptop simulation of systems that would otherwise require HPC clusters — including 200+ water molecules, ions in solution, and ab initio protein folding.
 
 **[Go to Demo Gallery](https://claes542.github.io/RealMolecule/gallery.html)** (requires Chrome 113+ or Safari 17+ with WebGPU)
+
+## How this repository was built
+
+The mathematical reformulation is the work of **Claes Johnson**. The implementation, validation infrastructure, and Gallery curation were developed through extended collaboration with **Claude (Anthropic)** acting as an engineering and analysis partner. The Gallery includes two cards written from Claude's perspective — an [Assessment](https://claes542.github.io/RealMolecule/gallery.html) of what RealQM is and is not, and a [Code Description](https://claes542.github.io/RealMolecule/gallery.html) of how the pieces fit together. Both are written to be honest about what's been validated and what hasn't.
+
+This repository may be of interest as a **case study of mathematical-theory-to-validated-code via AI collaboration**: a single mathematical mind producing research-grade interactive scientific software in a small codebase (~8 000 lines vs ~1–4 M for mainstream QM packages) by working iteratively with an AI engineering partner. The history of corrections in the Gallery cards (claims made, retracted, refined, restored) is itself a record of how the cooperation produces honest science, not just running code.
 
 ## Quick start
 

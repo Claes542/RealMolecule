@@ -118,6 +118,171 @@ footer a { color: #4fc3f7; text-decoration: none; }
   </div>
 </div>
 
+<!-- DESCRIPTION OF CODE — CLAUDE -->
+<div class="section">
+  <h2>Description of the Code by Claude</h2>
+  <div class="grid" style="grid-template-columns:1fr">
+    <div class="card" style="border-color:#4fc3f7;background:#0a1820;cursor:default">
+      <div class="desc" style="line-height:1.7;font-size:13px;color:#ddd">
+        <span style="color:#888;font-style:italic">A reading of the codebase organized around what the code
+        actually does and how the pieces fit together.</span>
+        <br><br>
+
+        <b style="color:#4fc3f7">Two parallel solver lineages.</b>
+        The repository contains two complete implementations of RealQM, both running in WebGPU:
+        <br><br>
+        <b>1. <code>molecule.js</code></b> &mdash; Voronoi-partition solver. Each electron is assigned a
+        spatial &ldquo;territory&rdquo; via a label field (one integer per grid cell), and Coulomb
+        repulsion is computed from the per-territory density. Used for protein-scale simulations
+        (216-water ice melt, alpha-helix folding, hairpin folding) where the cost of explicit
+        orbital orthogonality would be prohibitive. The label partition is recomputed periodically;
+        between recomputations the territories are frozen.
+        <br><br>
+        <b>2. <code>mol_fast.js</code></b> &mdash; unit-density orbital solver with shell splitting.
+        Each electron is its own orbital field (NELEC × N&sup3; floats), evolved by ITP, with
+        effective Pauli exclusion via overlap penalty between orbitals. Supports multi-occupancy
+        (e.g. C with one 4-electron orbital) and angular splitting (sphere, hemi, third, tetra
+        sector wedges). Used for small molecules and dimers where orbital structure matters.
+        Hard limit on atom count (<code>MAX_ATOMS=16</code>).
+        <br><br>
+        Plus auxiliary solvers (<code>realqm_rb.js</code> red-black GPU, <code>molecule_h2.js</code>,
+        <code>molecule_wlap.js</code>) and the spherical-symmetry atom solver behind
+        <a href="atom_simulator.html" style="color:#4fc3f7">atom_simulator.html</a>.
+        <br><br>
+
+        <b style="color:#4fc3f7">The numerical core.</b>
+        Both solvers do imaginary-time propagation (ITP) on a 3D real-space grid. Per step:
+        <br>
+        &bull; Update orbital amplitudes by an explicit Euler step on H&middot;u with kinetic Laplacian
+        and Coulomb-from-Poisson potential
+        <br>
+        &bull; Solve a separate Poisson PDE per orbital (one timestep diffusion of P sourced by
+        u&sup2;) &mdash; the cost driver
+        <br>
+        &bull; Compute and apply self-interaction correction so each electron doesn&rsquo;t feel its
+        own Hartree potential
+        <br>
+        &bull; Renormalize orbital integrals to enforce particle count
+        <br><br>
+        Force on each nucleus = Z&sdot;&nabla;P (electronic) + Z&sub_a;&sdot;Z&sub_b;&sdot;r&#770;/r&sup2; (nuclear). When dynamics
+        is enabled, nuclei integrate via velocity-Verlet with damping; in molecule.js, also Andersen
+        and (added this session) Brownian-overdamped thermostats.
+        <br><br>
+
+        <b style="color:#4fc3f7">The hierarchical reduction.</b>
+        The atomic models are parameterized by a kernel charge Z and softening radius r<sub>c</sub>.
+        Inner-shell electrons are absorbed into the kernel; only valence is explicit. For O typically
+        Z=3 (3 of 6 valence electrons explicit), for N typically Z=3 (3 of 5 explicit), for C Z=4,
+        for H Z=1. This is the Level-3 reduction described in the hierarchy card &mdash; useful for
+        scalability, costs ~5&ndash;10% accuracy on dipole and forces.
+        <br><br>
+
+        <b style="color:#4fc3f7">The visualization layer.</b>
+        Each HTML file sets up <code>USER_NUCLEI</code>, <code>USER_NORM_TARGETS</code>, and other
+        configuration globals, then loads the relevant <code>.js</code> solver plus
+        <code>p5.js</code> for the canvas. mol_fast renders a 2D density slice (z=N/2 plane) and a
+        rotatable 3D ball-and-stick view. molecule.js adds backbone visualization, force arrows,
+        and runtime overlays for energy/dipole/angles. The interactive feel is the practical
+        breakthrough: WebGPU keeps a 200&sup3; grid responsive on a single laptop GPU.
+        <br><br>
+
+        <b style="color:#4fc3f7">The experimental files.</b>
+        Most <code>*.html</code> in the repo are not solvers but parameterized test cases: ~150 of
+        them, each pinning a system (atom, dimer, protein) at a specific geometry with specific
+        kernels, then loading molecule.js or mol_fast.js. Many are exploratory and somewhat
+        redundant. The Gallery (this page) curates the validated subset.
+        <br><br>
+
+        <b style="color:#4fc3f7">Conventions and pitfalls.</b>
+        Different files use different kernel choices for the same element (e.g., O at Z=2, rc=0.4
+        in some molecule.js protein files vs. Z=3, rc=0.5 in mol_fast.js water files). This is a
+        real source of confusion and inconsistent results across the codebase &mdash; matched only
+        by checking each file&rsquo;s explicit <code>USER_NUCLEI</code> entries. The lesson learned
+        in this session: for honest comparisons, all atoms of a kind must use the same kernel
+        across the test set.
+        <br><br>
+
+        <b style="color:#4fc3f7">Code size and compute cost.</b>
+        RealQM is a real-space mean-field solver implemented entirely in JavaScript + WebGPU compute shaders.
+        Total code is dramatically smaller than mainstream quantum chemistry packages, which carry decades
+        of accumulated basis-set machinery, multi-method support, integral evaluators, and analytic gradients.
+        <br><br>
+        <table style="font-size:12px;color:#aaa;margin-top:6px;border-collapse:collapse;width:100%">
+          <tr style="color:#4fc3f7;border-bottom:1px solid #333">
+            <th style="text-align:left;padding:4px 8px">Code</th>
+            <th style="text-align:right">Lines</th>
+            <th style="text-align:left;padding:4px 8px">What it does</th>
+          </tr>
+          <tr style="color:#0f0;font-weight:bold">
+            <td style="padding:2px 8px">RealQM (this collection)</td>
+            <td style="text-align:right"><b>~8 k</b></td>
+            <td style="padding:2px 8px">multi-atom solver, dynamics, ions, peptide MD, gallery UI</td>
+          </tr>
+          <tr><td style="padding:2px 8px">&nbsp;&nbsp;&nbsp;molecule.js</td><td style="text-align:right">5 285</td><td style="padding:2px 8px">main solver + protein folding biases</td></tr>
+          <tr><td style="padding:2px 8px">&nbsp;&nbsp;&nbsp;mol_fast.js</td><td style="text-align:right">1 599</td><td style="padding:2px 8px">compact shell-split solver (atoms, ions)</td></tr>
+          <tr><td style="padding:2px 8px">&nbsp;&nbsp;&nbsp;realqm_rb.js</td><td style="text-align:right">1 222</td><td style="padding:2px 8px">red-black GPU builder solver</td></tr>
+          <tr style="color:#888"><td colspan="3" style="padding:6px 8px;border-top:1px solid #333">For comparison (Standard QM/DFT, decades of development):</td></tr>
+          <tr><td style="padding:2px 8px">Gaussian</td><td style="text-align:right">~3&ndash;4 M</td><td style="padding:2px 8px">commercial reference, all major methods</td></tr>
+          <tr><td style="padding:2px 8px">NWChem</td><td style="text-align:right">~3&ndash;4 M</td><td style="padding:2px 8px">parallel HF/DFT/CC, periodic + molecular</td></tr>
+          <tr><td style="padding:2px 8px">GAMESS-US</td><td style="text-align:right">~2 M</td><td style="padding:2px 8px">long-history Fortran QM package</td></tr>
+          <tr><td style="padding:2px 8px">Q-Chem / ORCA</td><td style="text-align:right">~1&ndash;2 M</td><td style="padding:2px 8px">modern HF/DFT/CC packages</td></tr>
+          <tr><td style="padding:2px 8px">CP2K</td><td style="text-align:right">~1 M</td><td style="padding:2px 8px">DFT-MD, Gaussian + plane-waves hybrid</td></tr>
+          <tr><td style="padding:2px 8px">VASP</td><td style="text-align:right">~500 k</td><td style="padding:2px 8px">plane-wave DFT for solids</td></tr>
+          <tr><td style="padding:2px 8px">PySCF / Psi4</td><td style="text-align:right">~300&ndash;500 k</td><td style="padding:2px 8px">modern Python-fronted QM</td></tr>
+          <tr><td style="padding:2px 8px">Quantum ESPRESSO</td><td style="text-align:right">~200&ndash;300 k</td><td style="padding:2px 8px">plane-wave DFT, AIMD</td></tr>
+        </table>
+        <br>
+        <b style="color:#4fc3f7">Why so small?</b> RealQM works directly in real space on a 3D grid &mdash; no basis sets,
+        no two-electron integrals, no orbital-coefficient bookkeeping, no analytic gradient machinery.
+        The whole solver is ~10 compute shaders (ITP, Poisson, front track, normalization, energy reduce, force gradient)
+        wrapped in straightforward JavaScript. The simplification is what enables interactive chemistry on a laptop.
+        <br><br>
+        <b style="color:#4fc3f7">Computing resources for typical jobs:</b>
+        <table style="font-size:11px;color:#aaa;margin-top:6px;border-collapse:collapse;width:100%">
+          <tr style="color:#4fc3f7;border-bottom:1px solid #333">
+            <th style="text-align:left;padding:3px 6px">Job</th>
+            <th style="text-align:left;padding:3px 6px">RealQM</th>
+            <th style="text-align:left;padding:3px 6px">Standard QM/DFT</th>
+          </tr>
+          <tr>
+            <td style="padding:3px 6px">Single H<sub>2</sub>O equilibrium energy + dipole</td>
+            <td style="padding:3px 6px">1 GPU laptop, &lt;1 min</td>
+            <td style="padding:3px 6px">1 CPU, ~minutes (CCSD(T): hours)</td>
+          </tr>
+          <tr>
+            <td style="padding:3px 6px">Water dimer geometry + binding</td>
+            <td style="padding:3px 6px">1 GPU, ~minute</td>
+            <td style="padding:3px 6px">1 CPU, hours; CCSD(T): ~day</td>
+          </tr>
+          <tr>
+            <td style="padding:3px 6px">Na<sup>+</sup>(H<sub>2</sub>O)<sub>6</sub> + dynamics 1 ps</td>
+            <td style="padding:3px 6px">1 GPU, &lt;1 min interactive</td>
+            <td style="padding:3px 6px">DFT-MD: 16-32 cores, hours</td>
+          </tr>
+          <tr>
+            <td style="padding:3px 6px">216-water cluster, dynamics, 1 ns</td>
+            <td style="padding:3px 6px">1 GPU, hours real-time</td>
+            <td style="padding:3px 6px">DFT-MD: 64-256 cores HPC, weeks</td>
+          </tr>
+          <tr>
+            <td style="padding:3px 6px">Protein folding small peptide (chignolin), &micro;s</td>
+            <td style="padding:3px 6px">1 GPU, hours (with biases)</td>
+            <td style="padding:3px 6px">DFT-MD: <i>not feasible</i>; classical Anton: weeks</td>
+          </tr>
+          <tr>
+            <td style="padding:3px 6px">Protein-in-water 100 residues + 5000 H<sub>2</sub>O, ns</td>
+            <td style="padding:3px 6px">1 GPU, day-scale</td>
+            <td style="padding:3px 6px"><i>impossible</i> at full DFT; classical MD: cluster, days</td>
+          </tr>
+        </table>
+        <div style="margin-top:8px;font-size:11px;color:#888">
+          Hardware: RealQM uses a consumer GPU via WebGPU (~10 TFLOPS, &lt;500 W). Standard packages typically run on CPU clusters (~100&ndash;10000 cores, kW-MW total power), or on dedicated GPU clusters via specialized codes. Speedup factor 10<sup>2</sup>&ndash;10<sup>4</sup>&times; per equivalent calculation, accuracy traded for accessibility.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- REALQM REGIME MAP -->
 <div class="section">
   <h2>RealQM State Report</h2>
@@ -166,92 +331,6 @@ footer a { color: #4fc3f7; text-decoration: none; }
   <p class="desc" style="margin-top:16px;font-size:12px;border-top:1px solid #222;padding-top:10px">
     <b>Bottom line</b>: RealQM is <b>fast reactive mean-field chemistry at protein scale</b>. Where reactions, structures and ion solvations dominate, it delivers qualitative-to-semi-quantitative results at ~10&#8308;× AIMD speed. Where dispersion, correlation, or cooperative many-body effects dominate, standard QM methods remain better. The niche: <b>what AIMD can't reach and classical MD can't include</b>.
   </p>
-</div>
-
-<!-- CODE SIZE COMPARISON -->
-<div class="section">
-  <h2>Code Size & Performance — RealQM vs Standard QM/DFT</h2>
-  <div class="grid" style="grid-template-columns:1fr">
-    <div class="card" style="border-color:#9c27b0;background:#180a1a;cursor:default">
-      <div class="desc" style="line-height:1.7;font-size:13px;color:#ccc">
-        RealQM is a real-space mean-field solver implemented entirely in JavaScript + WebGPU compute shaders.
-        Total code is dramatically smaller than mainstream quantum chemistry packages, which carry decades
-        of accumulated basis-set machinery, multi-method support, integral evaluators, and analytic gradients.
-        <br><br>
-        <table style="font-size:12px;color:#aaa;margin-top:6px;border-collapse:collapse;width:100%">
-          <tr style="color:#ba68c8;border-bottom:1px solid #333">
-            <th style="text-align:left;padding:4px 8px">Code</th>
-            <th style="text-align:right">Lines</th>
-            <th style="text-align:left;padding:4px 8px">What it does</th>
-          </tr>
-          <tr style="color:#0f0;font-weight:bold">
-            <td style="padding:2px 8px">RealQM (this collection)</td>
-            <td style="text-align:right"><b>~8 k</b></td>
-            <td style="padding:2px 8px">multi-atom solver, dynamics, ions, peptide MD, gallery UI</td>
-          </tr>
-          <tr><td style="padding:2px 8px">&nbsp;&nbsp;&nbsp;molecule.js</td><td style="text-align:right">5 285</td><td style="padding:2px 8px">main solver + protein folding biases</td></tr>
-          <tr><td style="padding:2px 8px">&nbsp;&nbsp;&nbsp;mol_fast.js</td><td style="text-align:right">1 599</td><td style="padding:2px 8px">compact shell-split solver (atoms, ions)</td></tr>
-          <tr><td style="padding:2px 8px">&nbsp;&nbsp;&nbsp;realqm_rb.js</td><td style="text-align:right">1 222</td><td style="padding:2px 8px">red-black GPU builder solver</td></tr>
-          <tr style="color:#888"><td colspan="3" style="padding:6px 8px;border-top:1px solid #333">For comparison (Standard QM/DFT, decades of development):</td></tr>
-          <tr><td style="padding:2px 8px">Gaussian</td><td style="text-align:right">~3&ndash;4 M</td><td style="padding:2px 8px">commercial reference, all major methods</td></tr>
-          <tr><td style="padding:2px 8px">NWChem</td><td style="text-align:right">~3&ndash;4 M</td><td style="padding:2px 8px">parallel HF/DFT/CC, periodic + molecular</td></tr>
-          <tr><td style="padding:2px 8px">GAMESS-US</td><td style="text-align:right">~2 M</td><td style="padding:2px 8px">long-history Fortran QM package</td></tr>
-          <tr><td style="padding:2px 8px">Q-Chem / ORCA</td><td style="text-align:right">~1&ndash;2 M</td><td style="padding:2px 8px">modern HF/DFT/CC packages</td></tr>
-          <tr><td style="padding:2px 8px">CP2K</td><td style="text-align:right">~1 M</td><td style="padding:2px 8px">DFT-MD, Gaussian + plane-waves hybrid</td></tr>
-          <tr><td style="padding:2px 8px">VASP</td><td style="text-align:right">~500 k</td><td style="padding:2px 8px">plane-wave DFT for solids</td></tr>
-          <tr><td style="padding:2px 8px">PySCF / Psi4</td><td style="text-align:right">~300&ndash;500 k</td><td style="padding:2px 8px">modern Python-fronted QM</td></tr>
-          <tr><td style="padding:2px 8px">Quantum ESPRESSO</td><td style="text-align:right">~200&ndash;300 k</td><td style="padding:2px 8px">plane-wave DFT, AIMD</td></tr>
-        </table>
-        <br>
-        <b style="color:#ba68c8">Why so small?</b> RealQM works directly in real space on a 3D grid &mdash; no basis sets,
-        no two-electron integrals, no orbital-coefficient bookkeeping, no analytic gradient machinery.
-        The whole solver is ~10 compute shaders (ITP, Poisson, front track, normalization, energy reduce, force gradient)
-        wrapped in straightforward JavaScript. The simplification is what enables interactive chemistry on a laptop.
-        <br><br>
-        <b style="color:#ba68c8">Computing resources for typical jobs:</b>
-        <table style="font-size:11px;color:#aaa;margin-top:6px;border-collapse:collapse;width:100%">
-          <tr style="color:#ba68c8;border-bottom:1px solid #333">
-            <th style="text-align:left;padding:3px 6px">Job</th>
-            <th style="text-align:left;padding:3px 6px">RealQM</th>
-            <th style="text-align:left;padding:3px 6px">Standard QM/DFT</th>
-          </tr>
-          <tr>
-            <td style="padding:3px 6px">Single H<sub>2</sub>O equilibrium energy + dipole</td>
-            <td style="padding:3px 6px">1 GPU laptop, &lt;1 min</td>
-            <td style="padding:3px 6px">1 CPU, ~minutes (CCSD(T): hours)</td>
-          </tr>
-          <tr>
-            <td style="padding:3px 6px">Water dimer geometry + binding</td>
-            <td style="padding:3px 6px">1 GPU, ~minute</td>
-            <td style="padding:3px 6px">1 CPU, hours; CCSD(T): ~day</td>
-          </tr>
-          <tr>
-            <td style="padding:3px 6px">Na<sup>+</sup>(H<sub>2</sub>O)<sub>6</sub> + dynamics 1 ps</td>
-            <td style="padding:3px 6px">1 GPU, &lt;1 min interactive</td>
-            <td style="padding:3px 6px">DFT-MD: 16-32 cores, hours</td>
-          </tr>
-          <tr>
-            <td style="padding:3px 6px">216-water cluster, dynamics, 1 ns</td>
-            <td style="padding:3px 6px">1 GPU, hours real-time</td>
-            <td style="padding:3px 6px">DFT-MD: 64-256 cores HPC, weeks</td>
-          </tr>
-          <tr>
-            <td style="padding:3px 6px">Protein folding small peptide (chignolin), &micro;s</td>
-            <td style="padding:3px 6px">1 GPU, hours (with biases)</td>
-            <td style="padding:3px 6px">DFT-MD: <i>not feasible</i>; classical Anton: weeks</td>
-          </tr>
-          <tr>
-            <td style="padding:3px 6px">Protein-in-water 100 residues + 5000 H<sub>2</sub>O, ns</td>
-            <td style="padding:3px 6px">1 GPU, day-scale</td>
-            <td style="padding:3px 6px"><i>impossible</i> at full DFT; classical MD: cluster, days</td>
-          </tr>
-        </table>
-        <div style="margin-top:8px;font-size:11px;color:#888">
-          Hardware: RealQM uses a consumer GPU via WebGPU (~10 TFLOPS, &lt;500 W). Standard packages typically run on CPU clusters (~100&ndash;10000 cores, kW-MW total power), or on dedicated GPU clusters via specialized codes. Speedup factor 10<sup>2</sup>&ndash;10<sup>4</sup>&times; per equivalent calculation, accuracy traded for accessibility.
-        </div>
-      </div>
-    </div>
-  </div>
 </div>
 
 <!-- FORCES VS ENERGY -->
