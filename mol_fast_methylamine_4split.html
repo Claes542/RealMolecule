@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <title>Methylamine — mol_fast (4-split tetrahedral N, Z=5 full valence)</title>
+  <style>body { margin: 0; background: #000; }</style>
+</head><body>
+<div id="info" style="position:fixed;bottom:200px;right:10px;background:rgba(0,0,0,0.8);padding:10px;border:1px solid #333;border-radius:6px;max-width:440px;font-size:12px;z-index:100;color:#ffa">
+  <div style="font-weight:bold">Methylamine — N 4-split tetrahedral</div>
+  N treated with full valence (Z=5 kernel + 5 explicit electrons): 3 sectors with 1 e (bonding to C, H_N1, H_N2) + 1 lone-pair sector with 2 e.
+  Geometry aligned with mol_fast's tetra directions (1,1,1), (1,-1,-1), (-1,1,-1), (-1,-1,1).
+  Reference dipole: 1.31 D (exp).
+</div>
+<div id="loadStatus" style="color:#ff0;font-family:monospace;padding:20px;font-size:14px">Loading…</div>
+<script>
+  window.onerror = function(msg, url, line, col, err) {
+    var pre = document.createElement('pre');
+    pre.style.cssText = 'color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
+    pre.textContent = 'ERROR: ' + msg + '\n  at ' + url + ':' + line + ':' + col;
+    document.body.insertBefore(pre, document.body.firstChild);
+  };
+  (function() {
+    var N = 200;
+    var urlScr = parseFloat(new URLSearchParams(location.search).get('scr'));
+    var scr = isFinite(urlScr) ? urlScr : 14;
+    var h = scr / N;
+    var N2 = Math.round(N / 2);
+    var A = 1.8897;
+
+    function place(xA, yA, zA) {
+      return {
+        i: Math.round(N2 + (xA * A) / h),
+        j: Math.round(N2 + (yA * A) / h),
+        k: Math.round(N2 + (zA * A) / h)
+      };
+    }
+
+    var bCN = 1.474, bNH = 1.01, bCH = 1.10;
+    // Tetra directions (unit, mol_fast convention):
+    var s3 = 1 / Math.sqrt(3);
+    var v0 = [ s3,  s3,  s3];   // C direction (sector 0)
+    var v1 = [ s3, -s3, -s3];   // H_N1 direction (sector 1)
+    var v2 = [-s3,  s3, -s3];   // H_N2 direction (sector 2)
+    // v3 = [-s3, -s3,  s3]      // LONE PAIR direction (sector 3, no atom)
+
+    var Nn  = place(0.0, 0.0, 0.0);
+    var Cn  = place(bCN*v0[0], bCN*v0[1], bCN*v0[2]);
+    var Hn1 = place(bNH*v1[0], bNH*v1[1], bNH*v1[2]);
+    var Hn2 = place(bNH*v2[0], bNH*v2[1], bNH*v2[2]);
+
+    // Methyl H's at C, tetrahedral around C with one bond toward N (-v0).
+    // Other 3 directions: anti-tetra corners
+    var w1 = [-s3,  s3,  s3];
+    var w2 = [ s3, -s3,  s3];
+    var w3 = [ s3,  s3, -s3];
+    var Cx = bCN*v0[0], Cy = bCN*v0[1], Cz = bCN*v0[2];
+    var Hc1 = place(Cx + bCH*w1[0], Cy + bCH*w1[1], Cz + bCH*w1[2]);
+    var Hc2 = place(Cx + bCH*w2[0], Cy + bCH*w2[1], Cz + bCH*w2[2]);
+    var Hc3 = place(Cx + bCH*w3[0], Cy + bCH*w3[1], Cz + bCH*w3[2]);
+
+    window.USER_NN = N;
+    window.USER_SCREEN = scr;
+    window.USER_STEPS = 100000;
+    window.USER_SHELL_MODE = true;
+    window.USER_NUCLEI = [
+      // C with single 4-electron orbital
+      { i: Cn.i, j: Cn.j, k: Cn.k, Z: 4, rc: 0.5 },                                              // 0: C
+      // N with 4-split tetrahedral; Z=5 kernel on first sector
+      { i: Nn.i, j: Nn.j, k: Nn.k, Z: 5, rc: 0.0, z_init: 5.0, split: 'tetra', split_idx: 0 },   // 1: N sector 0 (toward C)
+      { i: Nn.i, j: Nn.j, k: Nn.k, Z: 0, rc: 0.0, z_init: 5.0, split: 'tetra', split_idx: 1 },   // 2: N sector 1 (toward H_N1)
+      { i: Nn.i, j: Nn.j, k: Nn.k, Z: 0, rc: 0.0, z_init: 5.0, split: 'tetra', split_idx: 2 },   // 3: N sector 2 (toward H_N2)
+      { i: Nn.i, j: Nn.j, k: Nn.k, Z: 0, rc: 0.0, z_init: 5.0, split: 'tetra', split_idx: 3 },   // 4: N sector 3 (LONE PAIR)
+      // 5 H atoms
+      { i: Hn1.i, j: Hn1.j, k: Hn1.k, Z: 1, rc: 0.0 },                                           // 5: H_N1
+      { i: Hn2.i, j: Hn2.j, k: Hn2.k, Z: 1, rc: 0.0 },                                           // 6: H_N2
+      { i: Hc1.i, j: Hc1.j, k: Hc1.k, Z: 1, rc: 0.0 },                                           // 7: H_C1
+      { i: Hc2.i, j: Hc2.j, k: Hc2.k, Z: 1, rc: 0.0 },                                           // 8: H_C2
+      { i: Hc3.i, j: Hc3.j, k: Hc3.k, Z: 1, rc: 0.0 },                                           // 9: H_C3
+    ];
+    // 10 nuclei, 10 orbitals: C(4) + 3 N bonding (1 each) + N lone pair (2) + 5 H (1 each) = 14 valence e-
+    window.USER_NORM_TARGETS = [4,   1, 1, 1, 2,    1, 1, 1, 1, 1];
+    window.USER_ALPHA_TF = 0;
+    window.USER_DYNAMICS = false;  // start frozen; press D to enable
+
+    console.log('Methylamine 4-split N: 10 atoms, 10 orbitals, 14 valence e-');
+
+    // Diagnostic display
+    var monDiv = document.createElement('div');
+    monDiv.style.cssText = 'position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.85);padding:10px;border:1px solid #ffa;border-radius:6px;max-width:440px;font-size:12px;z-index:100;color:#ffa';
+    monDiv.textContent = 'Diagnostic: waiting…';
+    document.body.appendChild(monDiv);
+    var lastE = null, lastEtime = Date.now();
+    setInterval(function() {
+      if (!window.nucForce || !window.nuclei) return;
+      var maxF = 0, rmsF2 = 0, n = 0;
+      for (var k = 0; k < window.nucForce.length; k++) {
+        if (window.nuclei[k] && window.nuclei[k].fixed) continue;
+        var fa = window.nucForce[k];
+        var fm = Math.sqrt(fa[0]*fa[0] + fa[1]*fa[1] + fa[2]*fa[2]);
+        if (fm > maxF) maxF = fm;
+        rmsF2 += fm*fm; n++;
+      }
+      var rmsF = Math.sqrt(rmsF2 / Math.max(n, 1));
+      var conv = rmsF < 0.001 ? '#66bb6a' : (rmsF < 0.01 ? '#ffd54f' : '#ff7043');
+      var dEtext = '';
+      if (lastE !== null && window._E !== undefined) {
+        var dE = window._E - lastE;
+        var dt_s = (Date.now() - lastEtime) / 1000;
+        var econv = Math.abs(dE) < 1e-5 ? '#66bb6a' : (Math.abs(dE) < 1e-3 ? '#ffd54f' : '#ff7043');
+        dEtext = '<span style="color:' + econv + '">E = ' + window._E.toFixed(4) + ' Ha &nbsp; ΔE/Δt = ' + (dE/Math.max(dt_s,0.001)).toExponential(2) + '</span>';
+      } else if (window._E !== undefined) {
+        dEtext = 'E = ' + window._E.toFixed(4);
+      }
+      if (window._E !== undefined) {
+        lastE = window._E;
+        lastEtime = Date.now();
+      }
+      monDiv.innerHTML =
+        '<b>Methylamine 4-split N (Z=5)</b><br>' +
+        '<span style="color:' + conv + '">|F|<sub>RMS</sub> = ' + rmsF.toFixed(4) + ' Ha/au &nbsp; |F|<sub>max</sub> = ' + maxF.toFixed(4) + '</span><br>' +
+        dEtext + '<br>' +
+        '<span style="color:#888;font-size:11px">Press D to enable dynamics</span>';
+    }, 500);
+  })();
+
+  var loadEl = document.getElementById('loadStatus');
+  var s = document.createElement('script');
+  s.src = 'mol_fast.js?t=' + Date.now();
+  s.onload = function() {
+    loadEl.textContent += '\nmol_fast.js loaded';
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    p.onload = function() { if (loadEl && loadEl.parentNode) loadEl.parentNode.removeChild(loadEl); };
+    document.body.appendChild(p);
+  };
+  s.onerror = function() { loadEl.textContent += '\nFAILED to load mol_fast.js'; loadEl.style.color = '#f44'; };
+  document.body.appendChild(s);
+</script>
+</body></html>

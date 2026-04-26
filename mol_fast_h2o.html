@@ -36,12 +36,57 @@
     // O tilt strength (V = -α·y shift, biases O density toward +y = H side). Override with ?tilt=0.5 etc.
     var urlTilt = parseFloat(new URLSearchParams(location.search).get('tilt'));
     var oTilt = isFinite(urlTilt) ? urlTilt : 0.0;
+    // All atoms locked: angle fixed at 104.5°, bond length set by ?bond=N (au).
+    // Sweep ?bond=1.5, 1.7, 1.81, 2.0, ... to find RealQM's force-minimum bond length.
     window.USER_NUCLEI = [
-      { i: N2,                          j: N2,                          k: N2, Z: 3, rc: 0.5, tilt_y: oTilt },
-      { i: N2 + Math.round(hx / h),     j: N2 + Math.round(hy / h),     k: N2, Z: 1, rc: 0.0 },
-      { i: N2 - Math.round(hx / h),     j: N2 + Math.round(hy / h),     k: N2, Z: 1, rc: 0.0 },
+      { i: N2,                          j: N2,                          k: N2, Z: 3, rc: 0.5, tilt_y: oTilt, fixed: true },  // O
+      { i: N2 + Math.round(hx / h),     j: N2 + Math.round(hy / h),     k: N2, Z: 1, rc: 0.0, fixed: true },                  // H1
+      { i: N2 - Math.round(hx / h),     j: N2 + Math.round(hy / h),     k: N2, Z: 1, rc: 0.0, fixed: true },                  // H2
     ];
     window.USER_NORM_TARGETS = [3, 1, 1];   // triply-occupied O orbital (+3 pseudo), singly-occupied H's
+
+    // Optional freeze (?frozen=1) for clean force diagnostic at fixed geometry
+    var frozen = (new URLSearchParams(location.search).get('frozen') === '1');
+    if (frozen) window.USER_DYNAMICS = false;
+
+    // Force diagnostic: |F|_RMS and |F|_max at this geometry
+    var monDiv = document.createElement('div');
+    monDiv.style.cssText = 'position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.85);padding:10px;border:1px solid #ffa;border-radius:6px;max-width:380px;font-size:12px;z-index:100;color:#ffa';
+    monDiv.textContent = 'Force diagnostic: waiting…';
+    document.body.appendChild(monDiv);
+    setInterval(function() {
+      if (!window.nucForce) return;
+      // O is locked (atom 0); diagnostic only over H atoms 1, 2.
+      var fO = window.nucForce[0];
+      var fOmag = Math.sqrt(fO[0]*fO[0] + fO[1]*fO[1] + fO[2]*fO[2]);
+      var maxF = 0, rmsF2 = 0, n = 0;
+      for (var k = 1; k < window.nucForce.length; k++) {
+        var fa = window.nucForce[k];
+        var fm = Math.sqrt(fa[0]*fa[0] + fa[1]*fa[1] + fa[2]*fa[2]);
+        if (fm > maxF) maxF = fm;
+        rmsF2 += fm*fm; n++;
+      }
+      var rmsF = Math.sqrt(rmsF2 / Math.max(n, 1));
+      var conv = rmsF < 0.001 ? '#66bb6a' : (rmsF < 0.01 ? '#ffd54f' : '#ff7043');
+      // Radial force component on H1 (positive = outward from O = bond stretching)
+      var radial = 0;
+      if (window.nuclei && window.nuclei[1]) {
+        var nu1 = window.nuclei[1];
+        var ox = nu1.i - N2, oy = nu1.j - N2;
+        var rmag = Math.sqrt(ox*ox + oy*oy);
+        if (rmag > 0) {
+          radial = (window.nucForce[1][0] * ox + window.nucForce[1][1] * oy) / rmag;
+        }
+      }
+      var bondAU = bOH;
+      monDiv.innerHTML = '<b>H<sub>2</sub>O bond-length scan</b><br>' +
+        'Bond: ' + bondAU.toFixed(2) + ' au (' + (bondAU/A).toFixed(3) + ' &Aring;), &ang;HOH=104.5&deg; fixed<br>' +
+        'All atoms locked &mdash; reading residual forces<br><br>' +
+        '<span style="color:' + conv + '">|F|<sub>RMS</sub>(H&apos;s) = ' + rmsF.toFixed(4) + ' Ha/au<br>' +
+        'F<sub>radial</sub>(H1) = ' + radial.toFixed(4) + ' Ha/au<br>' +
+        '<span style="font-size:11px">(positive = O-H tries to stretch &rarr; bond too short)</span></span><br>' +
+        '<span style="color:#888;font-size:11px">Sweep with ?bond=1.5, 1.7, 1.81, 2.0...</span>';
+    }, 500);
   })();
 
   var status = document.getElementById('loadStatus');

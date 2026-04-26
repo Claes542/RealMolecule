@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <title>Methylamine CH3NH2 — mol_fast (monomer)</title>
+  <style>body { margin: 0; background: #000; }</style>
+</head><body>
+<div id="loadStatus" style="color:#ff0;font-family:monospace;padding:20px;font-size:14px">Loading mol_fast methylamine…</div>
+<script>
+  window.onerror = function(msg, url, line, col, err) {
+    var pre = document.createElement('pre');
+    pre.style.cssText = 'color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
+    pre.textContent = 'ERROR: ' + msg + '\n  at ' + url + ':' + line + ':' + col +
+      (err && err.stack ? '\n\n' + err.stack : '');
+    document.body.insertBefore(pre, document.body.firstChild);
+  };
+  (function() {
+    var N = 200;
+    var urlScr = parseFloat(new URLSearchParams(location.search).get('scr'));
+    var scr = isFinite(urlScr) ? urlScr : 14;
+    var h = scr / N;
+    var N2 = Math.round(N / 2);
+    var A = 1.8897;  // Å → au
+
+    // Methylamine geometry (Å):
+    //   C at origin, N at +x (1.474), methyl on -x of C, NH2 on +x of N.
+    //   N-H angle ~106°, C-H ~109°.
+    function place(xA, yA, zA) {
+      return {
+        i: Math.round(N2 + (xA * A) / h),
+        j: Math.round(N2 + (yA * A) / h),
+        k: Math.round(N2 + (zA * A) / h)
+      };
+    }
+    var C  = place(0.000,  0.000,  0.000);
+    var Nn = place(1.474,  0.000,  0.000);
+    // Methyl H's (tetrahedral around C, pointing -x side)
+    var H1 = place(-0.40,  1.04,   0.00);
+    var H2 = place(-0.40, -0.52,   0.90);
+    var H3 = place(-0.40, -0.52,  -0.90);
+    // Amine H's (pyramidal on N, in +x half-space)
+    var H4 = place( 1.85,  0.50,   0.78);
+    var H5 = place( 1.85,  0.50,  -0.78);
+
+    window.USER_NN = N;
+    window.USER_SCREEN = scr;
+    window.USER_STEPS = 100000;
+    window.USER_NUCLEI = [
+      { i: C.i,  j: C.j,  k: C.k,  Z: 4, rc: 0.5 },   // 0: C kernel (4 valence)
+      { i: Nn.i, j: Nn.j, k: Nn.k, Z: 3, rc: 0.5 },   // 1: N kernel (3 valence — lone pair tail in kernel)
+      { i: H1.i, j: H1.j, k: H1.k, Z: 1, rc: 0.0 },   // 2: H_C1
+      { i: H2.i, j: H2.j, k: H2.k, Z: 1, rc: 0.0 },   // 3: H_C2
+      { i: H3.i, j: H3.j, k: H3.k, Z: 1, rc: 0.0 },   // 4: H_C3
+      { i: H4.i, j: H4.j, k: H4.k, Z: 1, rc: 0.0 },   // 5: H_N1
+      { i: H5.i, j: H5.j, k: H5.k, Z: 1, rc: 0.0 },   // 6: H_N2
+    ];
+    // Multi-occupancy on heavy atoms (no split): C 4-electron, N 3-electron, H 1-electron each
+    window.USER_NORM_TARGETS = [4, 3, 1, 1, 1, 1, 1];
+    window.USER_ALPHA_TF = 0;
+    window.USER_DYNAMICS = true;
+
+    console.log('Methylamine: 7 nuclei, 7 orbitals (12 valence e-), scr=' + scr + ' au');
+
+    // Force diagnostic: |F|_RMS and |F|_max at this geometry
+    var monDiv = document.createElement('div');
+    monDiv.style.cssText = 'position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.85);padding:10px;border:1px solid #ffa;border-radius:6px;max-width:380px;font-size:12px;z-index:100;color:#ffa';
+    monDiv.textContent = 'Force diagnostic: waiting…';
+    document.body.appendChild(monDiv);
+    setInterval(function() {
+      if (!window.nucForce) return;
+      var maxF = 0, rmsF2 = 0, n = 0;
+      for (var k = 0; k < window.nucForce.length; k++) {
+        var fa = window.nucForce[k];
+        var fm = Math.sqrt(fa[0]*fa[0] + fa[1]*fa[1] + fa[2]*fa[2]);
+        if (fm > maxF) maxF = fm;
+        rmsF2 += fm*fm; n++;
+      }
+      var rmsF = Math.sqrt(rmsF2 / Math.max(n, 1));
+      var conv = rmsF < 0.001 ? '#66bb6a' : (rmsF < 0.01 ? '#ffd54f' : '#ff7043');
+      monDiv.innerHTML = '<b>Methylamine monomer — force diagnostic</b><br>' +
+        '<span style="color:' + conv + '">|F|<sub>RMS</sub> = ' + rmsF.toFixed(4) + ' Ha/au<br>' +
+        '|F|<sub>max</sub> = ' + maxF.toFixed(4) + ' Ha/au</span><br>' +
+        '<span style="color:#888;font-size:11px">(QC converged: RMS &lt; 1e-3)</span>';
+    }, 500);
+  })();
+
+  var loadEl = document.getElementById('loadStatus');
+  var s = document.createElement('script');
+  s.src = 'mol_fast.js?t=' + Date.now();
+  s.onload = function() {
+    loadEl.textContent += '\nmol_fast.js loaded';
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    p.onload = function() { if (loadEl && loadEl.parentNode) loadEl.parentNode.removeChild(loadEl); };
+    document.body.appendChild(p);
+  };
+  s.onerror = function() { loadEl.textContent += '\nFAILED to load mol_fast.js'; loadEl.style.color = '#f44'; };
+  document.body.appendChild(s);
+</script>
+</body></html>

@@ -16,7 +16,7 @@ console.log("[mol_fast.js] script loaded");
   const S2 = S * S;
   const S3 = S * S * S;
   const N2 = Math.round(NN / 2);
-  const MAX_ATOMS = 8;
+  const MAX_ATOMS = 16;
 
   const rawNuclei = window.USER_NUCLEI || [
     { i: N2 - 20, j: N2, k: N2, Z: 1, rc: 0 },
@@ -28,6 +28,7 @@ console.log("[mol_fast.js] script loaded");
   const nuclei = rawNuclei.map(n => ({
     i: n.i, j: n.j, k: n.k, Z: n.Z,
     rc: n.rc || 0, r_out: n.r_out || 0, tilt_y: n.tilt_y || 0, tilt_x: n.tilt_x || 0, hs: n.hs || 0,
+    fixed: n.fixed === true,  // lock-in-place flag (preserved from USER_NUCLEI)
     z_init: (n.z_init !== undefined ? n.z_init : (n.Z > 0 ? n.Z : 1)),
     // Shell-split fields: split_type ∈ {'sphere','hemi','third','tetra'}, split_idx = 0..N-1,
     // split_axis = normalized 3-vector (default [1,0,0] for hemi, [0,0,1] for third).
@@ -37,6 +38,7 @@ console.log("[mol_fast.js] script loaded");
     split_fix: (n.split_fix !== undefined ? n.split_fix : true),  // true=enforce every step; false=init only
     atom_id: (n.atom_id !== undefined ? n.atom_id : null),  // for grouping orbitals of same atom
   }));
+  window.nuclei = nuclei;  // expose live nuclear positions for HTML-side monitors
   const N_ATOMS = nuclei.length;
   const NELEC = N_ATOMS;
   const normTargets = window.USER_NORM_TARGETS || nuclei.map(() => 1);
@@ -792,11 +794,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   // this gives 3672 which is too light vs real O (~29000); override with USER_MASS if needed.
   const DT_NUC = window.USER_DT_NUC || 2.0;
   const NUC_DAMPING = window.USER_NUC_DAMPING || 0.9;
+  const NUC_FORCE_SCALE = window.USER_FORCE_SCALE || 1.0;  // multiply forces to accelerate relaxation
   const PROTON_MASS = 1836;
   const nucMass = (window.USER_MASS || nuclei.map(n => Math.max(1, n.Z) * PROTON_MASS));
   let nucVel = Array.from({length: N_ATOMS}, () => [0, 0, 0]);
   let nucForce = Array.from({length: N_ATOMS}, () => [0, 0, 0]);
+  window.nucForce = nucForce;  // expose for HTML-side force diagnostics
   let dynamicsEnabled = window.USER_DYNAMICS || false;
+  Object.defineProperty(window, 'dynamicsEnabled', { get: () => dynamicsEnabled });
   let forcesReadbackPending = false;
 
   const WG_UPDATE = Math.ceil(INTERIOR / 256);
@@ -1253,6 +1258,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     E_eK = sums[NELEC + 1];
     E_ee = sums[NELEC + 2];
     E = E_T + E_eK + E_ee + E_KK;
+    window._E = E;  // expose for convergence monitoring
     // Dipole: μ = Σ_a Z_a·R_a + μ_elec (electron part already summed with minus sign)
     let dipNx = 0, dipNy = 0, dipNz = 0;
     for (let a = 0; a < N_ATOMS; a++) {
@@ -1332,13 +1338,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       if (nuclei[a].fixed) continue;
       const m = nucMass[a];
       for (let d = 0; d < 3; d++) {
-        nucVel[a][d] = NUC_DAMPING * (nucVel[a][d] + dt * nucForce[a][d] / m);
+        nucVel[a][d] = NUC_DAMPING * (nucVel[a][d] + dt * NUC_FORCE_SCALE * nucForce[a][d] / m);
       }
       // Convert velocity (au/time) → grid cells via 1/h
       const di = (nucVel[a][0] * dt) / hv;
       const dj = (nucVel[a][1] * dt) / hv;
       const dk = (nucVel[a][2] * dt) / hv;
-      if (Math.abs(di) > 0.001 || Math.abs(dj) > 0.001 || Math.abs(dk) > 0.001) {
+      // Lowered threshold from 0.001 to 0.0001 to allow weak intermolecular forces to accumulate.
+      if (Math.abs(di) > 0.0001 || Math.abs(dj) > 0.0001 || Math.abs(dk) > 0.0001) {
         nuclei[a].i += di;
         nuclei[a].j += dj;
         nuclei[a].k += dk;
@@ -1377,8 +1384,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   window.setup = function () {
     createCanvas(620, 620);
     textSize(11);
-    view3D = createGraphics(200, 400, WEBGL);
-    view3D.textSize(10);
+    view3D = createGraphics(220, 280, WEBGL);
+    view3D.textSize(9);
     initGPU();
   };
 
@@ -1522,9 +1529,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     var dipD = dipoleMag * 2.5417;  // au → Debye
     text("dipole=" + dipoleMag.toFixed(4) + " au (" + dipD.toFixed(3) + " D)  dir=("
       + dipole[0].toFixed(3) + ", " + dipole[1].toFixed(3) + ", " + dipole[2].toFixed(3) + ")", 5, 608);
-    // 3D view (right side)
+    // 3D view (right side, moved left)
     draw3D();
-    image(view3D, 420, 0);
+    image(view3D, 380, 0);
   };
 
   function draw3D() {
@@ -1532,8 +1539,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     view3D.push();
     view3D.rotateX(rotX);
     view3D.rotateY(rotY);
-    // Scale grid units so the molecule fits — 60 px per au roughly
-    const pxPerAu = 60;
+    // Scale grid units so the molecule fits — was 60, reduced to 30
+    const pxPerAu = 30;
     // Draw nuclei
     view3D.noStroke();
     for (let a = 0; a < N_ATOMS; a++) {

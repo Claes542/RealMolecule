@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <title>Water dimer — mol_fast (S66 #1, force-direction test)</title>
+  <style>body { margin: 0; background: #000; color: #fff; font-family: monospace; }</style>
+</head><body>
+<div id="info" style="position:fixed;bottom:200px;right:10px;background:rgba(0,0,0,0.8);padding:10px;border:1px solid #333;border-radius:6px;max-width:440px;font-size:12px;z-index:100;color:#ffa">
+  <div style="font-weight:bold">Water dimer — S66 #1 force-direction test</div>
+  H<sub>2</sub>O · H<sub>2</sub>O. Both O at gallery-validated Z=3, rc=0.5 (no split).
+  6 atoms, 6 orbitals, 10 valence e<sup>-</sup>. Both O atoms locked at reference O&middot;&middot;&middot;O.
+  Reference: CCSD(T) E<sub>int</sub> -5.0 kcal/mol; O&middot;&middot;&middot;O 2.91 &Aring;; H&middot;&middot;&middot;O 1.95 &Aring;; O-H&middot;&middot;&middot;O 174&deg;.
+  URL <b>?sep=N</b> for O&middot;&middot;&middot;O distance &Aring; (default 2.91).
+</div>
+<div id="loadStatus" style="color:#ff0;font-family:monospace;padding:20px;font-size:14px">Loading…</div>
+<script>
+  window.onerror = function(msg, url, line, col, err) {
+    var pre = document.createElement('pre');
+    pre.style.cssText = 'color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
+    pre.textContent = 'ERROR: ' + msg + '\n  at ' + url + ':' + line + ':' + col;
+    document.body.insertBefore(pre, document.body.firstChild);
+  };
+  (function() {
+    var urlN = parseInt(new URLSearchParams(location.search).get('N'));
+    var N = isFinite(urlN) ? urlN : 150;
+    var urlScr = parseFloat(new URLSearchParams(location.search).get('scr'));
+    var scr = isFinite(urlScr) ? urlScr : 16;
+    var h = scr / N;
+    var N2 = Math.round(N / 2);
+    var A = 1.8897;
+
+    var urlSep = parseFloat(new URLSearchParams(location.search).get('sep'));
+    var sep = isFinite(urlSep) ? urlSep : 2.91;  // O···O Å
+
+    function place(xA, yA, zA) {
+      return {
+        i: Math.round(N2 + (xA * A) / h),
+        j: Math.round(N2 + (yA * A) / h),
+        k: Math.round(N2 + (zA * A) / h)
+      };
+    }
+
+    var bOH = 0.96;
+    var ang = 104.5 * Math.PI / 180;
+    var cosHa = Math.cos(ang / 2), sinHa = Math.sin(ang / 2);
+
+    // Donor (left): O at -sep/2, donor H along +x toward acceptor.
+    var Od = place(-sep/2,                0.0,    0.0);
+    var Hd = place(-sep/2 + bOH,          0.0,    0.0);   // donor H, points +x → toward acceptor
+    var Hd2 = place(-sep/2 + bOH * cosHa - bOH * sinHa,  bOH * sinHa,  0.0);  // wait — re-derive
+    // Actually: place donor H along +x, the OTHER H by rotating 104.5° around O_d in xy plane.
+    // O_d at (-sep/2, 0). Donor H at O_d + (bOH, 0). Other H at O_d + bOH·(cos(104.5°), sin(104.5°)).
+    var cAng = Math.cos(ang), sAng = Math.sin(ang);
+    Hd2 = place(-sep/2 + bOH * cAng,      bOH * sAng,  0.0);
+
+    // Acceptor (right): O at +sep/2, both H's behind (+x, ±z) so lone-pair side faces -x toward donor.
+    var Oa = place( sep/2,                0.0,    0.0);
+    var Ha1 = place( sep/2 + bOH * cosHa,  0.0,    bOH * sinHa);   // +x, +z
+    var Ha2 = place( sep/2 + bOH * cosHa,  0.0,   -bOH * sinHa);   // +x, -z
+
+    window.USER_NN = N;
+    window.USER_SCREEN = scr;
+    window.USER_STEPS = 200000;
+    window.USER_NUCLEI = [
+      // Donor
+      { i: Od.i,  j: Od.j,  k: Od.k,  Z: 3, rc: 0.6, fixed: true },   // 0: O_donor (locked)
+      { i: Hd.i,  j: Hd.j,  k: Hd.k,  Z: 1, rc: 0.0 },                // 1: H_donor (free, key test atom)
+      { i: Hd2.i, j: Hd2.j, k: Hd2.k, Z: 1, rc: 0.0 },                // 2: H_other (donor)
+      // Acceptor
+      { i: Oa.i,  j: Oa.j,  k: Oa.k,  Z: 3, rc: 0.6, fixed: true },   // 3: O_acceptor (locked)
+      { i: Ha1.i, j: Ha1.j, k: Ha1.k, Z: 1, rc: 0.0 },                // 4: H_a1
+      { i: Ha2.i, j: Ha2.j, k: Ha2.k, Z: 1, rc: 0.0 },                // 5: H_a2
+    ];
+    // 6 nuclei, 6 orbitals: 2×O(3-electron) + 4×H(1-electron) = 10 valence e-
+    window.USER_NORM_TARGETS = [3, 1, 1,   3, 1, 1];
+    window.USER_ALPHA_TF = 0;
+    window.USER_DYNAMICS = false;  // start frozen; press D to enable
+
+    console.log('Water dimer (mol_fast): O···O = ' + sep + ' Å, 6 atoms, 10 valence e-');
+
+    // Diagnostic display
+    var monDiv = document.createElement('div');
+    monDiv.style.cssText = 'position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.85);padding:10px;border:1px solid #ffa;border-radius:6px;max-width:440px;font-size:12px;z-index:100;color:#ffa';
+    monDiv.textContent = 'Diagnostic: waiting…';
+    document.body.appendChild(monDiv);
+    var lastE = null, lastEtime = Date.now();
+    var hPosHistory = [];
+    var hv = scr / N;
+    setInterval(function() {
+      if (!window.nucForce || !window.nuclei || window.nuclei.length < 6) return;
+      // F_RMS over free atoms (skip locked O's)
+      var maxF = 0, rmsF2 = 0, n = 0;
+      for (var k = 0; k < window.nucForce.length; k++) {
+        if (window.nuclei[k] && window.nuclei[k].fixed) continue;
+        var fa = window.nucForce[k];
+        var fm = Math.sqrt(fa[0]*fa[0] + fa[1]*fa[1] + fa[2]*fa[2]);
+        if (fm > maxF) maxF = fm;
+        rmsF2 += fm*fm; n++;
+      }
+      var rmsF = Math.sqrt(rmsF2 / Math.max(n, 1));
+      var conv = rmsF < 0.001 ? '#66bb6a' : (rmsF < 0.01 ? '#ffd54f' : '#ff7043');
+      // Donor H force direction — Fx > 0 means toward acceptor (correct H-bond)
+      var fHd = window.nucForce[1];
+      var fHdMag = Math.sqrt(fHd[0]*fHd[0] + fHd[1]*fHd[1] + fHd[2]*fHd[2]);
+      var dirInfo = fHd[0] > 0 ? '<span style="color:#66bb6a">→toward O_acceptor ✓</span>' : '<span style="color:#ff7043">←away from O_acceptor ✗</span>';
+      // Energy convergence
+      var dEtext = '';
+      if (lastE !== null && window._E !== undefined) {
+        var dE = window._E - lastE;
+        var dt_s = (Date.now() - lastEtime) / 1000;
+        var econv = Math.abs(dE) < 1e-5 ? '#66bb6a' : (Math.abs(dE) < 1e-3 ? '#ffd54f' : '#ff7043');
+        dEtext = '<span style="color:' + econv + '">E = ' + window._E.toFixed(4) + ' Ha &nbsp; ΔE/Δt = ' + (dE/Math.max(dt_s,0.001)).toExponential(2) + '</span>';
+      } else if (window._E !== undefined) {
+        dEtext = 'E = ' + window._E.toFixed(4);
+      }
+      if (window._E !== undefined) {
+        lastE = window._E;
+        lastEtime = Date.now();
+      }
+      // H_donor motion tracking
+      if (window.nuclei[1]) {
+        hPosHistory.push([window.nuclei[1].i, window.nuclei[1].j, window.nuclei[1].k]);
+        if (hPosHistory.length > 30) hPosHistory.shift();
+      }
+      var moveText = '';
+      if (hPosHistory.length >= 2) {
+        var f0 = hPosHistory[0], fL = hPosHistory[hPosHistory.length - 1];
+        var dx = (fL[0] - f0[0]) * hv, dy = (fL[1] - f0[1]) * hv, dz = (fL[2] - f0[2]) * hv;
+        var totalMove = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        moveText = 'H_donor moved ' + totalMove.toFixed(4) + ' au over ' + hPosHistory.length + ' frames';
+      }
+      monDiv.innerHTML =
+        '<b>Water dimer — H-bond force test</b><br>' +
+        '<span style="color:' + conv + '">|F|<sub>RMS</sub>(free) = ' + rmsF.toFixed(4) + ' Ha/au &nbsp; |F|<sub>max</sub> = ' + maxF.toFixed(4) + '</span><br>' +
+        dEtext + '<br>' +
+        '<b>F<sub>H_donor</sub></b> = (' + fHd[0].toFixed(3) + ', ' + fHd[1].toFixed(3) + ', ' + fHd[2].toFixed(3) + ') |F|=' + fHdMag.toFixed(3) + '<br>' +
+        'Direction: ' + dirInfo + ' (acceptor at +x)<br>' +
+        '<span style="color:#888;font-size:11px">' + moveText + ' | press D to enable dynamics</span>';
+    }, 500);
+  })();
+
+  var loadEl = document.getElementById('loadStatus');
+  var s = document.createElement('script');
+  s.src = 'mol_fast.js?t=' + Date.now();
+  s.onload = function() {
+    loadEl.textContent += '\nmol_fast.js loaded';
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    p.onload = function() { if (loadEl && loadEl.parentNode) loadEl.parentNode.removeChild(loadEl); };
+    document.body.appendChild(p);
+  };
+  s.onerror = function() { loadEl.textContent += '\nFAILED to load mol_fast.js'; loadEl.style.color = '#f44'; };
+  document.body.appendChild(s);
+</script>
+</body></html>

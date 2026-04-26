@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <title>Methylamine dimer — mol_fast (S66 #10)</title>
+  <style>body { margin: 0; background: #000; color: #fff; font-family: monospace; }</style>
+</head><body>
+<div id="info" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.8);padding:10px;border:1px solid #333;border-radius:6px;max-width:440px;font-size:12px;z-index:100">
+  <div style="color:#ffa;font-weight:bold">Methylamine dimer — mol_fast / S66 #10</div>
+  CH<sub>3</sub>NH<sub>2</sub> · CH<sub>3</sub>NH<sub>2</sub>: N-H&middot;&middot;&middot;N hydrogen bond.
+  CCSD(T) ref: E<sub>int</sub> &asymp; -4.4 kcal/mol; N&middot;&middot;&middot;N &asymp; 3.34 &Aring;.
+  14 nuclei, 14 orbitals (24 valence e<sup>-</sup>).
+  URL <b>?sep=N</b> = N&middot;&middot;&middot;N distance in &Aring; (default 3.34).
+</div>
+<div id="loadStatus" style="color:#ff0;font-family:monospace;padding:20px;font-size:14px">Loading…</div>
+<script>
+  window.onerror = function(msg, url, line, col, err) {
+    var pre = document.createElement('pre');
+    pre.style.cssText = 'color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
+    pre.textContent = 'ERROR: ' + msg + '\n  at ' + url + ':' + line + ':' + col +
+      (err && err.stack ? '\n\n' + err.stack : '');
+    document.body.insertBefore(pre, document.body.firstChild);
+  };
+  (function() {
+    var urlN = parseInt(new URLSearchParams(location.search).get('N'));
+    var N = isFinite(urlN) ? urlN : 150;
+    var urlScr = parseFloat(new URLSearchParams(location.search).get('scr'));
+    var scr = isFinite(urlScr) ? urlScr : 18;
+    var h = scr / N;
+    var N2 = Math.round(N / 2);
+    var A = 1.8897;
+
+    var urlSep = parseFloat(new URLSearchParams(location.search).get('sep'));
+    var sep = isFinite(urlSep) ? urlSep : 3.34;  // N···N in Å
+    var nax = -sep / 2;
+    var nbx =  sep / 2;
+
+    function place(xA, yA, zA) {
+      return {
+        i: Math.round(N2 + (xA * A) / h),
+        j: Math.round(N2 + (yA * A) / h),
+        k: Math.round(N2 + (zA * A) / h)
+      };
+    }
+
+    // Mol A (donor on left): N at (nax, 0, 0), C at (nax-1.474, 0, 0)
+    //                        Donor H along +x toward acceptor.
+    var Na   = place(nax,             0.000,  0.000);
+    var Ca   = place(nax - 1.474,     0.000,  0.000);
+    var Hca1 = place(nax - 1.874,     1.04,   0.000);
+    var Hca2 = place(nax - 1.874,    -0.52,   0.90);
+    var Hca3 = place(nax - 1.874,    -0.52,  -0.90);
+    var Hna1 = place(nax + 0.95,     -0.30,   0.10);   // donor H — toward acceptor
+    var Hna2 = place(nax + 0.20,     -0.78,  -0.55);   // back N-H
+
+    // Mol B (acceptor on right): N at (nbx, 0, 0), C at (nbx+1.474, 0, 0)
+    //                            Lone pair faces -x toward donor.
+    var Nb   = place(nbx,             0.000,  0.000);
+    var Cb   = place(nbx + 1.474,     0.000,  0.000);
+    var Hcb1 = place(nbx + 1.874,     1.04,   0.000);
+    var Hcb2 = place(nbx + 1.874,    -0.52,   0.90);
+    var Hcb3 = place(nbx + 1.874,    -0.52,  -0.90);
+    var Hnb1 = place(nbx + 0.20,      0.78,   0.55);   // both N-H's away from donor
+    var Hnb2 = place(nbx + 0.20,     -0.78,   0.55);
+
+    window.USER_NN = N;
+    window.USER_SCREEN = scr;
+    window.USER_STEPS = 200000;
+    window.USER_NUCLEI = [
+      // Mol A
+      { i: Ca.i,   j: Ca.j,   k: Ca.k,   Z: 4, rc: 0.5 },                // 0: C_A
+      { i: Na.i,   j: Na.j,   k: Na.k,   Z: 3, rc: 0.5, fixed: true },   // 1: N_A (donor — locked at ref)
+      { i: Hca1.i, j: Hca1.j, k: Hca1.k, Z: 1, rc: 0.0 },                // 2
+      { i: Hca2.i, j: Hca2.j, k: Hca2.k, Z: 1, rc: 0.0 },                // 3
+      { i: Hca3.i, j: Hca3.j, k: Hca3.k, Z: 1, rc: 0.0 },                // 4
+      { i: Hna1.i, j: Hna1.j, k: Hna1.k, Z: 1, rc: 0.0 },                // 5: donor H
+      { i: Hna2.i, j: Hna2.j, k: Hna2.k, Z: 1, rc: 0.0 },                // 6
+      // Mol B
+      { i: Cb.i,   j: Cb.j,   k: Cb.k,   Z: 4, rc: 0.5 },                // 7: C_B
+      { i: Nb.i,   j: Nb.j,   k: Nb.k,   Z: 3, rc: 0.5, fixed: true },   // 8: N_B (acceptor — locked at ref)
+      { i: Hcb1.i, j: Hcb1.j, k: Hcb1.k, Z: 1, rc: 0.0 },                // 9
+      { i: Hcb2.i, j: Hcb2.j, k: Hcb2.k, Z: 1, rc: 0.0 },                // 10
+      { i: Hcb3.i, j: Hcb3.j, k: Hcb3.k, Z: 1, rc: 0.0 },                // 11
+      { i: Hnb1.i, j: Hnb1.j, k: Hnb1.k, Z: 1, rc: 0.0 },                // 12
+      { i: Hnb2.i, j: Hnb2.j, k: Hnb2.k, Z: 1, rc: 0.0 },                // 13
+    ];
+    // 14 orbitals: C(4-e) + N(3-e) + 5×H(1-e) per molecule × 2 = 24 valence e-
+    window.USER_NORM_TARGETS = [4, 3, 1, 1, 1, 1, 1,   4, 3, 1, 1, 1, 1, 1];
+    window.USER_ALPHA_TF = 0;
+    window.USER_DYNAMICS = false;  // start frozen for force diagnostic; press D to enable
+
+    console.log('Methylamine dimer (mol_fast): 14 nuclei, 14 orbitals, scr=' + scr + ' au, sep=' + sep + ' Å');
+
+    // Live geometry monitor: H_donor (5) - N_donor (1) - N_acceptor (8) distances and angle
+    var monDiv = document.createElement('div');
+    monDiv.style.cssText = 'position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.85);padding:10px;border:1px solid #ffa;border-radius:6px;max-width:440px;font-size:12px;z-index:100;color:#ffa';
+    monDiv.textContent = 'Geometry: waiting for nuclei…';
+    document.body.appendChild(monDiv);
+    var hv = scr / N;  // au per grid cell
+    var Aval = A;
+    setInterval(function() {
+      if (!window.nuclei || window.nuclei.length < 14) return;
+      var nu = window.nuclei;
+      function dist(a, b) {
+        var dx = (nu[a].i - nu[b].i) * hv;
+        var dy = (nu[a].j - nu[b].j) * hv;
+        var dz = (nu[a].k - nu[b].k) * hv;
+        return Math.sqrt(dx*dx + dy*dy + dz*dz);
+      }
+      function angle(a, b, c) {  // angle at b
+        var v1 = [(nu[a].i - nu[b].i) * hv, (nu[a].j - nu[b].j) * hv, (nu[a].k - nu[b].k) * hv];
+        var v2 = [(nu[c].i - nu[b].i) * hv, (nu[c].j - nu[b].j) * hv, (nu[c].k - nu[b].k) * hv];
+        var dot = v1[0]*v2[0] + v1[1]*v2[1] + v1[2]*v2[2];
+        var l1 = Math.sqrt(v1[0]*v1[0]+v1[1]*v1[1]+v1[2]*v1[2]);
+        var l2 = Math.sqrt(v2[0]*v2[0]+v2[1]*v2[1]+v2[2]*v2[2]);
+        return Math.acos(Math.max(-1, Math.min(1, dot/(l1*l2)))) * 180/Math.PI;
+      }
+      // Indices: 1=N_A (donor N), 5=donor H, 8=N_B (acceptor N)
+      var dNH = dist(1, 5);   // donor N-H bond
+      var dHN = dist(5, 8);   // H ⋯ N_acceptor (H-bond)
+      var dNN = dist(1, 8);   // N ⋯ N
+      var ang = angle(1, 5, 8);  // N-H⋯N angle (at H)
+      // Force diagnostics
+      var forceText = '';
+      if (window.nucForce) {
+        var fHd = window.nucForce[5];  // donor H force
+        var fHdMag = Math.sqrt(fHd[0]*fHd[0] + fHd[1]*fHd[1] + fHd[2]*fHd[2]);
+        // Acceptor at +x, donor at -x, so F_x > 0 means toward acceptor
+        var dirInfo = fHd[0] > 0 ? '<span style="color:#66bb6a">→toward N_B ✓</span>' : '<span style="color:#ff7043">←away from N_B ✗</span>';
+        // F_RMS over free atoms
+        var maxF = 0, rmsF2 = 0, n = 0;
+        for (var k = 0; k < window.nucForce.length; k++) {
+          if (window.nuclei[k] && window.nuclei[k].fixed) continue;
+          var fa = window.nucForce[k];
+          var fm = Math.sqrt(fa[0]*fa[0] + fa[1]*fa[1] + fa[2]*fa[2]);
+          if (fm > maxF) maxF = fm;
+          rmsF2 += fm*fm; n++;
+        }
+        var rmsF = Math.sqrt(rmsF2 / Math.max(n, 1));
+        var conv = rmsF < 0.001 ? '#66bb6a' : (rmsF < 0.01 ? '#ffd54f' : '#ff7043');
+        forceText = '<br><span style="color:' + conv + '">|F|<sub>RMS</sub>(free) = ' + rmsF.toFixed(4) + ' Ha/au</span>' +
+                    '<br>F<sub>H_donor</sub> = (' + fHd[0].toFixed(3) + ', ' + fHd[1].toFixed(3) + ', ' + fHd[2].toFixed(3) + ') |F|=' + fHdMag.toFixed(3) +
+                    '<br>Direction: ' + dirInfo;
+      }
+      monDiv.innerHTML =
+        '<b>Methylamine dimer — H-bond force test</b><br>' +
+        'N_A&minus;H_donor: ' + (dNH/Aval).toFixed(2) + ' &Aring; <span style="color:#888">(ref 1.01)</span><br>' +
+        'H&middot;&middot;&middot;N_B: ' + (dHN/Aval).toFixed(2) + ' &Aring; <span style="color:#888">(ref 2.40)</span><br>' +
+        'N_A&middot;&middot;&middot;N_B: ' + (dNN/Aval).toFixed(2) + ' &Aring; <span style="color:#888">(ref 3.34, locked)</span><br>' +
+        'N&minus;H&middot;&middot;&middot;N: ' + ang.toFixed(0) + '&deg; <span style="color:#888">(ref 165&ndash;170)</span>' +
+        forceText;
+    }, 500);
+  })();
+
+  var loadEl = document.getElementById('loadStatus');
+  var s = document.createElement('script');
+  s.src = 'mol_fast.js?t=' + Date.now();
+  s.onload = function() {
+    loadEl.textContent += '\nmol_fast.js loaded';
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    p.onload = function() { if (loadEl && loadEl.parentNode) loadEl.parentNode.removeChild(loadEl); };
+    document.body.appendChild(p);
+  };
+  s.onerror = function() { loadEl.textContent += '\nFAILED to load mol_fast.js'; loadEl.style.color = '#f44'; };
+  document.body.appendChild(s);
+</script>
+</body></html>
