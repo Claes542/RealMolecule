@@ -12,6 +12,18 @@ The mathematical reformulation is the work of **Claes Johnson**. The implementat
 
 This repository may be of interest as a **case study of mathematical-theory-to-validated-code via AI collaboration**: a single mathematical mind producing research-grade interactive scientific software in a small codebase (~8 000 lines vs ~1–4 M for mainstream QM packages) by working iteratively with an AI engineering partner. The history of corrections in the Gallery cards (claims made, retracted, refined, restored) is itself a record of how the cooperation produces honest science, not just running code.
 
+## Division of labor: RealQM + StdQM
+
+RealQM is positioned as a **structure and dynamics tool**, complementary to standard quantum chemistry packages — not a replacement. The natural workflow:
+
+| Stage | Tool | Output |
+|-------|------|--------|
+| Interactive geometry exploration, force-driven dynamics | **RealQM** (this repo) | relaxed structures, real-time trajectories, qualitatively correct forces |
+| Energy refinement at fixed geometry | PySCF / Psi4 / ORCA / Gaussian | CCSD(T) or DFT-D binding/atomization energies to chemical accuracy |
+| Validation against experiment | standard benchmarks (S66, GMTKN55, etc.) | meV-level energies on RealQM-derived structures |
+
+RealQM solves the **interactive structure-finding bottleneck** that CCSD(T)-class methods cannot solve at scale — 200+ atoms with explicit electrons, real-time on a single GPU. Energies at chemical accuracy remain the domain of high-level wavefunction methods, applied as a single-point step on the structures RealQM produces.
+
 ## Quick start
 
 1. Clone and serve locally:

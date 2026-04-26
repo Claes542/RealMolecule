@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="controls" style="position:fixed;top:10px;left:10px;z-index:100;background:rgba(0,0,0,0.7);padding:8px 12px;border-radius:6px">
+  <button id="addBtn" style="font-size:14px;padding:4px 12px">Add next atom</button>
+  <button id="autoBtn" style="font-size:14px;padding:4px 12px;margin-left:6px">Auto-grow</button>
+  <button id="recordBtn" style="font-size:14px;padding:4px 12px;margin-left:6px;background:#400;color:#fff">Record stage E</button>
+  <button id="exportBtn" style="font-size:14px;padding:4px 12px;margin-left:6px">Export CSV</button>
+  <span id="status" style="margin-left:10px"></span>
+</div>
+<div id="formationTable" style="position:fixed;top:60px;left:10px;background:rgba(0,0,0,0.85);border:1px solid #333;border-radius:6px;padding:8px;z-index:100;font-size:12px;color:#ddd;max-width:540px">
+  <b>Formation work tracker — single H<sub>2</sub>O</b><br>
+  Sum of three water molecules; we'll track <b>E<sub>bind</sub> = E − Σ E<sub>atom</sub></b> at each stage.<br>
+  Experimental atomization: H<sub>2</sub>O = -0.370 Ha (-232 kcal/mol).<br>
+  <i>Wait for ΔE/Δt to go green ✓ (~10<sup>-5</sup> Ha/s) before recording each stage.</i><br>
+  <span id="convergence" style="color:#888">|ΔE/Δt|= waiting...</span>
+  <table id="stageTable" style="margin-top:8px;width:100%;border-collapse:collapse;font-size:11px">
+    <thead><tr style="border-bottom:1px solid #444"><th style="text-align:left">stage</th><th style="text-align:left">added</th><th style="text-align:right">E (Ha)</th><th style="text-align:right">Σ E_atom</th><th style="text-align:right">E_bind</th><th style="text-align:right">ΔW (Ha)</th></tr></thead>
+    <tbody id="stageRows"></tbody>
+  </table>
+</div>
+<pre id="log" style="margin-top:300px">Building water cluster...</pre>
+<script>
+var log = document.getElementById('log');
+window.onerror = function(msg, url, line) {
+  log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
+};
+
+(function() {
+  var A = 1.8897;
+  var gridN = 200;
+
+  // Single H2O monomer for cleanest atomization energy comparison
+  // Order: O, H1, H2 — atomization E = -232 kcal/mol = -0.370 Ha
+  var rawCoords = [
+    { ax: 0.0, ay: 0.0, az: 0.0, Z: 2, el: 'O' },
+    { ax: 0.76, ay: 0.59, az: 0.0, Z: 1, el: 'H' },
+    { ax:-0.76, ay: 0.59, az: 0.0, Z: 1, el: 'H' },
+  ];
+
+  var cx = 0, cy = 0, cz = 0;
+  for (var i = 0; i < rawCoords.length; i++) {
+    cx += rawCoords[i].ax; cy += rawCoords[i].ay; cz += rawCoords[i].az;
+  }
+  cx /= rawCoords.length; cy /= rawCoords.length; cz /= rawCoords.length;
+
+  var scr = 12;
+  var h = scr / gridN;
+  var N2 = Math.round(gridN / 2);
+  var atoms = [];
+  for (var i = 0; i < rawCoords.length; i++) {
+    var rc = rawCoords[i];
+    var x = (rc.ax - cx) * A, y = (rc.ay - cy) * A, z = (rc.az - cz) * A;
+    var gi = Math.round(N2 + x / h);
+    var gj = Math.round(N2 + y / h);
+    var gk = Math.round(N2 + z / h);
+    atoms.push({ i: gi, j: gj, k: gk, Z: rc.Z, el: rc.el });
+  }
+
+  log.textContent = 'Single H2O — atom-by-atom build with formation work tracking';
+  log.textContent += '\n' + gridN + '^3 grid, screen=' + scr + ' au';
+
+  window._atomNames = ['O', 'H₁', 'H₂'];
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'O') return 0.4;
+    return 0;
+  });
+})();
+
+var activeCount = 1;
+var autoGrowing = false;
+var autoTimer = null;
+var statusEl = document.getElementById('status');
+var totalAtoms = window.USER_Z.filter(function(z) { return z > 0; }).length;
+var stageData = [];  // each: {stage, added, E, E_atoms, E_bind, dW}
+
+function updateStatus() {
+  statusEl.textContent = activeCount + '/' + totalAtoms + ' atoms';
+  if (activeCount < totalAtoms) {
+    statusEl.textContent += ' — next: ' + window._atomNames[activeCount];
+  } else {
+    statusEl.textContent += ' — complete!';
+  }
+}
+
+function renderTable() {
+  var rows = document.getElementById('stageRows');
+  rows.innerHTML = '';
+  for (var i = 0; i < stageData.length; i++) {
+    var d = stageData[i];
+    var tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid #222';
+    tr.innerHTML =
+      '<td>' + d.stage + '</td>' +
+      '<td>' + d.added + '</td>' +
+      '<td style="text-align:right">' + d.E.toFixed(4) + '</td>' +
+      '<td style="text-align:right">' + d.E_atoms.toFixed(4) + '</td>' +
+      '<td style="text-align:right;color:#7cf">' + d.E_bind.toFixed(4) + '</td>' +
+      '<td style="text-align:right;color:#fc7">' + (d.dW !== null ? d.dW.toFixed(4) : '—') + '</td>';
+    rows.appendChild(tr);
+  }
+}
+
+// Energy convergence monitor — track ΔE/Δt for last few seconds
+var _ehist = [];
+setInterval(function() {
+  if (window._E !== undefined) {
+    _ehist.push({t: Date.now(), E: window._E});
+    if (_ehist.length > 10) _ehist.shift();
+    if (_ehist.length >= 3) {
+      var first = _ehist[0], last = _ehist[_ehist.length - 1];
+      var dE = last.E - first.E;
+      var dt = (last.t - first.t) / 1000;
+      var dEdt = Math.abs(dE / Math.max(dt, 0.01));
+      var conv = dEdt < 1e-5 ? '#66bb6a' : (dEdt < 1e-3 ? '#ffd54f' : '#ff7043');
+      var indEl = document.getElementById('convergence');
+      if (indEl) indEl.innerHTML = '<span style="color:' + conv + '">|ΔE/Δt|=' + dEdt.toExponential(2) + ' Ha/s' + (dEdt < 1e-5 ? ' ✓ converged' : ' (relaxing)') + '</span>';
+    }
+  }
+}, 500);
+
+document.getElementById('recordBtn').onclick = function() {
+  if (window._E === undefined || window._E_bind === undefined) {
+    alert('Energy not yet computed. Wait for simulation to equilibrate.');
+    return;
+  }
+  // Convergence check: warn if not at steady state
+  if (_ehist.length >= 3) {
+    var first = _ehist[0], last = _ehist[_ehist.length - 1];
+    var dEdt = Math.abs((last.E - first.E) / Math.max((last.t - first.t) / 1000, 0.01));
+    if (dEdt > 1e-3) {
+      if (!confirm('Energy still relaxing (|ΔE/Δt|=' + dEdt.toExponential(2) + ' Ha/s, > 1e-3). Record anyway?')) return;
+    }
+  }
+  var prev = stageData.length > 0 ? stageData[stageData.length - 1] : null;
+  var dW = prev ? (window._E_bind - prev.E_bind) : null;
+  stageData.push({
+    stage: stageData.length + 1,
+    added: window._atomNames[activeCount - 1] || ('atom ' + activeCount),
+    E: window._E,
+    E_atoms: window._E_atoms_sum,
+    E_bind: window._E_bind,
+    dW: dW,
+  });
+  renderTable();
+};
+
+document.getElementById('exportBtn').onclick = function() {
+  if (stageData.length === 0) { alert('No stages recorded yet.'); return; }
+  var lines = ['stage,added,E_Ha,E_atoms_sum_Ha,E_bind_Ha,delta_W_Ha'];
+  for (var i = 0; i < stageData.length; i++) {
+    var d = stageData[i];
+    lines.push([d.stage, d.added, d.E.toFixed(6), d.E_atoms.toFixed(6), d.E_bind.toFixed(6), d.dW !== null ? d.dW.toFixed(6) : ''].join(','));
+  }
+  var blob = new Blob([lines.join('\n')], {type: 'text/csv'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'water_grow_formation.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+document.getElementById('addBtn').onclick = function() {
+  if (activeCount >= totalAtoms) return;
+  activeCount++;
+  updateStatus();
+  if (window.activateAtoms) window.activateAtoms(activeCount);
+};
+
+document.getElementById('autoBtn').onclick = function() {
+  if (autoGrowing) {
+    autoGrowing = false;
+    if (autoTimer) clearInterval(autoTimer);
+    autoTimer = null;
+    document.getElementById('autoBtn').textContent = 'Auto-grow';
+    return;
+  }
+  autoGrowing = true;
+  document.getElementById('autoBtn').textContent = 'Stop';
+  autoTimer = setInterval(function() {
+    if (activeCount >= totalAtoms) {
+      autoGrowing = false;
+      clearInterval(autoTimer);
+      autoTimer = null;
+      document.getElementById('autoBtn').textContent = 'Auto-grow';
+      return;
+    }
+    activeCount++;
+    updateStatus();
+    if (window.activateAtoms) window.activateAtoms(activeCount);
+  }, 5000);
+};
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onerror = function() { log.textContent += '\nFailed to load molecule.js!'; };
+s.onload = function() {
+  log.textContent += '\nmolecule.js loaded, loading p5...';
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p5s.crossOrigin = 'anonymous';
+  p5s.onerror = function() { log.textContent += '\nFailed to load p5.js!'; };
+  p5s.onload = function() {
+    log.textContent += '\np5.js loaded';
+    var waitInit = setInterval(function() {
+      if (window.isGpuReady && window.isGpuReady()) {
+        clearInterval(waitInit);
+        setTimeout(function() {
+          window.activateAtoms(1);
+          updateStatus();
+        }, 1500);
+      }
+    }, 300);
+  };
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

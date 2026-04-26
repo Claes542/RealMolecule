@@ -3057,6 +3057,9 @@ async function doSteps(n) {
   }
   E = E_T + E_eK + E_ee + E_KK;
   E_bind = E - E_atoms_sum;
+  window._E = E;
+  window._E_bind = E_bind;
+  window._E_atoms_sum = E_atoms_sum;
 
   if (!isFinite(E)) {
     gpuError = "Numerical instability at step " + tStep;
@@ -3584,6 +3587,9 @@ async function doLOBPCGStep() {
   }
   E = E_T + E_eK + E_ee + E_KK;
   E_bind = E - E_atoms_sum;
+  window._E = E;
+  window._E_bind = E_bind;
+  window._E_atoms_sum = E_atoms_sum;
 
   if (!isFinite(E)) { gpuError = "LOBPCG instability"; return; }
   console.log("LOBPCG step " + tStep + ": E=" + E.toFixed(6) + " (" + lastMs.toFixed(0) + "ms)");

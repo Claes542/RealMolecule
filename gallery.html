@@ -395,13 +395,17 @@ footer a { color: #4fc3f7; text-decoration: none; }
 <div class="section">
   <h2>S66 Benchmark — Geometric Coverage</h2>
   <p class="desc">
-    Hobza's S66 is fundamentally an <b>interaction-energy benchmark</b> (CCSD(T)/CBS binding energies
-    in the −1 to −7 kcal/mol range for 66 non-covalent dimers). Those energies sit far below RealQM's
-    Level-3 accuracy floor (~0.1 Ha ≈ 60 kcal/mol), so direct energy validation is not meaningful.
-    What RealQM <i>can</i> validate against S66 is the <b>equilibrium geometry</b> at the CCSD(T)
-    reference point: are H-bond distances, donor-acceptor angles, and the basin of attraction
-    correct? Below: distance/angle agreement plus force-direction diagnostics. Dispersion-only
-    systems remain out of scope without a vdW correction.
+    <b>RealQM provides geometries; for meV-level energies, hand off to standard QM.</b>
+    Hobza's S66 is fundamentally an interaction-energy benchmark (CCSD(T)/CBS binding energies in
+    the −1 to −7 kcal/mol range), and those energies sit far below RealQM's Level-3 accuracy floor
+    (~0.1 Ha ≈ 60 kcal/mol). Trying to match S66 binding energies directly with RealQM is the wrong
+    target. The right division of labor: RealQM finds the H-bond geometry interactively at
+    millisecond/step on a laptop (otherwise expensive, especially in dynamics), then a single-point
+    CCSD(T) or DFT-D calculation at that geometry &mdash; using PySCF, Psi4, ORCA, etc. &mdash;
+    delivers the binding energy to chemical accuracy. Below we report only what RealQM is for:
+    <b>geometric agreement with S66 reference structures</b>, plus force-direction diagnostics that
+    confirm the model has its minimum near the reference. Dispersion-only systems remain out of
+    scope without a vdW correction.
   </p>
   <div class="card" style="border-color:#ffd54f;background:#1a1408;cursor:default;padding:16px">
     <table style="width:100%;border-collapse:collapse;font-size:12px;color:#ddd">
