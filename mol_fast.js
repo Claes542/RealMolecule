@@ -107,7 +107,7 @@ struct P {
   const routArr = nuclei.map(n => (n.r_out || 0).toFixed(6)).join(', ');
   const hsArr = nuclei.map(n => (n.hs || 0).toFixed(1)).join(', ');
   // Split fields templated as const arrays for shader enforcement.
-  const splitTypeCode = { 'sphere': 0, 'hemi': 2, 'third': 3, 'tetra': 4 };
+  const splitTypeCode = { 'sphere': 0, 'hemi': 2, 'third': 3, 'tetra': 4, 'hemi_third': 5 };
   const splitTypeArr = nuclei.map(n => splitTypeCode[n.split] || 0).join('u, ') + 'u';
   const splitIdxArr = nuclei.map(n => (n.split_idx || 0)).join('u, ') + 'u';
   const splitFixArr = nuclei.map(n => n.split_fix ? '1u' : '0u').join(', ');
@@ -245,6 +245,26 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
           let d2 = dot(vec3<f32>(-1.0,  1.0, -1.0), ur); if (d2 > bestD) { bestD = d2; bestV = 2u; }
           let d3 = dot(vec3<f32>(-1.0, -1.0,  1.0), ur); if (d3 > bestD) { bestD = d3; bestV = 3u; }
           inSector = (bestV == sidx);
+        }
+      } else if (s_type == 5u) {
+        // hemi_third: idx=0 = top hemi, idx=1,2,3 = bottom hemi 3-sector split.
+        let dotA = dot(rel, ax);
+        if (sidx == 0u) {
+          inSector = dotA >= 0.0;
+        } else {
+          if (dotA >= 0.0) { inSector = false; }
+          else {
+            let pp = rel - dotA * ax;
+            var e1: vec3<f32>;
+            if (abs(ax.z) < 0.9) { e1 = normalize(vec3<f32>(ax.y, -ax.x, 0.0)); }
+            else                  { e1 = normalize(vec3<f32>(0.0, ax.z, -ax.y)); }
+            let e2 = cross(ax, e1);
+            var theta = atan2(dot(pp, e2), dot(pp, e1)) - SPLIT_ROT[m];
+            if (theta < -3.141592653589793) { theta = theta + 6.283185307179586; }
+            if (theta >  3.141592653589793) { theta = theta - 6.283185307179586; }
+            let sector = u32(floor((theta + 3.141592653589793) / 2.094395102393195)) % 3u;
+            inSector = (sector == (sidx - 1u));
+          }
         }
       }
       if (!inSector) { nw = 0.0; }
@@ -893,6 +913,27 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         if (d > bestDot) { bestDot = d; bestV = iv; }
       }
       return bestV === split_idx;
+    }
+    if (split === 'hemi_third' || split === 5) {
+      // 4 sub-orbitals: idx=0 = top hemi (along +axis); idx=1,2,3 = bottom hemi split into 3 sectors
+      const dot = dx * a0 + dy * a1 + dz * a2;
+      if (split_idx === 0) return dot >= 0;
+      // Bottom hemisphere: 3 angular sectors around axis
+      if (dot >= 0) return false;
+      const px = dx - dot * a0, py = dy - dot * a1, pz = dz - dot * a2;
+      let e1x, e1y, e1z;
+      if (Math.abs(a2) < 0.9) { e1x = a1; e1y = -a0; e1z = 0; }
+      else                    { e1x = 0;  e1y = a2; e1z = -a1; }
+      const e1Len = Math.hypot(e1x, e1y, e1z) || 1;
+      e1x /= e1Len; e1y /= e1Len; e1z /= e1Len;
+      const e2x = a1 * e1z - a2 * e1y, e2y = a2 * e1x - a0 * e1z, e2z = a0 * e1y - a1 * e1x;
+      const pe1 = px * e1x + py * e1y + pz * e1z;
+      const pe2 = px * e2x + py * e2y + pz * e2z;
+      let theta = Math.atan2(pe2, pe1) - (split_rot || 0);
+      if (theta < -Math.PI) theta += 2 * Math.PI;
+      if (theta >  Math.PI) theta -= 2 * Math.PI;
+      const sector = Math.floor((theta + Math.PI) / (2 * Math.PI / 3)) % 3;
+      return sector === (split_idx - 1);  // split_idx 1,2,3 → sectors 0,1,2
     }
     return true;
   }

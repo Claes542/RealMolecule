@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <title>H₃X with 2-hemi N (top=lone pair 2e, bottom=bonds 3e)</title>
+  <style>body { margin: 0; background: #000; color: #fff; font-family: monospace; }</style>
+</head><body>
+<div id="info" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.85);padding:10px;border:1px solid #333;border-radius:6px;max-width:480px;font-size:12px;z-index:100;color:#ffa">
+  <div style="font-weight:bold">H₃X pyramidal, X = +5 kernel, 2-hemi split (simplest sp³ NH₃)</div>
+  Top hemi: 2 e (lone pair). Bottom hemi: 3 e (bond region, all 3 H atoms here).<br>
+  8 valence electrons (5 from X + 3 H). Both hemispheres anchored, no orphan.<br>
+  Sweep <b>?R=N</b> X-H Å (default 1.0); <b>?rc=N</b> X softening au (default 0.4).<br>
+  Reference: NH₃ atomization 0.451 Ha (283 kcal/mol), dipole 1.47 D.<br>
+  <span id="convergence" style="color:#888">|ΔE/Δt|=waiting...</span>
+</div>
+<div id="scanTable" style="position:fixed;top:170px;right:10px;background:rgba(0,0,0,0.85);padding:10px;border:1px solid #333;border-radius:6px;max-width:480px;font-size:12px;z-index:100;color:#ddd">
+  <b>H₃X 2-hemi scan</b>
+  <button id="recordBtn" style="margin-left:6px;padding:2px 8px">Record</button>
+  <button id="autoBtn" style="margin-left:4px;padding:2px 8px;background:#262;color:#fff">Start auto-sweep</button>
+  <button id="forceBtn" style="margin-left:4px;padding:2px 8px;background:#553;color:#fff">Force next</button>
+  <button id="resetBtn" style="margin-left:4px;padding:2px 8px;background:#522;color:#fff">Reset</button>
+  <button id="exportBtn" style="margin-left:4px;padding:2px 8px">Export CSV</button>
+  <span id="sweepStatus" style="margin-left:6px;color:#aaa"></span>
+  <table id="rows" style="width:100%;border-collapse:collapse;margin-top:6px;font-size:11px">
+    <thead><tr style="border-bottom:1px solid #444"><th>R (Å)</th><th>r_c</th><th>E (Ha)</th><th>ΔE_bind</th></tr></thead>
+    <tbody id="rowBody"></tbody>
+  </table>
+</div>
+<div id="loadStatus" style="color:#ff0;font-family:monospace;padding:20px;font-size:14px">Loading…</div>
+<script>
+  window.onerror = function(msg, url, line, col, err) {
+    var pre = document.createElement('pre');
+    pre.style.cssText = 'color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
+    pre.textContent = 'ERROR: ' + msg + '\n  at ' + url + ':' + line + ':' + col;
+    document.body.insertBefore(pre, document.body.firstChild);
+  };
+  (function() {
+    var N = 200, scr = 16, h = scr / N, N2 = Math.round(N / 2);
+    var A = 1.8897;
+
+    var urlR  = parseFloat(new URLSearchParams(location.search).get('R'));
+    var urlRc = parseFloat(new URLSearchParams(location.search).get('rc'));
+    var R  = isFinite(urlR)  ? urlR  : 1.0;
+    var rc = isFinite(urlRc) ? urlRc : 0.4;
+
+    function place(xA, yA, zA) {
+      return {
+        i: Math.round(N2 + (xA * A) / h),
+        j: Math.round(N2 + (yA * A) / h),
+        k: Math.round(N2 + (zA * A) / h)
+      };
+    }
+
+    var sinT = 0.9428, cosT = -0.3333;
+    function hAt(angXY) {
+      return [R * sinT * Math.cos(angXY), R * sinT * Math.sin(angXY), R * cosT];
+    }
+    var d1 = hAt(0);
+    var d2 = hAt(2 * Math.PI / 3);
+    var d3 = hAt(4 * Math.PI / 3);
+
+    var X  = place(0, 0, 0);
+    var H1 = place(d1[0], d1[1], d1[2]);
+    var H2 = place(d2[0], d2[1], d2[2]);
+    var H3 = place(d3[0], d3[1], d3[2]);
+
+    // 2-hemi split: axis = +z. idx=0 (top hemi) has 2 e (lone pair). idx=1 (bottom hemi) has 3 e (bond region).
+    var splitAxis = [0, 0, 1];
+
+    window.USER_NN = N;
+    window.USER_SCREEN = scr;
+    window.USER_STEPS = 200000;
+    window.USER_NUCLEI = [
+      { i: X.i, j: X.j, k: X.k, Z: 5, rc: rc, z_init: 5.0, split: 'hemi', split_idx: 1, split_axis: splitAxis, fixed: true },  // bottom hemi (-z, where H's are): 3 e
+      { i: X.i, j: X.j, k: X.k, Z: 0, rc: rc, z_init: 5.0, split: 'hemi', split_idx: 0, split_axis: splitAxis, fixed: true },  // top hemi (+z, lone pair): 2 e
+      { i: H1.i, j: H1.j, k: H1.k, Z: 1, rc: 0.0, fixed: true },
+      { i: H2.i, j: H2.j, k: H2.k, Z: 1, rc: 0.0, fixed: true },
+      { i: H3.i, j: H3.j, k: H3.k, Z: 1, rc: 0.0, fixed: true },
+    ];
+    // 5 orbitals, 8 valence e-: bottom (3) + top (2) + 3 H (1 each) = 8
+    window.USER_NORM_TARGETS = [3, 2, 1, 1, 1];
+    window.USER_ALPHA_TF = 0;
+    window.USER_DYNAMICS = false;
+    window.USER_HIGHLIGHT_ATOM = 0;
+
+    console.log('H3X 2-hemi (X+5): R=' + R + ' Å, rc=' + rc + ' au');
+  })();
+
+  var loadEl = document.getElementById('loadStatus');
+  var s = document.createElement('script');
+  s.src = 'mol_fast.js?t=' + Date.now();
+  s.onload = function() {
+    loadEl.textContent += '\nmol_fast.js loaded';
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    p.onload = function() { if (loadEl && loadEl.parentNode) loadEl.parentNode.removeChild(loadEl); };
+    document.body.appendChild(p);
+  };
+  s.onerror = function() { loadEl.textContent += '\nFAILED to load mol_fast.js'; loadEl.style.color = '#f44'; };
+  document.body.appendChild(s);
+
+  var _ehist = [];
+  setInterval(function() {
+    if (window._E !== undefined) {
+      _ehist.push({t: Date.now(), E: window._E});
+      if (_ehist.length > 10) _ehist.shift();
+      if (_ehist.length >= 3) {
+        var first = _ehist[0], last = _ehist[_ehist.length - 1];
+        var dE = last.E - first.E;
+        var dt = (last.t - first.t) / 1000;
+        var dEdt = Math.abs(dE / Math.max(dt, 0.01));
+        var conv = dEdt < 1e-5 ? '#66bb6a' : (dEdt < 1e-3 ? '#ffd54f' : '#ff7043');
+        var indEl = document.getElementById('convergence');
+        if (indEl) indEl.innerHTML = '<span style="color:' + conv + '">|ΔE/Δt|=' + dEdt.toExponential(2) + ' Ha/s' + (dEdt < 1e-5 ? ' ✓' : '') + '</span>';
+      }
+    }
+  }, 500);
+
+  var scanData = [];
+  function renderRowsWithBind() {
+    var tbody = document.getElementById('rowBody');
+    tbody.innerHTML = '';
+    scanData.sort(function(a,b){
+      if (a.rc !== b.rc) return a.rc - b.rc;
+      return a.R - b.R;
+    });
+    var pairs = {};
+    scanData.forEach(function(d) {
+      var key = d.rc.toFixed(2);
+      if (!pairs[key]) pairs[key] = {};
+      if (Math.abs(d.R - 1.0) < 0.01) pairs[key].E1 = d.E;
+      if (Math.abs(d.R - 2.0) < 0.01) pairs[key].E2 = d.E;
+    });
+    scanData.forEach(function(d) {
+      var dE = '';
+      if (Math.abs(d.R - 1.0) < 0.01) {
+        var p = pairs[d.rc.toFixed(2)];
+        if (p && p.E1 !== undefined && p.E2 !== undefined) {
+          var bind = p.E1 - p.E2;
+          dE = bind.toFixed(4) + ' Ha (' + (bind*627.509).toFixed(1) + ' kcal/mol)';
+        }
+      }
+      var tr = document.createElement('tr');
+      tr.style.borderBottom = '1px solid #222';
+      tr.innerHTML = '<td>' + d.R.toFixed(2) + '</td><td>' + d.rc.toFixed(2) + '</td>' +
+                     '<td style="color:#7cf">' + d.E.toFixed(5) + '</td>' +
+                     '<td style="color:#fc7">' + dE + '</td>';
+      tbody.appendChild(tr);
+    });
+  }
+  document.getElementById('recordBtn').onclick = function() {
+    if (window._E === undefined) { alert('E not yet computed.'); return; }
+    var url = new URL(location.href);
+    var R  = parseFloat(url.searchParams.get('R'))  || 1.0;
+    var rc = parseFloat(url.searchParams.get('rc')) || 0.4;
+    var existing = scanData.find(function(d){ return Math.abs(d.R - R) < 0.001 && Math.abs(d.rc - rc) < 0.001; });
+    if (existing) existing.E = window._E;
+    else scanData.push({R: R, rc: rc, E: window._E});
+    renderRowsWithBind();
+  };
+  document.getElementById('exportBtn').onclick = function() {
+    if (scanData.length === 0) { alert('No data.'); return; }
+    var lines = ['R_A,rc_au,E_Ha'];
+    scanData.forEach(function(d) {
+      lines.push(d.R.toFixed(3) + ',' + d.rc.toFixed(3) + ',' + d.E.toFixed(6));
+    });
+    var blob = new Blob([lines.join('\n')], {type: 'text/csv'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = 'H3X_2hemi_E_vs_R_rc.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  var SWEEP_KEY = 'h3x_2hemi_sweep_v1';
+  var SWEEP_LIST = [
+    {R:1.0, rc:0.3}, {R:2.0, rc:0.3},
+    {R:1.0, rc:0.4}, {R:2.0, rc:0.4},
+    {R:1.0, rc:0.5}, {R:2.0, rc:0.5},
+    {R:1.0, rc:0.6}, {R:2.0, rc:0.6},
+    {R:1.0, rc:0.7}, {R:2.0, rc:0.7},
+    {R:1.0, rc:1.0}, {R:2.0, rc:1.0},
+  ];
+  var sweepState = (function() {
+    try { return JSON.parse(localStorage.getItem(SWEEP_KEY)) || {idx: -1, results: []}; }
+    catch (e) { return {idx: -1, results: []}; }
+  })();
+  if (sweepState.results && sweepState.results.length > 0) {
+    sweepState.results.forEach(function(r) {
+      if (!scanData.find(function(d){ return Math.abs(d.R-r.R) < 0.001 && Math.abs(d.rc-r.rc) < 0.001; })) {
+        scanData.push(r);
+      }
+    });
+    renderRowsWithBind();
+  }
+  function updateSweepStatus() {
+    var st = document.getElementById('sweepStatus');
+    if (!st) return;
+    if (sweepState.idx < 0) {
+      st.textContent = 'Auto-sweep idle';
+    } else if (sweepState.idx >= SWEEP_LIST.length) {
+      st.innerHTML = '<span style="color:#0f0">✓ Auto-sweep complete</span>';
+    } else {
+      var p = SWEEP_LIST[sweepState.idx];
+      st.innerHTML = '<span style="color:#ff0">Auto-sweep ' + (sweepState.idx + 1) + '/' + SWEEP_LIST.length + ' — R=' + p.R + ', rc=' + p.rc + '</span>';
+    }
+  }
+  updateSweepStatus();
+  var sweepConvergedSince = null;
+  setInterval(function() {
+    if (sweepState.idx < 0 || sweepState.idx >= SWEEP_LIST.length) return;
+    if (window._E === undefined || _ehist.length < 5) return;
+    var first = _ehist[0], last = _ehist[_ehist.length - 1];
+    var dEdt = Math.abs((last.E - first.E) / Math.max((last.t - first.t)/1000, 0.01));
+    if (dEdt < 1e-5) {
+      if (sweepConvergedSince === null) sweepConvergedSince = Date.now();
+      if (Date.now() - sweepConvergedSince > 5000) {
+        var p = SWEEP_LIST[sweepState.idx];
+        sweepState.results = sweepState.results || [];
+        var existing = sweepState.results.find(function(r){ return Math.abs(r.R-p.R)<0.001 && Math.abs(r.rc-p.rc)<0.001; });
+        if (existing) existing.E = window._E;
+        else sweepState.results.push({R: p.R, rc: p.rc, E: window._E});
+        sweepState.idx++;
+        localStorage.setItem(SWEEP_KEY, JSON.stringify(sweepState));
+        sweepConvergedSince = null;
+        if (sweepState.idx < SWEEP_LIST.length) {
+          var next = SWEEP_LIST[sweepState.idx];
+          location.search = '?R=' + next.R + '&rc=' + next.rc;
+        } else { updateSweepStatus(); alert('Auto-sweep complete!'); }
+      }
+    } else { sweepConvergedSince = null; }
+  }, 1000);
+  document.getElementById('forceBtn').onclick = function() {
+    if (sweepState.idx < 0 || sweepState.idx >= SWEEP_LIST.length) { alert('No active auto-sweep.'); return; }
+    if (window._E !== undefined) {
+      var p = SWEEP_LIST[sweepState.idx];
+      sweepState.results = sweepState.results || [];
+      var existing = sweepState.results.find(function(r){ return Math.abs(r.R-p.R)<0.001 && Math.abs(r.rc-p.rc)<0.001; });
+      if (existing) existing.E = window._E;
+      else sweepState.results.push({R: p.R, rc: p.rc, E: window._E});
+    }
+    sweepState.idx++;
+    localStorage.setItem(SWEEP_KEY, JSON.stringify(sweepState));
+    if (sweepState.idx < SWEEP_LIST.length) {
+      var next = SWEEP_LIST[sweepState.idx];
+      location.search = '?R=' + next.R + '&rc=' + next.rc;
+    } else { alert('Auto-sweep complete!'); }
+  };
+  document.getElementById('autoBtn').onclick = function() {
+    if (!confirm('Start auto-sweep?')) return;
+    sweepState = {idx: 0, results: scanData.slice()};
+    localStorage.setItem(SWEEP_KEY, JSON.stringify(sweepState));
+    var first = SWEEP_LIST[0];
+    location.search = '?R=' + first.R + '&rc=' + first.rc;
+  };
+  document.getElementById('resetBtn').onclick = function() {
+    if (!confirm('Reset?')) return;
+    localStorage.removeItem(SWEEP_KEY);
+    scanData = [];
+    sweepState = {idx: -1, results: []};
+    renderRowsWithBind();
+    updateSweepStatus();
+  };
+</script>
+</body></html>
