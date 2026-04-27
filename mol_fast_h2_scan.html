@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <title>H₂ — energy vs bond length scan (mol_fast)</title>
+  <style>body { margin: 0; background: #000; color: #fff; font-family: monospace; }</style>
+</head><body>
+<div id="info" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.85);padding:10px;border:1px solid #333;border-radius:6px;max-width:440px;font-size:12px;z-index:100;color:#ffa">
+  <div style="font-weight:bold">H<sub>2</sub> energy vs R — relative-energy test</div>
+  Two H atoms locked at separation R; sweep R, record E at convergence.<br>
+  Reference: R<sub>eq</sub> = 1.40 au, D<sub>e</sub> = 0.174 Ha, k = 5.16 mdyn/Å, ν = 4401 cm⁻¹.<br>
+  URL <b>?sep=N</b> for separation in au (default 1.40).<br>
+  <span id="convergence" style="color:#888">|ΔE/Δt|=waiting...</span>
+</div>
+<div id="scanTable" style="position:fixed;top:170px;right:10px;background:rgba(0,0,0,0.85);padding:10px;border:1px solid #333;border-radius:6px;max-width:440px;font-size:12px;z-index:100;color:#ddd">
+  <b>R-sweep table</b>
+  <button id="recordBtn" style="margin-left:6px;padding:2px 8px">Record current R, E</button>
+  <button id="exportBtn" style="margin-left:4px;padding:2px 8px">Export CSV</button>
+  <table id="rows" style="width:100%;border-collapse:collapse;margin-top:6px;font-size:11px">
+    <thead><tr style="border-bottom:1px solid #444"><th>R (au)</th><th>E (Ha)</th><th>ΔE = E−E(∞) (Ha)</th></tr></thead>
+    <tbody id="rowBody"></tbody>
+  </table>
+  <div style="margin-top:6px;color:#888;font-size:11px">Sweep suggestion: 0.8, 1.0, 1.2, 1.4 (eq), 1.6, 2.0, 3.0, 5.0, 8.0 au. The 8.0 row defines E(∞).</div>
+</div>
+<div id="loadStatus" style="color:#ff0;font-family:monospace;padding:20px;font-size:14px">Loading…</div>
+<script>
+  window.onerror = function(msg, url, line, col, err) {
+    var pre = document.createElement('pre');
+    pre.style.cssText = 'color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
+    pre.textContent = 'ERROR: ' + msg + '\n  at ' + url + ':' + line + ':' + col;
+    document.body.insertBefore(pre, document.body.firstChild);
+  };
+  (function() {
+    var N = 200, scr = 12, h = scr / N, N2 = Math.round(N / 2);
+    var urlSep = parseFloat(new URLSearchParams(location.search).get('sep'));
+    var sep = isFinite(urlSep) ? urlSep : 1.4;  // au
+    var di = Math.round(sep / h / 2);
+
+    window.USER_NN = N;
+    window.USER_SCREEN = scr;
+    window.USER_STEPS = 100000;
+    window.USER_NUCLEI = [
+      { i: N2 - di, j: N2, k: N2, Z: 1, rc: 0.0, fixed: true },
+      { i: N2 + di, j: N2, k: N2, Z: 1, rc: 0.0, fixed: true }
+    ];
+    window.USER_NORM_TARGETS = [1, 1];
+    window.USER_DYNAMICS = false;  // both H locked
+
+    console.log('H2 scan: sep=' + sep + ' au');
+  })();
+
+  var loadEl = document.getElementById('loadStatus');
+  var s = document.createElement('script');
+  s.src = 'mol_fast.js?t=' + Date.now();
+  s.onload = function() {
+    loadEl.textContent += '\nmol_fast.js loaded';
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    p.onload = function() { if (loadEl && loadEl.parentNode) loadEl.parentNode.removeChild(loadEl); };
+    document.body.appendChild(p);
+  };
+  s.onerror = function() { loadEl.textContent += '\nFAILED to load mol_fast.js'; loadEl.style.color = '#f44'; };
+  document.body.appendChild(s);
+
+  // Energy convergence monitor
+  var _ehist = [];
+  setInterval(function() {
+    if (window._E !== undefined) {
+      _ehist.push({t: Date.now(), E: window._E});
+      if (_ehist.length > 10) _ehist.shift();
+      if (_ehist.length >= 3) {
+        var first = _ehist[0], last = _ehist[_ehist.length - 1];
+        var dE = last.E - first.E;
+        var dt = (last.t - first.t) / 1000;
+        var dEdt = Math.abs(dE / Math.max(dt, 0.01));
+        var conv = dEdt < 1e-5 ? '#66bb6a' : (dEdt < 1e-3 ? '#ffd54f' : '#ff7043');
+        var indEl = document.getElementById('convergence');
+        if (indEl) indEl.innerHTML = '<span style="color:' + conv + '">|ΔE/Δt|=' + dEdt.toExponential(2) + ' Ha/s' + (dEdt < 1e-5 ? ' ✓' : '') + '</span>';
+      }
+    }
+  }, 500);
+
+  // Recorded data table
+  var scanData = [];
+  function renderRows() {
+    var tbody = document.getElementById('rowBody');
+    tbody.innerHTML = '';
+    var infE = scanData.length > 0 ? Math.max.apply(null, scanData.map(function(d){return d.R;})) : null;
+    var Einf = scanData.find(function(d){ return d.R >= 7; });
+    Einf = Einf ? Einf.E : null;
+    scanData.sort(function(a,b){ return a.R - b.R; });
+    scanData.forEach(function(d) {
+      var dE = (Einf !== null) ? d.E - Einf : null;
+      var tr = document.createElement('tr');
+      tr.style.borderBottom = '1px solid #222';
+      tr.innerHTML = '<td>' + d.R.toFixed(2) + '</td><td style="color:#7cf">' + d.E.toFixed(5) + '</td>' +
+                     '<td style="color:#fc7">' + (dE !== null ? dE.toFixed(5) : '—') + '</td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  document.getElementById('recordBtn').onclick = function() {
+    if (window._E === undefined) { alert('E not yet computed.'); return; }
+    if (_ehist.length >= 3) {
+      var first = _ehist[0], last = _ehist[_ehist.length - 1];
+      var dEdt = Math.abs((last.E - first.E) / Math.max((last.t - first.t)/1000, 0.01));
+      if (dEdt > 1e-3) {
+        if (!confirm('Energy still relaxing (|ΔE/Δt|=' + dEdt.toExponential(2) + '). Record anyway?')) return;
+      }
+    }
+    var url = new URL(location.href);
+    var R = parseFloat(url.searchParams.get('sep')) || 1.4;
+    // Don't duplicate
+    var existing = scanData.find(function(d){ return Math.abs(d.R - R) < 0.001; });
+    if (existing) existing.E = window._E; else scanData.push({R: R, E: window._E});
+    renderRows();
+  };
+  document.getElementById('exportBtn').onclick = function() {
+    if (scanData.length === 0) { alert('No data.'); return; }
+    var lines = ['R_au,E_Ha,deltaE_Ha'];
+    var Einf = scanData.find(function(d){ return d.R >= 7; });
+    Einf = Einf ? Einf.E : null;
+    scanData.forEach(function(d) {
+      var dE = (Einf !== null) ? (d.E - Einf).toFixed(6) : '';
+      lines.push(d.R.toFixed(3) + ',' + d.E.toFixed(6) + ',' + dE);
+    });
+    var blob = new Blob([lines.join('\n')], {type: 'text/csv'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = 'h2_E_vs_R.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+</script>
+</body></html>

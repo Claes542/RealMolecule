@@ -1547,13 +1547,15 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       const x = (nuclei[a].i - N2) * hv * pxPerAu;
       const y = (nuclei[a].j - N2) * hv * pxPerAu;
       const z = (nuclei[a].k - N2) * hv * pxPerAu;
-      const col = ELEC_COLORS[a % ELEC_COLORS.length];
+      // Highlight the user-marked nucleus (window.USER_HIGHLIGHT_ATOM)
+      const isHighlight = (window.USER_HIGHLIGHT_ATOM === a);
+      const col = isHighlight ? [255, 255, 0] : ELEC_COLORS[a % ELEC_COLORS.length];
       view3D.fill(col[0], col[1], col[2]);
       view3D.push();
       view3D.translate(x, y, z);
-      // Sphere radius scales with Z
-      const rad = 6 + 3 * Math.sqrt(Math.max(1, nuclei[a].Z));
-      view3D.sphere(rad);
+      // Sphere radius scales with Z; highlighted atom gets ~50% bigger.
+      const radBase = 6 + 3 * Math.sqrt(Math.max(1, nuclei[a].Z));
+      view3D.sphere(isHighlight ? radBase * 1.6 : radBase);
       view3D.pop();
     }
     // Bond lines between all atom pairs
