@@ -236,9 +236,11 @@ The full RealQM implementation, including the validation suite, the systematic k
 
 All results in this paper can be reproduced by opening the relevant `.html` files in the repository. Each binding-energy data point in Section 4 corresponds to a specific URL parameterization (R, rc) of a specific scan file (e.g., `mol_fast_H4X_Z2_scan.html?R=1.0&rc=0.2`). The Gallery's "Kernel Splitting" and "Periodic-Table Coverage" cards link directly to the scan files used to generate the reported numbers.
 
+We deliberately do not include figures in this preprint. The Gallery contains many interactive visualizations — density slices, 3D molecular views, force-arrow displays, real-time dynamics — that are far more informative as live simulations than as static images. Readers wishing to inspect electron densities, watch molecules relax, or run their own kernel-architecture sweeps should consult the Gallery directly.
+
 ---
 
-**Acknowledgments.** [To be filled by author. Suggested elements: thanks to colleagues who provided early feedback on the unit-density formulation; explicit acknowledgment of the AI collaboration with Claude (Anthropic), with a note on the iterative nature of the implementation; computational resources note (none required beyond a laptop GPU); funding sources if any.]
+**Acknowledgments.** The author is very happy to meet Claude Code in a fruitful cooperation way beyond initial expectations after lonely struggle with coding over long time.
 
 **Competing interests.** None declared.
 
@@ -246,56 +248,8 @@ All results in this paper can be reproduced by opening the relevant `.html` file
 
 ## References
 
-[Skeleton — to be filled in with full citations]
-
-**Foundational quantum chemistry**
-1. Schrödinger, E. *An undulatory theory of the mechanics of atoms and molecules.* Phys. Rev. 28, 1049 (1926).
-2. Hartree, D. R. *The wave mechanics of an atom with a non-Coulomb central field.* Math. Proc. Cambridge Phil. Soc. 24, 89 (1928).
-3. Fock, V. *Näherungsmethode zur Lösung des quantenmechanischen Mehrkörperproblems.* Z. Phys. 61, 126 (1930).
-4. Hohenberg, P., Kohn, W. *Inhomogeneous electron gas.* Phys. Rev. 136, B864 (1964).
-5. Kohn, W., Sham, L. J. *Self-consistent equations including exchange and correlation effects.* Phys. Rev. 140, A1133 (1965).
-6. Pople, J. A. *Nobel lecture: Quantum chemical models.* Rev. Mod. Phys. 71, 1267 (1999).
-
-**Pseudopotential / frozen-core methods (analogous to Level-3 reduction)**
-7. Hamann, D. R., Schlüter, M., Chiang, C. *Norm-conserving pseudopotentials.* Phys. Rev. Lett. 43, 1494 (1979).
-8. Vanderbilt, D. *Soft self-consistent pseudopotentials in a generalized eigenvalue formalism.* Phys. Rev. B 41, 7892 (1990).
-9. Blöchl, P. E. *Projector augmented-wave method.* Phys. Rev. B 50, 17953 (1994).
-
-**Orbital-free DFT (closest standard analog of unit-density approach)**
-10. Wang, Y. A., Carter, E. A. *Orbital-free kinetic-energy density functional theory.* In: *Theoretical Methods in Condensed Phase Chemistry* (Schwartz, S. D., ed.), Kluwer (2000).
-11. Witt, W. C., del Rio, B. G., Dieterich, J. M., Carter, E. A. *Orbital-free density functional theory for materials research.* J. Mater. Res. 33, 777 (2018).
-
-**Real-space methods**
-12. Mortensen, J. J., Hansen, L. B., Jacobsen, K. W. *Real-space grid implementation of the projector augmented wave method.* Phys. Rev. B 71, 035109 (2005). (GPAW)
-13. Chelikowsky, J. R., Troullier, N., Saad, Y. *Finite-difference-pseudopotential method.* Phys. Rev. Lett. 72, 1240 (1994). (PARSEC)
-
-**Free-boundary problems and Bernoulli conditions**
-14. Alt, H. W., Caffarelli, L. A. *Existence and regularity for a minimum problem with free boundary.* J. Reine Angew. Math. 325, 105 (1981).
-15. Friedman, A. *Variational Principles and Free-Boundary Problems.* Wiley (1982).
-16. Caffarelli, L. A., Salsa, S. *A Geometric Approach to Free Boundary Problems.* AMS Graduate Studies in Mathematics 68 (2005).
-
-**Computational benchmarks**
-17. Řezáč, J., Riley, K. E., Hobza, P. *S66: A well-balanced database of benchmark interaction energies.* J. Chem. Theory Comput. 7, 2427 (2011).
-18. Goerigk, L., Grimme, S. *A general database for main-group thermochemistry, kinetics, and noncovalent interactions.* Phys. Chem. Chem. Phys. 13, 6670 (2011). (GMTKN30 / 55)
-19. Curtiss, L. A., Raghavachari, K., Trucks, G. W., Pople, J. A. *Gaussian-2 theory.* J. Chem. Phys. 94, 7221 (1991).
-
-**Mainstream quantum-chemistry packages (for code-size comparison)**
-20. Frisch, M. J. et al. *Gaussian 16, Revision C.01.* Gaussian Inc. (2016).
-21. Aprà, E. et al. *NWChem: Past, present, and future.* J. Chem. Phys. 152, 184102 (2020).
-22. Sun, Q. et al. *PySCF: The Python-based simulations of chemistry framework.* WIREs Comput. Mol. Sci. 8, e1340 (2018).
-23. Giannozzi, P. et al. *QUANTUM ESPRESSO: a modular and open-source software project for quantum simulations of materials.* J. Phys.: Condens. Matter 21, 395502 (2009).
-
-**WebGPU and browser-based scientific computing**
-24. WebGPU Working Group. *WebGPU specification.* W3C Recommendation, ongoing. https://www.w3.org/TR/webgpu/
-25. McCormick, P. et al. *Browser-based scientific visualization with WebGPU.* (placeholder for relevant WebGPU-in-science citation)
-
-**AI assistants for scientific software development**
-26. Bran, A. M., Cox, S., Schilter, O., Baldassari, C., White, A. D., Schwaller, P. *Augmenting large language models with chemistry tools.* Nat. Mach. Intell. 6, 525 (2024).
-27. Boiko, D. A., MacKnight, R., Kline, B., Gomes, G. *Autonomous chemical research with large language models.* Nature 624, 570 (2023).
-28. Anthropic. *Claude (Sonnet, Opus).* https://www.anthropic.com/claude (Accessed [date]).
-
-**Relevant prior work by the author** (to be filled with specific citations)
-29. Johnson, C. *RealQM: Real Quantum Mechanics.* (book / preprint references)
-30. Johnson, C. *[Specific prior papers on the unit-density formulation, Levels 1–3, atomic-shell model.]*
+1. Hohenberg, P., Kohn, W. *Inhomogeneous electron gas.* Phys. Rev. 136, B864 (1964).
+2. Kohn, W., Sham, L. J. *Self-consistent equations including exchange and correlation effects.* Phys. Rev. 140, A1133 (1965).
+3. Bader, R. F. W. *Atoms in Molecules: A Quantum Theory.* Oxford University Press (1990).
 
 ---
