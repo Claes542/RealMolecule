@@ -250,6 +250,7 @@ We deliberately do not include figures in this preprint. The Gallery contains ma
 
 1. Hohenberg, P., Kohn, W. *Inhomogeneous electron gas.* Phys. Rev. 136, B864 (1964).
 2. Kohn, W., Sham, L. J. *Self-consistent equations including exchange and correlation effects.* Phys. Rev. 140, A1133 (1965).
-3. Bader, R. F. W. *Atoms in Molecules: A Quantum Theory.* Oxford University Press (1990).
+3. Mardirossian, N., Head-Gordon, M. *Thirty years of density functional theory in computational chemistry: an overview and extensive assessment of 200 density functionals.* Mol. Phys. 115, 2315 (2017).
+4. Bader, R. F. W. *Atoms in Molecules: A Quantum Theory.* Oxford University Press (1990).
 
 ---
