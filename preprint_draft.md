@@ -1,4 +1,5 @@
-# A Real-Space Reformulation of Many-Electron Quantum Mechanics, Implemented and Validated through Extended Collaboration with an AI Code Assistant
+# Quantum Mechanics as Multiphase 3D Continuum Mechanics
+## Realised through Mind–AI Cooperation
 
 **Author:** Claes Johnson  
 
