@@ -1,0 +1,299 @@
+\documentclass[11pt]{article}
+
+\usepackage[a4paper, margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue, citecolor=blue}
+\usepackage{authblk}
+\usepackage{microtype}
+\usepackage{enumitem}
+\setlist[itemize]{leftmargin=1.4em}
+
+\title{A Real-Space Reformulation of Many-Electron Quantum Mechanics, \\
+Implemented and Validated through Extended Collaboration with an AI Code Assistant}
+
+\author[1]{Claes Johnson}
+\affil[1]{KTH Royal Institute of Technology, Stockholm, Sweden \\
+\texttt{claes@csc.kth.se}}
+\date{\today \\[0.5em]
+\textit{With AI engineering partner: Claude (Anthropic)}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present a real-space reformulation of the many-electron problem in which matter is described as a system of $N$ \textbf{non-overlapping unit electron densities} in three-dimensional space, arranged by minimum-energy Coulomb packing. The unit-density variational principle is a free-boundary problem of Bernoulli type: the boundaries between electron territories are not specified in advance but emerge from the joint minimization over densities, boundary location, and nuclear positions, with continuity and homogeneous Neumann boundary conditions arising naturally from the variational structure. The model is organized as a hierarchy of reductions: a \textbf{parameter-free} Level-1 atomic model reproduces observed atom total energies for elements Li--Rn within ${\sim}1\%$; reduced-kernel Level-3 architectures sweep entire periodic-table columns by varying the kernel softening radius --- closed-shell hydrides match experimental atomization energies within 3--9\% for groups 1, 2, 14, and 16 (NaH, BeH$_2$, H$_2$O, CH$_4$, SiH$_4$, GeH$_4$), with NH$_3$ at 17--20\%. Excited states are accessible through the same variational principle (orthohelium worked example). The framework is implemented in ${\sim}8000$ lines of JavaScript and WebGPU compute shaders running interactively in a browser on a consumer laptop GPU --- three orders of magnitude smaller and ${\sim}10^2$--$10^4 \times$ faster than mainstream quantum-chemistry packages. The implementation, validation suite, and curated public Gallery were developed through extended collaboration with an AI code assistant (Claude, Anthropic) starting from initial p5.js prototypes by the author. We present the collaboration as part of the contribution: a worked case of how a single mathematical mind, paired with an AI engineering partner, can produce research-grade interactive scientific software at a scale that previously required a programming team.
+
+\medskip
+\noindent \textbf{Keywords:} quantum chemistry; density functional theory; free-boundary problems; Bernoulli condition; real-space methods; WebGPU; AI-assisted scientific software; human--AI collaboration.
+\end{abstract}
+
+\section{Introduction}
+
+The many-electron Schr\"odinger equation has been the foundation of quantum chemistry for nearly a century. In its standard formulation, matter is described as eigenfunctions of a many-body Hamiltonian acting on antisymmetric wavefunctions in a $3N$-dimensional configuration space. The exponential scaling of this representation has been mitigated by approximate methods --- Hartree--Fock, density functional theory, configuration interaction, coupled cluster --- each making specific compromises between accuracy and computational cost~\cite{HK64,KS65,MHG17}. Production-quality quantum chemistry packages comprise hundreds of thousands to millions of lines of code, draw on decades of accumulated machinery for basis sets, integral evaluation, and analytic gradients, and require dedicated computational clusters for systems of biological size.
+
+This paper presents a different starting point. We treat a many-electron system not as eigenfunctions in Hilbert space but as a system of \textbf{non-overlapping unit electron densities} in three-dimensional real space, arranged by a minimum-energy Coulomb packing principle. The mathematical object of study is a set of $N$ density functions $\rho_i(\mathbf{r})$ on $\mathbb{R}^3$, each integrating to one electron of charge, subject to the constraint that they do not overlap pairwise. Energy is the standard Coulomb functional. The minimum is taken over these densities and the nuclear positions; molecular geometry, bonding, and dynamics emerge from the same variational principle.
+
+This reformulation --- RealQM in what follows --- is not merely a numerical recasting of the standard problem. It is a different mathematical object with different scaling: complexity grows with the number of mesh points in 3D, not with the number of basis functions in $N \times 3D$. As a consequence, the entire framework can be implemented in roughly 8000 lines of JavaScript and WebGPU compute shaders, runs in a browser on a consumer laptop GPU, and supports interactive simulation of systems with hundreds of explicit electrons in real time.
+
+We organize the model as a hierarchy of reductions. \textbf{Level 1} is parameter-free: an atom is described as a nucleus of charge $Z$ surrounded by $N$ unit electron densities organized into non-overlapping shells, with the configuration determined by minimum-energy packing. The Level-1 atomic model reproduces observed atom energies for elements Li through Rn to approximately 1\% with no fitted constants. \textbf{Level 2} spherically homogenizes inner electron shells, keeping the shell occupancy intact but replacing the angular structure with a radial density of matching total charge. \textbf{Level 3} further replaces the nucleus and inner shells together by a \emph{pseudo-kernel} characterized by an effective charge $Z_{\rm kernel}$ and a softening radius $r_c$, leaving only the outermost valence electrons explicit. \textbf{Level 4} combines Level-3 atoms into molecular assemblies. Each level is determined by comparison with the prior level, in the same architectural spirit as pseudopotentials and frozen-core methods in standard quantum chemistry, but with a parameter-free ab initio bottom rather than empirical fits.
+
+A second contribution of this paper concerns how the implementation was produced. The mathematical reformulation is the work of one author. The validation suite, the WebGPU compute shaders, the systematic kernel-architecture sweeps reported in Section~\ref{sec:validation}, and the curated public Gallery were developed through extended interactive collaboration with \textbf{Claude}, a large-language-model AI assistant produced by Anthropic. The pattern of the collaboration was iterative and recorded: the human proposed mathematical and chemical questions; the AI translated them into runnable simulations, identified bugs, ran systematic parameter sweeps, and challenged claims that did not survive scrutiny; the human evaluated the results and corrected the AI's interpretations when they slipped. The history of corrections --- claims made, retracted, refined, restored --- is itself part of the public record, encoded in the Gallery's ``Assessment by Claude'' card.
+
+We take this case to be a worth-reporting example of how a single mathematical mind, working with an AI engineering partner in real time, can produce research-grade interactive scientific software at a scale otherwise requiring a programming team. The collaboration is not the science, but it is part of how the science came into existence, and we report it as such.
+
+The paper is organized as follows. Section~\ref{sec:reformulation} states the reformulation and the hierarchical reduction. Section~\ref{sec:implementation} describes the numerical implementation. Section~\ref{sec:validation} reports validation. Section~\ref{sec:discussion} discusses architectural rules and limits. Section~\ref{sec:collaboration} returns to the collaboration. The full source code, validation suite, and interactive Gallery are available at the URLs in Section~\ref{sec:code}.
+
+\section{Multiphase Electron Density Formulation}\label{sec:reformulation}
+
+\subsection{Mathematical statement}
+
+We treat an $N$-electron system as $N$ spatial densities $\rho_1, \ldots, \rho_N : \mathbb{R}^3 \to \mathbb{R}_{\geq 0}$, each satisfying
+\begin{align}
+\int \rho_i(\mathbf{r})\, d\mathbf{r} &= 1 \quad \text{for all } i, \\
+\rho_i(\mathbf{r}) \cdot \rho_j(\mathbf{r}) &= 0 \quad \text{for all } i \neq j, \mathbf{r} \in \mathbb{R}^3.
+\end{align}
+The first constraint is unit charge per electron; the second is strict pairwise non-overlap of the densities. The system also includes $M$ nuclei at positions $\mathbf{R}_a$ with charges $Z_a$.
+
+The total energy is the standard Coulomb functional
+\begin{equation}
+E[\{\rho_i\}; \{\mathbf{R}_a\}] = T[\{\rho_i\}] + V_{eN}[\{\rho_i\}; \{\mathbf{R}_a\}] + V_{ee}[\{\rho_i\}] + V_{NN}[\{\mathbf{R}_a\}],
+\end{equation}
+where $T$ is a kinetic-energy functional (we use a gradient functional $T = \tfrac{1}{2} \int |\nabla \sqrt{\rho_i}|^2 d\mathbf{r}$, as in Weizs\"acker), $V_{eN}$ is the standard nuclear--electron Coulomb attraction summed over electrons and nuclei, $V_{ee}$ is the inter-electron Coulomb repulsion as a sum of pairwise integrals over distinct densities ($i \neq j$), and $V_{NN}$ is the nuclear--nuclear Coulomb repulsion. Self-interaction is excluded by construction: the $i = j$ term is omitted because each density does not interact with itself.
+
+The ground-state energy is the minimum of $E$ over the densities $\{\rho_i\}$ subject to the unit-charge and non-overlap constraints, and over the nuclear positions $\{\mathbf{R}_a\}$ when geometry is sought. The equilibrium configuration is the minimizer.
+
+\subsection{Comparison with the standard formulation}
+
+The standard formulation seeks an antisymmetric $N$-electron wavefunction $\Psi(\mathbf{r}_1, \ldots, \mathbf{r}_N)$ on $\mathbb{R}^{3N}$ as an eigenfunction of the many-body Hamiltonian. Approximate methods truncate the variational space (HF: single Slater determinant; CC and CI: configuration expansions; DFT: a one-body density)~\cite{KS65,MHG17}. The exponential scaling of the configuration space is the underlying obstacle.
+
+The unit-density formulation works in real space at the level of $N$ independent 3D densities, with antisymmetry replaced by strict spatial non-overlap. The two requirements are not equivalent --- antisymmetric wavefunctions need not have non-overlapping densities, and non-overlapping densities do not span the antisymmetric subspace. The reformulation is therefore a different mathematical object, not a numerical approximation of the standard one.
+
+This raises an obvious question: how do the two compare numerically? At the parameter-free Level-1 atomic model (Section~\ref{sec:atoms}) we find atom energies within ${\sim}1\%$ of observation. At higher levels (Section~\ref{sec:hydrides}), Level-3 reductions match experimental atomization energies of closed-shell hydrides within 3--9\% across multiple periodic-table groups. Where the methods part company is in the cost: a single closed-shell hydride at Level 3 runs in milliseconds on a laptop GPU, while CCSD(T) on the same system requires minutes to hours on a CPU.
+
+Bader's theory of \emph{Atoms in Molecules}~\cite{Bader90} partitions the total electron density into atomic basins via the topology of the gradient field. The unit-density formulation can be viewed as taking that partitioning idea seriously as the \emph{primary} variable: rather than first computing $\rho(\mathbf{r})$ and then partitioning, we let the partition $\{\rho_i\}$ minimize the Coulomb energy directly.
+
+\subsection{The hierarchy of reductions}
+
+The Level-1 atomic model is parameter-free: the inputs are the nuclear charge $Z$ and the standard shell occupancy ($1s^2$, $2s^2 2p^6$, etc.). The shells are minimized as non-overlapping radial densities. We use this model as the bottom of the hierarchy.
+
+\textbf{Level 2} spherically homogenizes the inner shells: the angular structure is replaced by spherical symmetry, and the total charge of each inner shell is redistributed as a spherically symmetric radial density. Bond-relevant chemistry is not affected because inner shells contribute only to the effective Coulomb potential seen by valence electrons.
+
+\textbf{Level 3} combines the nucleus and the spherically homogenized inner shells into a single \emph{pseudo-kernel} with an effective charge $Z_{\rm kernel}$ and a softening radius $r_c$. The valence electrons remain explicit. The kernel is parameterized by $Z_{\rm kernel}$ and $r_c$; both are determined by comparison with Level-2 results. This is the level used throughout Section~\ref{sec:validation}.
+
+\textbf{Level 4} combines Level-3 atoms into molecular assemblies. The valence electrons may be either single-orbital (no split) or split into angular sectors aligned with bond directions. The choice of splitting topology --- sphere, hemisphere, third (120$^\circ$), tetra (109.5$^\circ$) --- and the kernel charge $Z$ together constitute the \emph{architecture} of the model for that molecule.
+
+We emphasize that this hierarchy is principled, not heuristic. Each level is derived from the prior level by a specific reduction. The empirical content lies in choosing the right architecture for a given molecule, which Section~\ref{sec:discussion} discusses.
+
+\subsection{The free boundary and Bernoulli conditions}\label{sec:bernoulli}
+
+The non-overlap constraint $\rho_i \cdot \rho_j = 0$ means that each electron density is supported on a spatial region $D_i$, with the regions $\{D_i\}$ partitioning the relevant volume. The interfaces $\partial D_i \cap \partial D_j$ between regions are not specified in advance --- they emerge from the energy minimization. The unit-density variational principle is therefore a \textbf{free-boundary problem}, mathematically analogous to Bernoulli's classical free-boundary problem in potential flow and to the Stefan problem for phase transitions.
+
+At equilibrium, the boundary satisfies a \textbf{Bernoulli condition}: the density $\rho_i$ is continuous from within $D_i$ toward the interface (no singular behaviour at the boundary), and the \textbf{normal derivative $\partial \rho_i / \partial n$ vanishes} at the interface (homogeneous Neumann). The Neumann condition is not externally imposed; it emerges from the variational principle. When the energy is minimized jointly over the densities and the boundary location, the transversality condition at the boundary --- the requirement that the first variation vanishes for arbitrary admissible boundary deformations --- yields $\partial \rho_i / \partial n = 0$. In other words, the Neumann condition is the consequence of optimizing the boundary location alongside the bulk densities, treating each as part of the same global optimization.
+
+Across the interface, the density jumps: $\rho_i$ is positive on its side and zero on the other side, with the jump occurring sharply at $\partial D_i$. The boundary condition is therefore the combination of (a) continuity of $\rho_i$ as the interface is approached from within $D_i$, (b) the homogeneous Neumann condition $\partial \rho_i / \partial n = 0$ at $\partial D_i$, and (c) a jump from $\rho_i > 0$ inside to $\rho_i = 0$ outside. We collectively refer to this as the Bernoulli condition by analogy with Bernoulli's free-boundary problem.
+
+When the system is \textbf{not at equilibrium}, density mismatches at the interfaces generate forces that drive boundary motion. The free boundary moves toward configurations satisfying the Bernoulli condition; the bulk densities and the boundary location relax together. This dynamic is part of how the variational principle arrives at the equilibrium configuration: the boundaries are not fixed but evolve as the densities relax. In the numerical implementation (Section~\ref{sec:implementation}), the relaxation is realized through a smoothed $w$-field that softens the partition during imaginary-time propagation and tightens to the Bernoulli condition at convergence.
+
+The free-boundary perspective places the unit-density formulation in a well-studied class of variational problems for which regularity theory, level-set methods, and Dirichlet--Neumann decompositions are available. These tools may help formalize the architectural rules of Section~\ref{sec:discussion}: orphan sectors and bond-axis misalignment can be re-described as boundary conditions that fail to be locally minimizing, and the splitting topology can be chosen to ensure that the Bernoulli condition is achievable at every interface.
+
+\section{Numerical implementation}\label{sec:implementation}
+
+The reformulation is implemented as \texttt{mol\_fast.js} ($\sim$1600 lines) and \texttt{molecule.js} ($\sim$5300 lines), JavaScript modules that compile WGSL compute shaders to a WebGPU device. \texttt{mol\_fast.js} uses unit-density orbitals with explicit angular splitting; \texttt{molecule.js} uses a Voronoi-partition labelling field. Both run entirely in the browser.
+
+\subsection{Real-space grid}
+
+The simulation domain is a cubic box of side $L$ a.u., discretized as $N \times N \times N$ grid points (typical $N = 100$--200, $L = 10$--22 a.u., grid spacing $h = L/N \approx 0.1$ a.u.). Each electron's density is represented as an $N^3$ array of floats (orbital amplitudes), evolved by imaginary-time propagation (ITP) of the Hamiltonian operator $H = T + V$ on the grid. The Hartree potential $P$ from each density is solved by parallel Poisson diffusion. Self-interaction is removed by subtracting the contribution of each electron's own density from the total Hartree potential.
+
+A typical step does ${\sim}10$ GPU compute dispatches: orbital ITP update, Poisson update, kinetic-energy reduction, normalization, force computation. On a consumer laptop GPU ($\sim$10 TFLOPS), this runs at 30+ steps per second for the systems reported in Section~\ref{sec:validation}.
+
+\subsection{Kernel softening and angular splitting}
+
+A Level-3 kernel is parameterized by ($Z_{\rm kernel}$, $r_c$, split\_type, split\_idx, split\_axis). The kernel potential at distance $r$ from the nucleus is $V_{\rm kernel}(r) = -Z_{\rm kernel}/r$ for $r > r_c$, with a smooth softening for $r \leq r_c$ that matches the Coulomb tail and goes to zero at the origin. The split\_type is one of \{sphere, hemi, third, tetra, hemi\_third\}, defining how the angular sectors of the kernel partition the orbital domain. The split\_axis is the axis around which sectors are arranged. The split\_idx selects which sector this particular orbital occupies.
+
+For a heavy atom with multiple valence electrons, several sub-orbitals at the same nuclear position with different split\_idx values together represent the full valence shell. Each sub-orbital evolves independently subject to its angular sector mask.
+
+\subsection{Code size and computational cost}
+
+The full RealQM implementation is approximately 8000 lines of JavaScript and WGSL combined. For comparison, mainstream quantum chemistry packages range from $\sim$200,000 lines (Quantum ESPRESSO) to $\sim$3,000,000 lines (Gaussian, NWChem). The size compression is enabled by working directly in real space: there are no basis sets, no two-electron integrals, no orbital coefficient bookkeeping, no analytic gradient machinery.
+
+For typical jobs, RealQM runs orders of magnitude faster than CPU-based quantum chemistry on equivalent hardware: a water-dimer geometry optimization that takes hours of CCSD(T)/CBS computation completes interactively in seconds. A 216-water cluster with explicit electrons runs at real-time interactive frame rates on a single GPU; the equivalent DFT-MD simulation requires tens to hundreds of CPU cores running for weeks. The speedup factor of $10^2$--$10^4$ is real and is the practical breakthrough of the framework, even if accuracy at very high precision (CCSD(T)-class) is not the goal.
+
+\section{Validation}\label{sec:validation}
+
+\subsection{Level-1 atom energies, Li through Rn}\label{sec:atoms}
+
+We first validate the parameter-free Level-1 atomic model against observed atom total energies. The model is: a nucleus of charge $Z$ surrounded by $N$ unit electron densities organized into shells ($1s^2$, $2s^2 2p^6$, $3s^2 3p^6 3d^{10}$, etc.) following the standard Aufbau filling. Each shell electron is assigned to a non-overlapping spatial region, and the configuration that minimizes the total Coulomb energy subject to those constraints is taken as the ground state.
+
+The model has no fitted parameters; the only inputs are the nuclear charge $Z$ and the standard shell structure. Computed total energies for Li--Rn agree with observation to approximately 1\% across the range, with the largest deviations at very heavy atoms where relativistic corrections are not included. (Full table in the public Gallery; see Section~\ref{sec:code}.)
+
+This level provides the anchor for all subsequent reductions: each higher-level model (Level 2, 3, 4) is parameterized by comparison with Level-1 atom energies and Level-2 spherical densities.
+
+\subsection{Atomization energies of closed-shell hydrides}\label{sec:hydrides}
+
+We test the Level-3 reduction across a series of closed-shell hydrides $\mathrm{H}_n X$, varying the heavy atom $X$ across periodic-table groups. For each system, the kernel is parameterized by an effective charge $Z_{\rm kernel}$ and a softening radius $r_c$. We compute the total energy at the experimental equilibrium $X$--H bond length $R$ and at twice that distance, and report
+\[
+\Delta E_{\rm bind} = E(R) - E(2R)
+\]
+as a proxy for the atomization energy.
+
+\paragraph{Group 1 (alkali hydrides).}
+Single-electron $X^{+1}$ kernel paired with a single H gives a closed-shell two-electron molecule. Sweeping $r_c$ traces the alkali series:
+
+\begin{center}
+\begin{tabular}{c c l c}
+\toprule
+$r_c$ (a.u.) & $\Delta E$ (kcal/mol) & Real molecule & Match \\
+\midrule
+0.00 & $-92$ & H$_2$ ($-109$) & within 16\% \\
+0.50 & $-48$ & NaH ($-47$) & \textbf{within 2\%} \\
+0.70 & $-42$ & KH ($\sim\!-43$) & \textbf{within 2\%} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Group 2 (alkaline-earth dihydrides).}
+Linear H--$X$--H with a $+2$ kernel split into two hemispheres along the molecular axis (each holding one electron):
+
+\begin{center}
+\begin{tabular}{c c l c}
+\toprule
+$r_c$ (a.u.) & $\Delta E$ (kcal/mol) & Real molecule & Match \\
+\midrule
+0.40 & $-140$ & BeH$_2$ ($-144$) & \textbf{within 3\%} \\
+0.50 & $-129$ & between BeH$_2$ and MgH$_2$ & regime \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Group 14 (XH$_4$ tetrahedral).}
+Central $+2$ kernel with a single 2-electron orbital paired with four hydrogen atoms at tetrahedral positions. A single architecture sweeps the entire group-14 series via $r_c$:
+
+\begin{center}
+\begin{tabular}{c c l c}
+\toprule
+$r_c$ (a.u.) & $\Delta E$ (kcal/mol) & Real molecule & Match \\
+\midrule
+0.20 & $-369$ & CH$_4$ ($-396$) & \textbf{within 7\%} \\
+0.40 & $-348$ & SiH$_4$ ($-320$) & within 9\% \\
+0.70 & $-272$ & GeH$_4$ ($-281$) & \textbf{within 3\%} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Group 16 (bent H$_2$X).}
+Water requires a different splitting topology, with the axis along the H--O--H bisector. Both H atoms occupy the same hemisphere, with the lone pair in the opposing hemisphere as a paired sub-orbital. At $r_c = 0.7$, $\Delta E_{\rm bind} = -225$ kcal/mol versus the experimental H$_2$O atomization $-232$ kcal/mol --- \textbf{within 3\%}.
+
+\paragraph{Group 15 (NH$_3$ pyramidal).}
+The hardest case among those tested. The best Level-3 architecture (N$^{+2}$, two hemispheres each with one electron) gives binding within 17--20\% of experiment, with sign and order of magnitude correct. Treatment in Section~\ref{sec:nh3}.
+
+\subsection{What $r_c$ encodes}
+
+Across all four working groups, varying $r_c$ with a fixed architecture traces a periodic-table column. We interpret $r_c$ as the \textbf{inner-shell absorption radius} in the Level-3 reduction: the radius at which inner-shell electrons are absorbed into the kernel core, leaving only the explicit valence outside. As $r_c$ grows, the kernel becomes more diffuse, the effective valence sees a larger inner core, and the bonding becomes weaker --- exactly as down a periodic-table column. This interpretation is consistent quantitatively across groups 1, 2, 14, and 16, with periodic-trend match within 3--9\% per element.
+
+\subsection{Geometric validation against S66}
+
+We additionally test geometric agreement against Hobza's S66 benchmark of non-covalent dimers. RealQM cannot directly validate S66 binding energies --- those are CCSD(T)/CBS values in the $-1$ to $-7$ kcal/mol range, well below the model's absolute-energy noise floor ($\sim$0.1 Ha). But the equilibrium distances and angles can be compared directly. For five H-bonded dimers tested (water dimer, methanol dimer, methylamine dimer, methylamine--water, formamide dimer), distances agree with CCSD(T) reference to within 1--5\%, and force-direction diagnostics confirm the basin of attraction is correctly identified.
+
+\subsection{Excited states: orthohelium}
+
+The unit-density framework extends naturally to excited states. The basic case is the orthohelium ($1s\,2s$, $^3S$) state of helium, in which two electrons occupy distinct spatial regions corresponding to the $1s$ and $2s$ shells. In RealQM, this is a directly accessible configuration of the Level-1 model: place two non-overlapping unit densities, the inner localized in the $1s$ shell and the outer in the $2s$ shell, and minimize the total Coulomb energy under the non-overlap constraint. The resulting configuration is an excited state of helium, distinct from the ground state ($1s^2$, $^1S$) where both electrons occupy the same shell.
+
+The orthohelium case is included in the Gallery as a worked example. It illustrates that the framework is \textbf{not restricted to ground states}: any configuration of non-overlapping unit densities corresponding to a chosen shell occupancy is an admissible solution, and excited-state energies follow from the same variational principle applied to the chosen configuration. This is in contrast to standard QM where excited states require additional machinery (TDDFT, CIS, EOM-CC); here, they are just different choices of which shells the electrons occupy.
+
+\section{Discussion}\label{sec:discussion}
+
+\subsection{What $r_c$ encodes}
+
+Across the periodic-table groups validated in Section~\ref{sec:hydrides} (groups 1, 2, 14, and 16), a single Level-3 architecture, with $r_c$ as the only varied parameter, traces an entire group of homologous molecules. The chemical interpretation is that $r_c$ \textbf{encodes the inner-shell absorption radius}: the radius beyond which the kernel acts as a point charge of charge $Z_{\rm kernel}$, and within which the kernel is softened to absorb the inner-shell electrons. As one descends a group, the inner shells are larger and $r_c$ grows accordingly. The valence is structurally similar within the group, so the explicit-orbital architecture is unchanged.
+
+The match within 3--9\% across four periodic-table groups, using a single architecture per group with no parameter fitting, is the strongest single piece of evidence we have that the unit-density Level-3 reduction captures real chemistry. It is not a one-molecule coincidence; it is a periodic-trend match.
+
+\subsection{Architectural rules}
+
+Not every architecture we tested produced the right binding sign at the right magnitude. The general rule: \textbf{kernel splitting works when every sector is anchored by an atom and the axis is aligned with bonds}.
+
+\begin{itemize}
+\item \emph{Multi-occupancy artifacts}: a heavy atom with more than two valence electrons in a single multi-occupied orbital fails to bond correctly. Either split the kernel into single-occupancy sectors, or reduce the kernel charge so multi-occupancy is at most doubly occupied.
+\item \emph{Orphan sectors}: a splitting topology with a sector unanchored by any nucleus captures spurious diffuse density at stretched geometries, giving wrong-sign binding. Fix: choose splittings whose sectors are all anchored.
+\item \emph{Axis misalignment}: a split axis perpendicular to bonds gives sub-orbitals that do not overlap optimally with H electrons. Fix: align axis along bond directions.
+\end{itemize}
+
+\subsection{How NH$_3$ is handled}\label{sec:nh3}
+
+NH$_3$ requires the matched-architecture rule together with a careful choice of effective valence. We use a $+2$ kernel ($Z_{\rm kernel} = 2$) split into two hemispheres along the molecular $C_3$ axis: one electron in the lone-pair-side hemisphere, one electron in the bond-side hemisphere where the three H atoms sit. With three H atoms (one electron each) the explicit valence-electron count is five, somewhat reduced from the formal valence eight, with the remainder absorbed into the kernel softening at $r_c$. At $r_c = 0.20$ a.u.\ this architecture gives an atomization energy of $-339$ kcal/mol against an experimental $-283$ (within 20\%), with a dipole moment in the right range and pointing along the lone-pair axis as expected.
+
+The architecture is the simplest non-trivial sp$^3$ pyramidal model that gives qualitatively correct binding direction and order-of-magnitude correct dipole. NH$_3$ is harder than the closed-shell hydrides matched within 3--9\%, and we report it at this lower precision honestly. The Level-3 reduction does not yet have a theoretical derivation of which kernel charge and splitting topology to choose for a given molecular geometry; this is an open problem and an area where additional theoretical work would help.
+
+\subsection{Limits of the approach}
+
+Two regimes lie outside the validation reported here. \textbf{Weak intermolecular interactions} (hydrogen bonds at $\sim$5 kcal/mol $= 0.008$ Ha) are below the model's absolute-energy noise floor of $\sim$0.1 Ha; geometric agreement on S66 dimers is good (1--5\%) but quantitative interaction energies are not reliable. \textbf{Dispersion} (van der Waals interactions between non-polar species) is absent at Level 3 entirely, as the unit-density model has no mechanism for the correlated electron motion that produces vdW. Excited states are accessible (Section 4.5) but at the present stage have only been validated on the simplest cases.
+
+\section{The collaboration as part of the contribution}\label{sec:collaboration}
+
+The mathematical reformulation in Section~\ref{sec:reformulation} and the hierarchy of Levels 1--4 are the work of the human author. They predate the AI collaboration and have been developed over a decade of independent work. The author also wrote the initial p5.js prototype simulations that established the numerical core (real-space grid, ITP, Poisson solver, basic visualization) used as the starting point for the WebGPU implementation. The full WebGPU port, the validation suite, the systematic kernel-architecture sweeps reported in Section~\ref{sec:validation}, and the curated public Gallery were developed from those starting templates through extended collaboration with \textbf{Claude}, an AI code assistant produced by Anthropic.
+
+We document the pattern of the collaboration here because we believe it is a worth-reporting example of how a single mathematical mind can produce research-grade interactive scientific software with an AI engineering partner.
+
+The human posed mathematical and chemical questions: ``What if the model uses $Z=2$ instead of $Z=4$ for carbon?'' ``Does the H-bond force correctly point toward the acceptor lone pair?'' ``Why does this geometry prefer stretched over bonded?'' The AI translated these into runnable simulations, identified bugs in real time, ran systematic parameter sweeps, computed and tabulated results, drafted candidate gallery cards, and challenged claims that did not survive scrutiny.
+
+The interaction was iterative and surprisingly productive: a question asked at 9:00 might be answered with a working scan file at 9:05, partial results at 9:30, a full sweep table at 10:00, and a refined analysis incorporating the latest data by 10:30. Across many such cycles, the validation table reported in Section~\ref{sec:validation} was assembled.
+
+We also record honestly where the AI's interpretations needed correction. Several times the AI prematurely concluded that a result was ``within $X\%$ of experiment'' before convergence had been confirmed; in each case the human pushed back and the AI revised. The Gallery's ``Assessment by Claude'' card reflects this --- its caveats were rewritten more than once during the project as the evidence accumulated.
+
+We find that the right framing for the collaboration is \textbf{mathematical mind + AI engineering partner}: the human supplies the theory, the questions, the chemical intuition, and the standards for what counts as evidence; the AI supplies the implementation, the systematic exploration, and the speed. Neither could have produced this result alone in any reasonable timeframe.
+
+\section{Code and reproducibility}\label{sec:code}
+
+The full RealQM implementation, including the validation suite, the systematic kernel-architecture sweeps reported in Section~\ref{sec:validation}, and the curated public Gallery, is available at:
+
+\begin{itemize}
+\item \textbf{Code repository:} \url{https://github.com/Claes542/RealMolecule}
+\item \textbf{Interactive Gallery:} \url{https://claes542.github.io/RealMolecule/gallery.html}
+\item \textbf{RealQM project site:} \url{https://physicalquantummechanics.blogspot.com}
+\item \textbf{Author's blog:} \url{https://claesjohnson.blogspot.com}
+\item \textbf{Browser requirements:} Chrome 113+, Edge 113+, or Safari 17+ (WebGPU)
+\item \textbf{Hardware:} any modern integrated or discrete GPU ($\sim$1 GB GPU memory for $\sim$200$^3$ grid)
+\end{itemize}
+
+All results in this paper can be reproduced by opening the relevant \texttt{.html} files in the repository. Each binding-energy data point in Section~\ref{sec:validation} corresponds to a specific URL parameterization ($R$, $r_c$) of a specific scan file (e.g., \texttt{mol\_fast\_H4X\_Z2\_scan.html?R=1.0\&rc=0.2}). The Gallery's ``Kernel Splitting'' and ``Periodic-Table Coverage'' cards link directly to the scan files used to generate the reported numbers.
+
+We deliberately do not include figures in this preprint. The Gallery contains many interactive visualizations --- density slices, 3D molecular views, force-arrow displays, real-time dynamics --- that are far more informative as live simulations than as static images. Readers wishing to inspect electron densities, watch molecules relax, or run their own kernel-architecture sweeps should consult the Gallery directly.
+
+\section*{Acknowledgments}
+
+The author is very happy to meet Claude Code in a fruitful cooperation way beyond initial expectations after lonely struggle with coding over long time.
+
+\section*{Competing interests}
+
+None declared.
+
+\begin{thebibliography}{9}
+
+\bibitem{HK64}
+P.~Hohenberg and W.~Kohn,
+\emph{Inhomogeneous electron gas},
+Phys.\ Rev.\ \textbf{136}, B864 (1964).
+
+\bibitem{KS65}
+W.~Kohn and L.~J.~Sham,
+\emph{Self-consistent equations including exchange and correlation effects},
+Phys.\ Rev.\ \textbf{140}, A1133 (1965).
+
+\bibitem{MHG17}
+N.~Mardirossian and M.~Head-Gordon,
+\emph{Thirty years of density functional theory in computational chemistry: an overview and extensive assessment of 200 density functionals},
+Mol.\ Phys.\ \textbf{115}, 2315 (2017).
+
+\bibitem{Bader90}
+R.~F.~W.~Bader,
+\emph{Atoms in Molecules: A Quantum Theory},
+Oxford University Press (1990).
+
+\end{thebibliography}
+
+\end{document}

@@ -96,7 +96,7 @@ The orthohelium case is included in the Gallery as a worked example. It illustra
 
 ---
 
-## 2. The unit-density reformulation
+## 2. Multiphase Electron Density Formulation
 
 ### 2.1 Mathematical statement
 
