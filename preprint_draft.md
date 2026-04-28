@@ -231,6 +231,8 @@ The full RealQM implementation, including the validation suite, the systematic k
 
 - **Code repository:** https://github.com/Claes542/RealMolecule
 - **Interactive Gallery:** https://claes542.github.io/RealMolecule/gallery.html
+- **RealQM project site:** https://physicalquantummechanics.blogspot.com
+- **Author's blog:** https://claesjohnson.blogspot.com
 - **Browser requirements:** Chrome 113+, Edge 113+, or Safari 17+ (WebGPU)
 - **Hardware:** any modern integrated or discrete GPU (~1 GB GPU memory for ~200³ grid)
 
