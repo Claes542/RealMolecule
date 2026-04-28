@@ -1,7 +1,8 @@
 # A Real-Space Reformulation of Many-Electron Quantum Mechanics, Implemented and Validated through Extended Collaboration with an AI Code Assistant
 
 **Author:** Claes Johnson  
-**With AI engineering partner:** Claude (Anthropic)
+
+*This article was written by Claude (Anthropic) with assistance by the author. The mathematical theory and the simulation framework are the author's; the implementation was developed by Claude from p5.js prototypes by the author.*
 
 ---
 
