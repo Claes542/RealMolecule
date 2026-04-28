@@ -5,6 +5,14 @@
 
 ---
 
+## Abstract
+
+We present a real-space reformulation of the many-electron problem in which matter is described as a system of N **non-overlapping unit electron densities** in three-dimensional space, arranged by minimum-energy Coulomb packing. The unit-density variational principle is a free-boundary problem of Bernoulli type: the boundaries between electron territories are not specified in advance but emerge from the joint minimization over densities, boundary location, and nuclear positions, with continuity and homogeneous Neumann boundary conditions arising naturally from the variational structure. The model is organized as a hierarchy of reductions: a **parameter-free** Level-1 atomic model reproduces observed atom total energies for elements Li–Rn within ~1%; reduced-kernel Level-3 architectures sweep entire periodic-table columns by varying the kernel softening radius — closed-shell hydrides match experimental atomization energies within 3–9% for groups 1, 2, 14, and 16 (NaH, BeH₂, H₂O, CH₄, SiH₄, GeH₄), with NH₃ at 17–20%. Excited states are accessible through the same variational principle (orthohelium worked example). The framework is implemented in ~8000 lines of JavaScript and WebGPU compute shaders running interactively in a browser on a consumer laptop GPU — three orders of magnitude smaller and ~10²–10⁴ × faster than mainstream quantum-chemistry packages. The implementation, validation suite, and curated public Gallery were developed through extended collaboration with an AI code assistant (Claude, Anthropic) starting from initial p5.js prototypes by the author. We present the collaboration as part of the contribution: a worked case of how a single mathematical mind, paired with an AI engineering partner, can produce research-grade interactive scientific software at a scale that previously required a programming team.
+
+**Keywords:** quantum chemistry, density functional theory, free-boundary problems, Bernoulli condition, real-space methods, WebGPU, AI-assisted scientific software, human-AI collaboration
+
+---
+
 ## 1. Introduction
 
 The many-electron Schrödinger equation has been the foundation of quantum chemistry for nearly a century. In its standard formulation, matter is described as eigenfunctions of a many-body Hamiltonian acting on antisymmetric wavefunctions in a 3N-dimensional configuration space. The exponential scaling of this representation has been mitigated by approximate methods — Hartree-Fock, density functional theory, configuration interaction, coupled cluster — each making specific compromises between accuracy and computational cost. Production-quality quantum chemistry packages comprise hundreds of thousands to millions of lines of code, draw on decades of accumulated machinery for basis sets, integral evaluation, and analytic gradients, and require dedicated computational clusters for systems of biological size.
@@ -230,6 +238,64 @@ All results in this paper can be reproduced by opening the relevant `.html` file
 
 ---
 
-**Acknowledgments.** [To be filled by author.]
+**Acknowledgments.** [To be filled by author. Suggested elements: thanks to colleagues who provided early feedback on the unit-density formulation; explicit acknowledgment of the AI collaboration with Claude (Anthropic), with a note on the iterative nature of the implementation; computational resources note (none required beyond a laptop GPU); funding sources if any.]
 
 **Competing interests.** None declared.
+
+---
+
+## References
+
+[Skeleton — to be filled in with full citations]
+
+**Foundational quantum chemistry**
+1. Schrödinger, E. *An undulatory theory of the mechanics of atoms and molecules.* Phys. Rev. 28, 1049 (1926).
+2. Hartree, D. R. *The wave mechanics of an atom with a non-Coulomb central field.* Math. Proc. Cambridge Phil. Soc. 24, 89 (1928).
+3. Fock, V. *Näherungsmethode zur Lösung des quantenmechanischen Mehrkörperproblems.* Z. Phys. 61, 126 (1930).
+4. Hohenberg, P., Kohn, W. *Inhomogeneous electron gas.* Phys. Rev. 136, B864 (1964).
+5. Kohn, W., Sham, L. J. *Self-consistent equations including exchange and correlation effects.* Phys. Rev. 140, A1133 (1965).
+6. Pople, J. A. *Nobel lecture: Quantum chemical models.* Rev. Mod. Phys. 71, 1267 (1999).
+
+**Pseudopotential / frozen-core methods (analogous to Level-3 reduction)**
+7. Hamann, D. R., Schlüter, M., Chiang, C. *Norm-conserving pseudopotentials.* Phys. Rev. Lett. 43, 1494 (1979).
+8. Vanderbilt, D. *Soft self-consistent pseudopotentials in a generalized eigenvalue formalism.* Phys. Rev. B 41, 7892 (1990).
+9. Blöchl, P. E. *Projector augmented-wave method.* Phys. Rev. B 50, 17953 (1994).
+
+**Orbital-free DFT (closest standard analog of unit-density approach)**
+10. Wang, Y. A., Carter, E. A. *Orbital-free kinetic-energy density functional theory.* In: *Theoretical Methods in Condensed Phase Chemistry* (Schwartz, S. D., ed.), Kluwer (2000).
+11. Witt, W. C., del Rio, B. G., Dieterich, J. M., Carter, E. A. *Orbital-free density functional theory for materials research.* J. Mater. Res. 33, 777 (2018).
+
+**Real-space methods**
+12. Mortensen, J. J., Hansen, L. B., Jacobsen, K. W. *Real-space grid implementation of the projector augmented wave method.* Phys. Rev. B 71, 035109 (2005). (GPAW)
+13. Chelikowsky, J. R., Troullier, N., Saad, Y. *Finite-difference-pseudopotential method.* Phys. Rev. Lett. 72, 1240 (1994). (PARSEC)
+
+**Free-boundary problems and Bernoulli conditions**
+14. Alt, H. W., Caffarelli, L. A. *Existence and regularity for a minimum problem with free boundary.* J. Reine Angew. Math. 325, 105 (1981).
+15. Friedman, A. *Variational Principles and Free-Boundary Problems.* Wiley (1982).
+16. Caffarelli, L. A., Salsa, S. *A Geometric Approach to Free Boundary Problems.* AMS Graduate Studies in Mathematics 68 (2005).
+
+**Computational benchmarks**
+17. Řezáč, J., Riley, K. E., Hobza, P. *S66: A well-balanced database of benchmark interaction energies.* J. Chem. Theory Comput. 7, 2427 (2011).
+18. Goerigk, L., Grimme, S. *A general database for main-group thermochemistry, kinetics, and noncovalent interactions.* Phys. Chem. Chem. Phys. 13, 6670 (2011). (GMTKN30 / 55)
+19. Curtiss, L. A., Raghavachari, K., Trucks, G. W., Pople, J. A. *Gaussian-2 theory.* J. Chem. Phys. 94, 7221 (1991).
+
+**Mainstream quantum-chemistry packages (for code-size comparison)**
+20. Frisch, M. J. et al. *Gaussian 16, Revision C.01.* Gaussian Inc. (2016).
+21. Aprà, E. et al. *NWChem: Past, present, and future.* J. Chem. Phys. 152, 184102 (2020).
+22. Sun, Q. et al. *PySCF: The Python-based simulations of chemistry framework.* WIREs Comput. Mol. Sci. 8, e1340 (2018).
+23. Giannozzi, P. et al. *QUANTUM ESPRESSO: a modular and open-source software project for quantum simulations of materials.* J. Phys.: Condens. Matter 21, 395502 (2009).
+
+**WebGPU and browser-based scientific computing**
+24. WebGPU Working Group. *WebGPU specification.* W3C Recommendation, ongoing. https://www.w3.org/TR/webgpu/
+25. McCormick, P. et al. *Browser-based scientific visualization with WebGPU.* (placeholder for relevant WebGPU-in-science citation)
+
+**AI assistants for scientific software development**
+26. Bran, A. M., Cox, S., Schilter, O., Baldassari, C., White, A. D., Schwaller, P. *Augmenting large language models with chemistry tools.* Nat. Mach. Intell. 6, 525 (2024).
+27. Boiko, D. A., MacKnight, R., Kline, B., Gomes, G. *Autonomous chemical research with large language models.* Nature 624, 570 (2023).
+28. Anthropic. *Claude (Sonnet, Opus).* https://www.anthropic.com/claude (Accessed [date]).
+
+**Relevant prior work by the author** (to be filled with specific citations)
+29. Johnson, C. *RealQM: Real Quantum Mechanics.* (book / preprint references)
+30. Johnson, C. *[Specific prior papers on the unit-density formulation, Levels 1–3, atomic-shell model.]*
+
+---
