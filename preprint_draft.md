@@ -104,7 +104,21 @@ The reformulation supports molecular dynamics at scale. We have used the framewo
 
 **Architecture and computational cost.** Each backbone atom is modeled at Level 3 with kernel charges Z = 4 (C), 3 (N), 2 (O), 1 (H), with bond and angle constraints holding the protein backbone. Folding trajectories run interactively on a 200³ or 300³ grid; a 35-residue protein folds in hours of real-time on a single GPU, compared to weeks of CPU-cluster time for full DFT-MD or specialized hardware (Anton) for force-field MD on the same timescales. The combination of ab initio H-bond forces and a single hydrophobic parameter, with no empirical force field, distinguishes this approach from both classical MD (which requires fitted parameters for every interaction) and pure ML methods (which do not solve the electronic-structure problem at all).
 
-### 4.6 Excited states: orthohelium
+### 4.6 Chemical reactions: proton transfer
+
+The local-potential force formulation (Section 2.5) makes RealQM a natural framework for chemical reactions. A reaction proceeds because the local Coulomb forces on each nucleus push it along a path that passes through bond-breaking and bond-making configurations; nothing is computed by reference to an energy surface, a transition-state search, or a barrier height. The forces are the same Coulomb gradients used for equilibrium geometry — only the initial configuration differs.
+
+We illustrate this with **proton transfer**, the prototypical Brønsted acid–base reaction.
+
+**HF + H₂O → F⁻ + H₃O⁺.** The donor H of HF is placed at hydrogen-bonding contact from the O of H₂O. The fluorine is modeled as a +3 kernel with four valence electrons split into half-spaces (r_c = 1.0); the bare proton has no electrons; the oxygen lone pair is a +2 kernel with r_c = 0.8. As the simulation runs, the F⁻ electron density repels the proton outward while the O lone pair attracts it inward. The proton transfers spontaneously: at convergence, H_t–O = 0.99 Å (covalent in the newly formed H₃O⁺), F–H_t = 1.91 Å (released), with the F⁻ ··· H₃O⁺ ion pair stabilized at 2.4 Å contact. No barrier search, no transition-state geometry, no pK_a input — the forces find the product configuration directly.
+
+**HCl + NH₃ → Cl⁻ + NH₄⁺.** The same setup with chlorine (+1 kernel, r_c = 1.0) and nitrogen (+3 kernel, r_c = 0.5). The ammonia lone pair pulls the proton; the chloride density pushes it away. At convergence: H_t–N = 0.97 Å (covalent in NH₄⁺), Cl–H_t = 1.53 Å (released), Cl⁻ ··· NH₄⁺ contact 2.1 Å. The reaction completes in a single force-driven trajectory.
+
+**Bond breaking and exchange: H + H₂ → H₂ + H.** A hydrogen atom approaches an H₂ molecule along the bond axis. RealQM follows the symmetric H₃ transition geometry directly via the local forces: the two H–H distances pass through equality at the saddle point and then bifurcate in the product channel, with the original bond broken and a new bond formed between the incoming H and the proximal hydrogen. The same Coulomb gradients that hold H₂ together also break it and re-form it.
+
+**What this validates.** These cases test the **forces-not-energies** principle (Section 2.5) on systems where standard quantum chemistry would require either a transition-state search (for the saddle) or QM/MM molecular dynamics (for the trajectory). In RealQM the Coulomb forces that determine equilibrium geometry also determine reactive trajectories; there is no separate machinery for reactions. The chemical specificity — which proton transfers, in which direction, to what acceptor — emerges from the kernel parameters (Z, r_c, split topology) of the participating atoms and is controlled by the local electron-density configuration around each nucleus, not by any reaction-specific input. Nature does not consult pK_a tables or compute free-energy differences; it acts through local forces, and so does RealQM.
+
+### 4.7 Excited states: orthohelium
 
 The unit-density framework extends naturally to excited states. The basic case is the orthohelium (1s 2s, ³S) state of helium, in which two electrons occupy distinct spatial regions corresponding to the 1s and 2s shells. In RealQM, this is a directly accessible configuration of the Level-1 model: place two non-overlapping unit densities, the inner localized in the 1s shell and the outer in the 2s shell, and minimize the total Coulomb energy under the non-overlap constraint. The resulting configuration is an excited state of helium, distinct from the ground state (1s², ¹S) where both electrons occupy the same shell.
 
