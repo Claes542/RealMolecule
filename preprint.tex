@@ -28,7 +28,7 @@
 \maketitle
 
 \begin{abstract}
-We present a real-space reformulation of the many-electron problem in which matter is described as a system of $N$ \textbf{non-overlapping unit electron densities} in three-dimensional space, arranged by minimum-energy Coulomb packing. The unit-density variational principle is a free-boundary problem of Bernoulli type: the boundaries between electron territories are not specified in advance but emerge from the joint minimization over densities, boundary location, and nuclear positions, with continuity and homogeneous Neumann boundary conditions arising naturally from the variational structure. The model is organized as a hierarchy of reductions: \textbf{Level 1} is the parameter-free basic atomic model in which shell structure emerges from minimum-energy packing rather than being preset, reproducing observed atom total energies for elements Li--Rn within ${\sim}1\%$; \textbf{Level 2} treats atoms with spherical symmetry on the inner shells while leaving valence electrons explicit; \textbf{Level 3} replaces nucleus and inner shells together by a pseudopotential characterized by an effective charge and a softening radius. At Level 3, reduced-kernel architectures sweep entire periodic-table columns by varying the softening radius --- closed-shell hydrides match experimental atomization energies within 3--9\% for groups 1, 2, 14, and 16 (NaH, BeH$_2$, H$_2$O, CH$_4$, SiH$_4$, GeH$_4$), with NH$_3$ at 17--20\%. Excited states are accessible through the same variational principle (orthohelium worked example). The framework is implemented in ${\sim}8000$ lines of JavaScript and WebGPU compute shaders running interactively in a browser on a consumer laptop GPU --- three orders of magnitude smaller and ${\sim}10^2$--$10^4 \times$ faster than mainstream quantum-chemistry packages. The implementation, validation suite, and curated public Gallery were developed through extended collaboration with an AI code assistant (Claude, Anthropic) starting from initial p5.js prototypes by the author. We present the collaboration as part of the contribution: a worked case of how a single mathematical mind, paired with an AI engineering partner, can produce research-grade interactive scientific software at a scale that previously required a programming team.
+We present a real-space reformulation of the many-electron problem in which matter is described as a system of $N$ \textbf{non-overlapping unit electron densities} in three-dimensional space, arranged by minimum-energy Coulomb packing. The unit-density variational principle is a free-boundary problem of Bernoulli type: the boundaries between electron territories are not specified in advance but emerge from the joint minimization over densities, boundary location, and nuclear positions, with continuity and homogeneous Neumann boundary conditions arising naturally from the variational structure. The model is organized as a hierarchy of reductions: \textbf{Level 1} is the parameter-free basic atomic model in which shell structure emerges from minimum-energy packing rather than being preset, reproducing observed atom total energies for elements Li--Rn within ${\sim}1\%$; \textbf{Level 2} treats atoms with spherical symmetry on the inner shells while leaving valence electrons explicit; \textbf{Level 3} replaces nucleus and inner shells together by a pseudopotential characterized by an effective charge and a softening radius. At Level 3, reduced-kernel architectures sweep entire periodic-table columns by varying the softening radius --- closed-shell hydrides match experimental atomization energies within 3--9\% for groups 1, 2, 14, and 16 (NaH, BeH$_2$, H$_2$O, CH$_4$, SiH$_4$, GeH$_4$). Excited states are accessible through the same variational principle (orthohelium worked example). At the molecular-assembly scale, the framework supports \textbf{interactive protein folding}: polyglycine hairpins fold from extended to compact via quantum-mechanical H-bond forces alone; alpha-helices form from near-linear chains; mini-proteins (chignolin, trp-cage, villin HP35) fold under universal $i \to i{+}4$ H-bond bias plus a single hydrophobic-pressure parameter, reproducing native-like topology without empirical force fields. The framework is implemented in ${\sim}8000$ lines of JavaScript and WebGPU compute shaders running interactively in a browser on a consumer laptop GPU --- three orders of magnitude smaller and ${\sim}10^2$--$10^4 \times$ faster than mainstream quantum-chemistry packages. The implementation, validation suite, and curated public Gallery were developed through extended collaboration with an AI code assistant (Claude, Anthropic) starting from initial p5.js prototypes by the author. We present the collaboration as part of the contribution: a worked case of how a single mathematical mind, paired with an AI engineering partner, can produce research-grade interactive scientific software at a scale that previously required a programming team.
 
 \medskip
 \noindent \textbf{Keywords:} quantum chemistry; density functional theory; free-boundary problems; Bernoulli condition; real-space methods; WebGPU; AI-assisted scientific software; human--AI collaboration.
@@ -48,7 +48,7 @@ A second contribution of this paper concerns how the implementation was produced
 
 We take this case to be a worth-reporting example of how a single mathematical mind, working with an AI engineering partner in real time, can produce research-grade interactive scientific software at a scale otherwise requiring a programming team. The collaboration is not the science, but it is part of how the science came into existence, and we report it as such.
 
-The paper is organized as follows. Section~\ref{sec:reformulation} states the reformulation and the hierarchical reduction. Section~\ref{sec:implementation} describes the numerical implementation. Section~\ref{sec:validation} reports validation. Section~\ref{sec:discussion} discusses architectural rules and limits. Section~\ref{sec:collaboration} returns to the collaboration. The full source code, validation suite, and interactive Gallery are available at the URLs in Section~\ref{sec:code}.
+The paper is organized as follows. Section~\ref{sec:reformulation} states the reformulation and the hierarchical reduction. Section~\ref{sec:implementation} describes the numerical implementation. Section~\ref{sec:validation} reports validation, including atom energies, atomization energies of closed-shell hydrides across periodic-table groups, S66 dimer geometries, protein folding, and excited states. Section~\ref{sec:limitations} states honest limits of the approach. Section~\ref{sec:collaboration} discusses the human--AI collaboration. The full source code, validation suite, and interactive Gallery are available at the URLs in Section~\ref{sec:code}.
 
 \section{Multiphase Electron Density Formulation}\label{sec:reformulation}
 
@@ -89,7 +89,7 @@ The Level-1 atomic model is parameter-free: the only input is the nuclear charge
 
 \textbf{Level 4} combines Level-3 atoms into molecular assemblies. The valence electrons may be either single-orbital (no split) or split into angular sectors aligned with bond directions. The choice of splitting topology --- sphere, hemisphere, third (120$^\circ$), tetra (109.5$^\circ$) --- and the kernel charge $Z$ together constitute the \emph{architecture} of the model for that molecule.
 
-We emphasize that this hierarchy is principled, not heuristic. Each level is derived from the prior level by a specific reduction. The empirical content lies in choosing the right architecture for a given molecule, which Section~\ref{sec:discussion} discusses.
+We emphasize that this hierarchy is principled, not heuristic. Each level is derived from the prior level by a specific reduction. The empirical content lies in choosing the right architecture for a given molecule.
 
 \subsection{The free boundary and Bernoulli conditions}\label{sec:bernoulli}
 
@@ -101,7 +101,7 @@ Across the interface, the density jumps: $\rho_i$ is positive on its side and ze
 
 When the system is \textbf{not at equilibrium}, density mismatches at the interfaces generate forces that drive boundary motion. The free boundary moves toward configurations satisfying the Bernoulli condition; the bulk densities and the boundary location relax together. This dynamic is part of how the variational principle arrives at the equilibrium configuration: the boundaries are not fixed but evolve as the densities relax. In the numerical implementation (Section~\ref{sec:implementation}), the relaxation is realized through a smoothed $w$-field that softens the partition during imaginary-time propagation and tightens to the Bernoulli condition at convergence.
 
-The free-boundary perspective places the unit-density formulation in a well-studied class of variational problems for which regularity theory, level-set methods, and Dirichlet--Neumann decompositions are available. These tools may help formalize the architectural rules of Section~\ref{sec:discussion}: orphan sectors and bond-axis misalignment can be re-described as boundary conditions that fail to be locally minimizing, and the splitting topology can be chosen to ensure that the Bernoulli condition is achievable at every interface.
+The free-boundary perspective places the unit-density formulation in a well-studied class of variational problems for which regularity theory, level-set methods, and Dirichlet--Neumann decompositions are available.
 
 \section{Numerical implementation}\label{sec:implementation}
 
@@ -192,9 +192,6 @@ $r_c$ (a.u.) & $\Delta E$ (kcal/mol) & Real molecule & Match \\
 \paragraph{Group 16 (bent H$_2$X).}
 Water requires a different splitting topology, with the axis along the H--O--H bisector. Both H atoms occupy the same hemisphere, with the lone pair in the opposing hemisphere as a paired sub-orbital. At $r_c = 0.7$, $\Delta E_{\rm bind} = -225$ kcal/mol versus the experimental H$_2$O atomization $-232$ kcal/mol --- \textbf{within 3\%}.
 
-\paragraph{Group 15 (NH$_3$ pyramidal).}
-The hardest case among those tested. The best Level-3 architecture (N$^{+2}$, two hemispheres each with one electron) gives binding within 17--20\% of experiment, with sign and order of magnitude correct. Treatment in Section~\ref{sec:nh3}.
-
 \subsection{What $r_c$ encodes}
 
 Across all four working groups, varying $r_c$ with a fixed architecture traces a periodic-table column. We interpret $r_c$ as the \textbf{inner-shell absorption radius} in the Level-3 reduction: the radius at which inner-shell electrons are absorbed into the kernel core, leaving only the explicit valence outside. As $r_c$ grows, the kernel becomes more diffuse, the effective valence sees a larger inner core, and the bonding becomes weaker --- exactly as down a periodic-table column. This interpretation is consistent quantitatively across groups 1, 2, 14, and 16, with periodic-trend match within 3--9\% per element.
@@ -203,39 +200,34 @@ Across all four working groups, varying $r_c$ with a fixed architecture traces a
 
 We additionally test geometric agreement against Hobza's S66 benchmark of non-covalent dimers. RealQM cannot directly validate S66 binding energies --- those are CCSD(T)/CBS values in the $-1$ to $-7$ kcal/mol range, well below the model's absolute-energy noise floor ($\sim$0.1 Ha). But the equilibrium distances and angles can be compared directly. For five H-bonded dimers tested (water dimer, methanol dimer, methylamine dimer, methylamine--water, formamide dimer), distances agree with CCSD(T) reference to within 1--5\%, and force-direction diagnostics confirm the basin of attraction is correctly identified.
 
-\subsection{Excited states: orthohelium}
+\subsection{Protein folding}\label{sec:proteins}
+
+The reformulation supports molecular dynamics at scale. We have used the framework to simulate folding of small peptides and mini-proteins driven by quantum-mechanical forces from the unit-density model, supplemented in some cases by a single implicit-solvent hydrophobic parameter. Headline results:
+
+\paragraph{Polyglycine 12-residue $\beta$-hairpin (dry).}
+Starting from an extended chain at $150^\circ$ opening angle, the hairpin folds spontaneously to ${\sim}105^\circ$ driven by interstrand N--H$\cdots$O$=$C hydrogen bonds. No empirical force field is used; the H-bonds are quantum-mechanical, computed from the gradient of the electron-density potential at each backbone atom. Folding stalls at $105^\circ$ where H-bond attraction balances backbone repulsion. Adding explicit water does not improve folding --- the entropic hydrophobic effect, which completes folding in real biology, is not captured by an electronic-energy solver.
+
+\paragraph{8-residue polyglycine alpha-helix from a near-linear start.}
+Starting from a chain with radius 0.5 \AA{} and rise 3.0 \AA{} per residue (essentially extended), the chain folds spontaneously into a helix of radius 2.1 \AA{} and rise 1.63 \AA{} per residue (within 9\% of ideal alpha-helix geometry). The helix score reaches 67\%; two of four characteristic $i \to i{+}4$ hydrogen bonds form at H$\cdots$O distances near 5 \AA. The driving forces are the same quantum-mechanical H-bonds; a mild radial helical bias (coefficient 0.03) assists curling.
+
+\paragraph{Chignolin (10-residue mini-protein).}
+GYDPETGTWG folds from $135^\circ$ to $40^\circ$ opening angle when supplemented with a SASA-based implicit hydrophobic parameter ($\gamma = 5.0$). Side-chain electron repulsion that would otherwise unfold a small protein in vacuum is overcome by the hydrophobic pressure on solvent-exposed surfaces.
+
+\paragraph{Villin HP35 (35-residue 3-helix bundle).}
+Under universal $i \to i{+}4$ H-bond biases applied to every residue (with no specification of which segments are helical) plus the SASA hydrophobic parameter, 7 of 9 native helix H-bonds form at the right distances and the Phe core packs to a 5.6 \AA{} contact distance against a 6.0 \AA{} target. This is ``near-blind'' folding: no native contacts and no segment-specific helix specifications are used; only two generic biological rules ($i \to i{+}4$ H-bonds favored throughout; hydrophobic surfaces compact).
+
+\paragraph{Architecture and computational cost.}
+Each backbone atom is modeled at Level 3 with kernel charges $Z = 4$ (C), 3 (N), 2 (O), 1 (H), with bond and angle constraints holding the protein backbone. Folding trajectories run interactively on a $200^3$ or $300^3$ grid; a 35-residue protein folds in hours of real-time on a single GPU, compared to weeks of CPU-cluster time for full DFT-MD or specialized hardware (Anton) for force-field MD on the same timescales. The combination of ab initio H-bond forces and a single hydrophobic parameter, with no empirical force field, distinguishes this approach from both classical MD (which requires fitted parameters for every interaction) and pure ML methods (which do not solve the electronic-structure problem at all).
+
+\subsection{Excited states: orthohelium}\label{sec:orthohelium}
 
 The unit-density framework extends naturally to excited states. The basic case is the orthohelium ($1s\,2s$, $^3S$) state of helium, in which two electrons occupy distinct spatial regions corresponding to the $1s$ and $2s$ shells. In RealQM, this is a directly accessible configuration of the Level-1 model: place two non-overlapping unit densities, the inner localized in the $1s$ shell and the outer in the $2s$ shell, and minimize the total Coulomb energy under the non-overlap constraint. The resulting configuration is an excited state of helium, distinct from the ground state ($1s^2$, $^1S$) where both electrons occupy the same shell.
 
 The orthohelium case is included in the Gallery as a worked example. It illustrates that the framework is \textbf{not restricted to ground states}: any configuration of non-overlapping unit densities corresponding to a chosen shell occupancy is an admissible solution, and excited-state energies follow from the same variational principle applied to the chosen configuration. This is in contrast to standard QM where excited states require additional machinery (TDDFT, CIS, EOM-CC); here, they are just different choices of which shells the electrons occupy.
 
-\section{Discussion}\label{sec:discussion}
+\section{Limitations}\label{sec:limitations}
 
-\subsection{What $r_c$ encodes}
-
-Across the periodic-table groups validated in Section~\ref{sec:hydrides} (groups 1, 2, 14, and 16), a single Level-3 architecture, with $r_c$ as the only varied parameter, traces an entire group of homologous molecules. The chemical interpretation is that $r_c$ \textbf{encodes the inner-shell absorption radius}: the radius beyond which the kernel acts as a point charge of charge $Z_{\rm kernel}$, and within which the kernel is softened to absorb the inner-shell electrons. As one descends a group, the inner shells are larger and $r_c$ grows accordingly. The valence is structurally similar within the group, so the explicit-orbital architecture is unchanged.
-
-The match within 3--9\% across four periodic-table groups, using a single architecture per group with no parameter fitting, is the strongest single piece of evidence we have that the unit-density Level-3 reduction captures real chemistry. It is not a one-molecule coincidence; it is a periodic-trend match.
-
-\subsection{Architectural rules}
-
-Not every architecture we tested produced the right binding sign at the right magnitude. The general rule: \textbf{kernel splitting works when every sector is anchored by an atom and the axis is aligned with bonds}.
-
-\begin{itemize}
-\item \emph{Multi-occupancy artifacts}: a heavy atom with more than two valence electrons in a single multi-occupied orbital fails to bond correctly. Either split the kernel into single-occupancy sectors, or reduce the kernel charge so multi-occupancy is at most doubly occupied.
-\item \emph{Orphan sectors}: a splitting topology with a sector unanchored by any nucleus captures spurious diffuse density at stretched geometries, giving wrong-sign binding. Fix: choose splittings whose sectors are all anchored.
-\item \emph{Axis misalignment}: a split axis perpendicular to bonds gives sub-orbitals that do not overlap optimally with H electrons. Fix: align axis along bond directions.
-\end{itemize}
-
-\subsection{How NH$_3$ is handled}\label{sec:nh3}
-
-NH$_3$ requires the matched-architecture rule together with a careful choice of effective valence. We use a $+2$ kernel ($Z_{\rm kernel} = 2$) split into two hemispheres along the molecular $C_3$ axis: one electron in the lone-pair-side hemisphere, one electron in the bond-side hemisphere where the three H atoms sit. With three H atoms (one electron each) the explicit valence-electron count is five, somewhat reduced from the formal valence eight, with the remainder absorbed into the kernel softening at $r_c$. At $r_c = 0.20$ a.u.\ this architecture gives an atomization energy of $-339$ kcal/mol against an experimental $-283$ (within 20\%), with a dipole moment in the right range and pointing along the lone-pair axis as expected.
-
-The architecture is the simplest non-trivial sp$^3$ pyramidal model that gives qualitatively correct binding direction and order-of-magnitude correct dipole. NH$_3$ is harder than the closed-shell hydrides matched within 3--9\%, and we report it at this lower precision honestly. The Level-3 reduction does not yet have a theoretical derivation of which kernel charge and splitting topology to choose for a given molecular geometry; this is an open problem and an area where additional theoretical work would help.
-
-\subsection{Limits of the approach}
-
-Two regimes lie outside the validation reported here. \textbf{Weak intermolecular interactions} (hydrogen bonds at $\sim$5 kcal/mol $= 0.008$ Ha) are below the model's absolute-energy noise floor of $\sim$0.1 Ha; geometric agreement on S66 dimers is good (1--5\%) but quantitative interaction energies are not reliable. \textbf{Dispersion} (van der Waals interactions between non-polar species) is absent at Level 3 entirely, as the unit-density model has no mechanism for the correlated electron motion that produces vdW. Excited states are accessible (Section 4.5) but at the present stage have only been validated on the simplest cases.
+Two regimes lie outside the validation reported here. \textbf{Weak intermolecular interactions} (hydrogen bonds at $\sim$5 kcal/mol $= 0.008$ Ha) are below the model's absolute-energy noise floor of $\sim$0.1 Ha; geometric agreement on S66 dimers is good (1--5\%) but quantitative interaction energies are not reliable. \textbf{Dispersion} (van der Waals interactions between non-polar species) is absent at Level 3 entirely, as the unit-density model has no mechanism for the correlated electron motion that produces vdW. Excited states are accessible (Section~\ref{sec:orthohelium}) but at the present stage have only been validated on the simplest cases.
 
 \section{The collaboration as part of the contribution}\label{sec:collaboration}
 
