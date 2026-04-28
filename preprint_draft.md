@@ -127,6 +127,18 @@ The Level-1 atomic model is parameter-free: the inputs are the nuclear charge Z 
 
 We emphasize that this hierarchy is principled, not heuristic. Each level is derived from the prior level by a specific reduction (homogenize inner shell, then absorb into kernel, then assemble into molecules). The empirical content lies in choosing the right architecture for a given molecule, which Section 5 discusses.
 
+### 2.4 The free boundary and Bernoulli conditions
+
+The non-overlap constraint ρ_i · ρ_j = 0 means that each electron density is supported on a spatial region D_i, with the regions {D_i} partitioning the relevant volume. The interfaces ∂D_i ∩ ∂D_j between regions are not specified in advance — they emerge from the energy minimization. The unit-density variational principle is therefore a **free-boundary problem**, mathematically analogous to Bernoulli's classical free-boundary problem in potential flow and to the Stefan problem for phase transitions.
+
+At equilibrium, the boundary satisfies a **Bernoulli condition**: the density ρ_i is continuous from within D_i toward the interface (no singular behaviour at the boundary), and the **normal derivative ∂ρ_i/∂n vanishes** at the interface (homogeneous Neumann). The Neumann condition is not externally imposed; it emerges from the variational principle. When the energy is minimized jointly over the densities and the boundary location, the transversality condition at the boundary — the requirement that the first variation vanishes for arbitrary admissible boundary deformations — yields ∂ρ_i/∂n = 0. In other words, the Neumann condition is the consequence of optimizing the boundary location alongside the bulk densities, treating each as part of the same global optimization.
+
+Across the interface, the density jumps: ρ_i is positive on its side and zero on the other side, with the jump occurring sharply at ∂D_i. The boundary condition is therefore the combination of (a) continuity of ρ_i as the interface is approached from within D_i, (b) the homogeneous Neumann condition ∂ρ_i/∂n = 0 at ∂D_i, and (c) a jump from ρ_i > 0 inside to ρ_i = 0 outside. We collectively refer to this as the Bernoulli condition by analogy with Bernoulli's free-boundary problem.
+
+When the system is **not at equilibrium**, density mismatches at the interfaces generate forces that drive boundary motion. The free boundary moves toward configurations satisfying the Bernoulli condition; the bulk densities and the boundary location relax together. This dynamic is part of how the variational principle arrives at the equilibrium configuration: the boundaries are not fixed but evolve as the densities relax. In the numerical implementation (Section 3), the relaxation is realized through a smoothed w-field that softens the partition during imaginary-time propagation and tightens to the Bernoulli condition at convergence; out of equilibrium, density gradients across the boundary supply the forces driving boundary motion in the next iteration.
+
+The free-boundary perspective has implications beyond mathematical hygiene. It places the unit-density formulation in a well-studied class of variational problems for which regularity theory, level-set methods, and Dirichlet–Neumann decompositions are available. These tools may help formalize the architectural rules of Section 5: orphan sectors and bond-axis misalignment can be re-described as boundary conditions that fail to be locally minimizing, and the splitting topology can be chosen to ensure that the Bernoulli condition is achievable at every interface.
+
 ---
 
 ## 3. Numerical implementation
