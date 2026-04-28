@@ -21,6 +21,8 @@ The N-electron Schrödinger equation has been the foundation of quantum chemistr
 
 This paper presents a different starting point. We treat an N-electron system not as eigenfunctions in Hilbert space but as a system of **non-overlapping unit electron densities** in three-dimensional real space, arranged by a minimum-energy Coulomb packing principle. The mathematical object of study is a set of N density functions ρ_i(r) on R³, each integrating to one electron of charge, subject to the constraint that they do not overlap pairwise. Energy is the standard Coulomb functional. The minimum is taken over these densities and the nuclear positions; molecular geometry, bonding, and dynamics emerge from the same variational principle.
 
+In this respect RealQM is a direct realisation of **Dirac's view of chemistry as applied quantum physics**: the famous 1929 remark that "the underlying physical laws necessary for the mathematical theory of [...] the whole of chemistry are thus completely known, [and] the difficulty is only that the exact application of these laws leads to equations much too complicated to be soluble". RealQM takes Dirac's program seriously by retaining only the underlying physics — Coulomb interactions between electron densities and nuclei — and discarding the chemistry-specific machinery (basis sets, exchange–correlation functionals, fitted force fields) that the standard reformulations introduce in order to make the equations tractable. Chemistry then re-emerges, bottom-up, from the variational principle alone.
+
 This reformulation — RealQM in what follows — is not merely a numerical recasting of the standard problem. It is a different mathematical object with different scaling: complexity grows with the number of mesh points in 3D, not with the number of basis functions in N×3D. As a consequence, the entire framework can be implemented in roughly 8000 lines of JavaScript and WebGPU compute shaders, runs in a browser on a consumer laptop GPU, and supports interactive simulation of systems with hundreds of explicit electrons in real time.
 
 We organize the model as a hierarchy of reductions. **Level 1** is parameter-free: an atom is described as a nucleus of charge Z surrounded by N unit electron densities organized into non-overlapping shells, with the configuration determined by minimum-energy packing. The Level-1 atomic model reproduces observed atom energies for elements Li through Rn to approximately 1% with no fitted constants. **Level 2** spherically homogenizes inner electron shells, keeping the shell occupancy intact but replacing the angular structure with a radial density of matching total charge. **Level 3** further replaces the nucleus and inner shells together by a *pseudo-kernel* characterized by an effective charge Z_kernel and a softening radius r_c, leaving only the outermost valence electrons explicit. **Level 4** combines Level-3 atoms into molecular assemblies. Each level is determined by comparison with the prior level, in the same architectural spirit as pseudopotentials and frozen-core methods in standard quantum chemistry, but with a parameter-free ab initio bottom rather than empirical fits.
@@ -45,7 +47,17 @@ The model has no fitted parameters; the only input is the nuclear charge Z. Tabl
 
 This level provides the anchor for all subsequent reductions: each higher-level model (Level 2, 3, 4) is parameterized by comparison with Level-1 atom energies and Level-2 spherical densities.
 
-### 4.2 Atomization energies of closed-shell hydrides
+### 4.2 Chemical bonding: the H₂ covalent bond and its Helium limit
+
+The hydrogen molecule H₂ is the simplest covalent bond — two protons sharing two electrons — and provides the cleanest test of how covalent bonding emerges from the unit-density formulation. In RealQM, H₂ is described as two unit electron densities that do not overlap (Bernoulli partition), distributed around two H⁺ kernels at separation R. The two electrons occupy opposite halves of the inter-nuclear region (the natural minimum-energy partition for two electrons in a symmetric two-kernel field). Each electron is attracted to both nuclei and repelled by the other electron through Coulomb interactions only; there is no exchange term and no antisymmetric wavefunction.
+
+At the experimental bond distance R = 1.4 a.u., the parameter-free Level-1 calculation (no kernel softening, bare H⁺ point charges) gives a binding energy ΔE_bind = -92 kcal/mol versus the experimental -109 kcal/mol — within 16% with no fitted parameters. The bond emerges from the same variational principle that organizes the atomic shells (Section 4.1): the electrons reorganize their territories to minimize the total Coulomb energy, and at the equilibrium R the two-kernel two-electron configuration is energetically preferred over two isolated H atoms.
+
+**The Helium limit: zero kernel distance, no nuclear repulsion.** A revealing limit is R → 0. As the two H nuclei approach, their nuclear–nuclear repulsion 1/R diverges, so H₂ has a finite equilibrium separation. But if the two H⁺ point kernels are *merged* into a single +2 point kernel — equivalently R = 0 with the charges combined — the system becomes Helium (Z = 2, two electrons), and there is no inter-nuclear repulsion to oppose the merger. The Bernoulli partition is now two unit densities that do not overlap, both bound to the inner shell of the +2 kernel, with their interface bisecting the kernel. This is exactly the Level-1 description of the He ground state.
+
+The covalent bond and the atomic shell are therefore not separate phenomena; they are the same minimum-energy electron-packing principle applied at different nuclear separations. The continuous family parameterized by R interpolates between He at R = 0 (kernels merged, no repulsion), the H₂ bond at R = R_eq, and two isolated H atoms at R → ∞. Each configuration is a stationary point of the same energy functional. The unification clarifies why a single architecture handles atoms and molecules: bonding is what the variational principle does when more than one nucleus is present, with the inter-nuclear repulsion setting the equilibrium separation.
+
+### 4.3 Atomization energies of closed-shell hydrides
 
 We test the Level-3 reduction across a series of closed-shell hydrides H_n X, varying the heavy atom X across periodic-table groups. For each system, the kernel is parameterized by an effective charge Z_kernel and a softening radius r_c. The kernel may be either non-split (a single multi-occupancy orbital) or split into angular sectors of equal valence-electron occupancy. We compute the total energy at the experimental equilibrium X-H bond length R and at twice that distance, and report
 
@@ -82,15 +94,15 @@ This is the cleanest result of the series: a single architecture with no archite
 
 **Group 16 (bent H₂X) via H₂O (O+3, 2-hemi bisector).** The water case requires a different splitting topology, with the axis along the H-O-H bisector. Both H atoms occupy the same hemisphere (with the lone pair in the opposing hemisphere as a paired sub-orbital). At r_c = 0.7, ΔE_bind = −225 kcal/mol versus the experimental H₂O atomization 232 kcal/mol — within 3%.
 
-### 4.3 What r_c encodes
+### 4.4 What r_c encodes
 
 Across all four working groups, varying r_c with a fixed architecture traces a periodic-table column. We interpret r_c as the **inner-shell absorption radius** in the Level-3 reduction: the radius at which inner-shell electrons are absorbed into the kernel core, leaving only the explicit valence outside. As r_c grows, the kernel becomes more diffuse, the effective valence sees a larger inner core, and the bonding becomes weaker — exactly as down a periodic-table column. This interpretation is consistent quantitatively across groups 1, 2, 14, and 16, with periodic-trend match within 3–9% per element.
 
-### 4.4 Geometric validation against S66
+### 4.5 Geometric validation against S66
 
 We additionally test geometric agreement against Hobza's S66 benchmark of non-covalent dimers. RealQM cannot directly validate S66 binding energies — those are CCSD(T)/CBS values in the −1 to −7 kcal/mol range, well below the model's absolute-energy noise floor (~0.1 Ha). But the equilibrium distances and angles can be compared directly. For five H-bonded dimers tested (water-water, methanol dimer, methylamine dimer, methylamine-water, formamide dimer), distances agree with CCSD(T) reference to within 1–5%, and force-direction diagnostics confirm the basin of attraction is correctly identified. Detailed tables are in the public Gallery (URL in Section 7).
 
-### 4.5 Protein folding
+### 4.6 Protein folding
 
 The reformulation supports molecular dynamics at scale. We have used the framework to simulate folding of small peptides and mini-proteins driven by quantum-mechanical forces from the unit-density model, supplemented in some cases by a single implicit-solvent hydrophobic parameter. The headline results:
 
@@ -104,7 +116,7 @@ The reformulation supports molecular dynamics at scale. We have used the framewo
 
 **Architecture and computational cost.** Each backbone atom is modeled at Level 3 with kernel charges Z = 4 (C), 3 (N), 2 (O), 1 (H), with bond and angle constraints holding the protein backbone. Folding trajectories run interactively on a 200³ or 300³ grid; a 35-residue protein folds in hours of real-time on a single GPU, compared to weeks of CPU-cluster time for full DFT-MD or specialized hardware (Anton) for force-field MD on the same timescales. The combination of ab initio H-bond forces and a single hydrophobic parameter, with no empirical force field, distinguishes this approach from both classical MD (which requires fitted parameters for every interaction) and pure ML methods (which do not solve the electronic-structure problem at all).
 
-### 4.6 Chemical reactions: proton transfer
+### 4.7 Chemical reactions: proton transfer
 
 The local-potential force formulation (Section 2.5) makes RealQM a natural framework for chemical reactions. A reaction proceeds because the local Coulomb forces on each nucleus push it along a path that passes through bond-breaking and bond-making configurations; nothing is computed by reference to an energy surface, a transition-state search, or a barrier height. The forces are the same Coulomb gradients used for equilibrium geometry — only the initial configuration differs.
 
@@ -118,7 +130,7 @@ We illustrate this with **proton transfer**, the prototypical Brønsted acid–b
 
 **What this validates.** These cases test the **forces-not-energies** principle (Section 2.5) on systems where standard quantum chemistry would require either a transition-state search (for the saddle) or QM/MM molecular dynamics (for the trajectory). In RealQM the Coulomb forces that determine equilibrium geometry also determine reactive trajectories; there is no separate machinery for reactions. The chemical specificity — which proton transfers, in which direction, to what acceptor — emerges from the kernel parameters (Z, r_c, split topology) of the participating atoms and is controlled by the local electron-density configuration around each nucleus, not by any reaction-specific input. Nature does not consult pK_a tables or compute free-energy differences; it acts through local forces, and so does RealQM.
 
-### 4.7 Excited states: orthohelium
+### 4.8 Excited states: orthohelium
 
 The unit-density framework extends naturally to excited states. The basic case is the orthohelium (1s 2s, ³S) state of helium, in which two electrons occupy distinct spatial regions corresponding to the 1s and 2s shells. In RealQM, this is a directly accessible configuration of the Level-1 model: place two non-overlapping unit densities, the inner localized in the 1s shell and the outer in the 2s shell, and minimize the total Coulomb energy under the non-overlap constraint. The resulting configuration is an excited state of helium, distinct from the ground state (1s², ¹S) where both electrons occupy the same shell.
 
