@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="controls" style="position:fixed;top:10px;left:10px;z-index:100;background:rgba(0,0,0,0.85);padding:12px 16px;border-radius:8px;border:1px solid #333;max-width:380px">
+  <div style="font-size:14px;color:#80deea;margin-bottom:8px">Solid N&sub2; (&alpha;-FCC) &mdash; Symmetric Bernoulli, Negative Test</div>
+  <input type="range" id="tempSlider" min="0" max="3000" step="50" value="0" style="width:250px">
+  <span id="tempLabel" style="margin-left:10px;font-size:16px;color:#4fc3f7">0 K</span>
+  <div id="status" style="font-size:11px;color:#888;margin-top:4px">Building &alpha;-N&sub2; FCC lattice&hellip;</div>
+  <div style="font-size:11px;color:#aaa;margin-top:6px;line-height:1.5">
+    <span id="comReadout">COM-MSD: 0.000 &Aring;&sup2;</span>
+    <button id="resetMSD" style="margin-left:8px;font-size:10px;padding:2px 6px;background:#222;color:#4fc3f7;border:1px solid #444;cursor:pointer">reset MSD</button>
+  </div>
+  <div style="font-size:11px;color:#aaa;margin-top:6px;line-height:1.5">
+    <span id="ccReadout">N&ndash;N (centre&ndash;centre) nearest-pair: &mdash; &Aring;</span>
+  </div>
+</div>
+<pre id="log" style="position:fixed;bottom:10px;left:10px;font-size:11px;color:#666;z-index:100;max-width:480px;white-space:pre-wrap"></pre>
+<script>
+var log = document.getElementById('log');
+window.onerror = function(msg, url, line) {
+  log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
+};
+
+(function() {
+  var qs = new URLSearchParams(window.location.search);
+  var ncubes = parseInt(qs.get('ncubes')) || 2;       // 2x2x2 supercell by default
+  var aLatA = parseFloat(qs.get('aLat')) || 5.66;     // alpha-N2 FCC lattice constant
+  var aLat_au = aLatA * 1.8897;
+  var defaultScr = ncubes === 1 ? 22 : Math.max(28, ncubes * aLat_au + 6);
+  var defaultGrid = ncubes === 1 ? 150 : 200;
+  var gridN = parseInt(qs.get('gridN')) || defaultGrid;
+  var scr = parseFloat(qs.get('scr')) || defaultScr;
+  var h = scr / gridN;
+  var N2 = Math.round(gridN / 2);
+  var A = 1.8897;
+  var bondNN_au = (parseFloat(qs.get('bondNN')) || 1.098) * A;  // N-N bond, exp 1.098 Å
+  var Zker = parseInt(qs.get('Z')) || 3;              // kernel charge per N atom (Level-3 default +3)
+  var rcN = parseFloat(qs.get('rc')) || 0.5;          // N kernel softening
+
+  // FCC basis
+  var fccBasis = [[0,0,0],[0.5,0.5,0],[0.5,0,0.5],[0,0.5,0.5]];
+  var molCenters = [];
+  if (ncubes === 1) {
+    for (var b = 0; b < fccBasis.length; b++) {
+      molCenters.push([
+        (fccBasis[b][0] - 0.25) * aLat_au,
+        (fccBasis[b][1] - 0.25) * aLat_au,
+        (fccBasis[b][2] - 0.25) * aLat_au,
+      ]);
+    }
+  } else {
+    var off = (ncubes - 1) / 2;
+    for (var nx = 0; nx < ncubes; nx++) for (var ny = 0; ny < ncubes; ny++) for (var nz = 0; nz < ncubes; nz++) {
+      for (var bb = 0; bb < fccBasis.length; bb++) {
+        molCenters.push([
+          (nx + fccBasis[bb][0] - off - 0.25) * aLat_au,
+          (ny + fccBasis[bb][1] - off - 0.25) * aLat_au,
+          (nz + fccBasis[bb][2] - off - 0.25) * aLat_au,
+        ]);
+      }
+    }
+  }
+
+  // N-N axes alternate through x,y,z for variety (just like CO2)
+  var atoms = [];
+  var zArr = [];
+  var rcArr = [];
+  var molOf = [];
+  for (var m = 0; m < molCenters.length; m++) {
+    var ax = m % 3;
+    var d = [0,0,0]; d[ax] = bondNN_au / 2;  // half bond, so N1 at -d, N2 at +d
+    var cx = molCenters[m][0], cy = molCenters[m][1], cz = molCenters[m][2];
+    atoms.push({i: Math.round(N2 + (cx-d[0])/h), j: Math.round(N2 + (cy-d[1])/h), k: Math.round(N2 + (cz-d[2])/h), Z: Zker, el: 'N'});
+    zArr.push(Zker); rcArr.push(rcN); molOf.push(m);
+    atoms.push({i: Math.round(N2 + (cx+d[0])/h), j: Math.round(N2 + (cy+d[1])/h), k: Math.round(N2 + (cz+d[2])/h), Z: Zker, el: 'N'});
+    zArr.push(Zker); rcArr.push(rcN); molOf.push(m);
+  }
+
+  // Bond constraints: hold each N-N rigid
+  var bondPairs = [];
+  for (var m2 = 0; m2 < molCenters.length; m2++) {
+    var i0 = m2 * 2;
+    var i1 = m2 * 2 + 1;
+    bondPairs.push([i0, i1, "N≡N" + m2 + ":"]);
+  }
+
+  // For ncubes>1: freeze outer-shell molecules
+  var frozen = [];
+  if (ncubes > 1) {
+    var freezeR = aLat_au * (ncubes/2 - 0.4);
+    for (var m3 = 0; m3 < molCenters.length; m3++) {
+      var d2 = molCenters[m3][0]*molCenters[m3][0] + molCenters[m3][1]*molCenters[m3][1] + molCenters[m3][2]*molCenters[m3][2];
+      if (d2 > freezeR*freezeR) {
+        frozen.push(m3*2); frozen.push(m3*2+1);
+      }
+    }
+  }
+
+  var nMols = molCenters.length;
+  var nFreeMols = nMols - frozen.length / 2;
+  log.textContent  = 'Solid N2 (' + ncubes + '×' + ncubes + '×' + ncubes + ' FCC): ' + nMols + ' molecules, ' + atoms.length + ' nuclei';
+  log.textContent += '\nLattice a = ' + aLatA.toFixed(2) + ' Å (exp 5.66 Å), N≡N = ' + (bondNN_au/A).toFixed(3) + ' Å';
+  log.textContent += '\nArchitecture: each N at Z=+' + Zker + ' kernel, rc=' + rcN.toFixed(2) + '. Symmetric Bernoulli (homonuclear).';
+  log.textContent += '\nTotal explicit electrons: ' + (zArr.reduce(function(a,b){return a+b;},0));
+  log.textContent += '\nFrozen outer shell: ' + (frozen.length/2) + ' molecules; free inner: ' + nFreeMols;
+  log.textContent += '\n' + gridN + '^3 grid, screen=' + scr.toFixed(1) + ' au';
+  log.textContent += '\n\nPREDICTION (negative test):';
+  log.textContent += '\n  No asymmetric Bernoulli (symmetric homonuclear) → no quadrupolar cohesion.';
+  log.textContent += '\n  No dispersion in RealQM Level 3.';
+  log.textContent += '\n  Cluster expected to fall apart at any T > 0.';
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_Z = zArr;
+  window.USER_RC = rcArr;
+  window.USER_FROZEN_ATOMS = frozen;
+  window.USER_BOND_PAIRS = bondPairs;
+  window.USER_BOND_CONSTRAINTS = bondPairs.map(function(bp) {
+    return [bp[0], bp[1], bondNN_au, 2.0];
+  });
+  window.USER_REFERENCE = {
+    bonds: { 'N≡N': '1.098 Å (rigid)' },
+    energy: 'Solid N2 sublimation: T_sub ≈ 60 K, dispersion-bound (no RealQM mechanism)'
+  };
+  window.USER_DYNAMICS = true;
+  window.USER_N_MOVE = 100;
+  window.USER_DT_NUC = 1.0;
+  window.USER_NUC_SUBSTEPS = 30;
+  window.USER_TEMPERATURE_K = 0;
+  window.USER_LANGEVIN_GAMMA = 0.5;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 20.0;
+  window.USER_ROT_SPEED = 0.005;
+  window.NO_AUTO_DYNAMICS = true;
+  window.USER_GRADP_FORCE = true;
+
+  window.__n2_molOf = molOf;
+  window.__n2_nMols = nMols;
+  window.__n2_aLat_A = aLatA;
+})();
+
+// Temperature slider
+var slider = document.getElementById('tempSlider');
+var label = document.getElementById('tempLabel');
+var statusEl = document.getElementById('status');
+
+slider.addEventListener('input', function() {
+  var T = parseInt(this.value);
+  label.textContent = T + ' K';
+  window.USER_TEMPERATURE_K = T;
+  if (typeof window.langevinKT !== 'undefined') {
+    window.langevinKT = T / 315775.0;
+  }
+  window.USER_THERMAL_KICK = T > 50 ? 0.3 * T / 1000 : 0;
+  if (T < 30) label.style.color = '#4fc3f7';
+  else if (T < 60) label.style.color = '#ff0';
+  else label.style.color = '#ff7043';
+  var note = '';
+  if (T > 60) note = ' (above N2 sublimation 60 K)';
+  statusEl.textContent = 'T=' + T + ' K' + note;
+});
+
+(function(){
+  var initCOM = null;
+  var auToA = 0.529177;
+  var hLocal = 0;  // recomputed inside
+
+  function getH() {
+    return (window.USER_SCREEN || 28) / (window.USER_NN || 200);
+  }
+
+  function computeCOMs() {
+    if (typeof nucPos === 'undefined' || !window.__n2_molOf) return null;
+    var molOf = window.__n2_molOf;
+    var nMols = window.__n2_nMols;
+    var coms = [];
+    for (var m = 0; m < nMols; m++) coms.push([0,0,0,0]);
+    for (var a = 0; a < molOf.length; a++) {
+      var mi = molOf[a];
+      if (mi === undefined || mi < 0 || mi >= nMols) continue;
+      if (!nucPos[a]) continue;
+      coms[mi][0] += nucPos[a][0];
+      coms[mi][1] += nucPos[a][1];
+      coms[mi][2] += nucPos[a][2];
+      coms[mi][3] += 1;
+    }
+    for (var m2 = 0; m2 < nMols; m2++) {
+      if (coms[m2][3] > 0) {
+        coms[m2][0] /= coms[m2][3];
+        coms[m2][1] /= coms[m2][3];
+        coms[m2][2] /= coms[m2][3];
+      }
+    }
+    return coms;
+  }
+
+  function isFreeMol(m) {
+    var fs = window.USER_FROZEN_ATOMS || [];
+    for (var i = 0; i < fs.length; i++) if (window.__n2_molOf[fs[i]] === m) return false;
+    return true;
+  }
+
+  function snapshotInit() {
+    initCOM = computeCOMs();
+  }
+
+  document.getElementById('resetMSD').addEventListener('click', function() {
+    snapshotInit();
+    document.getElementById('comReadout').textContent = 'COM-MSD: 0.000 Å²  RMSD: 0.000 Å  Lindemann: 0.000  (reset)';
+  });
+
+  setInterval(function() {
+    if (typeof nucPos === 'undefined') return;
+    if (!initCOM) snapshotInit();
+    var coms = computeCOMs();
+    if (!coms || !initCOM) return;
+    var hLocal = getH();
+
+    var sumSq = 0, n = 0;
+    for (var m = 0; m < coms.length; m++) {
+      if (!isFreeMol(m)) continue;
+      var dx = (coms[m][0] - initCOM[m][0]) * hLocal * auToA;
+      var dy = (coms[m][1] - initCOM[m][1]) * hLocal * auToA;
+      var dz = (coms[m][2] - initCOM[m][2]) * hLocal * auToA;
+      sumSq += dx*dx + dy*dy + dz*dz;
+      n++;
+    }
+    if (n > 0) {
+      var msd = sumSq / n;
+      var rmsd = Math.sqrt(msd);
+      var aLat = window.__n2_aLat_A;
+      var dNN = aLat * 0.7071;
+      var lind = rmsd / dNN;
+      var color = lind < 0.08 ? '#4fc3f7' : (lind < 0.15 ? '#ff0' : '#ff7043');
+      document.getElementById('comReadout').innerHTML =
+        'COM-MSD: ' + msd.toFixed(3) + ' Å²' +
+        ' &nbsp; RMSD: ' + rmsd.toFixed(3) + ' Å' +
+        ' &nbsp; Lindemann: <span style="color:' + color + '">' + lind.toFixed(3) + '</span>' +
+        ' &nbsp; (d_NN=' + dNN.toFixed(2) + ' Å, n=' + n + ')';
+    }
+
+    var minD = Infinity;
+    for (var m1 = 0; m1 < coms.length; m1++) {
+      if (!isFreeMol(m1)) continue;
+      for (var mm2 = m1+1; mm2 < coms.length; mm2++) {
+        if (!isFreeMol(mm2)) continue;
+        var dx2 = (coms[m1][0]-coms[mm2][0]) * hLocal * auToA;
+        var dy2 = (coms[m1][1]-coms[mm2][1]) * hLocal * auToA;
+        var dz2 = (coms[m1][2]-coms[mm2][2]) * hLocal * auToA;
+        var d = Math.sqrt(dx2*dx2 + dy2*dy2 + dz2*dz2);
+        if (d < minD) minD = d;
+      }
+    }
+    if (isFinite(minD)) {
+      var expected = window.__n2_aLat_A * 0.707;
+      document.getElementById('ccReadout').textContent =
+        'N–N (centre–centre) nearest-pair: ' + minD.toFixed(2) + ' Å  (FCC nn ≈ ' + expected.toFixed(2) + ' Å)';
+    }
+  }, 1500);
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onerror = function() { log.textContent += '\nFailed to load molecule.js!'; };
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
