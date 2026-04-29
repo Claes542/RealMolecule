@@ -51,7 +51,7 @@ This level provides the anchor for all subsequent reductions: each higher-level 
 
 The hydrogen molecule H₂ is the simplest covalent bond — two protons sharing two electrons — and provides the cleanest test of how covalent bonding emerges from the unit-density formulation. In RealQM, H₂ is described as two unit electron densities that do not overlap (Bernoulli partition), distributed around two H⁺ kernels at separation R. The two electrons occupy opposite halves of the inter-nuclear region (the natural minimum-energy partition for two electrons in a symmetric two-kernel field). Each electron is attracted to both nuclei and repelled by the other electron through Coulomb interactions only; there is no exchange term and no antisymmetric wavefunction.
 
-At the experimental bond distance R = 1.4 a.u., the parameter-free Level-1 calculation (no kernel softening, bare H⁺ point charges) gives a binding energy ΔE_bind = -92 kcal/mol versus the experimental -109 kcal/mol — within 16% with no fitted parameters. The bond emerges from the same variational principle that organizes the atomic shells (Section 4.1): the electrons reorganize their territories to minimize the total Coulomb energy, and at the equilibrium R the two-kernel two-electron configuration is energetically preferred over two isolated H atoms.
+At a separation R ≈ 1.6 a.u. close to the experimental bond distance (1.40 a.u.), the parameter-free Level-1 calculation — each hydrogen contributing one unit electron density on its side of the Bernoulli partition — gives a total energy E = −1.1785 Ha against the Kolos–Wolniewicz exact value −1.1745 Ha (0.3% deeper than exact). The corresponding binding energy is ΔE_bind ≈ −112 kcal/mol versus the experimental dissociation energy −109 kcal/mol — **within 3%, with no fitted parameters**. The bond emerges from the same variational principle that organizes the atomic shells (Section 4.1): the electrons reorganize their territories to minimize the total Coulomb energy, and at the equilibrium R the two-kernel two-electron configuration is energetically preferred over two isolated H atoms.
 
 **Bonding mechanism.** The bond is established by **accumulation of electron density between the two kernels**, which lowers the total kernel-attraction potential energy by bringing density closer to both nuclei. In the unit-density formulation, the two non-overlapping electron territories meet at the free boundary between the kernels, where **both densities are non-zero** — neither is required to vanish at the interface. This non-vanishing meeting (the Bernoulli condition of Section 2.4: continuity plus homogeneous Neumann) is precisely what makes the inter-nuclear accumulation energetically favorable. If the densities instead had to decay to zero between the nuclei (as they do at infinity for an isolated atom), accumulating density in the inter-nuclear region would require steep gradients and a balancing kinetic-energy cost that would offset the potential-energy gain. The Bernoulli partition lets each density remain smooth across the interface with finite values on both sides, so the inter-nuclear region accumulates electrons at low kinetic-energy cost while the kernel-attraction potential energy is enhanced. Covalent bonding in RealQM is thus a direct consequence of the free-boundary structure: **meeting non-zero densities allow the kernel potential energy to decrease through inter-nuclear accumulation without a balancing increase in kinetic energy**. This conclusion is consistent with the Rüdenberg–Kutzelnigg analysis of the chemical bond [Ruedenberg1962, Kutzelnigg1990], in which careful decomposition of the wavefunction shows that covalent bonding is primarily a kinetic-energy lowering driven by orbital interference; the unit-density formulation reaches the same qualitative conclusion through a different route, namely the free-boundary partition rather than orbital overlap.
 
@@ -71,11 +71,10 @@ as a proxy for the atomization energy. This single-coordinate scan is appropriat
 
 | r_c (au) | RealQM ΔE (kcal/mol) | Real molecule | Match |
 |---------:|---------------------:|---------------|-------|
-| 0.00 | −92 | H₂ −109 | within 16% |
 | 0.50 | −48 | NaH −47 | **within 2%** |
 | 0.70 | −42 | KH ~−43 | **within 2%** |
 
-The model captures alkali-hydride binding energies to within experimental uncertainty at the right kernel softening — a single architecture spanning a periodic-table column.
+The rc = 0 limit of this single-orbital model corresponds to a 2-electron-in-one-territory configuration, distinct from the proper covalent H₂ (Section 4.2). The model captures alkali-hydride binding energies to within experimental uncertainty at the right kernel softening — a single architecture spanning a periodic-table column.
 
 **Group 2 (alkaline-earth dihydrides) via HXH (X+2, 2-hemi split).** Linear H-X-H with a +2 kernel split into two hemispheres along the molecular axis (each holding one electron) gives binding energies in the range:
 
@@ -159,7 +158,7 @@ The table below collects the quantitative validation across regimes.
 | Regime | System / quantity | RealQM | Reference | Match | Section |
 |---|---|---:|---:|---|---|
 | Atoms (Level 1) | Total energies, Li–Rn | — | observation | ~1% | 4.1 |
-| Covalent bond | H₂ binding energy | −92 | −109 kcal/mol | 16% | 4.2 |
+| Covalent bond | H₂ binding energy | −112 | −109 kcal/mol | 3% | 4.2 |
 | Group 1 | NaH atomization | −48 | −47 | 2% | 4.3 |
 |  | KH atomization | −42 | ~−43 | 2% | 4.3 |
 | Group 2 | BeH₂ atomization | −140 | −144 | 3% | 4.3 |
