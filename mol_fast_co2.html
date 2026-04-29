@@ -16,25 +16,44 @@
   };
   (function() {
     var N = 200;
-    var urlScr = parseFloat(new URLSearchParams(location.search).get('scr'));
-    var scr = isFinite(urlScr) ? urlScr : 14;  // slightly larger box — CO2 spans >4 au
+    var qs = new URLSearchParams(location.search);
+    var scr   = parseFloat(qs.get('scr'))   || 14;
+    var bond  = parseFloat(qs.get('bond'))  || 2.196;
+    var arch  = parseInt(qs.get('arch'))    || 1;       // 1 = C+4/O+3 (10 e-), 2 = C+2/O+2/O+2 (6 e-)
+    var rc_C  = parseFloat(qs.get('rc_C'))  || (arch === 2 ? 0.4 : 0.5);
+    var rc_O  = parseFloat(qs.get('rc_O'))  || (arch === 2 ? 0.6 : 0.5);
     var h = scr / N;
     var N2 = Math.round(N / 2);
-
-    // CO2 linear: C-O bond = 1.162 Å = 2.196 au, 180° O-C-O
-    var urlBond = parseFloat(new URLSearchParams(location.search).get('bond'));
-    var bond = isFinite(urlBond) ? urlBond : 2.196;
     var di = Math.round(bond / h);
+
+    var Z_C, Z_O, target_C, target_O, archLabel;
+    if (arch === 2) {
+      Z_C = 2; Z_O = 2;
+      target_C = 2; target_O = 2;
+      archLabel = 'arch=2 (+2/+2/+2 minimum, 6 e-)';
+    } else {
+      Z_C = 4; Z_O = 3;
+      target_C = 4; target_O = 3;
+      archLabel = 'arch=1 (C+4/O+3, 10 e-)';
+    }
 
     window.USER_NN = N;
     window.USER_SCREEN = scr;
     window.USER_STEPS = 100000;
     window.USER_NUCLEI = [
-      { i: N2,       j: N2, k: N2, Z: 4, rc: 0.5 },  // C at center (+4 kernel, target=4)
-      { i: N2 + di,  j: N2, k: N2, Z: 3, rc: 0.5 },  // O at +x
-      { i: N2 - di,  j: N2, k: N2, Z: 3, rc: 0.5 },  // O at -x
+      { i: N2,       j: N2, k: N2, Z: Z_C, rc: rc_C },
+      { i: N2 + di,  j: N2, k: N2, Z: Z_O, rc: rc_O },
+      { i: N2 - di,  j: N2, k: N2, Z: Z_O, rc: rc_O },
     ];
-    window.USER_NORM_TARGETS = [4, 3, 3];   // C(4) + 2·O(3) = 10 valence electrons
+    window.USER_NORM_TARGETS = [target_C, target_O, target_O];
+
+    var status = document.getElementById('loadStatus');
+    if (status) {
+      status.textContent = archLabel +
+        ', bond=' + bond.toFixed(3) + ' au (' + (bond*0.529177).toFixed(3) + ' Å)' +
+        ', rc_C=' + rc_C.toFixed(2) + ', rc_O=' + rc_O.toFixed(2) +
+        ', scr=' + scr + ', N=' + N;
+    }
   })();
 
   var status = document.getElementById('loadStatus');
