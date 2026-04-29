@@ -31,7 +31,7 @@ A second contribution of this paper concerns how the implementation was produced
 
 We take this case to be a worth-reporting example of how a single mathematical mind, working with an AI engineering partner in real time, can produce research-grade interactive scientific software at a scale otherwise requiring a programming team. The collaboration is not the science, but it is part of how the science came into existence, and we report it as such.
 
-The paper is organized as follows. Section 2 states the reformulation and the hierarchical reduction. Section 3 describes the numerical implementation. Section 4 reports validation, including atom energies, atomization energies of closed-shell hydrides across periodic-table groups, S66 dimer geometries, protein folding, and excited states. Section 5 states honest limits of the approach. Section 6 discusses the human–AI collaboration. The full source code, validation suite, and interactive Gallery are available at the URL given in Section 7.
+The paper is organized as follows. Section 2 states the reformulation and the hierarchical reduction. Section 3 describes the numerical implementation. Section 4 reports validation, including atom energies, the covalent H₂ bond and its He limit, atomization energies of closed-shell hydrides across periodic-table groups, S66 dimer geometries, chemical reactions, protein folding, and excited states. Section 5 states honest limits of the approach. Section 6 places the work in the long-standing chemistry-vs-physics debate. Section 7 discusses the human–AI collaboration. The full source code, validation suite, and interactive Gallery are available at the URLs given in Section 8.
 
 ---
 
@@ -239,7 +239,19 @@ Two regimes lie outside the validation reported here. **Weak intermolecular inte
 
 ---
 
-## 6. The collaboration as part of the contribution
+## 6. Chemistry vs Physics
+
+A central question in the philosophy of chemistry is whether **(A)** chemistry can be explained by quantum physics, as **Dirac famously claimed in 1929 at the birth of quantum mechanics**, or **(B)** something more is required, as has been argued by leading chemists for nearly a century. Position (B) is the view that chemistry possesses an irreducible conceptual content — orbitals, bonds, valence, hybridisation, electronegativity — that does not follow from Schrödinger's equation alone, no matter how many computational resources are thrown at it. Position (A) is the view that chemistry *is* applied quantum physics, and that the apparent autonomy of chemical concepts is an artefact of the practical impossibility of solving the underlying equations.
+
+The hundred-year stalemate has been driven less by disagreement on principle than by the fact that, within the standard $3N$-dimensional wavefunction formulation that Dirac himself had in mind in 1929, the equations are indeed unsolvable for any system of chemical interest without approximations whose chemistry-specific character (basis sets, exchange–correlation functionals, fitted force fields) seems to vindicate position (B).
+
+RealQM provides **concrete evidence that Dirac's position (A) was correct, although not within the 1929 wavefunction-on-$3N$-space formulation that Dirac himself proposed**. The reformulation as a system of non-overlapping unit electron densities in real 3D space, with energy minimization over Coulomb interactions alone, recovers atoms (Section 4.1), the covalent bond and its He limit (Section 4.2), atomization energies of hydrides across periodic-table groups (Section 4.3), reactive chemistry (Section 4.6), and protein folding (Section 4.7) — using only physics, with no chemistry-specific empirical input beyond the kernel parameters that encode the level-by-level reduction. Chemistry emerges as the variational principle's response to multiple nuclei being present, with no separate machinery required.
+
+The conclusion we draw is not that the standard $3N$-dimensional formulation should be abandoned — for high-precision spectroscopy, transition probabilities, and excited-state dynamics it remains the canonical tool — but that **chemistry-as-applied-physics is achievable** when one is willing to reformulate the problem in real 3D space with an appropriate non-overlap constraint. Dirac was right; the equations were just being written in the wrong space.
+
+---
+
+## 7. The collaboration as part of the contribution
 
 The mathematical reformulation in Section 2 and the hierarchy of Levels 1–4 are the work of the human author. They predate the AI collaboration and have been developed over a decade of independent work. The author also wrote the initial p5.js prototype simulations that established the numerical core (real-space grid, ITP, Poisson solver, basic visualization) used as the starting point for the WebGPU implementation. The full WebGPU port, the validation suite, the systematic kernel-architecture sweeps reported in Section 4, and the curated public Gallery were developed from those starting templates through extended collaboration with **Claude**, an AI code assistant produced by Anthropic.
 
@@ -257,7 +269,7 @@ We find that the right framing for the collaboration is **mathematical mind + AI
 
 ---
 
-## 7. Code and reproducibility
+## 8. Code and reproducibility
 
 The full RealQM implementation, including the validation suite, the systematic kernel-architecture sweeps reported in Section 4, and the curated public Gallery, is available at:
 
