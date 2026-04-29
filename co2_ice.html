@@ -21,26 +21,43 @@ window.onerror = function(msg, url, line) {
 };
 
 (function() {
-  var gridN = 150, scr = 22;
+  var qs = new URLSearchParams(window.location.search);
+  var ncubes = parseInt(qs.get('ncubes')) || 1;        // 1 = 4 mols (1 FCC cell), 2 = 32 mols (2×2×2)
+  var aLatA = parseFloat(qs.get('aLat')) || 5.6;
+  var aLat_au = aLatA * 1.8897;
+  // Box auto-sized: must fit ncubes unit cells + bond reach (≈4 au margin)
+  var defaultScr = ncubes === 1 ? 22 : Math.max(28, ncubes * aLat_au + 6);
+  var defaultGrid = ncubes === 1 ? 150 : 200;
+  var gridN = parseInt(qs.get('gridN')) || defaultGrid;
+  var scr = parseFloat(qs.get('scr')) || defaultScr;
   var h = scr / gridN;
   var N2 = Math.round(gridN / 2);
-  var A = 1.8897;  // Å -> au
-
-  var qs = new URLSearchParams(window.location.search);
-  var aLatA = parseFloat(qs.get('aLat')) || 5.6;
+  var A = 1.8897;
   var bondCO_au = (parseFloat(qs.get('bondCO')) || 1.162) * A;
 
-  // 1 FCC unit cell = 4 molecules. Tractable on a consumer GPU.
-  // FCC basis: (0,0,0), (½,½,0), (½,0,½), (0,½,½)
-  var aLat_au = aLatA * A;
+  // FCC basis: (0,0,0), (½,½,0), (½,0,½), (0,½,½) — 4 molecules per conventional cell
   var fccBasis = [[0,0,0],[0.5,0.5,0],[0.5,0,0.5],[0,0.5,0.5]];
   var molCenters = [];
-  for (var b = 0; b < fccBasis.length; b++) {
-    molCenters.push([
-      (fccBasis[b][0] - 0.25) * aLat_au,
-      (fccBasis[b][1] - 0.25) * aLat_au,
-      (fccBasis[b][2] - 0.25) * aLat_au,
-    ]);
+  if (ncubes === 1) {
+    for (var b = 0; b < fccBasis.length; b++) {
+      molCenters.push([
+        (fccBasis[b][0] - 0.25) * aLat_au,
+        (fccBasis[b][1] - 0.25) * aLat_au,
+        (fccBasis[b][2] - 0.25) * aLat_au,
+      ]);
+    }
+  } else {
+    // ncubes×ncubes×ncubes super-cell; centred on origin
+    var off = (ncubes - 1) / 2;
+    for (var nx = 0; nx < ncubes; nx++) for (var ny = 0; ny < ncubes; ny++) for (var nz = 0; nz < ncubes; nz++) {
+      for (var bb = 0; bb < fccBasis.length; bb++) {
+        molCenters.push([
+          (nx + fccBasis[bb][0] - off - 0.25) * aLat_au,
+          (ny + fccBasis[bb][1] - off - 0.25) * aLat_au,
+          (nz + fccBasis[bb][2] - off - 0.25) * aLat_au,
+        ]);
+      }
+    }
   }
 
   // Build atoms: each molecule has 3 nuclei (O-C-O linear). Orient axes alternately for variety.
@@ -74,20 +91,22 @@ window.onerror = function(msg, url, line) {
     bondPairs.push([i1, i2, "C=O" + m2 + "b:"]);
   }
 
-  // Freeze outer-shell molecules to prevent the cluster blowing apart in vacuum
-  // (we want to see whether INNER molecules drift, not whether the cluster sublimates entirely)
+  // For ncubes>1: freeze outer-shell molecules to anchor the cluster, leave inner free.
+  // For ncubes=1: keep all 4 molecules free (none would be "interior" anyway).
   var frozen = [];
-  for (var m3 = 0; m3 < molCenters.length; m3++) {
-    var d2 = molCenters[m3][0]*molCenters[m3][0] + molCenters[m3][1]*molCenters[m3][1] + molCenters[m3][2]*molCenters[m3][2];
-    if (d2 > (aLat_au * 0.7) * (aLat_au * 0.7)) {
-      // outer molecules frozen
-      frozen.push(m3*3); frozen.push(m3*3+1); frozen.push(m3*3+2);
+  if (ncubes > 1) {
+    var freezeR = aLat_au * (ncubes/2 - 0.4);  // anything beyond this radius is frozen
+    for (var m3 = 0; m3 < molCenters.length; m3++) {
+      var d2 = molCenters[m3][0]*molCenters[m3][0] + molCenters[m3][1]*molCenters[m3][1] + molCenters[m3][2]*molCenters[m3][2];
+      if (d2 > freezeR*freezeR) {
+        frozen.push(m3*3); frozen.push(m3*3+1); frozen.push(m3*3+2);
+      }
     }
   }
 
   var nMols = molCenters.length;
   var nFreeMols = nMols - frozen.length / 3;
-  log.textContent  = 'CO2 dry-ice cluster (1 FCC unit cell): ' + nMols + ' molecules, ' + atoms.length + ' nuclei';
+  log.textContent  = 'CO2 dry-ice cluster (' + ncubes + '×' + ncubes + '×' + ncubes + ' FCC): ' + nMols + ' molecules, ' + atoms.length + ' nuclei';
   log.textContent += '\nLattice a = ' + aLatA.toFixed(2) + ' Å (exp 5.62 Å), C=O = ' + (bondCO_au/A).toFixed(3) + ' Å';
   log.textContent += '\nArchitecture: arch=2 (+2/+2/+2 minimum, 6 e- per molecule, ' + (nMols*6) + ' total)';
   log.textContent += '\nFrozen outer shell: ' + (frozen.length/3) + ' molecules; free inner: ' + nFreeMols;
