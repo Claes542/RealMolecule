@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="controls" style="position:fixed;top:10px;left:10px;z-index:100;background:rgba(0,0,0,0.85);padding:12px 16px;border-radius:8px;border:1px solid #333;max-width:380px">
+  <div style="font-size:14px;color:#ce93d8;margin-bottom:8px">CO&sub2; Dry-Ice Cluster &mdash; Negative Test for Dispersion</div>
+  <input type="range" id="tempSlider" min="0" max="3000" step="50" value="0" style="width:250px">
+  <span id="tempLabel" style="margin-left:10px;font-size:16px;color:#4fc3f7">0 K</span>
+  <div id="status" style="font-size:11px;color:#888;margin-top:4px">Building 2&times;2&times;2 FCC dry-ice lattice&hellip;</div>
+  <div style="font-size:11px;color:#aaa;margin-top:6px;line-height:1.5">
+    <span id="comReadout">COM-MSD: 0.000 &Aring;&sup2; &nbsp; mean drift: 0.000 &Aring;</span>
+    <button id="resetMSD" style="margin-left:8px;font-size:10px;padding:2px 6px;background:#222;color:#4fc3f7;border:1px solid #444;cursor:pointer">reset MSD</button>
+  </div>
+  <div style="font-size:11px;color:#aaa;margin-top:6px;line-height:1.5">
+    <span id="ccReadout">C&ndash;C nearest-pair: &mdash; &Aring;</span>
+  </div>
+</div>
+<pre id="log" style="position:fixed;bottom:10px;left:10px;font-size:11px;color:#666;z-index:100;max-width:480px;white-space:pre-wrap"></pre>
+<script>
+var log = document.getElementById('log');
+window.onerror = function(msg, url, line) {
+  log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
+};
+
+(function() {
+  var gridN = 150, scr = 22;
+  var h = scr / gridN;
+  var N2 = Math.round(gridN / 2);
+  var A = 1.8897;  // Å -> au
+
+  var qs = new URLSearchParams(window.location.search);
+  var aLatA = parseFloat(qs.get('aLat')) || 5.6;
+  var bondCO_au = (parseFloat(qs.get('bondCO')) || 1.162) * A;
+
+  // 1 FCC unit cell = 4 molecules. Tractable on a consumer GPU.
+  // FCC basis: (0,0,0), (½,½,0), (½,0,½), (0,½,½)
+  var aLat_au = aLatA * A;
+  var fccBasis = [[0,0,0],[0.5,0.5,0],[0.5,0,0.5],[0,0.5,0.5]];
+  var molCenters = [];
+  for (var b = 0; b < fccBasis.length; b++) {
+    molCenters.push([
+      (fccBasis[b][0] - 0.25) * aLat_au,
+      (fccBasis[b][1] - 0.25) * aLat_au,
+      (fccBasis[b][2] - 0.25) * aLat_au,
+    ]);
+  }
+
+  // Build atoms: each molecule has 3 nuclei (O-C-O linear). Orient axes alternately for variety.
+  var atoms = [];
+  var zArr = [];     // electron count per atom (target)
+  var rcArr = [];
+  var molOf = [];    // molecule index for each atom
+  var axisOf = [];   // 0=x, 1=y, 2=z
+  for (var m = 0; m < molCenters.length; m++) {
+    var ax = m % 3;  // rotate axes through x,y,z
+    var d = [0,0,0]; d[ax] = bondCO_au;
+    var cx = molCenters[m][0], cy = molCenters[m][1], cz = molCenters[m][2];
+    // O at -d
+    atoms.push({i: Math.round(N2 + (cx-d[0])/h), j: Math.round(N2 + (cy-d[1])/h), k: Math.round(N2 + (cz-d[2])/h), Z: 2, el: 'O'});
+    zArr.push(2); rcArr.push(0.6); molOf.push(m); axisOf.push(ax);
+    // C at center
+    atoms.push({i: Math.round(N2 + cx/h), j: Math.round(N2 + cy/h), k: Math.round(N2 + cz/h), Z: 2, el: 'C'});
+    zArr.push(2); rcArr.push(0.3); molOf.push(m); axisOf.push(ax);
+    // O at +d
+    atoms.push({i: Math.round(N2 + (cx+d[0])/h), j: Math.round(N2 + (cy+d[1])/h), k: Math.round(N2 + (cz+d[2])/h), Z: 2, el: 'O'});
+    zArr.push(2); rcArr.push(0.6); molOf.push(m); axisOf.push(ax);
+  }
+
+  // Bond constraints: each O-C-O molecule has 2 bonds + 1 linear-angle pseudo-constraint
+  var bondPairs = [];
+  for (var m2 = 0; m2 < molCenters.length; m2++) {
+    var i0 = m2 * 3;     // O1
+    var i1 = m2 * 3 + 1; // C
+    var i2 = m2 * 3 + 2; // O2
+    bondPairs.push([i0, i1, "C=O" + m2 + "a:"]);
+    bondPairs.push([i1, i2, "C=O" + m2 + "b:"]);
+  }
+
+  // Freeze outer-shell molecules to prevent the cluster blowing apart in vacuum
+  // (we want to see whether INNER molecules drift, not whether the cluster sublimates entirely)
+  var frozen = [];
+  for (var m3 = 0; m3 < molCenters.length; m3++) {
+    var d2 = molCenters[m3][0]*molCenters[m3][0] + molCenters[m3][1]*molCenters[m3][1] + molCenters[m3][2]*molCenters[m3][2];
+    if (d2 > (aLat_au * 0.7) * (aLat_au * 0.7)) {
+      // outer molecules frozen
+      frozen.push(m3*3); frozen.push(m3*3+1); frozen.push(m3*3+2);
+    }
+  }
+
+  var nMols = molCenters.length;
+  var nFreeMols = nMols - frozen.length / 3;
+  log.textContent  = 'CO2 dry-ice cluster (1 FCC unit cell): ' + nMols + ' molecules, ' + atoms.length + ' nuclei';
+  log.textContent += '\nLattice a = ' + aLatA.toFixed(2) + ' Å (exp 5.62 Å), C=O = ' + (bondCO_au/A).toFixed(3) + ' Å';
+  log.textContent += '\nArchitecture: arch=2 (+2/+2/+2 minimum, 6 e- per molecule, ' + (nMols*6) + ' total)';
+  log.textContent += '\nFrozen outer shell: ' + (frozen.length/3) + ' molecules; free inner: ' + nFreeMols;
+  log.textContent += '\n' + gridN + '^3 grid, screen=' + scr + ' au';
+  log.textContent += '\n\nEXPECTED: cluster has no dispersion; inner molecules drift apart at any T > 0.';
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_Z = zArr;
+  window.USER_RC = rcArr;
+  window.USER_FROZEN_ATOMS = frozen;
+  window.USER_BOND_PAIRS = bondPairs;
+  // Format: [[i, j, r0_au, k_Ha/au^2], ...] — array form, not objects
+  window.USER_BOND_CONSTRAINTS = bondPairs.map(function(bp) {
+    return [bp[0], bp[1], bondCO_au, 2.0];
+  });
+  window.USER_REFERENCE = {
+    bonds: { 'C=O': '1.162 Å (rigid)' },
+    energy: 'Dry-ice sublimation: T_sub = 195 K, vdW-bound (no RealQM mechanism)'
+  };
+  window.USER_DYNAMICS = true;
+  window.USER_N_MOVE = 100;          // delay nuclear motion until electrons settle
+  window.USER_DT_NUC = 1.0;          // smaller timestep for stability
+  window.USER_NUC_SUBSTEPS = 30;
+  window.USER_TEMPERATURE_K = 0;
+  window.USER_LANGEVIN_GAMMA = 0.5;  // higher damping
+  window.USER_FORCE_SCALE = 1.0;     // standard force scale (was 3.0 — too aggressive for small cluster)
+  window.USER_ARROW_SCALE = 20.0;
+  window.USER_ROT_SPEED = 0.005;
+  window.NO_AUTO_DYNAMICS = true;
+  window.USER_GRADP_FORCE = true;
+
+  // Stash for diagnostics
+  window.__co2_molOf = molOf;
+  window.__co2_nMols = nMols;
+  window.__co2_aLat_A = aLatA;
+})();
+
+// Temperature slider
+var slider = document.getElementById('tempSlider');
+var label = document.getElementById('tempLabel');
+var statusEl = document.getElementById('status');
+
+slider.addEventListener('input', function() {
+  var T = parseInt(this.value);
+  label.textContent = T + ' K';
+  window.USER_TEMPERATURE_K = T;
+  if (typeof window.langevinKT !== 'undefined') {
+    window.langevinKT = T / 315775.0;
+  }
+  window.USER_THERMAL_KICK = T > 50 ? 0.3 * T / 1000 : 0;
+  if (T < 100) label.style.color = '#4fc3f7';
+  else if (T < 195) label.style.color = '#ff0';
+  else label.style.color = '#ff7043';
+  var note = '';
+  if (T > 195) note = ' (above CO2 sublimation 195 K)';
+  statusEl.textContent = 'T=' + T + ' K' + note;
+});
+
+// Diagnostics: COM-MSD per molecule, C-C nearest-pair distance
+(function(){
+  var initCOM = null;
+  var auToA = 0.529177;
+  var hLocal = 30.0 / 200;
+
+  function computeCOMs() {
+    if (typeof nucPos === 'undefined' || !window.__co2_molOf) return null;
+    var molOf = window.__co2_molOf;
+    var nMols = window.__co2_nMols;
+    var coms = [];
+    for (var m = 0; m < nMols; m++) coms.push([0,0,0,0]);
+    // Only iterate over real atoms (molOf is the right length)
+    for (var a = 0; a < molOf.length; a++) {
+      var mi = molOf[a];
+      if (mi === undefined || mi < 0 || mi >= nMols) continue;
+      if (!nucPos[a]) continue;
+      coms[mi][0] += nucPos[a][0];
+      coms[mi][1] += nucPos[a][1];
+      coms[mi][2] += nucPos[a][2];
+      coms[mi][3] += 1;
+    }
+    for (var m2 = 0; m2 < nMols; m2++) {
+      if (coms[m2][3] > 0) {
+        coms[m2][0] /= coms[m2][3];
+        coms[m2][1] /= coms[m2][3];
+        coms[m2][2] /= coms[m2][3];
+      }
+    }
+    return coms;
+  }
+
+  function isFreeMol(m) {
+    var fs = window.USER_FROZEN_ATOMS || [];
+    for (var i = 0; i < fs.length; i++) if (window.__co2_molOf[fs[i]] === m) return false;
+    return true;
+  }
+
+  function snapshotInit() {
+    initCOM = computeCOMs();
+  }
+
+  document.getElementById('resetMSD').addEventListener('click', function() {
+    snapshotInit();
+    document.getElementById('comReadout').textContent = 'COM-MSD: 0.000 Å²  mean drift: 0.000 Å  (reset)';
+  });
+
+  setInterval(function() {
+    if (typeof nucPos === 'undefined') return;
+    if (!initCOM) snapshotInit();
+    var coms = computeCOMs();
+    if (!coms || !initCOM) return;
+
+    // COM-MSD averaged over inner (free) molecules
+    var sumSq = 0, n = 0;
+    for (var m = 0; m < coms.length; m++) {
+      if (!isFreeMol(m)) continue;
+      var dx = (coms[m][0] - initCOM[m][0]) * hLocal * auToA;
+      var dy = (coms[m][1] - initCOM[m][1]) * hLocal * auToA;
+      var dz = (coms[m][2] - initCOM[m][2]) * hLocal * auToA;
+      sumSq += dx*dx + dy*dy + dz*dz;
+      n++;
+    }
+    if (n > 0) {
+      var msd = sumSq / n;
+      var rmsd = Math.sqrt(msd);
+      var aLat = window.__co2_aLat_A;
+      var dNN = aLat * 0.7071;             // FCC nearest-neighbour ≈ a/√2
+      var lind = rmsd / dNN;
+      var color = lind < 0.08 ? '#4fc3f7' : (lind < 0.15 ? '#ff0' : '#ff7043');
+      document.getElementById('comReadout').innerHTML =
+        'COM-MSD: ' + msd.toFixed(3) + ' Å²' +
+        ' &nbsp; RMSD: ' + rmsd.toFixed(3) + ' Å' +
+        ' &nbsp; Lindemann: <span style="color:' + color + '">' + lind.toFixed(3) + '</span>' +
+        ' &nbsp; (d_NN=' + dNN.toFixed(2) + ' Å, n=' + n + ')';
+    }
+
+    // C-C nearest-pair distance (only between free molecules)
+    var minD = Infinity;
+    for (var m1 = 0; m1 < coms.length; m1++) {
+      if (!isFreeMol(m1)) continue;
+      for (var m2 = m1+1; m2 < coms.length; m2++) {
+        if (!isFreeMol(m2)) continue;
+        var dx2 = (coms[m1][0]-coms[m2][0]) * hLocal * auToA;
+        var dy2 = (coms[m1][1]-coms[m2][1]) * hLocal * auToA;
+        var dz2 = (coms[m1][2]-coms[m2][2]) * hLocal * auToA;
+        var d = Math.sqrt(dx2*dx2 + dy2*dy2 + dz2*dz2);
+        if (d < minD) minD = d;
+      }
+    }
+    if (isFinite(minD)) {
+      var expected = window.__co2_aLat_A * 0.707;  // FCC nearest-neighbour ≈ a/√2
+      document.getElementById('ccReadout').textContent =
+        'C–C nearest-pair: ' + minD.toFixed(2) + ' Å  (FCC nn ≈ ' + expected.toFixed(2) + ' Å)';
+    }
+  }, 1500);
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onerror = function() { log.textContent += '\nFailed to load molecule.js!'; };
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
