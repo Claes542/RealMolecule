@@ -1426,6 +1426,85 @@ P_j += dt&middot;(&Delta;P_j + 2&pi;&middot;u_{1&minus;j}&sup2;)              <s
   <h2>Materials</h2>
   <p class="desc">Water clusters, ice, metallic bonding, and phase transitions.</p>
   <div class="grid">
+    <div class="card" style="border-color:#ff7043;background:#1a0a00;grid-column:1/-1;cursor:default">
+      <h3 style="color:#ff7043">NaCl Crystal Melt &mdash; Try It Yourself</h3>
+      <div class="desc" style="font-size:13px;line-height:1.65;color:#ddd">
+        A 4&times;4&times;4 rocksalt lattice (256 Na<sup>+</sup> + 256 Cl<sup>&minus;</sup>) under
+        Brownian dynamics. Pure ionic Coulomb &mdash; no H-bonds, no dispersion, no fits. Each Na<sup>+</sup>
+        is a bare +1 kernel; each Cl<sup>&minus;</sup> is a +1 kernel with two valence electrons
+        (split into hemispheres) giving net &minus;1. The crystal is held together by the Madelung sum
+        alone. <b>This is the simplest demonstration of RealQM in its strongest regime.</b>
+
+        <h4 style="color:#ff7043;margin:14px 0 4px;font-size:14px">What you'll see</h4>
+        Three on-screen diagnostics update every 1.5 s:
+        <ul style="margin:6px 0 6px 18px;padding:0">
+          <li><b style="color:#4fc3f7">Density viewer</b> &mdash; the central canvas; ions as
+            localized blobs in the rocksalt pattern.</li>
+          <li><b style="color:#4fc3f7">Na&ndash;Cl RDF g(r)</b> (top-right) &mdash; sharp peaks for the
+            crystal (first ~3.5&nbsp;&Aring;, second ~5&nbsp;&Aring;); peaks broaden / wash out at melt.</li>
+          <li><b style="color:#4fc3f7">MSD &middot; RMSD &middot; Lindemann ratio</b> (controls panel) &mdash;
+            mean displacement of inner ions from a reference time.
+            <b style="color:#ff7043">Lindemann &gt; 0.10&ndash;0.15 = melted</b> (Lindemann criterion).</li>
+        </ul>
+
+        <h4 style="color:#ff7043;margin:14px 0 4px;font-size:14px">Step-by-step protocol</h4>
+        <ol style="margin:6px 0 6px 22px;padding:0;line-height:1.7">
+          <li><b>Find the equilibrium lattice constant.</b> The default <code>aLat = 7.0&nbsp;&Aring;</code>
+            is approximate. With slider at <code>T = 0&nbsp;K</code>, watch <b>|F|<sub>inner</sub></b> in the
+            controls panel. Wait ~30&nbsp;s to plateau, note the value. Type a new aLat (try 6.5, 7.0, 7.5)
+            and click <i>apply &amp; reload</i>. The aLat with the smallest |F|<sub>inner</sub> is the
+            true equilibrium.</li>
+          <li><b>Relax at T = 0.</b> At the equilibrium aLat, let the system settle until MSD plateaus
+            (1&ndash;2&nbsp;min). Now click <i>reset MSD</i> &mdash; this baselines the reference positions
+            at the relaxed crystal.</li>
+          <li><b>Ramp temperature in stages</b> upward only: 0 &rarr; 500 &rarr; 1000 &rarr; 1300 &rarr;
+            1500 &rarr; 1700 &rarr; 2000 K. At each plateau, wait ~30&nbsp;s for thermal equilibration,
+            press <i>reset MSD</i>, wait another 60&nbsp;s, then read the steady Lindemann value.</li>
+          <li><b>Identify the transition.</b> Lindemann colour-codes:
+            <span style="color:#4fc3f7">cyan &lt; 0.08</span> (solid) &middot;
+            <span style="color:#ff0">yellow 0.08&ndash;0.15</span> (transition) &middot;
+            <span style="color:#ff7043">orange &gt; 0.15</span> (liquid).
+            The melting T is where Lindemann crosses ~0.10&ndash;0.15.</li>
+          <li><b>Confirm with the RDF.</b> Screenshot the canvas at low T (sharp 1st &amp; 2nd peaks),
+            mid-T (peaks broaden), high-T (only first peak survives, broadened). The three frames
+            tell the story: <i>long-range order dissolves while short-range coordination persists</i>.</li>
+        </ol>
+
+        <h4 style="color:#ff7043;margin:14px 0 4px;font-size:14px">Diagnosing solid vs liquid</h4>
+        After <i>reset MSD</i> at a fixed T, watch how MSD grows over time:
+        <ul style="margin:6px 0 6px 18px;padding:0">
+          <li><b>Solid:</b> MSD plateaus within 30&ndash;60&nbsp;s &mdash; vibrations sample their
+            full amplitude, then stop growing.</li>
+          <li><b>Liquid:</b> MSD grows linearly forever (Einstein diffusion); RMSD goes like
+            &radic;<i>t</i>. Wait 60&nbsp;s, then another 60&nbsp;s &mdash; if Lindemann grew by
+            ~&radic;2&nbsp;&times;, that is diffusion and you are above the melt.</li>
+        </ul>
+
+        <h4 style="color:#ff7043;margin:14px 0 4px;font-size:14px">Calibration disclaimer</h4>
+        Real NaCl melts at T<sub>m</sub> = 1074&nbsp;K. The simulation T-axis is <b>not calibrated</b>
+        to experiment: kernel softening, Brownian &gamma;, and integrator timestep all shift the
+        effective scale. Reported transitions in the simulation typically sit in the
+        1500&ndash;3000&nbsp;K slider range. <b>Look for the Lindemann crossing, not the absolute T.</b>
+        The <i>shape</i> of the transition (sharp jump in Lindemann + collapse of higher RDF peaks)
+        is what should be compared with experiment, not the temperature value.
+
+        <div style="margin-top:14px;font-size:12px;color:#888">
+          Browser requirement: Chrome 113+, Edge 113+, or Safari 17+ (WebGPU).<br>
+          Hardware: any modern integrated or discrete GPU. Runs at &gt;1&nbsp;step/s on a laptop.
+        </div>
+
+        <div style="margin-top:14px">
+          <a href="nacl_temp.html" style="color:#66bb6a;font-size:14px">&#9654; Launch NaCl crystal sweep</a>
+          &nbsp;&middot;&nbsp;
+          <a href="nacl_temp.html?aLat=6.5" style="color:#888;font-size:12px">aLat=6.5</a>
+          &middot;
+          <a href="nacl_temp.html?aLat=7.0" style="color:#888;font-size:12px">aLat=7.0</a>
+          &middot;
+          <a href="nacl_temp.html?aLat=7.5" style="color:#888;font-size:12px">aLat=7.5</a>
+        </div>
+      </div>
+      <span class="tag tag-dyn">dynamics</span><span class="tag tag-small">solid&middot;melt</span><span class="tag tag-small">test it yourself</span>
+    </div>
     <a class="card" href="formamide_dimer.html" style="border-color:#0cf;background:#0a1520">
       <h3 style="color:#0cf">Formamide Dimer</h3>
       <div class="desc">H&middot;&middot;&middot;O=2.04&nbsp;&Aring;. The peptide H-bond.</div>

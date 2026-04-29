@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="controls" style="position:fixed;top:10px;left:10px;z-index:100;background:rgba(0,0,0,0.8);padding:12px 16px;border-radius:8px;border:1px solid #333">
+  <div style="font-size:14px;color:#ff7043;margin-bottom:8px">NaCl Crystal Temperature Sweep</div>
+  <input type="range" id="tempSlider" min="0" max="3000" step="50" value="0" style="width:250px">
+  <span id="tempLabel" style="margin-left:10px;font-size:16px;color:#4fc3f7">0 K</span>
+  <div id="status" style="font-size:11px;color:#888;margin-top:4px">Building NaCl lattice...</div>
+  <div style="font-size:11px;color:#aaa;margin-top:6px;line-height:1.5">
+    <span id="msdReadout">MSD: 0.000 &Aring;&sup2; &nbsp; RMSD: 0.000 &Aring; &nbsp; Lindemann: 0.000</span>
+    <button id="resetMSD" style="margin-left:10px;font-size:10px;padding:2px 6px;background:#222;color:#4fc3f7;border:1px solid #444;cursor:pointer">reset MSD</button>
+  </div>
+  <div style="font-size:11px;color:#aaa;margin-top:6px;line-height:1.6">
+    <span id="forceReadout">|F|_inner: &mdash; au</span>
+    &nbsp; aLat:
+    <input type="number" id="aLatInput" min="5.5" max="9.0" step="0.1" style="width:55px;background:#111;color:#4fc3f7;border:1px solid #444;font-size:11px">
+    <button id="applyALat" style="font-size:10px;padding:2px 6px;background:#222;color:#ff7043;border:1px solid #444;cursor:pointer">apply &amp; reload</button>
+  </div>
+</div>
+<div id="rdfPanel" style="position:fixed;top:10px;right:10px;z-index:100;background:rgba(0,0,0,0.85);padding:8px;border-radius:6px;border:1px solid #333">
+  <div style="font-size:11px;color:#4fc3f7;margin-bottom:4px">Na&ndash;Cl RDF g(r)</div>
+  <canvas id="rdfCanvas" width="280" height="120" style="display:block;background:#000"></canvas>
+  <div id="rdfLabel" style="font-size:10px;color:#888;margin-top:2px">peak: &mdash; &Aring;</div>
+</div>
+<pre id="log" style="position:fixed;bottom:10px;left:10px;font-size:11px;color:#666;z-index:100"></pre>
+<script>
+var log = document.getElementById('log');
+window.onerror = function(msg, url, line) {
+  log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
+};
+
+(function() {
+  var gridN = 150, scr = 60;
+  var h = scr / gridN;
+  var N2 = Math.round(gridN / 2);
+  var A = 1.8897;
+
+  // NaCl rock salt structure: FCC lattice with 2-atom basis
+  // a = 5.64 A = 10.66 au, Na-Cl nearest neighbor = a/2 = 2.82 A = 5.33 au
+  // Na+: Z=0 (no valence electrons), Z_nuc=1
+  // Cl-: Z=2 (2 valence electrons split in half-spaces), Z_nuc=1, r_c=1.0
+  // Lattice constant in Å — overridable via ?aLat=7.0 in URL
+  var aLatA = 7.0;
+  try {
+    var qs = new URLSearchParams(window.location.search);
+    if (qs.has('aLat')) aLatA = parseFloat(qs.get('aLat'));
+  } catch(e) {}
+  var aLat = aLatA * A;
+
+  var atoms = [];
+  var zArr = [];     // electron count per atom
+  var zNucArr = [];  // kernel charge per atom
+  var rcArr = [];    // pseudopotential radius
+
+  var nc = 4;  // 4x4x4 unit cells
+
+  var offset = (nc - 1) * aLat / 2;
+
+  // Rock salt: Na at (0,0,0) + FCC translations, Cl at (a/2,0,0) + FCC translations
+  // Equivalent: alternating Na/Cl on simple cubic with spacing a/2
+  var half = aLat / 2;
+  var nSites = nc * 2;  // sites per dimension
+
+  for (var iz = 0; iz < nSites; iz++) {
+    for (var iy = 0; iy < nSites; iy++) {
+      for (var ix = 0; ix < nSites; ix++) {
+        var x = ix * half - (nSites - 1) * half / 2;
+        var y = iy * half - (nSites - 1) * half / 2;
+        var z = iz * half - (nSites - 1) * half / 2;
+
+        var isNa = ((ix + iy + iz) % 2 === 0);
+
+        if (isNa) {
+          // Na+: bare ion, no electrons, r_c=0.8 exclusion sphere
+          atoms.push({
+            i: Math.round(N2 + x / h),
+            j: Math.round(N2 + y / h),
+            k: Math.round(N2 + z / h),
+            Z: 0, el: 'Na'
+          });
+          zArr.push(0);
+          zNucArr.push(1);
+          rcArr.push(0.8);
+        } else {
+          // Cl-: 2 valence electrons, r_c=1.0
+          atoms.push({
+            i: Math.round(N2 + x / h),
+            j: Math.round(N2 + y / h),
+            k: Math.round(N2 + z / h),
+            Z: 2, el: 'Cl'
+          });
+          zArr.push(2);
+          zNucArr.push(1);
+          rcArr.push(1.0);
+        }
+      }
+    }
+  }
+
+  // Freeze surface layer
+  var frozen = [];
+  for (var idx = 0; idx < atoms.length; idx++) {
+    var totalSites = nSites * nSites * nSites;
+    var iz = Math.floor(idx / (nSites * nSites));
+    var iy = Math.floor((idx % (nSites * nSites)) / nSites);
+    var ix = idx % nSites;
+    if (ix === 0 || ix === nSites-1 || iy === 0 || iy === nSites-1 || iz === 0 || iz === nSites-1) {
+      frozen.push(idx);
+    }
+  }
+
+  var nFree = atoms.length - frozen.length;
+  var nNa = zArr.filter(function(z) { return z === 0; }).length;
+  var nCl = zArr.filter(function(z) { return z === 2; }).length;
+  var bondLen = (aLat / 2 * 0.529177).toFixed(2);
+
+  log.textContent = 'NaCl crystal: ' + atoms.length + ' ions (' + nNa + ' Na+ + ' + nCl + ' Cl-)';
+  log.textContent += '\nNa-Cl distance: ' + bondLen + ' A (' + (aLat/2).toFixed(1) + ' au)';
+  log.textContent += '\nFrozen surface: ' + frozen.length + ', free inner: ' + nFree;
+  log.textContent += '\n' + gridN + '^3 grid, screen=' + scr + ' au';
+
+  // Find inner Na-Cl pairs for bond monitoring
+  var bondPairs = [];
+  var nPairs = 0;
+  for (var i = 0; i < atoms.length && nPairs < 4; i++) {
+    if (frozen.indexOf(i) >= 0) continue;
+    if (zArr[i] !== 0) continue;  // Na+
+    for (var j = 0; j < atoms.length && nPairs < 4; j++) {
+      if (frozen.indexOf(j) >= 0) continue;
+      if (zArr[j] !== 2) continue;  // Cl-
+      var di = atoms[i].i - atoms[j].i;
+      var dj = atoms[i].j - atoms[j].j;
+      var dk = atoms[i].k - atoms[j].k;
+      var d = Math.sqrt(di*di + dj*dj + dk*dk) * h;
+      if (d < aLat * 0.6) {  // nearest neighbors
+        bondPairs.push([i, j, "Na-Cl(" + nPairs + "):"]);
+        nPairs++;
+      }
+    }
+  }
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_Z = zArr;
+  window.USER_Z_NUC = zNucArr;
+  window.USER_RC = rcArr;
+  window.USER_FROZEN_ATOMS = frozen;
+  window.USER_BOND_PAIRS = bondPairs;
+  window.USER_REFERENCE = {
+    bonds: { "Na-Cl": "2.82 A (crystal)" },
+    energy: "NaCl melts at 1074 K"
+  };
+  window.USER_DYNAMICS = true;
+  window.USER_N_MOVE = 50;
+  window.USER_DT_NUC = 3.0;
+  window.USER_NUC_SUBSTEPS = 20;
+  window.USER_TEMPERATURE_K = 0;
+  window.USER_LANGEVIN_GAMMA = 0.2;
+  window.USER_FORCE_SCALE = 3.0;
+  window.USER_ARROW_SCALE = 20.0;
+  window.USER_ROT_SPEED = 0.005;
+  window.NO_AUTO_DYNAMICS = true;
+  window.USER_GRADP_FORCE = true;
+})();
+
+// Temperature slider
+var slider = document.getElementById('tempSlider');
+var label = document.getElementById('tempLabel');
+var statusEl = document.getElementById('status');
+
+slider.addEventListener('input', function() {
+  var T = parseInt(this.value);
+  label.textContent = T + ' K';
+  window.USER_TEMPERATURE_K = T;
+  if (typeof window.langevinKT !== 'undefined') {
+    window.langevinKT = T / 315775.0;
+  }
+  window.USER_THERMAL_KICK = T > 100 ? 0.3 * T / 1000 : 0;
+  if (T < 500) label.style.color = '#4fc3f7';
+  else if (T < 1074) label.style.color = '#ff0';
+  else if (T < 2000) label.style.color = '#ff8800';
+  else label.style.color = '#ff0000';
+  var note = '';
+  if (T > 1074) note = ' (above NaCl melting 1074 K)';
+  statusEl.textContent = 'T=' + T + ' K' + note;
+});
+
+// aLat input wiring
+(function(){
+  var qs = new URLSearchParams(window.location.search);
+  var aLatCurrent = qs.has('aLat') ? parseFloat(qs.get('aLat')) : 7.0;
+  document.getElementById('aLatInput').value = aLatCurrent.toFixed(1);
+  document.getElementById('applyALat').addEventListener('click', function() {
+    var v = parseFloat(document.getElementById('aLatInput').value);
+    if (!isFinite(v) || v < 5.5 || v > 9.0) return;
+    var u = new URL(window.location.href);
+    u.searchParams.set('aLat', v.toFixed(2));
+    window.location.href = u.toString();
+  });
+  // Update Na–Cl reference distance label and dNN for Lindemann
+  window.__dNN = aLatCurrent / 2;
+})();
+
+// Diagnostics: MSD, RDF (wrapped in IIFE to avoid global-name collisions with molecule.js)
+(function() {
+var initPositions = null;
+var nBins = 80;
+var binW = 0.1;       // Å
+var rMaxA = nBins * binW;
+var auToA = 0.529177;
+var hLocal = 60.0 / 150;  // scr/gridN
+var dNN = window.__dNN || 3.5;  // Na–Cl nearest-neighbor distance in Å (lattice/2)
+
+function getFrozenSet() {
+  var f = window.USER_FROZEN_ATOMS || [];
+  var s = {};
+  for (var i = 0; i < f.length; i++) s[f[i]] = 1;
+  return s;
+}
+
+function snapshotInitPositions() {
+  if (typeof nucPos === 'undefined') return;
+  var fs = getFrozenSet();
+  initPositions = [];
+  for (var a = 0; a < nucPos.length; a++) {
+    if (typeof window.USER_Z[a] === 'undefined') { initPositions.push(null); continue; }
+    if (fs[a]) { initPositions.push(null); continue; }
+    initPositions.push([nucPos[a][0], nucPos[a][1], nucPos[a][2]]);
+  }
+}
+
+document.getElementById('resetMSD').addEventListener('click', function() {
+  snapshotInitPositions();
+  var r = document.getElementById('msdReadout');
+  if (r) r.textContent = 'MSD: 0.000 Å²  RMSD: 0.000 Å  Lindemann: 0.000  (reset)';
+});
+
+function computeMSD() {
+  if (!initPositions || typeof nucPos === 'undefined') return null;
+  var sumSq = 0, n = 0;
+  for (var a = 0; a < initPositions.length; a++) {
+    if (!initPositions[a]) continue;
+    if (!nucPos[a]) continue;
+    var dx = (nucPos[a][0] - initPositions[a][0]) * hLocal * auToA;
+    var dy = (nucPos[a][1] - initPositions[a][1]) * hLocal * auToA;
+    var dz = (nucPos[a][2] - initPositions[a][2]) * hLocal * auToA;
+    sumSq += dx*dx + dy*dy + dz*dz;
+    n++;
+  }
+  return n > 0 ? { msd: sumSq / n, n: n } : null;
+}
+
+function computeRDF() {
+  var hist = new Array(nBins).fill(0);
+  if (typeof nucPos === 'undefined' || !window.USER_Z) return hist;
+  var fs = getFrozenSet();
+  var Zs = window.USER_Z;
+  var naIdx = [], clIdx = [];
+  for (var i = 0; i < Zs.length; i++) {
+    if (fs[i]) continue;
+    if (typeof nucPos[i] === 'undefined') continue;
+    if (Zs[i] === 0) naIdx.push(i);
+    else if (Zs[i] === 2) clIdx.push(i);
+  }
+  for (var a = 0; a < naIdx.length; a++) {
+    var i = naIdx[a];
+    for (var b = 0; b < clIdx.length; b++) {
+      var j = clIdx[b];
+      var dx = (nucPos[i][0] - nucPos[j][0]) * hLocal * auToA;
+      var dy = (nucPos[i][1] - nucPos[j][1]) * hLocal * auToA;
+      var dz = (nucPos[i][2] - nucPos[j][2]) * hLocal * auToA;
+      var d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      var bin = Math.floor(d / binW);
+      if (bin >= 0 && bin < nBins) hist[bin]++;
+    }
+  }
+  return hist;
+}
+
+function renderRDF(hist) {
+  var canvas = document.getElementById('rdfCanvas');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var W = canvas.width, H = canvas.height;
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+
+  // g(r) ~ count / r²  (un-normalized but correct shape)
+  var gr = new Array(nBins);
+  var maxG = 0, peakBin = 0;
+  for (var b = 0; b < nBins; b++) {
+    var r = (b + 0.5) * binW;
+    gr[b] = hist[b] / (r * r);
+    if (gr[b] > maxG) { maxG = gr[b]; peakBin = b; }
+  }
+  if (maxG === 0) return;
+
+  // Grid lines at 2, 4, 6, 8 Å
+  ctx.strokeStyle = '#222'; ctx.lineWidth = 1;
+  for (var x_a = 2; x_a < rMaxA; x_a += 2) {
+    var xpx = (x_a / rMaxA) * W;
+    ctx.beginPath(); ctx.moveTo(xpx, 0); ctx.lineTo(xpx, H); ctx.stroke();
+  }
+
+  // Mark expected first-peak (Na-Cl ≈ 2.82 Å crystal, ≈ 3.5 Å in our solver)
+  ctx.strokeStyle = '#553300'; ctx.lineWidth = 1;
+  var x_exp = (dNN / rMaxA) * W;
+  ctx.beginPath(); ctx.moveTo(x_exp, 0); ctx.lineTo(x_exp, H); ctx.stroke();
+
+  // RDF curve
+  ctx.strokeStyle = '#4fc3f7'; ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  for (var b2 = 0; b2 < nBins; b2++) {
+    var xp = (b2 / nBins) * W;
+    var yp = H - (gr[b2] / maxG) * H * 0.92;
+    if (b2 === 0) ctx.moveTo(xp, yp); else ctx.lineTo(xp, yp);
+  }
+  ctx.stroke();
+
+  // Axis text
+  ctx.fillStyle = '#888'; ctx.font = '10px monospace';
+  ctx.fillText('0', 2, H - 2);
+  ctx.fillText(rMaxA.toFixed(0) + ' Å', W - 28, H - 2);
+
+  var lbl = document.getElementById('rdfLabel');
+  if (lbl) lbl.textContent = 'peak: ' + ((peakBin + 0.5) * binW).toFixed(2) + ' Å';
+}
+
+setInterval(function() {
+  if (typeof nucVel === 'undefined' || typeof Z === 'undefined') return;
+  var ke = 0, nActive = 0;
+  var frozen = window.USER_FROZEN_ATOMS || [];
+  for (var a = 0; a < nucVel.length; a++) {
+    if (typeof Z[a] === 'undefined') continue;
+    if (frozen.indexOf(a) >= 0) continue;
+    var mass = (Z[a] === 0 ? 23 : 35) * 1836;  // Na=23, Cl=35
+    var v2 = nucVel[a][0]*nucVel[a][0] + nucVel[a][1]*nucVel[a][1] + nucVel[a][2]*nucVel[a][2];
+    ke += 0.5 * mass * v2;
+    nActive++;
+  }
+  if (nActive === 0) return;
+  var T_meas = (2 * ke / (3 * nActive)) * 315775.0;
+  statusEl.textContent = 'T_target=' + slider.value + ' K, T_measured=' + T_meas.toFixed(0) + ' K, ' + nActive + ' free';
+
+  // Mean force magnitude on inner ions — minimum picks the equilibrium aLat
+  if (typeof nucForceTotal !== 'undefined') {
+    var fSum = 0, fN = 0;
+    for (var a = 0; a < nucForceTotal.length; a++) {
+      if (typeof Z[a] === 'undefined') continue;
+      if (frozen.indexOf(a) >= 0) continue;
+      var fx = nucForceTotal[a][0], fy = nucForceTotal[a][1], fz = nucForceTotal[a][2];
+      fSum += Math.sqrt(fx*fx + fy*fy + fz*fz);
+      fN++;
+    }
+    if (fN > 0) {
+      var fMean = fSum / fN;
+      var fEl = document.getElementById('forceReadout');
+      if (fEl) fEl.textContent = '|F|_inner: ' + fMean.toFixed(4) + ' au  (n=' + fN + ')';
+    }
+  }
+
+  // MSD + Lindemann
+  if (!initPositions) snapshotInitPositions();
+  var msdRes = computeMSD();
+  if (msdRes) {
+    var rmsd = Math.sqrt(msdRes.msd);
+    var lind = rmsd / dNN;
+    var color = lind < 0.08 ? '#4fc3f7' : (lind < 0.15 ? '#ff0' : '#ff7043');
+    var el = document.getElementById('msdReadout');
+    if (el) {
+      el.innerHTML = 'MSD: <span style="color:' + color + '">' + msdRes.msd.toFixed(3) + ' Å²</span>'
+        + ' &nbsp; RMSD: ' + rmsd.toFixed(3) + ' Å'
+        + ' &nbsp; Lindemann: <span style="color:' + color + '">' + lind.toFixed(3) + '</span>'
+        + ' &nbsp; (n=' + msdRes.n + ')';
+    }
+  }
+
+  // RDF
+  var hist = computeRDF();
+  renderRDF(hist);
+}, 1500);
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onerror = function() { log.textContent += '\nFailed to load molecule.js!'; };
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
