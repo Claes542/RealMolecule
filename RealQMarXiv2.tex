@@ -52,7 +52,7 @@ A second contribution of this paper concerns how the implementation was produced
 
 We take this case to be a worth-reporting example of how a single mathematical mind, working with an AI engineering partner in real time, can produce research-grade interactive scientific software at a scale otherwise requiring a programming team. The collaboration is not the science, but it is part of how the science came into existence, and we report it as such.
 
-The paper is organized as follows. Section~\ref{sec:reformulation} states the reformulation and the hierarchical reduction. Section~\ref{sec:implementation} describes the numerical implementation. Section~\ref{sec:validation} reports validation, including atom energies, the covalent H$_2$ bond and its He limit, atomization energies of closed-shell hydrides across periodic-table groups, S66 dimer geometries, chemical reactions, protein folding, excited states, and a three-system condensed-phase calibration (NaCl crystal melt, CO$_2$ dry-ice cluster, solid N$_2$) that quantifies how the simulation's overshoot factor against experimental transition temperatures scales with the missing-dispersion contribution. Section~\ref{sec:limitations} states honest limits of the approach. Section~\ref{sec:chemvphys} places the work in the long-standing chemistry-vs-physics debate. Section~\ref{sec:collaboration} discusses the human--AI collaboration. The full source code, validation suite, and interactive Gallery are available at the URLs in Section~\ref{sec:code}.
+The paper is organized as follows. Section~\ref{sec:reformulation} states the reformulation and the hierarchical reduction. Section~\ref{sec:implementation} describes the numerical implementation. Section~\ref{sec:validation} reports validation, including atom energies, the covalent H$_2$ bond and its He limit, atomization energies of closed-shell hydrides across periodic-table groups, S66 dimer geometries, chemical reactions, protein folding, excited states, and a three-system condensed-phase calibration (NaCl crystal melt, CO$_2$ dry-ice cluster, solid N$_2$) that quantifies how the simulation's overshoot factor against experimental transition temperatures scales with the missing-dispersion contribution. Section~\ref{sec:limitations} states honest limits of the approach. Section~\ref{sec:nucleus} reports an analogous model of the atomic nucleus, demonstrating that the framework extends beyond chemistry to nuclear-scale physics. Section~\ref{sec:chemvphys} places the work in the long-standing chemistry-vs-physics debate. Section~\ref{sec:collaboration} discusses the human--AI collaboration. The full source code, validation suite, and interactive Gallery are available at the URLs in Section~\ref{sec:code}.
 
 \section{Multiphase Electron Density Formulation}\label{sec:reformulation}
 
@@ -383,6 +383,38 @@ The pattern across regimes is consistent: \textbf{within $\sim$1--10\%} for clos
 \section{Limitations}\label{sec:limitations}
 
 Two regimes lie outside the validation reported here. \textbf{Weak intermolecular interactions} (hydrogen bonds at $\sim$5 kcal/mol $= 0.008$ Ha) are below the model's absolute-energy noise floor of $\sim$0.1 Ha; geometric agreement on S66 dimers is good (1--5\%) but quantitative interaction energies are not reliable. \textbf{Dispersion} (van der Waals interactions between non-polar species) is absent at Level 3 entirely, as the unit-density model has no mechanism for the correlated electron motion that produces vdW. Excited states are accessible (Section~\ref{sec:orthohelium}) but at the present stage have only been validated on the simplest cases.
+
+\section{An analogous model of the atomic nucleus}\label{sec:nucleus}
+
+The mathematical framework of Section~\ref{sec:reformulation} --- non-overlapping unit charge densities in 3D real space, Coulomb interactions, Bernoulli free boundaries, variational minimization --- is not specific to chemistry. The same multiphase 3D continuum mechanics applies to atomic nuclei when the constituents are taken to be protons and electrons, returning to a pre-1932 picture of nuclear structure.
+
+In this picture a neutron is identified with a proton--electron pair (the proton--electron model that predates the discovery of the neutron as an elementary particle). A stable nucleus with $Z$ protons and $N$ neutrons therefore contains $(Z+N)$ protons and $N$ electrons, with $N \approx Z$ giving roughly twice as many protons as electrons. The simplest non-trivial case is helium-4 ($Z=2$, $N=2$), modeled as 4 protons and 2 electrons.
+
+\paragraph{The model.}
+The setup uses the same multiphase formulation:
+\begin{itemize}
+\item 4 unit-charge densities representing protons (each $+1$);
+\item 2 unit-charge densities representing electrons (each $-1$);
+\item Each density supported on its own non-overlapping spatial region in $\mathbb{R}^3$, with continuity and homogeneous Neumann at the inter-species Bernoulli interface;
+\item Coulomb interactions, signed appropriately for the charges: opposite-sign attractive, same-sign repulsive;
+\item Per-domain mass: the kinetic-energy operator coefficient is $\propto 1/m_i$, distinguishing the heavy proton from the light electron;
+\item No external confining potential.
+\end{itemize}
+
+The energy functional is the standard Coulomb sum
+\begin{equation}
+E = T_p + T_e + V_{ee} + V_{pp} + V_{ep},
+\end{equation}
+with $T_p = \tfrac{1}{2 m_p} \sum_a \int |\nabla \sqrt{\rho_a^{(p)}}|^2 d\mathbf{r}$ for the protons (mass-weighted) and $T_e$ analogous for the electrons. The minimum is taken over all the densities and over the boundary location between the inner electron core and the outer proton shell.
+
+\paragraph{Mutual confinement.}
+In the standard nuclear shell model, protons and neutrons sit in an effective potential approximating the average force from all other nucleons. Here there is no such external potential. The 4 protons confine the 2 electrons through their collective $+4$ Coulomb attraction; in turn, the 2 electrons confine the protons through their collective $-2$ Coulomb attraction. The electrons need the protons to be confined, and the protons need the electrons to be confined. Numerical experiment confirms that with only \emph{1} electron ($-1$ against $+4$) the attraction is too weak --- the proton shell disintegrates outward. With \emph{2} electrons the system stabilizes. The textbook 2:1 proton-to-electron ratio of stable nuclei ($N \approx Z$) emerges as a binding requirement of mutual confinement.
+
+\paragraph{Result for He-4.}
+Energy minimization at fixed boundary radius $R$ between the inner electron core and the outer proton shell, swept across $R$, reveals a clear binding minimum. The protons localize in an outer shell with their density peaked at the boundary; the electrons localize in an inner core. The two species are sharply separated by the Bernoulli interface, with the boundary position selected by the variational principle (continuity plus homogeneous Neumann across the boundary, as in the chemistry sections). The binding character --- mutual confinement, sharp species separation, stable equilibrium $R$ --- is qualitatively consistent with helium-4 being the most tightly bound of the small nuclei. Quantitative agreement with experimental nuclear binding energies is not the goal at this exploratory stage; the framework reproduces the proton--electron model's qualitative predictions through the same RealQM machinery developed for chemistry.
+
+\paragraph{Significance.}
+The nuclear extension is reported here as a side step from the main paper. Its purpose is to demonstrate that the mathematical framework --- multiphase non-overlapping unit densities in real 3D space, with Bernoulli free boundaries and pure Coulomb interactions --- is applicable to atomic-scale physics quite generally. The chemistry validation of Section~\ref{sec:validation} is therefore one application of a broader continuum-mechanics formulation; the nuclear model is another. The framework provides a unifying mathematical structure spanning at least two scales of physics through a single variational-Coulomb-with-Bernoulli-boundary principle. Whether quantitative agreement with nuclear-binding observables can be obtained, and whether the proton--electron picture can be extended beyond He-4 to heavier stable nuclei, are questions for follow-up work.
 
 \section{Chemistry vs Physics}\label{sec:chemvphys}
 

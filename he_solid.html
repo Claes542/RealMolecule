@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="controls" style="position:fixed;top:10px;left:10px;z-index:100;background:rgba(0,0,0,0.85);padding:12px 16px;border-radius:8px;border:1px solid #333;max-width:380px">
+  <div style="font-size:14px;color:#b39ddb;margin-bottom:8px">Solid He (FCC) &mdash; Most Extreme Pure-Dispersion Test</div>
+  <input type="range" id="tempSlider" min="0" max="3000" step="50" value="0" style="width:250px">
+  <span id="tempLabel" style="margin-left:10px;font-size:16px;color:#4fc3f7">0 K</span>
+  <div id="status" style="font-size:11px;color:#888;margin-top:4px">Building He FCC lattice&hellip;</div>
+  <div style="font-size:11px;color:#aaa;margin-top:6px;line-height:1.5">
+    <span id="comReadout">Atom-MSD: 0.000 &Aring;&sup2;</span>
+    <button id="resetMSD" style="margin-left:8px;font-size:10px;padding:2px 6px;background:#222;color:#4fc3f7;border:1px solid #444;cursor:pointer">reset MSD</button>
+  </div>
+  <div style="font-size:11px;color:#aaa;margin-top:6px;line-height:1.5">
+    <span id="ccReadout">He&ndash;He nearest-pair: &mdash; &Aring;</span>
+  </div>
+</div>
+<pre id="log" style="position:fixed;bottom:10px;left:10px;font-size:11px;color:#666;z-index:100;max-width:480px;white-space:pre-wrap"></pre>
+<script>
+var log = document.getElementById('log');
+window.onerror = function(msg, url, line) {
+  log.textContent += '\nERROR: ' + msg + '\nLine: ' + line;
+};
+
+(function() {
+  var qs = new URLSearchParams(window.location.search);
+  var ncubes = parseInt(qs.get('ncubes')) || 2;
+  var aLatA = parseFloat(qs.get('aLat')) || 4.24;     // approx solid-He FCC at high P; the value isn't critical
+  var arch = qs.get('arch') || 'nosplit';             // 'nosplit' (default) or 'hemi'
+  var aLat_au = aLatA * 1.8897;
+  var defaultScr = ncubes === 1 ? 18 : Math.max(24, ncubes * aLat_au + 6);
+  var defaultGrid = ncubes === 1 ? 130 : 180;
+  var gridN = parseInt(qs.get('gridN')) || defaultGrid;
+  var scr = parseFloat(qs.get('scr')) || defaultScr;
+  var h = scr / gridN;
+  var N2 = Math.round(gridN / 2);
+  var rcHe = parseFloat(qs.get('rc')) || 0.05;        // tiny softening at the bare He nucleus
+
+  var fccBasis = [[0,0,0],[0.5,0.5,0],[0.5,0,0.5],[0,0.5,0.5]];
+  var atomCenters = [];
+  if (ncubes === 1) {
+    for (var b = 0; b < fccBasis.length; b++) {
+      atomCenters.push([
+        (fccBasis[b][0] - 0.25) * aLat_au,
+        (fccBasis[b][1] - 0.25) * aLat_au,
+        (fccBasis[b][2] - 0.25) * aLat_au,
+      ]);
+    }
+  } else {
+    var off = (ncubes - 1) / 2;
+    for (var nx = 0; nx < ncubes; nx++) for (var ny = 0; ny < ncubes; ny++) for (var nz = 0; nz < ncubes; nz++) {
+      for (var bb = 0; bb < fccBasis.length; bb++) {
+        atomCenters.push([
+          (nx + fccBasis[bb][0] - off - 0.25) * aLat_au,
+          (ny + fccBasis[bb][1] - off - 0.25) * aLat_au,
+          (nz + fccBasis[bb][2] - off - 0.25) * aLat_au,
+        ]);
+      }
+    }
+  }
+
+  // Two architectures:
+  //   nosplit: each He = single orbital with 2 electrons (multi-occupancy, fully spherical)
+  //   hemi:    each He = two orbitals (1 electron each) at the same nucleus, partitioned by hemisphere
+  //            (the Level-1 helium model used in the Gallery: E = -2.92 Ha vs exact -2.904)
+  var atoms = [];
+  var zArr = [];
+  var rcArr = [];
+  var atomToCentre = [];   // for diagnostics: which atom-centre does this orbital belong to
+  for (var m = 0; m < atomCenters.length; m++) {
+    var cx = atomCenters[m][0], cy = atomCenters[m][1], cz = atomCenters[m][2];
+    if (arch === 'hemi') {
+      // Two single-electron orbitals at the same nucleus. molecule.js takes Z=1 per orbital;
+      // both orbitals share the +2 kernel attraction implicitly through the nuclear charge.
+      atoms.push({i: Math.round(N2 + cx/h), j: Math.round(N2 + cy/h), k: Math.round(N2 + cz/h), Z: 1, el: 'He'});
+      zArr.push(1); rcArr.push(rcHe); atomToCentre.push(m);
+      atoms.push({i: Math.round(N2 + cx/h), j: Math.round(N2 + cy/h), k: Math.round(N2 + cz/h), Z: 1, el: 'He'});
+      zArr.push(1); rcArr.push(rcHe); atomToCentre.push(m);
+    } else {
+      // Single multi-occupancy orbital, 2 electrons in one density
+      atoms.push({i: Math.round(N2 + cx/h), j: Math.round(N2 + cy/h), k: Math.round(N2 + cz/h), Z: 2, el: 'He'});
+      zArr.push(2); rcArr.push(rcHe); atomToCentre.push(m);
+    }
+  }
+
+  var frozen = [];
+  if (ncubes > 1) {
+    var freezeR = aLat_au * (ncubes/2 - 0.4);
+    for (var m3 = 0; m3 < atomCenters.length; m3++) {
+      var d2 = atomCenters[m3][0]*atomCenters[m3][0] + atomCenters[m3][1]*atomCenters[m3][1] + atomCenters[m3][2]*atomCenters[m3][2];
+      if (d2 > freezeR*freezeR) {
+        // Freeze every orbital tied to this atom centre
+        for (var k = 0; k < atomToCentre.length; k++) if (atomToCentre[k] === m3) frozen.push(k);
+      }
+    }
+  }
+
+  var nAtoms = atomCenters.length;
+  var nFreeAtoms = nAtoms - frozen.filter(function(idx, i, arr){return arr.indexOf(idx) === i;}).length;
+  // count distinct atom-centres in frozen
+  var frozenCentres = {};
+  for (var ff = 0; ff < frozen.length; ff++) frozenCentres[atomToCentre[frozen[ff]]] = true;
+  nFreeAtoms = nAtoms - Object.keys(frozenCentres).length;
+
+  log.textContent  = 'Solid He (' + ncubes + '×' + ncubes + '×' + ncubes + ' FCC): ' + nAtoms + ' atoms, arch=' + arch;
+  log.textContent += '\nLattice a = ' + aLatA.toFixed(2) + ' Å, monatomic, +2 kernel, rc=' + rcHe.toFixed(3);
+  log.textContent += '\nExplicit electrons: ' + (zArr.reduce(function(a,b){return a+b;},0)) + ' total (' + (zArr.reduce(function(a,b){return a+b;},0)/nAtoms) + ' per atom)';
+  log.textContent += '\nFrozen outer shell: ' + Object.keys(frozenCentres).length + ' atoms; free inner: ' + nFreeAtoms;
+  log.textContent += '\n' + gridN + '^3 grid, screen=' + scr.toFixed(1) + ' au';
+  log.textContent += '\n\nReal He doesn\'t solidify at standard pressure (T_b = 4.2 K, dispersion-only).';
+  log.textContent += '\nThis is the most extreme test: 2 electrons, no inner shell, no multipole.';
+  if (arch === 'hemi') {
+    log.textContent += '\n  arch=hemi: 2 single-electron territories per He, internal Bernoulli interface.';
+  } else {
+    log.textContent += '\n  arch=nosplit: 2-electron multi-occupancy orbital, fully spherical.';
+  }
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_Z = zArr;
+  window.USER_RC = rcArr;
+  window.USER_FROZEN_ATOMS = frozen;
+  window.USER_DYNAMICS = true;
+  window.USER_N_MOVE = 100;
+  window.USER_DT_NUC = 1.0;
+  window.USER_NUC_SUBSTEPS = 30;
+  window.USER_TEMPERATURE_K = 0;
+  window.USER_LANGEVIN_GAMMA = 0.5;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 20.0;
+  window.USER_ROT_SPEED = 0.005;
+  window.NO_AUTO_DYNAMICS = true;
+  window.USER_GRADP_FORCE = true;
+
+  window.__he_aLat_A = aLatA;
+  window.__he_atomToCentre = atomToCentre;
+  window.__he_nAtoms = nAtoms;
+})();
+
+var slider = document.getElementById('tempSlider');
+var label = document.getElementById('tempLabel');
+var statusEl = document.getElementById('status');
+
+slider.addEventListener('input', function() {
+  var T = parseInt(this.value);
+  label.textContent = T + ' K';
+  window.USER_TEMPERATURE_K = T;
+  if (typeof window.langevinKT !== 'undefined') {
+    window.langevinKT = T / 315775.0;
+  }
+  window.USER_THERMAL_KICK = T > 50 ? 0.3 * T / 1000 : 0;
+  if (T < 30) label.style.color = '#4fc3f7';
+  else if (T < 100) label.style.color = '#ff0';
+  else label.style.color = '#ff7043';
+  statusEl.textContent = 'T=' + T + ' K';
+});
+
+(function(){
+  var initCentres = null;
+  var auToA = 0.529177;
+
+  function getH() { return (window.USER_SCREEN || 24) / (window.USER_NN || 180); }
+
+  function isCentreFree(m) {
+    var fs = window.USER_FROZEN_ATOMS || [];
+    var atc = window.__he_atomToCentre;
+    for (var i = 0; i < fs.length; i++) if (atc[fs[i]] === m) return false;
+    return true;
+  }
+
+  function computeCentres() {
+    if (typeof nucPos === 'undefined') return null;
+    var atc = window.__he_atomToCentre;
+    var nA = window.__he_nAtoms;
+    var c = [];
+    for (var m = 0; m < nA; m++) c.push([0,0,0,0]);
+    for (var k = 0; k < atc.length; k++) {
+      var m = atc[k];
+      if (m === undefined || m < 0 || m >= nA) continue;
+      if (!nucPos[k]) continue;
+      c[m][0] += nucPos[k][0];
+      c[m][1] += nucPos[k][1];
+      c[m][2] += nucPos[k][2];
+      c[m][3] += 1;
+    }
+    for (var m2 = 0; m2 < nA; m2++) if (c[m2][3] > 0) {
+      c[m2][0] /= c[m2][3]; c[m2][1] /= c[m2][3]; c[m2][2] /= c[m2][3];
+    }
+    return c;
+  }
+
+  function snapshot() { initCentres = computeCentres(); }
+
+  document.getElementById('resetMSD').addEventListener('click', function() {
+    snapshot();
+    document.getElementById('comReadout').textContent = 'Atom-MSD: 0.000 Å²  RMSD: 0.000 Å  Lindemann: 0.000  (reset)';
+  });
+
+  setInterval(function() {
+    if (typeof nucPos === 'undefined') return;
+    if (!initCentres) snapshot();
+    var c = computeCentres();
+    if (!c || !initCentres) return;
+    var hLocal = getH();
+
+    var sumSq = 0, n = 0;
+    for (var m = 0; m < c.length; m++) {
+      if (!isCentreFree(m)) continue;
+      if (!initCentres[m] || initCentres[m][3] === 0) continue;
+      var dx = (c[m][0] - initCentres[m][0]) * hLocal * auToA;
+      var dy = (c[m][1] - initCentres[m][1]) * hLocal * auToA;
+      var dz = (c[m][2] - initCentres[m][2]) * hLocal * auToA;
+      sumSq += dx*dx + dy*dy + dz*dz;
+      n++;
+    }
+    if (n > 0) {
+      var msd = sumSq / n;
+      var rmsd = Math.sqrt(msd);
+      var aLat = window.__he_aLat_A;
+      var dNN = aLat * 0.7071;
+      var lind = rmsd / dNN;
+      var color = lind < 0.08 ? '#4fc3f7' : (lind < 0.15 ? '#ff0' : '#ff7043');
+      document.getElementById('comReadout').innerHTML =
+        'Atom-MSD: ' + msd.toFixed(3) + ' Å²' +
+        ' &nbsp; RMSD: ' + rmsd.toFixed(3) + ' Å' +
+        ' &nbsp; Lindemann: <span style="color:' + color + '">' + lind.toFixed(3) + '</span>' +
+        ' &nbsp; (d_NN=' + dNN.toFixed(2) + ' Å, n=' + n + ')';
+    }
+
+    var minD = Infinity;
+    for (var m1 = 0; m1 < c.length; m1++) {
+      if (!isCentreFree(m1)) continue;
+      for (var m22 = m1+1; m22 < c.length; m22++) {
+        if (!isCentreFree(m22)) continue;
+        var dx2 = (c[m1][0]-c[m22][0]) * hLocal * auToA;
+        var dy2 = (c[m1][1]-c[m22][1]) * hLocal * auToA;
+        var dz2 = (c[m1][2]-c[m22][2]) * hLocal * auToA;
+        var d = Math.sqrt(dx2*dx2 + dy2*dy2 + dz2*dz2);
+        if (d < minD) minD = d;
+      }
+    }
+    if (isFinite(minD)) {
+      document.getElementById('ccReadout').textContent =
+        'He–He nearest-pair: ' + minD.toFixed(2) + ' Å  (FCC nn ≈ ' + (window.__he_aLat_A*0.707).toFixed(2) + ' Å)';
+    }
+  }, 1500);
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onerror = function() { log.textContent += '\nFailed to load molecule.js!'; };
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
