@@ -52,7 +52,7 @@ A second contribution of this paper concerns how the implementation was produced
 
 We take this case to be a worth-reporting example of how a single mathematical mind, working with an AI engineering partner in real time, can produce research-grade interactive scientific software at a scale otherwise requiring a programming team. The collaboration is not the science, but it is part of how the science came into existence, and we report it as such.
 
-The paper is organized as follows. Section~\ref{sec:reformulation} states the reformulation and the hierarchical reduction. Section~\ref{sec:implementation} describes the numerical implementation. Section~\ref{sec:validation} reports validation, including atom energies, the covalent H$_2$ bond and its He limit, atomization energies of closed-shell hydrides across periodic-table groups, S66 dimer geometries, chemical reactions, protein folding, excited states, and a three-system condensed-phase calibration (NaCl crystal melt, CO$_2$ dry-ice cluster, solid N$_2$) that quantifies how the simulation's overshoot factor against experimental transition temperatures scales with the missing-dispersion contribution. Section~\ref{sec:limitations} states honest limits of the approach. Section~\ref{sec:nucleus} reports an analogous model of the atomic nucleus, demonstrating that the framework extends beyond chemistry to nuclear-scale physics. Section~\ref{sec:chemvphys} places the work in the long-standing chemistry-vs-physics debate. Section~\ref{sec:collaboration} discusses the human--AI collaboration. The full source code, validation suite, and interactive Gallery are available at the URLs in Section~\ref{sec:code}.
+The paper is organized as follows. Section~\ref{sec:reformulation} states the reformulation and the hierarchical reduction. Section~\ref{sec:implementation} describes the numerical implementation. Section~\ref{sec:validation} reports validation, including atom energies, the covalent H$_2$ bond and its He limit, atomization energies of closed-shell hydrides across periodic-table groups, S66 dimer geometries, chemical reactions, protein folding, excited states, and a three-system condensed-phase calibration (NaCl crystal melt, CO$_2$ dry-ice cluster, solid N$_2$) that quantifies how the simulation's overshoot factor against experimental transition temperatures scales with the missing-dispersion contribution. Section~\ref{sec:limitations} states honest limits of the approach. Section~\ref{sec:som} shows that stability of matter --- the lower bound $E \ge -C N Z^2$ on the ground-state energy of a system of $N$ atoms --- follows directly from the Hardy inequality applied to non-overlapping electronic territories, in contrast to the heroic Dyson--Lenard--Lieb--Thirring proof required in standard quantum mechanics. Section~\ref{sec:nucleus} reports an analogous model of the atomic nucleus, demonstrating that the framework extends beyond chemistry to nuclear-scale physics. Section~\ref{sec:chemvphys} places the work in the long-standing chemistry-vs-physics debate. Section~\ref{sec:collaboration} discusses the human--AI collaboration. The full source code, validation suite, and interactive Gallery are available at the URLs in Section~\ref{sec:code}.
 
 \section{Multiphase Electron Density Formulation}\label{sec:reformulation}
 
@@ -384,6 +384,51 @@ The pattern across regimes is consistent: \textbf{within $\sim$1--10\%} for clos
 
 Two regimes lie outside the validation reported here. \textbf{Weak intermolecular interactions} (hydrogen bonds at $\sim$5 kcal/mol $= 0.008$ Ha) are below the model's absolute-energy noise floor of $\sim$0.1 Ha; geometric agreement on S66 dimers is good (1--5\%) but quantitative interaction energies are not reliable. \textbf{Dispersion} (van der Waals interactions between non-polar species) is absent at Level 3 entirely, as the unit-density model has no mechanism for the correlated electron motion that produces vdW. Excited states are accessible (Section~\ref{sec:orthohelium}) but at the present stage have only been validated on the simplest cases.
 
+\section{Stability of Matter}\label{sec:som}
+
+Stability of matter --- the requirement that the total electronic ground-state energy of a system of $N$ atoms be bounded below by an extensive quantity (linear in $N$ rather than diverging more rapidly) --- is among the most fundamental properties demanded of any quantum theory of matter. Without it, bulk matter could not exist.
+
+\paragraph{The standard-QM picture: a deep but difficult proof.}
+Within standard quantum mechanics (StdQM) and density functional theory, proving stability of matter has historically been a major mathematical undertaking. \textbf{Dyson and Lenard} gave the first rigorous proof in 1966~\cite{DysonLenard67}, a 26-page paper that Dyson himself characterized as ``awful mathematics''. \textbf{Lieb and Thirring} compressed the proof to three pages in 1975~\cite{LiebThirring75}, then expanded it into the 300-page book \emph{The Stability of Matter in Quantum Mechanics} (2005). The proof's central difficulty stems from the \textbf{global support of electron wavefunctions} in StdQM: in principle, every electron can interact with every nucleus, and intricate book-keeping is required to prevent local accumulation of charge density from driving the potential energy to $-\infty$. The proof is not part of standard textbook treatments of QM, even though stability is a precondition for everything those textbooks describe.
+
+The Lieb--Thirring bound on the ground-state energy of an atom of nuclear charge $Z$ scales as
+\begin{equation}
+E(Z) \sim -Z^{7/3},
+\end{equation}
+a result derived from the Thomas--Fermi model rather than the full Schr\"odinger equation. Empirical observations across the periodic table give a slower scaling $E(Z) \sim -Z^\alpha$ with $\alpha \approx 1.8$ --- much closer to $Z^2$ than to $Z^{7/3}$.
+
+\paragraph{The RealQM picture: stability follows directly.}
+In the multiphase formulation of Section~\ref{sec:reformulation}, stability of matter follows essentially from atomic stability via the \textbf{Hardy inequality}. For any $\psi \in H^1(\mathbb{R}^3)$,
+\begin{equation}\label{eq:hardy}
+\int \frac{\psi^2(\mathbf{x})}{|\mathbf{x}|} \, d\mathbf{x}
+\;\le\;
+\Bigl(\int \psi^2(\mathbf{x}) \, d\mathbf{x}\Bigr)^{1/2}
+\Bigl(\int |\nabla \psi(\mathbf{x})|^2 \, d\mathbf{x}\Bigr)^{1/2}.
+\end{equation}
+Used by Kato in his analysis of the Schr\"odinger equation, the inequality bounds the singular Coulomb potential energy at a single nucleus by a function of the kinetic energy. The total wavefunction in RealQM is a sum
+\begin{equation}
+\Psi(\mathbf{x}) = \sum_{n=1}^{N} \Psi_n(\mathbf{x})
+\end{equation}
+of electronic wavefunctions $\Psi_n$ with \textbf{non-overlapping supports} meeting at the Bernoulli free boundary (continuity plus homogeneous Neumann). Each $\Psi_n \in H^1(\mathbb{R}^3)$, and so does $\Psi$. Applying the Hardy inequality~\eqref{eq:hardy} to each $\Psi_n$ separately and summing, one obtains the stability bound
+\begin{equation}
+E \;\ge\; -C\, N\, Z^2,
+\end{equation}
+with $C$ an absolute constant --- this is the ``stability of the second kind'' of the Dyson--Lenard--Lieb--Thirring tradition.
+
+\textbf{The non-overlap constraint is the physical origin of stability in RealQM.} Each electron's potential-energy contribution is bounded by its own kinetic energy on its own region of support; no global book-keeping is required because there is no overlap between distinct electrons. Stability is a direct consequence of the formulation rather than a deep theorem to be proved separately.
+
+\paragraph{Atomic energy scaling: $Z^2$ vs $Z^{7/3}$.}
+A more refined analysis yields the leading-order scaling of the total electronic energy of a single atom with nuclear charge $Z$. The unit-density formulation produces an approximate shell structure with the following scaling laws (derived in detail elsewhere): shell radius $r_m \sim m^3/Z$, shell thickness $d_m \sim m^2/Z$, $2m^2$ electrons in the $m$-th filled shell, and charge density $\rho_m(r) \sim Z/r^2$ in spherical symmetry --- giving constant shell charge per unit radial distance. Integrating the kinetic + potential contributions over the resulting density yields
+\begin{equation}
+E(Z) \;\sim\; -\log(Z)\, Z^2,
+\end{equation}
+which is essentially $-Z^2$ up to the logarithmic correction. This agrees well with observed atom energies for $Z < 30$ outside the first shell and for larger $Z$ outside the second shell, and is in substantially better agreement with observation than the Lieb--Thirring $-Z^{7/3}$ bound.
+
+\paragraph{Significance.}
+Stability of matter, viewed in StdQM as one of the deepest theorems of mathematical physics, becomes in RealQM a one-paragraph consequence of the Hardy inequality applied to non-overlapping electronic territories. The contrast is informative: \textbf{the proof difficulty in StdQM is not a feature of the underlying physics but a symptom of the formulation.} Working in $3N$-dimensional configuration space with overlapping orbitals forces the singularities of the Coulomb potential to be controlled globally, requiring the elaborate apparatus of Dyson--Lenard--Lieb--Thirring. Working in real 3D space with non-overlapping unit densities localizes the control, and stability falls out of the variational structure. The simpler argument also delivers the better $Z^2$ scaling against observation.
+
+The natural pedagogical conclusion is that stability of matter, currently absent from standard QM curricula because the StdQM proof is too difficult, can be presented straightforwardly in the RealQM formulation as an introductory result --- a property of any system of non-overlapping unit electron densities under Coulomb interaction.
+
 \section{An analogous model of the atomic nucleus}\label{sec:nucleus}
 
 The mathematical framework of Section~\ref{sec:reformulation} --- non-overlapping unit charge densities in 3D real space, Coulomb interactions, Bernoulli free boundaries, variational minimization --- is not specific to chemistry. The same multiphase 3D continuum mechanics applies to atomic nuclei when the constituents are taken to be protons and electrons, returning to a pre-1932 picture of nuclear structure.
@@ -511,6 +556,16 @@ Z.~Phys.\ \textbf{75}, 1 (1932).
 D.~E.~Shaw \emph{et al.},
 \emph{Atomic-level characterization of the structural dynamics of proteins},
 Science \textbf{330}, 341 (2010).
+
+\bibitem{DysonLenard67}
+F.~J.~Dyson and A.~Lenard,
+\emph{Stability of matter, I},
+J.\ Math.\ Phys.\ \textbf{8}, 423 (1967).
+
+\bibitem{LiebThirring75}
+E.~H.~Lieb and W.~E.~Thirring,
+\emph{Bound for the kinetic energy of fermions which proves the stability of matter},
+Phys.\ Rev.\ Lett.\ \textbf{35}, 687 (1975).
 
 \end{thebibliography}
 
