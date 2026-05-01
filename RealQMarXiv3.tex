@@ -170,6 +170,25 @@ This has practical consequences. Energy-derivative forces in standard QC require
 
 The reformulation is implemented as \texttt{mol\_fast.js} ($\sim$1600 lines) and \texttt{molecule.js} ($\sim$5300 lines), JavaScript modules that compile WGSL compute shaders to a WebGPU device. \texttt{mol\_fast.js} uses unit-density orbitals with explicit angular splitting; \texttt{molecule.js} uses a Voronoi-partition labelling field. Both run entirely in the browser.
 
+\subsection{The 3-line code: essence of the algorithm}\label{sec:3line}
+
+The full RealQM solver, despite the size of the implementation, has at its mathematical core just three coupled time-evolution equations applied at every grid point and every time step. For $i = 1, \ldots, N$:
+\begin{align}
+\dot{\psi}_i + \mathcal{H}_i\, \psi_i &= 0 \quad\text{in } \Omega_i, \quad \frac{\partial \psi_i}{\partial n} = 0 \quad\text{on } \Gamma_i, \label{eq:3line-psi} \\
+\dot{V}_i - \Delta V_i &= 2\pi\, \psi_i^2 \quad\text{in } \mathbb{R}^3, \label{eq:3line-V} \\
+\dot{\chi}_i + \beta_i\, |\nabla \chi_i| &= 0 \quad\text{in } \mathbb{R}^3, \label{eq:3line-chi}
+\end{align}
+with $\mathcal{H}_i$ from~\eqref{eq:Hi} and $\psi_i$ renormalised to $\int \psi_i^2 = 1$ at every step.
+
+The three equations correspond to the three physical processes the framework needs:
+\begin{itemize}\setlength{\itemsep}{2pt}
+\item \eqref{eq:3line-psi} is \textbf{imaginary-time propagation} of the one-electron Schr\"odinger-like equation: each $\psi_i$ relaxes toward the eigenfunction of $\mathcal{H}_i$ with the lowest eigenvalue, subject to the Bernoulli free-boundary condition. The non-self-consistent piece of $\mathcal{H}_i$ depends only on the kernel potential $W$ and on the instantaneous Hartree potentials $V_j$ from the \emph{other} electrons.
+\item \eqref{eq:3line-V} is the \textbf{Poisson equation} (in parabolic-relaxation form) for each one-electron Hartree potential $V_i$, sourced by $\psi_i^2$. Self-repulsion is excluded by construction because~\eqref{eq:3line-psi} sums $V_j$ only over $j \ne i$.
+\item \eqref{eq:3line-chi} is a \textbf{level-set evolution} of the indicator $\chi_i$ of $\Omega_i$. The speed $\beta_i$ at the inter-electron interface is set by the local jump of $\psi_i^2$ across the boundary, moving the front toward configurations satisfying the Bernoulli condition (continuity of $\psi_i$ at $\Gamma_i$). At convergence, $\dot{\chi}_i = 0$ and the partition is stationary.
+\end{itemize}
+
+Explicit time-stepping of~\eqref{eq:3line-psi}--\eqref{eq:3line-chi} on a fixed real-space grid, with $\psi_i$ renormalised at every step, constitutes the entire solver. Each line is one PDE that becomes one stencil-update kernel on the GPU; everything else (forces on nuclei, dipole moments, Lindemann diagnostics, kernel softening, angular splitting) is post-processing or initialisation. We refer to this as the \emph{three-line code}: the framework's substantive content fits in three lines, and the rest of the implementation is data plumbing around those three lines.
+
 \subsection{Real-space grid}
 
 The simulation domain is a cubic box of side $L$ a.u., discretized as $N \times N \times N$ grid points (typical $N = 100$--200, $L = 10$--22 a.u., grid spacing $h = L/N \approx 0.1$ a.u.). Each electron's density is represented as an $N^3$ array of floats (orbital amplitudes), evolved by imaginary-time propagation (ITP) of the Hamiltonian operator $H = T + V$ on the grid. The Hartree potential $P$ from each density is solved by parallel Poisson diffusion. Self-interaction is removed by subtracting the contribution of each electron's own density from the total Hartree potential.
