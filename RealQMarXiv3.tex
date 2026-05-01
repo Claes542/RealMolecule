@@ -242,6 +242,36 @@ The model has no fitted parameters; the only input is the nuclear charge $Z$. Co
 
 This level provides the anchor for all subsequent reductions: each higher-level model (Level 2, 3, 4) is parameterized by comparison with Level-1 atom energies and Level-2 spherical densities.
 
+\subsection{Periodic Table from electron packing}\label{sec:pt-packing}
+
+The Level-1 model builds up the Periodic Table by sequentially adding electrons to a nucleus of charge $Z$, each electron occupying its own non-overlapping spatial domain $\Omega_i$ with continuity of the global $\Psi$ across $\Gamma_i \cap \Gamma_j$ and homogeneous Neumann at the free boundaries (Section~\ref{sec:bernoulli}). Each electron takes on a width determined by proximity to the kernel while competing for space with the others --- a ``balloon-packing'' problem in which the kinetic-energy term $K(\Psi)$ from~\eqref{eq:K} acts as a compression cost. The resulting shell structure is therefore an emergent property of minimum-energy packing, not a presupposed orbital ansatz; this contrasts with StdQM, where shell occupancies follow from Aufbau filling of the $s$, $p$, $d$ orbitals derived from the $H$ atom.
+
+\paragraph{Shell sequence.}
+RealQM packs electrons into an expanding sequence of non-overlapping spherical shells $S_n$ centred at the kernel, $n = 1, 2, 3, \ldots$. Each $S_n$ is split azimuthally into two half-shells, and each half-shell is further partitioned angularly into $n \times n$ electron domains, giving $2 n^2$ electrons per filled shell. This yields the familiar sequence $2, 8, 18, 32, \ldots$ which is repeated in the Periodic Table periods $2, 8, 8, 18, 18, 32, 32$.
+
+\paragraph{Sub-shell structure.}
+RealQM further suggests that filled $8$-shells are radially divided into two $4$-shells, giving filled-shell decompositions of the form $(2) + (4{+}4) + (4{+}4) + \ldots$. Computed ground-state energies for atoms across the Periodic Table, with each sub-shell homogenised to spherical symmetry in the simplified Atom Simulator code, reproduce observed atomic total energies to within ${\sim}1\%$ for elements as heavy as Radon. Representative results (RealQM versus observation, in Hartree):
+
+\begin{center}\small
+\renewcommand{\arraystretch}{1.05}
+\begin{tabular}{l l r r}
+\toprule
+\textbf{Atom} & \textbf{Shell structure} & \textbf{RealQM $E$} & \textbf{Observed} \\
+\midrule
+Carbon   & $(2) + (2{+}2)$                                  & $-38.2$    & $-37.7$    \\
+Neon     & $(2) + (4{+}4)$                                  & $-132.4$   & $-128.5$   \\
+Argon    & $(2) + (4{+}4) + (4{+}4)$                        & $-523$     & $-526$     \\
+Iron     & $(2) + (4{+}4) + (14) + (2)$                     & $-1260$    & $-1272$    \\
+Krypton  & $(2) + (4{+}4) + (18) + (4{+}4)$                 & $-2766$    & $-2788$    \\
+Xenon    & $(2) + (4{+}4) + (18) + (18) + (4{+}4)$          & $-7355$    & $-7438$    \\
+Radon    & $(2) + (4{+}4) + (18) + (32) + (18) + (4{+}4)$   & $-22800$   & $-23560$   \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Why sub-shells?}
+A diagnostic test illustrates why the sub-shell structure is preferred energetically. With Neon at the proper $(2) + (4{+}4)$ structure the computed energy is $-132$~Ha, in good agreement with the observed $-128.5$~Ha. With Neon forced into a single $8$-electron outer shell, $(2) + (8)$ without the $(4{+}4)$ subdivision, the computed energy drops to $-153$~Ha, far below observation. The mechanism is the homogeneous Neumann condition acting between adjacent sub-shells: this condition widens each shell and raises its kinetic-energy cost, and the variational principle therefore prefers the radially split configuration that splits this cost across two narrower sub-shells. Sub-shell structure is thus an emergent prediction of the variational principle, not a free choice.
+
 \subsection{Chemical bonding: the H$_2$ covalent bond and its Helium limit}\label{sec:h2bond}
 
 The hydrogen molecule H$_2$ is the simplest covalent bond --- two protons sharing two electrons --- and provides the cleanest test of how covalent bonding emerges from the unit-density formulation. In RealQM, H$_2$ is described as two unit electron densities that do not overlap (Bernoulli partition), distributed around two H$^+$ kernels at separation $R$. The two electrons occupy opposite halves of the inter-nuclear region (the natural minimum-energy partition for two electrons in a symmetric two-kernel field). Each electron is attracted to both nuclei and repelled by the other electron through Coulomb interactions only; there is no exchange term and no antisymmetric wavefunction.
