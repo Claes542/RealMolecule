@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
 <div id="controls" style="position:fixed;top:10px;left:10px;z-index:100;background:rgba(0,0,0,0.85);padding:12px 16px;border-radius:8px;border:1px solid #333;max-width:380px">
-  <div style="font-size:14px;color:#ffb74d;margin-bottom:8px">Solid Ar (FCC) &mdash; Pure-Dispersion Limit, Clean Negative Test</div>
+  <div style="font-size:14px;color:#ffb74d;margin-bottom:4px">Solid Ar (FCC) &mdash; Pure-Dispersion Limit, Clean Negative Test</div>
+  <div id="archBadge" style="font-size:12px;color:#888;margin-bottom:8px">arch: ?</div>
   <input type="range" id="tempSlider" min="0" max="3000" step="50" value="0" style="width:250px">
   <span id="tempLabel" style="margin-left:10px;font-size:16px;color:#4fc3f7">0 K</span>
   <div id="status" style="font-size:11px;color:#888;margin-top:4px">Building Ar FCC lattice&hellip;</div>
@@ -31,8 +32,10 @@ window.onerror = function(msg, url, line) {
   var scr = parseFloat(qs.get('scr')) || defaultScr;
   var h = scr / gridN;
   var N2 = Math.round(gridN / 2);
-  var Zker = parseInt(qs.get('Z')) || 8;              // valence electrons (3s²3p⁶ = 8)
+  var Zker = parseInt(qs.get('Z')) || 8;              // valence electrons (3s²3p⁶ = 8 default; use 2 for +2 reduction)
   var rcAr = parseFloat(qs.get('rc')) || 0.7;         // Ar kernel softening (Ne-like inner core)
+  var arch = qs.get('arch') || 'nosplit';             // 'nosplit' (single multi-occupancy orbital, default)
+                                                       // or 'hemi' (split into two half-space orbitals; only valid if Zker is even)
 
   // FCC basis: 4 atoms per conventional cell
   var fccBasis = [[0,0,0],[0.5,0.5,0],[0.5,0,0.5],[0,0.5,0.5]];
@@ -58,42 +61,73 @@ window.onerror = function(msg, url, line) {
     }
   }
 
-  // Build atoms — single atom per "molecule" since Ar is monatomic
-  // No bond constraints, no inner structure to break
+  // Build atoms.
+  //  - 'nosplit': one orbital per Ar nucleus, with Zker electrons
+  //  - 'hemi':    two orbitals per Ar nucleus, each with Zker/2 electrons,
+  //               at the same nuclear position (the variational minimum
+  //               is two non-overlapping half-space densities by symmetry breaking)
   var atoms = [];
   var zArr = [];
   var rcArr = [];
+  var atomToCentre = [];   // for diagnostics: which atom-centre does this orbital belong to
   for (var m = 0; m < atomCenters.length; m++) {
     var cx = atomCenters[m][0], cy = atomCenters[m][1], cz = atomCenters[m][2];
-    atoms.push({i: Math.round(N2 + cx/h), j: Math.round(N2 + cy/h), k: Math.round(N2 + cz/h), Z: Zker, el: 'Ar'});
-    zArr.push(Zker); rcArr.push(rcAr);
+    var ix = Math.round(N2 + cx/h), iy = Math.round(N2 + cy/h), iz = Math.round(N2 + cz/h);
+    if (arch === 'hemi' && Zker % 2 === 0 && Zker >= 2) {
+      var Zhalf = Zker / 2;
+      atoms.push({i: ix, j: iy, k: iz, Z: Zhalf, el: 'Ar'});
+      zArr.push(Zhalf); rcArr.push(rcAr); atomToCentre.push(m);
+      atoms.push({i: ix, j: iy, k: iz, Z: Zhalf, el: 'Ar'});
+      zArr.push(Zhalf); rcArr.push(rcAr); atomToCentre.push(m);
+    } else {
+      atoms.push({i: ix, j: iy, k: iz, Z: Zker, el: 'Ar'});
+      zArr.push(Zker); rcArr.push(rcAr); atomToCentre.push(m);
+    }
   }
 
-  // For ncubes>1: freeze outer-shell atoms
+  // For ncubes>1: freeze every orbital tied to an outer-shell atom
+  // Override with ?freeze=none to leave all atoms free (test cluster stability without cage)
+  var freezeMode = qs.get('freeze') || 'shell';
   var frozen = [];
-  if (ncubes > 1) {
+  if (ncubes > 1 && freezeMode !== 'none') {
     var freezeR = aLat_au * (ncubes/2 - 0.4);
+    var frozenCentres = {};
     for (var m3 = 0; m3 < atomCenters.length; m3++) {
       var d2 = atomCenters[m3][0]*atomCenters[m3][0] + atomCenters[m3][1]*atomCenters[m3][1] + atomCenters[m3][2]*atomCenters[m3][2];
-      if (d2 > freezeR*freezeR) frozen.push(m3);
+      if (d2 > freezeR*freezeR) frozenCentres[m3] = true;
+    }
+    for (var k = 0; k < atomToCentre.length; k++) {
+      if (frozenCentres[atomToCentre[k]]) frozen.push(k);
     }
   }
 
   var nAtoms = atomCenters.length;
-  var nFreeAtoms = nAtoms - frozen.length;
-  log.textContent  = 'Solid Ar (' + ncubes + '×' + ncubes + '×' + ncubes + ' FCC): ' + nAtoms + ' atoms';
+  var frozenCentresCount = {};
+  for (var ff = 0; ff < frozen.length; ff++) frozenCentresCount[atomToCentre[frozen[ff]]] = true;
+  var nFreeAtoms = nAtoms - Object.keys(frozenCentresCount).length;
+  // Update architecture badge (top-left, prominent)
+  var badge = document.getElementById('archBadge');
+  if (badge) {
+    if (arch === 'hemi' && Zker % 2 === 0 && Zker >= 2) {
+      badge.textContent = 'arch: HEMI-SPLIT  (Z=' + Zker + ', 2 orbitals × ' + (Zker/2) + ' electrons per atom)';
+      badge.style.color = '#80deea';
+    } else {
+      badge.textContent = 'arch: NO-SPLIT  (Z=' + Zker + ', single multi-occupancy orbital × ' + Zker + ' electrons)';
+      badge.style.color = '#ffb74d';
+    }
+  }
+
+  log.textContent  = 'Solid Ar (' + ncubes + '×' + ncubes + '×' + ncubes + ' FCC): ' + nAtoms + ' atoms, arch=' + arch;
   log.textContent += '\nLattice a = ' + aLatA.toFixed(2) + ' Å (exp 5.31 Å), monatomic';
   log.textContent += '\nArchitecture: each Ar at Z=+' + Zker + ' kernel, rc=' + rcAr.toFixed(2);
-  log.textContent += '\nTotal explicit electrons: ' + (nAtoms * Zker);
-  log.textContent += '\nFrozen outer shell: ' + frozen.length + ' atoms; free inner: ' + nFreeAtoms;
+  if (arch === 'hemi' && Zker % 2 === 0 && Zker >= 2) {
+    log.textContent += ', hemi-split into 2 orbitals × ' + (Zker/2) + ' electrons each';
+  } else {
+    log.textContent += ', single multi-occupancy orbital × ' + Zker + ' electrons';
+  }
+  log.textContent += '\nTotal explicit electrons: ' + (zArr.reduce(function(a,b){return a+b;},0));
+  log.textContent += '\nFrozen outer shell: ' + Object.keys(frozenCentresCount).length + ' atoms; free inner: ' + nFreeAtoms;
   log.textContent += '\n' + gridN + '^3 grid, screen=' + scr.toFixed(1) + ' au';
-  log.textContent += '\n\nPREDICTION (clean negative):';
-  log.textContent += '\n  Ar is monatomic, closed-shell, spherical kernel + spherical orbital.';
-  log.textContent += '\n  No asymmetric Bernoulli (single-kernel atom — no bond).';
-  log.textContent += '\n  No multi-orbital residual quadrupole (single multi-occupancy orbital).';
-  log.textContent += '\n  No dispersion in RealQM Level 3.';
-  log.textContent += '\n  Cluster expected to fall apart at any T > 0.';
-  log.textContent += '\n  This anchors the calibration at the 100%-missing-dispersion endpoint.';
 
   window.USER_NN = gridN;
   window.USER_ATOMS = atoms;
