@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
 <div id="controls" style="position:fixed;top:10px;left:10px;z-index:100;background:rgba(0,0,0,0.85);padding:12px 16px;border-radius:8px;border:1px solid #333;max-width:380px">
-  <div style="font-size:14px;color:#b39ddb;margin-bottom:8px">Solid He (FCC) &mdash; Most Extreme Pure-Dispersion Test</div>
-  <input type="range" id="tempSlider" min="0" max="3000" step="50" value="0" style="width:250px">
+  <div style="font-size:14px;color:#b39ddb;margin-bottom:4px">Solid He (FCC) &mdash; Most Extreme Pure-Dispersion Test</div>
+  <div id="archBadge" style="font-size:12px;color:#888;margin-bottom:8px">arch: ?</div>
+  <input type="range" id="tempSlider" min="0" max="6000" step="50" value="0" style="width:250px">
   <span id="tempLabel" style="margin-left:10px;font-size:16px;color:#4fc3f7">0 K</span>
   <div id="status" style="font-size:11px;color:#888;margin-top:4px">Building He FCC lattice&hellip;</div>
   <div style="font-size:11px;color:#aaa;margin-top:6px;line-height:1.5">
@@ -81,8 +82,10 @@ window.onerror = function(msg, url, line) {
     }
   }
 
+  // Override default freezing with ?freeze=none to leave all atoms free (for cluster-stability test)
+  var freezeMode = qs.get('freeze') || 'shell';
   var frozen = [];
-  if (ncubes > 1) {
+  if (ncubes > 1 && freezeMode !== 'none') {
     var freezeR = aLat_au * (ncubes/2 - 0.4);
     for (var m3 = 0; m3 < atomCenters.length; m3++) {
       var d2 = atomCenters[m3][0]*atomCenters[m3][0] + atomCenters[m3][1]*atomCenters[m3][1] + atomCenters[m3][2]*atomCenters[m3][2];
@@ -99,6 +102,18 @@ window.onerror = function(msg, url, line) {
   var frozenCentres = {};
   for (var ff = 0; ff < frozen.length; ff++) frozenCentres[atomToCentre[frozen[ff]]] = true;
   nFreeAtoms = nAtoms - Object.keys(frozenCentres).length;
+
+  // Update architecture badge (top-left, prominent)
+  var badge = document.getElementById('archBadge');
+  if (badge) {
+    if (arch === 'hemi') {
+      badge.textContent = 'arch: HEMI-SPLIT  (+2 kernel, 2 orbitals × 1 electron per atom, internal Bernoulli)';
+      badge.style.color = '#80deea';
+    } else {
+      badge.textContent = 'arch: NO-SPLIT  (+2 kernel, single orbital × 2 electrons per atom)';
+      badge.style.color = '#b39ddb';
+    }
+  }
 
   log.textContent  = 'Solid He (' + ncubes + '×' + ncubes + '×' + ncubes + ' FCC): ' + nAtoms + ' atoms, arch=' + arch;
   log.textContent += '\nLattice a = ' + aLatA.toFixed(2) + ' Å, monatomic, +2 kernel, rc=' + rcHe.toFixed(3);
