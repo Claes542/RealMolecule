@@ -97,7 +97,7 @@ struct P {
   N2: u32, _p0: u32, _p1: u32, _p2: u32,
   h: f32, h2: f32, inv_h: f32, inv_h2: f32,
   dt: f32, half_d: f32, h3: f32, TWO_PI: f32,
-  R_out: f32, voronoi: f32, alpha_TF: f32, full_self: f32,
+  R_out: f32, field_x: f32, alpha_TF: f32, full_self: f32,
   atoms: array<vec4<f32>, ${MAX_ATOMS}>,   // (i, j, k, Z)
   rcs:   array<vec4<f32>, ${MAX_ATOMS}>,   // (rc, norm_target, _, _)
 }`;
@@ -335,7 +335,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     + hd * ((uip - uc) * (wip + nw) * 0.5 - (uc - uim) * (nw + wim) * 0.5)
     + hd * ((ujp - uc) * (wjp + nw) * 0.5 - (uc - ujm) * (nw + wjm) * 0.5)
     + hd * ((ukp - uc) * (wkp + nw) * 0.5 - (uc - ukm) * (nw + wkm) * 0.5)
-    + p.dt * (K[id] - Vother - V_TF - V_tilt - V_Pauli) * uc * wc;
+    + p.dt * (K[id] - Vother - V_TF - V_tilt - V_Pauli - p.field_x * x_au) * uc * wc;
   Uo[o + id] = u_new;
 
   // --- Poisson: each P_m sourced by electron m's OWN density u_m² ---
@@ -844,7 +844,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     f[8] = hv; f[9] = h2v; f[10] = 1 / hv; f[11] = 1 / h2v;
     f[12] = dtv; f[13] = half_dv; f[14] = h3v; f[15] = 2 * Math.PI;
     f[16] = rOutEnforce ? 1.0 : 0.0;  // multiplier for R_OUT[m] — toggle r_out cutoffs on/off globally
-    f[17] = 1.0;  // voronoi on
+    f[17] = (window.USER_FIELD_X !== undefined) ? window.USER_FIELD_X : 0.0;  // external uniform E-field along +x: V_ext(x) = E·x added to electron's local potential
     f[18] = (window.USER_ALPHA_TF !== undefined) ? window.USER_ALPHA_TF : 0.0;  // Thomas-Fermi Pauli coeff (default off)
     f[19] = window.USER_FULL_SELF ? 1.0 : 0.0;  // 1 ⇒ keep full self-Hartree for multi-occupancy (no SIC reduction)
     // atoms at offset 80 bytes (index 20 in f32 array)
@@ -1311,6 +1311,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     dipole[1] = dipNy + sums[NELEC + 4];
     dipole[2] = dipNz + sums[NELEC + 5];
     dipoleMag = Math.hypot(dipole[0], dipole[1], dipole[2]);
+    window._mu_x = dipole[0]; window._mu_y = dipole[1]; window._mu_z = dipole[2];
+    window._mu_mag = dipoleMag;
     await sliceReadBuf.mapAsync(GPUMapMode.READ);
     sliceData = new Float32Array(sliceReadBuf.getMappedRange().slice(0));
     sliceReadBuf.unmap();

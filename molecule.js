@@ -59,6 +59,7 @@ const uniqueNuclei = [..._nucMap.values()]; // [{idx, Z_eff, elecIndices}, ...]
 const elecToNuc = new Array(_atoms.length).fill(-1);
 for (const nuc of uniqueNuclei) for (const e of nuc.elecIndices) elecToNuc[e] = nuc.idx;
 let nucPos = _atoms.map(a => [a.i, a.j, a.k !== undefined ? a.k : N2]);
+window._nucPos = nucPos;
 const molNucPos = nucPos.map(p => [...p]);
 
 let E_min = Infinity;
@@ -124,6 +125,7 @@ Object.defineProperty(window, 'langevinKT', {
 });
 let boundarySpeed = 0.5;    // dt_w for free boundary evolution
 let nucVel = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
+window._nucVel = nucVel;
 // Apply initial velocities if specified
 if (window.USER_INIT_VEL) {
   for (let a = 0; a < window.USER_INIT_VEL.length && a < MAX_ATOMS; a++) {
@@ -134,6 +136,9 @@ let nucForce = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
 let nucForceElec = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
 let nucForceNuc = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
 let nucForceTotal = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
+window._nucForceTotal = nucForceTotal;
+window._nucForceElec = nucForceElec;
+window._nucForceNuc  = nucForceNuc;
 let nucStepCount = 0, dynamicsEnabled = window.USER_DYNAMICS || false;
 function nucMass(z) { return ({1:1, 2:16, 3:14, 4:12}[z] || 1) * 1836; }
 
