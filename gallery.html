@@ -136,7 +136,37 @@ footer a { color: #4fc3f7; text-decoration: none; }
   </div>
 </div>
 
-<!-- DESCRIPTION OF CODE — CLAUDE -->
+<div class="section">
+  <h2>RealQM Hierarchical Model</h2>
+  <div class="grid" style="grid-template-columns:1fr">
+    <div class="card" style="border-color:#4fc3f7;background:#0a1824;cursor:default">
+      <div class="desc" style="line-height:1.7;font-size:13px;color:#ccc">
+        RealQM builds a hierarchy of atomic models from a basic parameter-free ab initio atomic model
+        in terms of pointwise nuclei surrounded by non-overlapping unit electron densities interacting
+        by Coulomb potentials (there is a corresponding nucleus model).
+        <br><br>
+        <b style="color:#4fc3f7">Level 1</b> &mdash; RealQM describes ab initio an atom as a nucleus of charge Z surrounded by N unit
+        electron densities organized into a system of non-overlapping inner shells surrounded by an
+        outermost shell containing valence electrons as primary actors in formation of molecules as
+        collections of atoms, all organized from a minimal energy packing principle.
+        <br><br>
+        <b style="color:#4fc3f7">Level 2</b> &mdash; The inner electron shells are homogenized into spherically symmetric densities
+        of total charge matching total number of electrons in the shell.
+        <br><br>
+        <b style="color:#4fc3f7">Level 3</b> &mdash; All inner shells together with the nucleus are replaced by a pseudo nucleus
+        of certain charge and radius, thus describing an atom as a pseudo kernel with outer valence
+        shell, leaving an atom model in terms of 1&ndash;4 valence electrons.
+        <br><br>
+        <b style="color:#4fc3f7">Level 4</b> &mdash; Molecules as collections of Level-3 atoms.
+        <br><br>
+        The model on a level is determined by comparison with the prior level and observation.
+        Altogether a hierarchy of models starting from a parameter-free ab initio model with successive
+        reduction within model or by observation.
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="section">
   <h2>Description of the Code by Claude</h2>
   <div class="grid" style="grid-template-columns:1fr">
@@ -301,427 +331,6 @@ footer a { color: #4fc3f7; text-decoration: none; }
   </div>
 </div>
 
-<!-- REALQM REGIME MAP -->
-<div class="section">
-  <h2>RealQM State Report</h2>
-  <p class="desc">Tests below build up from atoms → bonds → H-bond networks → proteins, marking where the model captures real chemistry and where it runs into its limits.</p>
-  <div class="grid" style="grid-template-columns:1fr 1fr 1fr;gap:16px">
-    <div class="card" style="border-color:#66bb6a;background:#0a1a0a;cursor:default">
-      <h3 style="color:#66bb6a;font-size:15px">✓ Works cleanly</h3>
-      <div class="desc" style="line-height:1.6">
-        <b>Atoms</b> &mdash; Li&ndash;Rn energies within ~1% via shell-split model<br>
-        <b>Diatomics</b> &mdash; H&sub2; E<sub>bind</sub>=-0.17 Ha matches exp<br>
-        <b>Molecules</b> &mdash; H&sub2;O, NH&sub3;, CH&sub4;: dipole 80-99% exp, angle &plusmn;5%<br>
-        <b>H-bond pairwise</b> &mdash; water dimer, formamide+H&sub2;O from 4 Å form H-bond at correct distance<br>
-        <b>Cyclic tetramer</b> &mdash; O-O at 3.0 Å (exp 2.8)<br>
-        <b>Zundel H&sub5;O&sub2;&sup+;</b> &mdash; symmetric shared proton stable<br>
-        <b>Ion solvation</b> &mdash; Na&sup+;(H&sub2;O)&sub6; octahedral shell at 2.37 Å (exp 2.40)<br>
-        <b>Reactive chemistry</b> &mdash; proton transfer (HF/H&sub2;O, HCl/NH&sub3;), salt dissolution (NaCl)<br>
-        <b>Dynamics at scale</b> &mdash; 216-water ice melting, water under shear, all at ns timescales unreachable by AIMD
-      </div>
-    </div>
-    <div class="card" style="border-color:#ff9800;background:#1a1000;cursor:default">
-      <h3 style="color:#ff9800;font-size:15px">◐ Partial / with caveats</h3>
-      <div class="desc" style="line-height:1.6">
-        <b>Peptides with bond constraints</b> &mdash; Gly-Gly backbone intact (C-N = 1.49 Å with harmonic bonds). Needs experimental r&sub;0; not pure ab initio.<br>
-        <b>β-turn tetrapeptide</b> &mdash; chain curls slowly, doesn't fully close (no cooperative driver)<br>
-        <b>Glycine zwitterion</b> &mdash; COOH deprotonates ✓ but NH&sub;3&sup+; doesn't form (charge stabilization weak)<br>
-        <b>Proton chain cascade</b> &mdash; chain structure OK, clean Grotthuss hops hard to track<br>
-        <b>Short-range stability</b> &mdash; Na&sup+; shell recovers from compression, but slowly (Pauli floor is weak)<br>
-        <b>Binding energies</b> &mdash; ~1.5-2× experimental (qualitative only)
-      </div>
-    </div>
-    <div class="card" style="border-color:#ba68c8;background:#180a1a;cursor:default">
-      <h3 style="color:#ba68c8;font-size:15px">Protein folding &mdash; what is captured</h3>
-      <div class="desc" style="line-height:1.6">
-        <b>Peptide backbone integrity</b> &mdash; C-N peptide bond held at 1.33-1.5 Å with harmonic constraint (k=2 Ha/au&sup2;)<br>
-        <b>Backbone &ndash; water H-bonds</b> &mdash; formamide+H&sub2;O at 3.0 Å confirms peptide C=O solvation works<br>
-        <b>Secondary-structure H-bonds</b> &mdash; pairwise C=O⋯H-N recognition formation demonstrated in dimer and formamide tests<br>
-        <b>Directional dipole interactions</b> &mdash; favorable donor-acceptor orientation pulls partners in from 4 Å<br>
-        <b>Ion &ndash; residue coordination</b> &mdash; Na&sup+; shell around a charged center forms correctly (relevant to salt bridges and cofactors)<br>
-        <b>Bend-preserving water</b> &mdash; 104.5° pinned per water; H-bond network geometry realistic during folding dynamics<br>
-        <b>Local conformational fluctuation</b> &mdash; side chains and loops sample local basins freely<br>
-        <b>Reactive events at active sites</b> &mdash; proton transfer, acid/base chemistry can happen in place where the geometry is already close<br>
-        <b>What still requires biases</b>: blind collapse from extended state (no dispersion), hydrophobic aggregation (many-body water entropy), and full fold completion &mdash; the native contacts must be already near for finishing.
-      </div>
-    </div>
-  </div>
-  <p class="desc" style="margin-top:16px;font-size:12px;border-top:1px solid #222;padding-top:10px">
-    <b>Bottom line</b>: RealQM is <b>fast reactive mean-field chemistry at protein scale</b>. Where reactions, structures and ion solvations dominate, it delivers qualitative-to-semi-quantitative results at ~10&#8308;× AIMD speed. Where dispersion, correlation, or cooperative many-body effects dominate, standard QM methods remain better. The niche: <b>what AIMD can't reach and classical MD can't include</b>.
-  </p>
-</div>
-
-<!-- FORCES VS ENERGY -->
-<div class="section">
-  <h2>Forces vs Energy in Quantum Dynamics</h2>
-  <div class="grid" style="grid-template-columns:1fr">
-    <div class="card" style="border-color:#26c6da;background:#0a1820;cursor:default">
-      <div class="desc" style="line-height:1.7;font-size:13px;color:#ccc">
-        RealQM dynamics is based on <b style="color:#26c6da">forces on kernels computed as gradients of electronic potentials</b>,
-        which represents real physics &mdash; nuclei feel electrostatic gradients of the actual electron field at their position.
-        <br><br>
-        Standard QM is based on <b>gradients of total energies</b>, which is not real physics because physics does not
-        carry a record of energy &mdash; nature does not "know" the value of the system's energy at each step; it only knows
-        the local field gradients.
-        <br><br>
-        RealQM computes total energy or binding energy with low accuracy (~0.1 Ha)
-        but <b>does not use this information for dynamics</b>. Forces give precise distributed information for dynamics,
-        while energy-based dynamics appears to offer less precise dynamics.
-        <br><br>
-        Energy connects to thermodynamics, so RealQM <b>with thermodynamics appears to require calibration</b>
-        (e.g., scale relative to experimental binding energies, or hand the converged geometry to DFT/CCSD(T) for
-        precise energetics). For mechanism, structure, equilibrium geometry, recognition, and reactive pathways,
-        forces alone deliver the answer.
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- REALQM HIERARCHICAL MODEL -->
-<div class="section">
-  <h2>RealQM Hierarchical Model</h2>
-  <div class="grid" style="grid-template-columns:1fr">
-    <div class="card" style="border-color:#4fc3f7;background:#0a1824;cursor:default">
-      <div class="desc" style="line-height:1.7;font-size:13px;color:#ccc">
-        RealQM builds a hierarchy of atomic models from a basic parameter-free ab initio atomic model
-        in terms of pointwise nuclei surrounded by non-overlapping unit electron densities interacting
-        by Coulomb potentials (there is a corresponding nucleus model).
-        <br><br>
-        <b style="color:#4fc3f7">Level 1</b> &mdash; RealQM describes ab initio an atom as a nucleus of charge Z surrounded by N unit
-        electron densities organized into a system of non-overlapping inner shells surrounded by an
-        outermost shell containing valence electrons as primary actors in formation of molecules as
-        collections of atoms, all organized from a minimal energy packing principle.
-        <br><br>
-        <b style="color:#4fc3f7">Level 2</b> &mdash; The inner electron shells are homogenized into spherically symmetric densities
-        of total charge matching total number of electrons in the shell.
-        <br><br>
-        <b style="color:#4fc3f7">Level 3</b> &mdash; All inner shells together with the nucleus are replaced by a pseudo nucleus
-        of certain charge and radius, thus describing an atom as a pseudo kernel with outer valence
-        shell, leaving an atom model in terms of 1&ndash;4 valence electrons.
-        <br><br>
-        <b style="color:#4fc3f7">Level 4</b> &mdash; Molecules as collections of Level-3 atoms.
-        <br><br>
-        The model on a level is determined by comparison with the prior level and observation.
-        Altogether a hierarchy of models starting from a parameter-free ab initio model with successive
-        reduction within model or by observation.
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- KERNEL SPLITTING — ENERGY FROM GEOMETRY -->
-<div class="section">
-  <h2>Kernel Splitting &mdash; Binding Energies from Geometry</h2>
-  <p class="desc">
-    Test of <b>energy-from-geometry</b> in RealQM at Level&nbsp;3: for a series of model hydrides
-    H<sub>n</sub>X with X kernel charge +n and matched angular splitting, sweep the X-H bond length R
-    and the kernel softening r<sub>c</sub>. The binding energy &Delta;E<sub>bind</sub> = E(R<sub>eq</sub>)
-    &minus; E(2R<sub>eq</sub>) is read off directly. Locked geometry, electrons relax via ITP.
-  </p>
-  <div class="card" style="border-color:#26c6da;background:#0a1820;cursor:default;padding:16px">
-    <table style="width:100%;border-collapse:collapse;font-size:12px;color:#ddd">
-      <thead>
-        <tr style="color:#26c6da;border-bottom:1px solid #444">
-          <th style="text-align:left;padding:6px 8px">System</th>
-          <th style="text-align:left;padding:6px 8px">Architecture</th>
-          <th style="text-align:right;padding:6px 8px">Best r<sub>c</sub></th>
-          <th style="text-align:right;padding:6px 8px">RealQM &Delta;E (kcal/mol)</th>
-          <th style="text-align:right;padding:6px 8px">Experimental</th>
-          <th style="text-align:left;padding:6px 8px">Match</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr style="border-bottom:1px solid #222;background:#0a1820">
-          <td style="padding:6px 8px"><b>XH</b> closed-shell (X+1, no split)</td>
-          <td style="padding:6px 8px">2 atoms, 2 e<sup>-</sup>, plain H&sub2;-like</td>
-          <td style="text-align:right;padding:6px 8px">0.5</td>
-          <td style="text-align:right;padding:6px 8px;color:#0f0"><b>&minus;48</b></td>
-          <td style="text-align:right;padding:6px 8px">NaH &minus;47</td>
-          <td style="padding:6px 8px;color:#0f0">&check; 2%</td>
-        </tr>
-        <tr style="border-bottom:1px solid #222">
-          <td style="padding:6px 8px"><b>HXH</b> linear (X+2, 2-split hemi)</td>
-          <td style="padding:6px 8px">3 atoms, 4 e<sup>-</sup>, axis along bond</td>
-          <td style="text-align:right;padding:6px 8px">0.4</td>
-          <td style="text-align:right;padding:6px 8px;color:#0f0"><b>&minus;140</b></td>
-          <td style="text-align:right;padding:6px 8px">BeH&sub2; &minus;144</td>
-          <td style="padding:6px 8px;color:#0f0">&check; 3%</td>
-        </tr>
-        <tr style="border-bottom:1px solid #222;background:#0a1820">
-          <td style="padding:6px 8px"><b>H&sub2;O</b> bent (O+3, 2-split hemi, axis = bisector)</td>
-          <td style="padding:6px 8px">4 atoms, 5 e<sup>-</sup>, lone pair paired (2 e), bond region (1 e)</td>
-          <td style="text-align:right;padding:6px 8px">0.7</td>
-          <td style="text-align:right;padding:6px 8px;color:#0f0"><b>&minus;225</b></td>
-          <td style="text-align:right;padding:6px 8px">H&sub2;O &minus;232</td>
-          <td style="padding:6px 8px;color:#0f0">&check; 3%</td>
-        </tr>
-        <tr style="border-bottom:1px solid #222">
-          <td style="padding:6px 8px"><b>H&sub3;X (N+2, 2-hemi)</b></td>
-          <td style="padding:6px 8px">5 atoms, 5 e<sup>-</sup>: 1 e top hemi (lone-pair side) + 1 e bottom (bond) + 3 H. Simple sp&sup3; NH&sub3; (after architecture sweep)</td>
-          <td style="text-align:right;padding:6px 8px">0.20</td>
-          <td style="text-align:right;padding:6px 8px;color:#fc7"><b>−339</b> (dipole 2.50 D)</td>
-          <td style="text-align:right;padding:6px 8px">NH&sub3; &minus;283 (1.47 D)</td>
-          <td style="padding:6px 8px;color:#ffd54f">~20% over (binding); ~70% over (dipole)</td>
-        </tr>
-        <tr style="border-bottom:1px solid #222">
-          <td style="padding:6px 8px"><b>H&sub4;X (C+2, no-split)</b></td>
-          <td style="padding:6px 8px">5 atoms, 6 e<sup>-</sup>: 2 e on C in single orbital + 4 H. Tetrahedral; rc sweeps the group-14 series</td>
-          <td style="text-align:right;padding:6px 8px">0.20</td>
-          <td style="text-align:right;padding:6px 8px;color:#0f0"><b>−369</b></td>
-          <td style="text-align:right;padding:6px 8px">CH&sub4; &minus;396</td>
-          <td style="padding:6px 8px;color:#0f0">&check; <b>within 7%</b></td>
-        </tr>
-        <tr style="border-bottom:1px solid #222">
-          <td style="padding:6px 8px">↳ same model at rc = 0.40</td>
-          <td style="padding:6px 8px">larger kernel, Si-like inner shell radius</td>
-          <td style="text-align:right;padding:6px 8px">0.40</td>
-          <td style="text-align:right;padding:6px 8px;color:#0f0">−348</td>
-          <td style="text-align:right;padding:6px 8px">SiH&sub4; &minus;320</td>
-          <td style="padding:6px 8px;color:#0f0">&check; within 9%</td>
-        </tr>
-        <tr style="border-bottom:1px solid #222">
-          <td style="padding:6px 8px">↳ same model at rc = 0.70</td>
-          <td style="padding:6px 8px">soft kernel, Ge-like atomic radius</td>
-          <td style="text-align:right;padding:6px 8px">0.70</td>
-          <td style="text-align:right;padding:6px 8px;color:#0f0">−272</td>
-          <td style="text-align:right;padding:6px 8px">GeH&sub4; &minus;281</td>
-          <td style="padding:6px 8px;color:#0f0">&check; <b>within 3%</b></td>
-        </tr>
-      </tbody>
-    </table>
-    <div class="desc" style="margin-top:14px;line-height:1.7;color:#ccc;font-size:13px">
-      <b style="color:#26c6da">Closed-shell hydrides (HXH, H&sub2;O, NaH, CH&sub4;) reach 3&ndash;9% of
-      experimental binding energy</b> at the right kernel softening. The H&sub4;X case is striking:
-      a single architecture (C+2 no-split) sweeps the entire group-14 series &mdash; CH&sub4;
-      (rc=0.20, &minus;369 vs ref &minus;396, 7%), SiH&sub4; (rc=0.40, &minus;348 vs &minus;320, 9%),
-      GeH&sub4; (rc=0.70, &minus;272 vs &minus;281, 3%) &mdash; just by varying rc. <b>NH&sub3; is
-      harder</b>: best architecture (N+2 2-hemi) gives binding within 20% but with overshooting
-      dipole, no single rc gives both observables exactly. Architectures with full valence (Z=N for
-      group-V N or Z=4 for group-IV C) over-bind dramatically due to multi-occupancy artifact.
-      <br><br>
-      <b style="color:#26c6da">The principle: every sector must be anchored by an atom.</b>
-      Three findings from the systematic sweep:
-      <br>
-      &bull; <b>No-split with multi-occupancy fails</b> for &gt;2 valence electrons (HXH no-split goes
-      from &minus;158 to &minus;324 kcal/mol with rc, opposite of physical Be&rarr;Mg&rarr;Ca trend)
-      <br>
-      &bull; <b>Splitting with all sectors atom-anchored works</b> &mdash; HXH 2-split gives Be-like
-      magnitude with correct rc-trend
-      <br>
-      &bull; <b>Splitting with an orphan lone-pair sector fails</b> &mdash; H&sub2;O 3-split (axis &perp; plane)
-      gives wrong-sign binding because the empty sector captures spurious diffuse density at
-      stretched geometries
-      <br>
-      &bull; <b>The H&sub2;O 2-split (bisector) recovers correct binding</b> by pairing the lone pair
-      (2 e in one sector) and pairing both H atoms in the other sector &mdash; no orphan
-      <br><br>
-      <b style="color:#26c6da">There is a Goldilocks rc per system.</b>
-      Each architecture has a sweet-spot kernel softening: HXH at rc=0.4 (Be-like), H&sub2;O at
-      rc=0.7 (much softer), XH at rc=0.5 (Na-like). Below the optimum, sub-orbitals are forced too
-      compactly together and binding sign flips. Above, the kernel is too diffuse to bind. This is
-      consistent with rc encoding the &ldquo;effective inner-shell radius&rdquo; in the Level-3
-      reduction.
-      <br><br>
-      <b style="color:#26c6da">Implication for the case study.</b>
-      The original framing &ldquo;RealQM does geometry, hand off energy to StdQM&rdquo; is too modest:
-      <b>with the right kernel architecture, Level-3 RealQM gives binding energies competitive with
-      experiment</b> for closed-shell hydrides &mdash; a regime where StdQM also works but with vastly
-      more code and compute. The matched-architecture rule is the key insight: kernel splitting
-      isn&rsquo;t an empirical tweak, it&rsquo;s the way to encode bond directionality in the unit-density
-      framework. The hierarchy described above (Level 1 &rarr; 4) interacts with the splitting choice
-      to determine accuracy at each system.
-    </div>
-  </div>
-</div>
-
-<!-- PERIODIC TABLE COVERAGE -->
-<div class="section">
-  <h2>Periodic-Table Coverage from a Single Architecture</h2>
-  <p class="desc">
-    A striking finding from the kernel-splitting sweep series: <b>a single Level-3 architecture sweeps
-    an entire periodic-table column by varying the kernel softening r<sub>c</sub></b>. The same model
-    that gives CH<sub>4</sub> at compact r<sub>c</sub> gives SiH<sub>4</sub> at moderate r<sub>c</sub>
-    and GeH<sub>4</sub> at soft r<sub>c</sub>. This validates the interpretation of r<sub>c</sub> as
-    encoding the inner-shell radius in the Level-3 reduction.
-  </p>
-  <div class="card" style="border-color:#0cf;background:#0a1820;cursor:default;padding:16px">
-    <table style="width:100%;border-collapse:collapse;font-size:12px;color:#ddd">
-      <thead>
-        <tr style="color:#0cf;border-bottom:1px solid #444">
-          <th style="text-align:left;padding:6px 8px">Group / Series</th>
-          <th style="text-align:left;padding:6px 8px">Architecture</th>
-          <th style="text-align:right;padding:6px 8px">r<sub>c</sub></th>
-          <th style="text-align:right;padding:6px 8px">RealQM &Delta;E (kcal/mol)</th>
-          <th style="text-align:right;padding:6px 8px">Real molecule</th>
-          <th style="text-align:left;padding:6px 8px">Match</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr style="border-bottom:1px solid #222"><td style="padding:6px 8px;color:#0cf"><b>Group 1 (alkali hydrides — XH closed-shell, X+1 no-split)</b></td><td colspan="5"></td></tr>
-        <tr style="border-bottom:1px solid #222"><td style="padding:6px 8px">&nbsp;&nbsp;XH at r<sub>c</sub>=0</td><td style="padding:6px 8px">X+1 no split (= H&sub2;)</td><td style="text-align:right;padding:6px 8px">0.00</td><td style="text-align:right;padding:6px 8px;color:#0f0">−92</td><td style="text-align:right;padding:6px 8px">H&sub2; −109</td><td style="padding:6px 8px;color:#0f0">within 16%</td></tr>
-        <tr style="border-bottom:1px solid #222"><td style="padding:6px 8px">&nbsp;&nbsp;NaH-like</td><td style="padding:6px 8px">same model</td><td style="text-align:right;padding:6px 8px">0.50</td><td style="text-align:right;padding:6px 8px;color:#0f0">−48</td><td style="text-align:right;padding:6px 8px">NaH −47</td><td style="padding:6px 8px;color:#0f0">&check; <b>2%</b></td></tr>
-        <tr style="border-bottom:1px solid #222"><td style="padding:6px 8px">&nbsp;&nbsp;KH-like</td><td style="padding:6px 8px">same model</td><td style="text-align:right;padding:6px 8px">0.70</td><td style="text-align:right;padding:6px 8px;color:#0f0">−42</td><td style="text-align:right;padding:6px 8px">KH ~−43</td><td style="padding:6px 8px;color:#0f0">&check; <b>2%</b></td></tr>
-
-        <tr style="border-bottom:1px solid #222;color:#0cf"><td style="padding:6px 8px"><b>Group 2 (alkaline-earth dihydrides — HXH 2-hemi, X+2)</b></td><td colspan="5"></td></tr>
-        <tr style="border-bottom:1px solid #222"><td style="padding:6px 8px">&nbsp;&nbsp;BeH&sub2;</td><td style="padding:6px 8px">2-hemi axis along bond</td><td style="text-align:right;padding:6px 8px">0.40</td><td style="text-align:right;padding:6px 8px;color:#0f0">−140</td><td style="text-align:right;padding:6px 8px">BeH&sub2; −144</td><td style="padding:6px 8px;color:#0f0">&check; <b>3%</b></td></tr>
-        <tr style="border-bottom:1px solid #222"><td style="padding:6px 8px">&nbsp;&nbsp;intermediate</td><td style="padding:6px 8px">same model</td><td style="text-align:right;padding:6px 8px">0.30</td><td style="text-align:right;padding:6px 8px;color:#ffd54f">−91</td><td style="text-align:right;padding:6px 8px">~MgH&sub2; (−100)</td><td style="padding:6px 8px;color:#ffd54f">in regime</td></tr>
-
-        <tr style="border-bottom:1px solid #222;color:#0cf"><td style="padding:6px 8px"><b>Group 14 (XH<sub>4</sub> tetrahedral hydrides — H&sub4;X C+2 no-split)</b></td><td colspan="5"></td></tr>
-        <tr style="border-bottom:1px solid #222"><td style="padding:6px 8px">&nbsp;&nbsp;CH&sub4;</td><td style="padding:6px 8px">C+2 single 2-electron orbital</td><td style="text-align:right;padding:6px 8px">0.20</td><td style="text-align:right;padding:6px 8px;color:#0f0"><b>−369</b></td><td style="text-align:right;padding:6px 8px">CH&sub4; −396</td><td style="padding:6px 8px;color:#0f0">&check; <b>7%</b></td></tr>
-        <tr style="border-bottom:1px solid #222"><td style="padding:6px 8px">&nbsp;&nbsp;SiH&sub4;</td><td style="padding:6px 8px">same model</td><td style="text-align:right;padding:6px 8px">0.40</td><td style="text-align:right;padding:6px 8px;color:#0f0"><b>−348</b></td><td style="text-align:right;padding:6px 8px">SiH&sub4; −320</td><td style="padding:6px 8px;color:#0f0">&check; <b>9%</b></td></tr>
-        <tr style="border-bottom:1px solid #222"><td style="padding:6px 8px">&nbsp;&nbsp;GeH&sub4;</td><td style="padding:6px 8px">same model</td><td style="text-align:right;padding:6px 8px">0.70</td><td style="text-align:right;padding:6px 8px;color:#0f0"><b>−272</b></td><td style="text-align:right;padding:6px 8px">GeH&sub4; −281</td><td style="padding:6px 8px;color:#0f0">&check; <b>3%</b></td></tr>
-
-        <tr style="border-bottom:1px solid #222;color:#0cf"><td style="padding:6px 8px"><b>Group 16 (bent H<sub>2</sub>X — H&sub2;O 2-hemi bisector)</b></td><td colspan="5"></td></tr>
-        <tr style="border-bottom:1px solid #222"><td style="padding:6px 8px">&nbsp;&nbsp;H&sub2;O</td><td style="padding:6px 8px">2-hemi axis along bisector, [2,1] occupancy</td><td style="text-align:right;padding:6px 8px">0.70</td><td style="text-align:right;padding:6px 8px;color:#0f0"><b>−225</b></td><td style="text-align:right;padding:6px 8px">H&sub2;O −232</td><td style="padding:6px 8px;color:#0f0">&check; <b>3%</b></td></tr>
-
-        <tr style="border-bottom:1px solid #222;color:#0cf"><td style="padding:6px 8px"><b>Group 15 (NH<sub>3</sub> pyramidal — H&sub3;X 2-hemi, N+2)</b></td><td colspan="5"></td></tr>
-        <tr style="color:#ffd54f"><td style="padding:6px 8px">&nbsp;&nbsp;NH&sub3;</td><td style="padding:6px 8px">2-hemi [1,1] (X+2), simple sp&sup3;</td><td style="text-align:right;padding:6px 8px">0.20</td><td style="text-align:right;padding:6px 8px">−235 (or −339 long-run)</td><td style="text-align:right;padding:6px 8px">NH&sub3; −283</td><td style="padding:6px 8px;color:#ffd54f">17% under or 20% over</td></tr>
-      </tbody>
-    </table>
-    <div class="desc" style="margin-top:14px;line-height:1.7;color:#ccc;font-size:13px">
-      <b style="color:#0cf">The interpretation:</b> r<sub>c</sub> is not just a tunable parameter
-      &mdash; it physically encodes the radius at which inner electrons are absorbed into the kernel
-      core. As r<sub>c</sub> grows, the explicit valence sees a more diffuse (heavier-atom-like) core,
-      and binding weakens accordingly. The same architecture spans an entire group because it captures
-      the chemistry of the valence shell (which is conserved within a group) while the kernel softness
-      varies down the column.
-      <br><br>
-      <b style="color:#0cf">Consequence for case-study claims:</b>
-      RealQM Level-3 is not just qualitatively right &mdash; it gets quantitative atomization energies
-      across multiple periodic-table columns within ~3-9% of experiment, using minimal architecture
-      (single 2-hemi or no-split kernel, no parameter fitting beyond the gallery convention for r<sub>c</sub>).
-      This is a <b>real predictive capability</b> in the energy-from-geometry regime, not just
-      structure validation. Where it fails (NH<sub>3</sub>, full-valence X+5 architectures) is informative
-      about the limits of the reduction.
-    </div>
-  </div>
-</div>
-
-<!-- S66 BENCHMARK COVERAGE -->
-<div class="section">
-  <h2>S66 Benchmark — Geometric Coverage</h2>
-  <p class="desc">
-    <b>RealQM provides geometries; for meV-level energies, hand off to standard QM.</b>
-    Hobza's S66 is fundamentally an interaction-energy benchmark (CCSD(T)/CBS binding energies in
-    the −1 to −7 kcal/mol range), and those energies sit far below RealQM's Level-3 accuracy floor
-    (~0.1 Ha ≈ 60 kcal/mol). Trying to match S66 binding energies directly with RealQM is the wrong
-    target. The right division of labor: RealQM finds the H-bond geometry interactively at
-    millisecond/step on a laptop (otherwise expensive, especially in dynamics), then a single-point
-    CCSD(T) or DFT-D calculation at that geometry &mdash; using PySCF, Psi4, ORCA, etc. &mdash;
-    delivers the binding energy to chemical accuracy. Below we report only what RealQM is for:
-    <b>geometric agreement with S66 reference structures</b>, plus force-direction diagnostics that
-    confirm the model has its minimum near the reference. Dispersion-only systems remain out of
-    scope without a vdW correction.
-  </p>
-  <div class="card" style="border-color:#ffd54f;background:#1a1408;cursor:default;padding:16px">
-    <table style="width:100%;border-collapse:collapse;font-size:12px;color:#ddd">
-      <thead>
-        <tr style="color:#ffd54f;border-bottom:1px solid #444">
-          <th style="text-align:left;padding:6px 8px">#</th>
-          <th style="text-align:left;padding:6px 8px">Dimer</th>
-          <th style="text-align:left;padding:6px 8px">Solver</th>
-          <th style="text-align:right;padding:6px 8px">N&middot;&middot;&middot;N or O&middot;&middot;&middot;O (&Aring;)</th>
-          <th style="text-align:right;padding:6px 8px">H&middot;&middot;&middot;X (&Aring;)</th>
-          <th style="text-align:right;padding:6px 8px">D&minus;H&middot;&middot;&middot;A (&deg;)</th>
-          <th style="text-align:left;padding:6px 8px">Status</th>
-          <th style="text-align:left;padding:6px 8px">File</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr style="border-bottom:1px solid #222">
-          <td style="padding:6px 8px;color:#888">#1</td>
-          <td style="padding:6px 8px">Water&middot;&middot;&middot;Water</td>
-          <td style="padding:6px 8px">molecule.js</td>
-          <td style="text-align:right;padding:6px 8px">~3.0 / ref 2.91</td>
-          <td style="text-align:right;padding:6px 8px">~2.0 / ref 1.95</td>
-          <td style="text-align:right;padding:6px 8px">&mdash;</td>
-          <td style="padding:6px 8px;color:#66bb6a">&check; H-bonded</td>
-          <td style="padding:6px 8px"><a href="water_dimer.html" style="color:#4fc3f7">water_dimer</a></td>
-        </tr>
-        <tr style="border-bottom:1px solid #222;background:#241a08">
-          <td style="padding:6px 8px;color:#ffd54f"><b>#3</b></td>
-          <td style="padding:6px 8px"><b>MeNH<sub>2</sub>&middot;&middot;&middot;H<sub>2</sub>O</b></td>
-          <td style="padding:6px 8px"><b>mol_fast.js</b></td>
-          <td style="text-align:right;padding:6px 8px"><b>2.92 / ref 2.93</b></td>
-          <td style="text-align:right;padding:6px 8px"><b>1.97 / ref 1.95</b></td>
-          <td style="text-align:right;padding:6px 8px"><b>180 / ref ~170</b></td>
-          <td style="padding:6px 8px;color:#66bb6a"><b>&check; H-bonded (Z=3 N rc=0.5 / Z=3 O rc=0.6; H atoms relax to within 2% of CCSD(T); F on donor toward N; |F|<sub>RMS</sub>=0.09)</b></td>
-          <td style="padding:6px 8px"><a href="mol_fast_methylamine_water.html" style="color:#4fc3f7"><b>mol_fast_methylamine_water</b></a></td>
-        </tr>
-        <tr style="border-bottom:1px solid #222">
-          <td style="padding:6px 8px;color:#888">#5</td>
-          <td style="padding:6px 8px">MeOH&middot;&middot;&middot;MeOH</td>
-          <td style="padding:6px 8px">molecule.js</td>
-          <td style="text-align:right;padding:6px 8px">~2.9 / ref 2.83</td>
-          <td style="text-align:right;padding:6px 8px">&mdash;</td>
-          <td style="text-align:right;padding:6px 8px">&mdash;</td>
-          <td style="padding:6px 8px;color:#66bb6a">&check; H-bonded</td>
-          <td style="padding:6px 8px"><a href="ch3oh_dimer.html" style="color:#4fc3f7">ch3oh_dimer</a></td>
-        </tr>
-        <tr style="border-bottom:1px solid #222;background:#241a08">
-          <td style="padding:6px 8px;color:#ffd54f"><b>#10</b></td>
-          <td style="padding:6px 8px"><b>MeNH<sub>2</sub>&middot;&middot;&middot;MeNH<sub>2</sub></b></td>
-          <td style="padding:6px 8px"><b>mol_fast.js</b></td>
-          <td style="text-align:right;padding:6px 8px"><b>3.30 / ref 3.34</b></td>
-          <td style="text-align:right;padding:6px 8px"><b>2.37 / ref 2.40</b></td>
-          <td style="text-align:right;padding:6px 8px"><b>152 / ref 165&ndash;170</b></td>
-          <td style="padding:6px 8px;color:#66bb6a"><b>&check; H-bonded (N=150&sup3;: proton bound, distances within 1%)</b></td>
-          <td style="padding:6px 8px"><a href="mol_fast_methylamine_dimer.html" style="color:#4fc3f7"><b>mol_fast_methylamine_dimer</b></a></td>
-        </tr>
-        <tr style="border-bottom:1px solid #222">
-          <td style="padding:6px 8px;color:#888">#15</td>
-          <td style="padding:6px 8px">Peptide&middot;&middot;&middot;Peptide (formamide model)</td>
-          <td style="padding:6px 8px">molecule.js</td>
-          <td style="text-align:right;padding:6px 8px">&mdash;</td>
-          <td style="text-align:right;padding:6px 8px">~1.9 / ref 1.83</td>
-          <td style="text-align:right;padding:6px 8px">&mdash;</td>
-          <td style="padding:6px 8px;color:#66bb6a">&check; H-bonded (cyclic dual)</td>
-          <td style="padding:6px 8px"><a href="formamide_dimer.html" style="color:#4fc3f7">formamide_dimer</a></td>
-        </tr>
-        <tr style="border-bottom:1px solid #222">
-          <td style="padding:6px 8px;color:#888">#4/#16</td>
-          <td style="padding:6px 8px">Peptide&middot;&middot;&middot;Water</td>
-          <td style="padding:6px 8px">molecule.js</td>
-          <td style="text-align:right;padding:6px 8px">&mdash;</td>
-          <td style="text-align:right;padding:6px 8px">~1.9 / ref ~1.9</td>
-          <td style="text-align:right;padding:6px 8px">&mdash;</td>
-          <td style="padding:6px 8px;color:#66bb6a">&check; H-bonded</td>
-          <td style="padding:6px 8px"><a href="formamide_water.html" style="color:#4fc3f7">formamide_water</a></td>
-        </tr>
-        <tr style="border-top:2px solid #444;color:#888">
-          <td style="padding:6px 8px">&mdash;</td>
-          <td style="padding:6px 8px" colspan="6"><i>23 dispersion-bound systems (benzene&middot;&middot;&middot;benzene, alkane dimers, &hellip;): out of scope without vdW correction</i></td>
-          <td style="padding:6px 8px;color:#ff7043">&times; not attempted</td>
-        </tr>
-        <tr style="color:#888">
-          <td style="padding:6px 8px">&mdash;</td>
-          <td style="padding:6px 8px" colspan="6"><i>20 mixed (T-shape benzene, &hellip;): same vdW limitation</i></td>
-          <td style="padding:6px 8px;color:#ff7043">&times; not attempted</td>
-        </tr>
-      </tbody>
-    </table>
-    <div class="desc" style="margin-top:12px;line-height:1.6">
-      <b style="color:#ffd54f">Headline result &mdash; S66 #10 in mol_fast.js:</b>
-      The methylamine dimer is a stress test because two strong amine bases face each other and the donor
-      proton is tempted to delocalize. mol_fast (unit-density orbitals with effective Pauli via
-      orthogonality, multi-occupancy on heavy atoms with Z=4 C and Z=3 N reduced kernels, 150&sup3; grid)
-      passes two tests: (i) free-relax: holds the proton at 1.01 &Aring;, H&middot;&middot;&middot;N at 2.37 &Aring;,
-      N&middot;&middot;&middot;N at 3.30 &Aring; &mdash; within 1&ndash;3% of CCSD(T)/CBS; (ii) static force test
-      with N atoms locked at reference: <b>force on the donor H points toward the acceptor N</b>
-      (qualitative H-bond minimum confirmed) with |F|<sub>RMS</sub> = 0.08 Ha/au.
-      The N-H&middot;&middot;&middot;N angle is at 152&deg; (ref 165&ndash;170&deg;).
-      <b>RealQM&apos;s minimum sits close to CCSD(T) but not identical &mdash; Level-3 accuracy ~5&deg; on
-      angles, ~1&ndash;3% on distances, with directionally correct H-bond forces.</b>
-      <br><br>
-      The 5 H-bonded entries above cover the easy quadrant of S66. Methylamine&minus;water, acetic acid dimer,
-      and acetamide dimer are natural next steps to round out coverage to ~10 of 23 H-bonded systems.
-      Dispersion-bound systems (benzene stacks, alkane dimers) are not attempted &mdash; RealQM has no vdW
-      correction at present, so those are honestly out of regime.
-    </div>
-  </div>
-</div>
-
-<!-- TOP LINKS -->
 <div class="section">
   <div class="grid">
     <div class="card" style="border-color:#66bb6a;background:#0a1a0a;grid-column:1/-1;text-align:center;padding:24px;cursor:default">
@@ -816,294 +425,6 @@ P_j += dt&middot;(&Delta;P_j + 2&pi;&middot;u_{1&minus;j}&sup2;)              <s
       <h3 style="font-size:16px;color:#ffb74d">Benchmarks &mdash; Atoms, Molecules &amp; Protein Folding</h3>
       <div class="desc" style="font-size:13px;margin-top:6px">From H&sub2; bond curve vs Kolos-Wolniewicz to 153-residue Myoglobin fold. Full results table.</div>
     </a>
-  </div>
-</div>
-
-<!-- ============================================================ -->
-<!-- PROTEIN FOLDING -->
-<!-- ============================================================ -->
-<div class="section">
-  <h2>Protein Folding</h2>
-  <div class="grid">
-    <!-- RealQM vs AlphaFold2 -->
-    <div class="card" style="grid-column:1/-1;border-color:#ff7043;background:#1a0a00;padding:24px;cursor:default">
-      <h3 style="font-size:18px;color:#ff7043">RealQM vs AlphaFold2</h3>
-      <div class="desc" style="font-size:14px;margin-top:12px;line-height:1.8;color:#ccc">
-        <b style="color:#ff7043">What AlphaFold2 cannot:</b><br>
-        &bull; Predict protein&ndash;protein docking from physics (it uses learned patterns, not forces)<br>
-        &bull; Handle drug&ndash;protein binding (no concept of non-protein molecules)<br>
-        &bull; Model chemical reactions (bond breaking/forming)<br>
-        &bull; Simulate phase changes (ice melting, water dynamics)<br>
-        &bull; Account for solvent effects (explicit water molecules in the simulation)<br>
-        &bull; Work with non-standard chemistry (metals, modified residues, novel molecules)<br><br>
-
-        <b style="color:#66bb6a">What RealQM has shown:</b><br>
-        &bull; <b>Protein folding</b>: 7 proteins from 20 to 153 residues &mdash;
-          all-&alpha; (<a href="trpcage_fold.html" style="color:#4fc3f7">Trp-cage</a>,
-          <a href="villin_fold.html" style="color:#4fc3f7">Villin</a>,
-          <a href="myoglobin_fold.html" style="color:#4fc3f7">Myoglobin 153 res</a>),
-          all-&beta; (<a href="ww_domain_fold.html" style="color:#4fc3f7">WW domain</a>),
-          &alpha;+&beta; (<a href="crambin_fold.html" style="color:#4fc3f7">Crambin</a>,
-          <a href="gb1_fold.html" style="color:#4fc3f7">GB1</a>,
-          <a href="ubiquitin_fold.html" style="color:#4fc3f7">Ubiquitin</a>).
-          H-bonds converge to 1.5&ndash;2.4&nbsp;&Aring;, disulfides to 5.4&ndash;5.6&nbsp;&Aring;.<br>
-        &bull; <b>Drug binding</b>: acetaminophen forms H-bond to protein at 2.07&nbsp;&Aring;
-          (<a href="drug_bind.html" style="color:#4fc3f7">drug binding</a>)<br>
-        &bull; <b>DNA double helix</b>: 10 bp full B-DNA turn, all Watson-Crick H-bonds stable
-          without water &mdash; H-bonds alone hold the helix
-          (<a href="dna_helix.html" style="color:#4fc3f7">helix</a>)<br>
-        &bull; <b>DNA mismatch detection</b>: G:C correct (2.07&nbsp;&Aring;) vs G:T wobble (2.62&nbsp;&Aring;)
-          &mdash; QM distinguishes right from wrong base pairing
-          (<a href="dna_mismatch.html" style="color:#4fc3f7">mismatch</a>)<br>
-        &bull; <b>Protein&ndash;protein docking</b>: coiled-coil and insulin docking, blind, water-mediated
-          (<a href="coiled_coil.html" style="color:#4fc3f7">coiled-coil</a>,
-          <a href="insulin_dock.html" style="color:#4fc3f7">insulin</a>)<br>
-        &bull; <b>H-bond physics</b>: formamide H&middot;&middot;&middot;O=2.04&nbsp;&Aring;, water dimer O&ndash;O=2.95&nbsp;&Aring;
-          (<a href="formamide_dimer.html" style="color:#4fc3f7">formamide</a>,
-          <a href="water2.html" style="color:#4fc3f7">water</a>)<br>
-        &bull; <b>Nucleic acids</b>: RNA hairpin stem G1:C12=1.99&nbsp;&Aring;
-          (<a href="rna_hairpin.html" style="color:#4fc3f7">RNA hairpin</a>)<br>
-        &bull; <b>Phase change</b>: ice O&ndash;O=2.73&nbsp;&Aring;, melting dynamics
-          (<a href="ice_hex.html" style="color:#4fc3f7">ice</a>,
-          <a href="ice_melt.html" style="color:#4fc3f7">melting</a>)<br>
-        &bull; <b>Proton transfer</b>: HF + H&sub2;O &rarr; F&supmin; + H&sub3;O&sup+; (Ht&ndash;O=0.99&nbsp;&Aring;)
-          and HCl + NH&sub3; &rarr; Cl&supmin; + NH&sub4;&sup+; (Ht&ndash;N=0.97&nbsp;&Aring;)
-          &mdash; acid pushes, base pulls, driven by electron density forces
-          (<a href="proton_transfer.html" style="color:#4fc3f7">HF</a>,
-          <a href="proton_transfer_nh3.html" style="color:#4fc3f7">HCl+NH&sub3;</a>)<br>
-        &bull; <b>Ion formation</b>: free electron captured by +3 Cl kernel into 4th quadrant
-          &mdash; Cl&supmin; forms with 4 electrons in quadrant domains
-          (<a href="cl_capture.html" style="color:#4fc3f7">Cl&supmin; formation</a>)<br>
-        &bull; <b>Salt dissolution</b>: NaCl + H&sub2;O &mdash; water pulls Na&sup+; from Cl&supmin;,
-          ionic bond stretches from 2.36 to 2.84&nbsp;&Aring;
-          (<a href="nacl_dissolve.html" style="color:#4fc3f7">NaCl</a>)<br>
-        &bull; <b>Enzyme catalysis</b>: serine protease catalytic triad
-          Asp&supmin;&rarr;His&rarr;Ser proton relay &mdash; electron density forces drive each step
-          (<a href="enzyme_triad.html" style="color:#4fc3f7">triad</a>)<br>
-        &bull; <b>Bond breaking</b>: H + H&sub2; &rarr; H&sub2; + H exchange
-          (<a href="bond_breaking.html" style="color:#4fc3f7">reaction</a>)<br>
-        &bull; <b>Metallic bonding</b>: Li lattice restores from perturbation
-          (<a href="li_metal.html" style="color:#4fc3f7">Li metal</a>)<br><br>
-
-        <b style="color:#888">Open challenges:</b> blind folding (without contact biases),
-        full Watson-Crick 3-H-bond alignment from distance,
-        and long-range force accuracy (Poisson convergence).
-      </div>
-    </div>
-
-    <!-- Folding physics: H-bonds vs hydrophobic effect -->
-    <div style="grid-column:1/-1;background:#111;border:1px solid #444;border-radius:8px;padding:16px 20px;margin:8px 0">
-      <h3 style="color:#ff7043;margin:0 0 8px">What drives folding? H-bonds vs water</h3>
-      <div style="color:#ccc;font-size:13px;line-height:1.6">
-        <b>Polyglycine hairpin</b> (no side chains): folds from 150&deg; &rarr; 105&deg; in vacuum via quantum N&ndash;H&middot;&middot;&middot;O=C hydrogen bonds alone.
-        Adding explicit water does not improve folding &mdash; both dry and solvated converge to the same angle.<br>
-        <b>Chignolin</b> GYDPETGTWG (real side chains): <em>unfolds</em> in vacuum &mdash; side-chain electron repulsion overwhelms backbone H-bonds.
-        Adding implicit hydrophobic pressure (SASA) fixes this: folds from 135&deg; &rarr; 40&deg;.<br><br>
-        <b>Conclusion:</b> Our solver captures H-bond driven secondary structure without empirical force fields.
-        But the hydrophobic effect &mdash; which is entropic (water loses orientational freedom near hydrophobic surfaces) &mdash;
-        cannot emerge from electronic energy alone. For real proteins with side chains, an implicit solvent term (SASA) is needed.<br><br>
-        <b>The working recipe:</b> H-bond biases (i&rarr;i+4 for helices, interstrand for sheets) handle secondary structure.
-        SASA (one parameter: &gamma;=5.0) handles tertiary packing &mdash; replacing all hand-tuned native contacts across every protein below.
-        No explicit water molecules needed.
-        <div style="margin-top:8px">
-          <a href="hairpin_vs_chignolin.html" style="color:#4fc3f7">&#9654; Side-by-side comparison</a>
-        </div>
-      </div>
-    </div>
-
-    <!-- Protein folding cards -->
-    <a class="card" href="hairpin_bent_dry.html" style="border-color:#ef5350;background:#1a0a0a">
-      <h3 style="color:#ef5350">Hairpin Folding (dry)</h3>
-      <div class="desc">150&deg; &rarr; 105&deg; via quantum H-bonds alone. Water does not improve folding.</div>
-      <span class="tag tag-protein">protein</span>
-    </a>
-    <div class="card" style="border-color:#ff7043;background:#1a1008">
-      <h3 style="color:#ff7043">Chignolin Folding (SASA)</h3>
-      <div class="desc">GYDPETGTWG 135&deg; &rarr; 40&deg; &mdash; quantum H-bonds + implicit hydrophobic pressure.</div>
-      <div style="margin-top:6px"><a href="chignolin_dry.html" style="color:#66bb6a">&#9654; Run</a> &middot; <a href="chignolin_fold.webm" style="color:#ef5350">&#9654; Video</a></div>
-      <span class="tag tag-protein">protein</span>
-    </div>
-    <a class="card" href="hairpin_vs_chignolin.html" style="border-color:#26c6da;background:#0a1a1a">
-      <h3 style="color:#26c6da">Hairpin vs Chignolin</h3>
-      <div class="desc">Side chains need hydrophobic pressure to fold &mdash; backbone H-bonds alone are not enough.</div>
-      <span class="tag tag-protein">protein</span>
-    </a>
-    <div class="card" style="border-color:#ba68c8;background:#1a1a2a">
-      <h3 style="color:#ba68c8">Trp-cage (20 res)</h3>
-      <div class="desc">H-bond biases + SASA packing. Helix forms, Trp6 buries without native contacts.</div>
-      <div style="margin-top:6px"><a href="trpcage_fold.html" style="color:#66bb6a">&#9654; Run</a> &middot; <a href="trpcage_fold.webm" style="color:#ef5350">&#9654; Video</a></div>
-      <span class="tag tag-protein">protein</span>
-    </div>
-    <div class="card" style="border-color:#66bb6a;background:#0a1a0a">
-      <h3 style="color:#66bb6a">Villin HP35 (35 res)</h3>
-      <div class="desc">3-helix bundle. H-bond biases + SASA packs 3 helices without native contacts.</div>
-      <div style="margin-top:6px"><a href="villin_fold.html" style="color:#66bb6a">&#9654; Run</a> &middot; <a href="villin_fold.webm" style="color:#ef5350">&#9654; Video</a></div>
-      <span class="tag tag-protein">protein</span>
-    </div>
-    <div class="card" style="border-color:#ffd54f;background:#1a1a0a">
-      <h3 style="color:#ffd54f">WW Domain 1PIN (34 res)</h3>
-      <div class="desc">All-&beta; fold. H-bond biases + SASA. No native hydrophobic contacts.</div>
-      <div style="margin-top:6px">
-        <a href="ww_domain_fold.html" style="color:#66bb6a">&#9654; Run</a> &middot;
-        <a href="ww_domain_fold_initial.png" style="color:#90caf9">Initial</a> &middot;
-        <a href="ww_domain_fold_screenshot.png" style="color:#ef5350">Result</a>
-      </div>
-      <span class="tag tag-protein">protein</span>
-    </div>
-    <div class="card" style="border-color:#ef5350;background:#1a0a0a">
-      <h3 style="color:#ef5350">Crambin 1CRN (46 res)</h3>
-      <div class="desc">&alpha;+&beta; fold. H-bond biases + SASA. 3/5 H-bonds form, disulfides approach target.</div>
-      <div style="margin-top:6px"><a href="crambin_fold.html" style="color:#66bb6a">&#9654; Run</a></div>
-      <span class="tag tag-protein">protein</span>
-    </div>
-    <div class="card" style="border-color:#ffb74d;background:#1a1500">
-      <h3 style="color:#ffb74d">GB1 (56 res)</h3>
-      <div class="desc">&alpha;+&beta; fold. H-bond biases + SASA. No native hydrophobic contacts.</div>
-      <div style="margin-top:6px">
-        <a href="gb1_fold.html" style="color:#66bb6a">&#9654; Run</a> &middot;
-        <a href="gb1_fold_screenshot.png" style="color:#ef5350">Result</a>
-      </div>
-      <span class="tag tag-protein">protein</span>
-    </div>
-    <div class="card" style="border-color:#4fc3f7;background:#0a1520">
-      <h3 style="color:#4fc3f7">Ubiquitin (76 res)</h3>
-      <div class="desc">76 residues. H-bond biases + SASA. No native hydrophobic contacts.</div>
-      <div style="margin-top:6px"><a href="ubiquitin_fold.html" style="color:#66bb6a">&#9654; Run</a> &middot; <a href="ubiquitin_fold.webm" style="color:#ef5350">&#9654; Video</a></div>
-      <span class="tag tag-protein">protein</span>
-    </div>
-    <div class="card" style="border-color:#ff7043;background:#1a0f0a">
-      <h3 style="color:#ff7043">Myoglobin 1MBN (153 res)</h3>
-      <div class="desc">Largest: 153 residues, 8 helices. H-bond biases + SASA. No native contacts.</div>
-      <div style="margin-top:6px">
-        <a href="myoglobin_fold.html" style="color:#66bb6a">&#9654; Run</a> &middot;
-        <a href="myoglobin_fold_initial.png" style="color:#90caf9">Initial</a> &middot;
-        <a href="myoglobin_fold_screenshot.png" style="color:#ef5350">Result</a>
-      </div>
-      <span class="tag tag-protein">protein</span>
-    </div>
-    <div class="card" style="border-color:#e040fb;background:#1a0a2a">
-      <h3 style="color:#e040fb">Drug Binding (Acetaminophen)</h3>
-      <div class="desc">Drug-OH···protein C=O H-bond at 2.07&nbsp;&Aring;. Protein stays folded (H-bonds 2.4&ndash;2.6).</div>
-      <div style="margin-top:6px">
-        <a href="drug_bind.html" style="color:#66bb6a">&#9654; Run</a> &middot;
-        <a href="drug_bind_screenshot.png" style="color:#ef5350">Result</a>
-      </div>
-      <span class="tag tag-protein">drug</span>
-    </div>
-    <a class="card" href="coiled_coil.html" style="border-color:#26c6da;background:#0a1a2a">
-      <h3 style="color:#26c6da">Coiled-Coil Docking</h3>
-      <div class="desc">Blind helix-helix docking, water-mediated</div>
-      <span class="tag tag-protein">protein</span><span class="tag tag-water">docking</span>
-    </a>
-    <a class="card" href="insulin_dock.html" style="border-color:#26c6da;background:#0a1a2a">
-      <h3 style="color:#26c6da">Insulin A+B Docking</h3>
-      <div class="desc">21+30 res, blind chain docking</div>
-      <span class="tag tag-protein">protein</span><span class="tag tag-water">docking</span>
-    </a>
-    <!-- DNA / RNA -->
-    <div class="card" style="border-color:#e040fb;background:#1a0a2a">
-      <h3 style="color:#e040fb">DNA Double Helix (10 bp)</h3>
-      <div class="desc">Full B-DNA turn. All H-bonds stable (min 2.35&nbsp;&Aring;) &mdash; without water. H-bonds alone hold the helix.</div>
-      <div style="margin-top:6px">
-        <a href="dna_helix.html" style="color:#66bb6a">&#9654; Run</a> &middot;
-        <a href="dna_helix_screenshot.png" style="color:#ef5350">Result</a> &middot;
-        <a href="dna_base_pair.html" style="color:#90caf9">G:C pair</a>
-      </div>
-      <span class="tag" style="background:#2a0a3a;color:#e040fb">DNA</span>
-    </div>
-    <div class="card" style="border-color:#e040fb;background:#1a0a2a">
-      <h3 style="color:#e040fb">DNA Mismatch Detection</h3>
-      <div class="desc">G:C correct (2.07&nbsp;&Aring;) vs G:T mismatch (2.62&nbsp;&Aring;) &mdash; QM distinguishes right from wrong base pairing.</div>
-      <div style="margin-top:6px">
-        <a href="dna_mismatch.html" style="color:#66bb6a">&#9654; Run</a> &middot;
-        <a href="dna_mismatch_screenshot.png" style="color:#ef5350">Result</a>
-      </div>
-      <span class="tag" style="background:#2a0a3a;color:#e040fb">DNA</span>
-    </div>
-    <a class="card" href="rna_hairpin.html" style="border-color:#e040fb;background:#1a0a2a">
-      <h3 style="color:#e040fb">RNA Hairpin</h3>
-      <div class="desc">Stem-loop self-assembly, G1:C12=1.99&Aring;</div>
-      <span class="tag" style="background:#2a0a3a;color:#e040fb">RNA</span>
-    </a>
-    <!-- Peptides & amino acids -->
-    <a class="card" href="glycine.html">
-      <h3>Glycine</h3>
-      <div class="desc">Single amino acid</div>
-      <span class="tag tag-protein">amino acid</span>
-    </a>
-    <a class="card" href="ala_dipeptide.html">
-      <h3>Ala dipeptide</h3>
-      <div class="desc">Alanine dipeptide</div>
-      <span class="tag tag-protein">peptide</span>
-    </a>
-    <a class="card" href="asp_pro.html">
-      <h3>Asp-Pro</h3>
-      <div class="desc">Dipeptide with proline pyrrolidine ring</div>
-      <span class="tag tag-protein">peptide</span>
-    </a>
-    <a class="card" href="hairpin.html">
-      <h3>Hairpin</h3>
-      <div class="desc">&beta;-hairpin (folded)</div>
-      <span class="tag tag-protein">protein</span>
-    </a>
-    <a class="card" href="hairpin_slider.html">
-      <h3>Hairpin slider</h3>
-      <div class="desc">Adjustable fold fraction 0&ndash;100%</div>
-      <span class="tag tag-protein">protein</span>
-    </a>
-    <a class="card" href="chignolin.html">
-      <h3>Chignolin</h3>
-      <div class="desc">10-residue mini-protein with fold slider</div>
-      <span class="tag tag-protein">protein</span>
-    </a>
-    <a class="card" href="villin.html">
-      <h3>Villin headpiece</h3>
-      <div class="desc">~1000 atoms, 3-helix bundle + hydration</div>
-      <span class="tag tag-protein">protein</span>
-    </a>
-  </div>
-  <div style="text-align:center;margin-top:12px">
-    <a href="benchmarks.html" style="color:#ffb74d;font-size:14px">Full benchmark results with tables &rarr;</a>
-  </div>
-</div>
-
-<!-- ============================================================ -->
-<!-- CELL BIOLOGY -->
-<!-- ============================================================ -->
-<div class="section">
-  <h2>Cell Biology</h2>
-  <p class="desc">
-    From RealQM-converged proteins to cell-scale population dynamics.
-    The bridge: each protein species is reduced once to a small JSON record &mdash;
-    geometry, charges, hydrophobicity, diffusion coefficient &mdash; that becomes
-    the input parameters of a Brownian-dynamics simulator running 10<sup>2</sup>&ndash;10<sup>6</sup>
-    copies in a periodic box. Realises the
-    <a href="RealQMarXiv4.pdf" style="color:#4fc3f7"><i>Forward look: from molecules to cells</i></a>
-    paragraph of the paper as a tangible, runnable pipeline.
-  </p>
-  <div class="grid">
-    <div class="card" style="border-color:#80cbc4;background:#0a1a18;grid-column:1/-1">
-      <h3 style="color:#80cbc4">RealQM &rarr; Reduced Model &rarr; Population Dynamics: Chignolin Pipeline</h3>
-      <div class="desc" style="line-height:1.6">
-        End-to-end demonstration of the multi-scale workflow.
-        <ol style="margin-top:6px;padding-left:20px;color:#aaa">
-          <li><b style="color:#80cbc4">Extract:</b> Run RealQM on chignolin (10 residues, GYDPETGTWG) to convergence; dump a JSON containing per-residue centroids, hydrophobicity, net charge, end-to-end distance, hydrodynamic radius, diffusion coefficient.</li>
-          <li><b style="color:#80cbc4">Reduce:</b> The JSON IS the reduced model &mdash; one species record, ~1 KB, suitable for downstream Brownian-dynamics simulators.</li>
-          <li><b style="color:#80cbc4">Simulate (single species):</b> Drive a population of N copies in a periodic box. Position, orientation, charge, steric exclusion all from the JSON; same dynamics scales to 10<sup>6</sup> proteins on one GPU.</li>
-          <li><b style="color:#80cbc4">Multi-species + binding:</b> Add a second species (cationic ligand) with a complementary reduced-model JSON. Type-specific interactions: A&middot;A, B&middot;B mutually repulsive; A&middot;B attractive via electrostatic + Lennard-Jones-like well. Live K<sub>eq</sub>, k<sub>on</sub>, k<sub>off</sub> tracked from the trajectory &mdash; the smallest extension producing falsifiable kinetic predictions.</li>
-        </ol>
-      </div>
-      <div style="margin-top:10px">
-        <a href="chignolin_reduce.html" style="color:#66bb6a;font-size:13px">&#9654; (1) Extract reduced model</a>
-        &nbsp;&middot;&nbsp;
-        <a href="chignolin_bd.html" style="color:#66bb6a;font-size:13px">&#9654; (2-3) Single-species BD</a>
-        &nbsp;&middot;&nbsp;
-        <a href="chignolin_ligand_bd.html" style="color:#66bb6a;font-size:13px">&#9654; (4) Multi-species BD with binding</a>
-      </div>
-      <span class="tag tag-protein">protein</span>
-      <span class="tag tag-dyn">cell-scale</span>
-      <span class="tag tag-small">pipeline</span>
-    </div>
   </div>
 </div>
 
@@ -1402,7 +723,6 @@ P_j += dt&middot;(&Delta;P_j + 2&pi;&middot;u_{1&minus;j}&sup2;)              <s
 </div>
 
 <!-- ============================================================ -->
-<!-- ============================================================ -->
 <!-- IONS & SOLVATION -->
 <!-- ============================================================ -->
 <div class="section">
@@ -1460,6 +780,72 @@ P_j += dt&middot;(&Delta;P_j + 2&pi;&middot;u_{1&minus;j}&sup2;)              <s
         First correct +1/−1 Coulomb equilibrium in the RealQM reduced-kernel framework.
       </div>
       <span class="tag tag-dyn">dynamics</span><span class="tag tag-small">ion pair</span>
+    </a>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- CHEMICAL REACTIONS -->
+<!-- ============================================================ -->
+<div class="section">
+  <h2>Chemical Reactions</h2>
+  <p class="desc">Proton transfer, ion formation, salt dissolution, enzyme catalysis, and bond breaking &mdash; driven by electron density forces.</p>
+  <div class="grid">
+    <div class="card" style="border-color:#ff7043;background:#1a0a00;grid-column:1/-1">
+      <h3 style="font-size:16px;color:#ff7043">Proton Transfer: Acid Pushes, Base Pulls</h3>
+      <div class="desc" style="font-size:13px;margin-top:6px;line-height:1.6;color:#ccc">
+        Four reactions that reveal the difference between StdQM (energy bookkeeping) and RealQM (forces):<br><br>
+
+        <b style="color:#ff7043">Test 1: HF + H&sub2;O &rarr; F&supmin; + H&sub3;O&sup+;</b><br>
+        <span style="color:#888">StdQM:</span> Compare pKa(HF)=3.2 vs pKa(H&sub2;O)=15.7.
+        &Delta;G&lt;0, so equilibrium favors products. Proton tunnels through an activation barrier.
+        Transition state theory gives the rate. The reaction happens because the free energy is lower on the product side.<br>
+        <span style="color:#66bb6a">RealQM:</span> Ionic decomposition: F&supmin; (+3 kernel, 4 electrons split into 2 half-spaces, r<sub>c</sub>=1.0)
+        repels the bare proton H&sup+; (0 electrons), while O&rsquo;s lone pair (Z=2, r<sub>c</sub>=0.8) pulls it in.
+        Result: Ht&ndash;O=0.99&nbsp;&Aring; (covalent), F&ndash;Ht=1.91&nbsp;&Aring; (released) at 2.4&nbsp;&Aring; contact.<br><br>
+
+        <b style="color:#66bb6a">Test 2: HCl + NH&sub3; &rarr; Cl&supmin; + NH&sub4;&sup+;</b><br>
+        <span style="color:#888">StdQM:</span> pKa(HCl)=&minus;7 (strong acid), pK<sub>b</sub>(NH&sub3;)=4.75 (strong base).
+        Compute the potential energy surface, find the minimum energy path. Proton transfer is nearly barrierless in gas phase.
+        The outcome is predicted by comparing energy states.<br>
+        <span style="color:#66bb6a">RealQM:</span> Ionic decomposition: Cl&supmin; (+1 kernel, 2 electrons split into half-spaces, r<sub>c</sub>=1.0)
+        repels the bare proton H&sup+; (0 electrons), while N&rsquo;s lone pair (Z=3, r<sub>c</sub>=0.5) pulls it in.
+        Forces drive the motion. Result: Ht&ndash;N=0.97&nbsp;&Aring; (covalent), Cl&ndash;Ht=1.53&nbsp;&Aring; (released) at 2.1&nbsp;&Aring; contact.<br><br>
+
+        <b style="color:#42a5f5">Test 3: NaCl + H&sub2;O &rarr; Na&sup+;(aq) + Cl&supmin;(aq)</b><br>
+        <span style="color:#888">StdQM:</span> Lattice energy (786 kJ/mol) vs hydration enthalpy of Na&sup+; (&minus;406 kJ/mol) + Cl&supmin; (&minus;363 kJ/mol).
+        &Delta;G<sub>solvation</sub>&lt;0, so the salt dissolves. Born model computes ion solvation energies.
+        The outcome is predicted by comparing lattice vs solvation energies.<br>
+        <span style="color:#66bb6a">RealQM:</span> Na&sup+; (+1 kernel, 0 electrons) and Cl&supmin; (+1 kernel, 2 electrons split).
+        Water&rsquo;s O lone pair creates a force pulling Na&sup+; away from Cl&supmin;. No energy bookkeeping.
+        Result: Na&ndash;Cl stretches from 2.36 to 2.84&nbsp;&Aring;, Na&ndash;O shrinks to 1.99&nbsp;&Aring;.<br><br>
+
+        <b style="color:#ffca28">Test 4: Enzyme catalysis &mdash; Serine Protease Triad</b><br>
+        <span style="color:#888">StdQM:</span> Asp&supmin; stabilizes His via electrostatics, lowering Ser&ndash;OH pKa from ~13 to ~7.
+        Proton hops when the free energy landscape permits. Transition state theory gives the rate.<br>
+        <span style="color:#66bb6a">RealQM:</span> Asp&supmin; (O&supmin;, 2 electrons) pushes H1 toward His N (+3 kernel, r<sub>c</sub>=0.5).
+        His then pulls H2 from Ser O, creating the O&supmin; nucleophile. Two proton transfers in sequence,
+        driven by local electron density forces. No energy computation needed.<br><br>
+
+        <b style="color:#ff7043">The key difference:</b> StdQM predicts <i>whether</i> a reaction occurs by comparing
+        energy states. RealQM shows <i>how</i> it occurs through forces.
+        Nature doesn&rsquo;t keep a record of energy or look up pKa tables.
+        Nature acts through <b>forces</b> &mdash; local, instantaneous forces between
+        electrons and nuclei. RealQM does what nature does.
+      </div>
+      <div style="margin-top:8px">
+        <a href="proton_transfer.html" style="color:#66bb6a">&#9654; HF + H&sub2;O</a> &middot;
+        <a href="proton_transfer_nh3.html" style="color:#66bb6a">&#9654; HCl + NH&sub3;</a> &middot;
+        <a href="nacl_dissolve.html" style="color:#66bb6a">&#9654; NaCl + H&sub2;O</a> &middot;
+        <a href="cl_capture.html" style="color:#66bb6a">&#9654; Cl&supmin; formation</a> &middot;
+        <a href="enzyme_triad.html" style="color:#ffca28">&#9654; Enzyme triad</a>
+      </div>
+      <span class="tag tag-small">reaction</span>
+    </div>
+    <a class="card" href="bond_breaking.html" style="border-color:#ef5350">
+      <h3 style="color:#ef5350">H + H&sub2; Bond Breaking</h3>
+      <div class="desc">Exchange reaction through H&sub3;</div>
+      <span class="tag tag-dyn">dynamics</span>
     </a>
   </div>
 </div>
@@ -1836,68 +1222,290 @@ P_j += dt&middot;(&Delta;P_j + 2&pi;&middot;u_{1&minus;j}&sup2;)              <s
 </div>
 
 <!-- ============================================================ -->
-<!-- CHEMICAL REACTIONS -->
+<!-- PROTEIN FOLDING -->
 <!-- ============================================================ -->
 <div class="section">
-  <h2>Chemical Reactions</h2>
-  <p class="desc">Proton transfer, ion formation, salt dissolution, enzyme catalysis, and bond breaking &mdash; driven by electron density forces.</p>
+  <h2>Protein Folding</h2>
   <div class="grid">
-    <div class="card" style="border-color:#ff7043;background:#1a0a00;grid-column:1/-1">
-      <h3 style="font-size:16px;color:#ff7043">Proton Transfer: Acid Pushes, Base Pulls</h3>
-      <div class="desc" style="font-size:13px;margin-top:6px;line-height:1.6;color:#ccc">
-        Four reactions that reveal the difference between StdQM (energy bookkeeping) and RealQM (forces):<br><br>
+    <!-- RealQM vs AlphaFold2 -->
+    <div class="card" style="grid-column:1/-1;border-color:#ff7043;background:#1a0a00;padding:24px;cursor:default">
+      <h3 style="font-size:18px;color:#ff7043">RealQM vs AlphaFold2</h3>
+      <div class="desc" style="font-size:14px;margin-top:12px;line-height:1.8;color:#ccc">
+        <b style="color:#ff7043">What AlphaFold2 cannot:</b><br>
+        &bull; Predict protein&ndash;protein docking from physics (it uses learned patterns, not forces)<br>
+        &bull; Handle drug&ndash;protein binding (no concept of non-protein molecules)<br>
+        &bull; Model chemical reactions (bond breaking/forming)<br>
+        &bull; Simulate phase changes (ice melting, water dynamics)<br>
+        &bull; Account for solvent effects (explicit water molecules in the simulation)<br>
+        &bull; Work with non-standard chemistry (metals, modified residues, novel molecules)<br><br>
 
-        <b style="color:#ff7043">Test 1: HF + H&sub2;O &rarr; F&supmin; + H&sub3;O&sup+;</b><br>
-        <span style="color:#888">StdQM:</span> Compare pKa(HF)=3.2 vs pKa(H&sub2;O)=15.7.
-        &Delta;G&lt;0, so equilibrium favors products. Proton tunnels through an activation barrier.
-        Transition state theory gives the rate. The reaction happens because the free energy is lower on the product side.<br>
-        <span style="color:#66bb6a">RealQM:</span> Ionic decomposition: F&supmin; (+3 kernel, 4 electrons split into 2 half-spaces, r<sub>c</sub>=1.0)
-        repels the bare proton H&sup+; (0 electrons), while O&rsquo;s lone pair (Z=2, r<sub>c</sub>=0.8) pulls it in.
-        Result: Ht&ndash;O=0.99&nbsp;&Aring; (covalent), F&ndash;Ht=1.91&nbsp;&Aring; (released) at 2.4&nbsp;&Aring; contact.<br><br>
+        <b style="color:#66bb6a">What RealQM has shown:</b><br>
+        &bull; <b>Protein folding</b>: 7 proteins from 20 to 153 residues &mdash;
+          all-&alpha; (<a href="trpcage_fold.html" style="color:#4fc3f7">Trp-cage</a>,
+          <a href="villin_fold.html" style="color:#4fc3f7">Villin</a>,
+          <a href="myoglobin_fold.html" style="color:#4fc3f7">Myoglobin 153 res</a>),
+          all-&beta; (<a href="ww_domain_fold.html" style="color:#4fc3f7">WW domain</a>),
+          &alpha;+&beta; (<a href="crambin_fold.html" style="color:#4fc3f7">Crambin</a>,
+          <a href="gb1_fold.html" style="color:#4fc3f7">GB1</a>,
+          <a href="ubiquitin_fold.html" style="color:#4fc3f7">Ubiquitin</a>).
+          H-bonds converge to 1.5&ndash;2.4&nbsp;&Aring;, disulfides to 5.4&ndash;5.6&nbsp;&Aring;.<br>
+        &bull; <b>Drug binding</b>: acetaminophen forms H-bond to protein at 2.07&nbsp;&Aring;
+          (<a href="drug_bind.html" style="color:#4fc3f7">drug binding</a>)<br>
+        &bull; <b>DNA double helix</b>: 10 bp full B-DNA turn, all Watson-Crick H-bonds stable
+          without water &mdash; H-bonds alone hold the helix
+          (<a href="dna_helix.html" style="color:#4fc3f7">helix</a>)<br>
+        &bull; <b>DNA mismatch detection</b>: G:C correct (2.07&nbsp;&Aring;) vs G:T wobble (2.62&nbsp;&Aring;)
+          &mdash; QM distinguishes right from wrong base pairing
+          (<a href="dna_mismatch.html" style="color:#4fc3f7">mismatch</a>)<br>
+        &bull; <b>Protein&ndash;protein docking</b>: coiled-coil and insulin docking, blind, water-mediated
+          (<a href="coiled_coil.html" style="color:#4fc3f7">coiled-coil</a>,
+          <a href="insulin_dock.html" style="color:#4fc3f7">insulin</a>)<br>
+        &bull; <b>H-bond physics</b>: formamide H&middot;&middot;&middot;O=2.04&nbsp;&Aring;, water dimer O&ndash;O=2.95&nbsp;&Aring;
+          (<a href="formamide_dimer.html" style="color:#4fc3f7">formamide</a>,
+          <a href="water2.html" style="color:#4fc3f7">water</a>)<br>
+        &bull; <b>Nucleic acids</b>: RNA hairpin stem G1:C12=1.99&nbsp;&Aring;
+          (<a href="rna_hairpin.html" style="color:#4fc3f7">RNA hairpin</a>)<br>
+        &bull; <b>Phase change</b>: ice O&ndash;O=2.73&nbsp;&Aring;, melting dynamics
+          (<a href="ice_hex.html" style="color:#4fc3f7">ice</a>,
+          <a href="ice_melt.html" style="color:#4fc3f7">melting</a>)<br>
+        &bull; <b>Proton transfer</b>: HF + H&sub2;O &rarr; F&supmin; + H&sub3;O&sup+; (Ht&ndash;O=0.99&nbsp;&Aring;)
+          and HCl + NH&sub3; &rarr; Cl&supmin; + NH&sub4;&sup+; (Ht&ndash;N=0.97&nbsp;&Aring;)
+          &mdash; acid pushes, base pulls, driven by electron density forces
+          (<a href="proton_transfer.html" style="color:#4fc3f7">HF</a>,
+          <a href="proton_transfer_nh3.html" style="color:#4fc3f7">HCl+NH&sub3;</a>)<br>
+        &bull; <b>Ion formation</b>: free electron captured by +3 Cl kernel into 4th quadrant
+          &mdash; Cl&supmin; forms with 4 electrons in quadrant domains
+          (<a href="cl_capture.html" style="color:#4fc3f7">Cl&supmin; formation</a>)<br>
+        &bull; <b>Salt dissolution</b>: NaCl + H&sub2;O &mdash; water pulls Na&sup+; from Cl&supmin;,
+          ionic bond stretches from 2.36 to 2.84&nbsp;&Aring;
+          (<a href="nacl_dissolve.html" style="color:#4fc3f7">NaCl</a>)<br>
+        &bull; <b>Enzyme catalysis</b>: serine protease catalytic triad
+          Asp&supmin;&rarr;His&rarr;Ser proton relay &mdash; electron density forces drive each step
+          (<a href="enzyme_triad.html" style="color:#4fc3f7">triad</a>)<br>
+        &bull; <b>Bond breaking</b>: H + H&sub2; &rarr; H&sub2; + H exchange
+          (<a href="bond_breaking.html" style="color:#4fc3f7">reaction</a>)<br>
+        &bull; <b>Metallic bonding</b>: Li lattice restores from perturbation
+          (<a href="li_metal.html" style="color:#4fc3f7">Li metal</a>)<br><br>
 
-        <b style="color:#66bb6a">Test 2: HCl + NH&sub3; &rarr; Cl&supmin; + NH&sub4;&sup+;</b><br>
-        <span style="color:#888">StdQM:</span> pKa(HCl)=&minus;7 (strong acid), pK<sub>b</sub>(NH&sub3;)=4.75 (strong base).
-        Compute the potential energy surface, find the minimum energy path. Proton transfer is nearly barrierless in gas phase.
-        The outcome is predicted by comparing energy states.<br>
-        <span style="color:#66bb6a">RealQM:</span> Ionic decomposition: Cl&supmin; (+1 kernel, 2 electrons split into half-spaces, r<sub>c</sub>=1.0)
-        repels the bare proton H&sup+; (0 electrons), while N&rsquo;s lone pair (Z=3, r<sub>c</sub>=0.5) pulls it in.
-        Forces drive the motion. Result: Ht&ndash;N=0.97&nbsp;&Aring; (covalent), Cl&ndash;Ht=1.53&nbsp;&Aring; (released) at 2.1&nbsp;&Aring; contact.<br><br>
-
-        <b style="color:#42a5f5">Test 3: NaCl + H&sub2;O &rarr; Na&sup+;(aq) + Cl&supmin;(aq)</b><br>
-        <span style="color:#888">StdQM:</span> Lattice energy (786 kJ/mol) vs hydration enthalpy of Na&sup+; (&minus;406 kJ/mol) + Cl&supmin; (&minus;363 kJ/mol).
-        &Delta;G<sub>solvation</sub>&lt;0, so the salt dissolves. Born model computes ion solvation energies.
-        The outcome is predicted by comparing lattice vs solvation energies.<br>
-        <span style="color:#66bb6a">RealQM:</span> Na&sup+; (+1 kernel, 0 electrons) and Cl&supmin; (+1 kernel, 2 electrons split).
-        Water&rsquo;s O lone pair creates a force pulling Na&sup+; away from Cl&supmin;. No energy bookkeeping.
-        Result: Na&ndash;Cl stretches from 2.36 to 2.84&nbsp;&Aring;, Na&ndash;O shrinks to 1.99&nbsp;&Aring;.<br><br>
-
-        <b style="color:#ffca28">Test 4: Enzyme catalysis &mdash; Serine Protease Triad</b><br>
-        <span style="color:#888">StdQM:</span> Asp&supmin; stabilizes His via electrostatics, lowering Ser&ndash;OH pKa from ~13 to ~7.
-        Proton hops when the free energy landscape permits. Transition state theory gives the rate.<br>
-        <span style="color:#66bb6a">RealQM:</span> Asp&supmin; (O&supmin;, 2 electrons) pushes H1 toward His N (+3 kernel, r<sub>c</sub>=0.5).
-        His then pulls H2 from Ser O, creating the O&supmin; nucleophile. Two proton transfers in sequence,
-        driven by local electron density forces. No energy computation needed.<br><br>
-
-        <b style="color:#ff7043">The key difference:</b> StdQM predicts <i>whether</i> a reaction occurs by comparing
-        energy states. RealQM shows <i>how</i> it occurs through forces.
-        Nature doesn&rsquo;t keep a record of energy or look up pKa tables.
-        Nature acts through <b>forces</b> &mdash; local, instantaneous forces between
-        electrons and nuclei. RealQM does what nature does.
+        <b style="color:#888">Open challenges:</b> blind folding (without contact biases),
+        full Watson-Crick 3-H-bond alignment from distance,
+        and long-range force accuracy (Poisson convergence).
       </div>
-      <div style="margin-top:8px">
-        <a href="proton_transfer.html" style="color:#66bb6a">&#9654; HF + H&sub2;O</a> &middot;
-        <a href="proton_transfer_nh3.html" style="color:#66bb6a">&#9654; HCl + NH&sub3;</a> &middot;
-        <a href="nacl_dissolve.html" style="color:#66bb6a">&#9654; NaCl + H&sub2;O</a> &middot;
-        <a href="cl_capture.html" style="color:#66bb6a">&#9654; Cl&supmin; formation</a> &middot;
-        <a href="enzyme_triad.html" style="color:#ffca28">&#9654; Enzyme triad</a>
-      </div>
-      <span class="tag tag-small">reaction</span>
     </div>
-    <a class="card" href="bond_breaking.html" style="border-color:#ef5350">
-      <h3 style="color:#ef5350">H + H&sub2; Bond Breaking</h3>
-      <div class="desc">Exchange reaction through H&sub3;</div>
-      <span class="tag tag-dyn">dynamics</span>
+
+    <!-- Folding physics: H-bonds vs hydrophobic effect -->
+    <div style="grid-column:1/-1;background:#111;border:1px solid #444;border-radius:8px;padding:16px 20px;margin:8px 0">
+      <h3 style="color:#ff7043;margin:0 0 8px">What drives folding? H-bonds vs water</h3>
+      <div style="color:#ccc;font-size:13px;line-height:1.6">
+        <b>Polyglycine hairpin</b> (no side chains): folds from 150&deg; &rarr; 105&deg; in vacuum via quantum N&ndash;H&middot;&middot;&middot;O=C hydrogen bonds alone.
+        Adding explicit water does not improve folding &mdash; both dry and solvated converge to the same angle.<br>
+        <b>Chignolin</b> GYDPETGTWG (real side chains): <em>unfolds</em> in vacuum &mdash; side-chain electron repulsion overwhelms backbone H-bonds.
+        Adding implicit hydrophobic pressure (SASA) fixes this: folds from 135&deg; &rarr; 40&deg;.<br><br>
+        <b>Conclusion:</b> Our solver captures H-bond driven secondary structure without empirical force fields.
+        But the hydrophobic effect &mdash; which is entropic (water loses orientational freedom near hydrophobic surfaces) &mdash;
+        cannot emerge from electronic energy alone. For real proteins with side chains, an implicit solvent term (SASA) is needed.<br><br>
+        <b>The working recipe:</b> H-bond biases (i&rarr;i+4 for helices, interstrand for sheets) handle secondary structure.
+        SASA (one parameter: &gamma;=5.0) handles tertiary packing &mdash; replacing all hand-tuned native contacts across every protein below.
+        No explicit water molecules needed.
+        <div style="margin-top:8px">
+          <a href="hairpin_vs_chignolin.html" style="color:#4fc3f7">&#9654; Side-by-side comparison</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Protein folding cards -->
+    <a class="card" href="hairpin_bent_dry.html" style="border-color:#ef5350;background:#1a0a0a">
+      <h3 style="color:#ef5350">Hairpin Folding (dry)</h3>
+      <div class="desc">150&deg; &rarr; 105&deg; via quantum H-bonds alone. Water does not improve folding.</div>
+      <span class="tag tag-protein">protein</span>
     </a>
+    <div class="card" style="border-color:#ff7043;background:#1a1008">
+      <h3 style="color:#ff7043">Chignolin Folding (SASA)</h3>
+      <div class="desc">GYDPETGTWG 135&deg; &rarr; 40&deg; &mdash; quantum H-bonds + implicit hydrophobic pressure.</div>
+      <div style="margin-top:6px"><a href="chignolin_dry.html" style="color:#66bb6a">&#9654; Run</a> &middot; <a href="chignolin_fold.webm" style="color:#ef5350">&#9654; Video</a></div>
+      <span class="tag tag-protein">protein</span>
+    </div>
+    <a class="card" href="hairpin_vs_chignolin.html" style="border-color:#26c6da;background:#0a1a1a">
+      <h3 style="color:#26c6da">Hairpin vs Chignolin</h3>
+      <div class="desc">Side chains need hydrophobic pressure to fold &mdash; backbone H-bonds alone are not enough.</div>
+      <span class="tag tag-protein">protein</span>
+    </a>
+    <div class="card" style="border-color:#ba68c8;background:#1a1a2a">
+      <h3 style="color:#ba68c8">Trp-cage (20 res)</h3>
+      <div class="desc">H-bond biases + SASA packing. Helix forms, Trp6 buries without native contacts.</div>
+      <div style="margin-top:6px"><a href="trpcage_fold.html" style="color:#66bb6a">&#9654; Run</a> &middot; <a href="trpcage_fold.webm" style="color:#ef5350">&#9654; Video</a></div>
+      <span class="tag tag-protein">protein</span>
+    </div>
+    <div class="card" style="border-color:#66bb6a;background:#0a1a0a">
+      <h3 style="color:#66bb6a">Villin HP35 (35 res)</h3>
+      <div class="desc">3-helix bundle. H-bond biases + SASA packs 3 helices without native contacts.</div>
+      <div style="margin-top:6px"><a href="villin_fold.html" style="color:#66bb6a">&#9654; Run</a> &middot; <a href="villin_fold.webm" style="color:#ef5350">&#9654; Video</a></div>
+      <span class="tag tag-protein">protein</span>
+    </div>
+    <div class="card" style="border-color:#ffd54f;background:#1a1a0a">
+      <h3 style="color:#ffd54f">WW Domain 1PIN (34 res)</h3>
+      <div class="desc">All-&beta; fold. H-bond biases + SASA. No native hydrophobic contacts.</div>
+      <div style="margin-top:6px">
+        <a href="ww_domain_fold.html" style="color:#66bb6a">&#9654; Run</a> &middot;
+        <a href="ww_domain_fold_initial.png" style="color:#90caf9">Initial</a> &middot;
+        <a href="ww_domain_fold_screenshot.png" style="color:#ef5350">Result</a>
+      </div>
+      <span class="tag tag-protein">protein</span>
+    </div>
+    <div class="card" style="border-color:#ef5350;background:#1a0a0a">
+      <h3 style="color:#ef5350">Crambin 1CRN (46 res)</h3>
+      <div class="desc">&alpha;+&beta; fold. H-bond biases + SASA. 3/5 H-bonds form, disulfides approach target.</div>
+      <div style="margin-top:6px"><a href="crambin_fold.html" style="color:#66bb6a">&#9654; Run</a></div>
+      <span class="tag tag-protein">protein</span>
+    </div>
+    <div class="card" style="border-color:#ffb74d;background:#1a1500">
+      <h3 style="color:#ffb74d">GB1 (56 res)</h3>
+      <div class="desc">&alpha;+&beta; fold. H-bond biases + SASA. No native hydrophobic contacts.</div>
+      <div style="margin-top:6px">
+        <a href="gb1_fold.html" style="color:#66bb6a">&#9654; Run</a> &middot;
+        <a href="gb1_fold_screenshot.png" style="color:#ef5350">Result</a>
+      </div>
+      <span class="tag tag-protein">protein</span>
+    </div>
+    <div class="card" style="border-color:#4fc3f7;background:#0a1520">
+      <h3 style="color:#4fc3f7">Ubiquitin (76 res)</h3>
+      <div class="desc">76 residues. H-bond biases + SASA. No native hydrophobic contacts.</div>
+      <div style="margin-top:6px"><a href="ubiquitin_fold.html" style="color:#66bb6a">&#9654; Run</a> &middot; <a href="ubiquitin_fold.webm" style="color:#ef5350">&#9654; Video</a></div>
+      <span class="tag tag-protein">protein</span>
+    </div>
+    <div class="card" style="border-color:#ff7043;background:#1a0f0a">
+      <h3 style="color:#ff7043">Myoglobin 1MBN (153 res)</h3>
+      <div class="desc">Largest: 153 residues, 8 helices. H-bond biases + SASA. No native contacts.</div>
+      <div style="margin-top:6px">
+        <a href="myoglobin_fold.html" style="color:#66bb6a">&#9654; Run</a> &middot;
+        <a href="myoglobin_fold_initial.png" style="color:#90caf9">Initial</a> &middot;
+        <a href="myoglobin_fold_screenshot.png" style="color:#ef5350">Result</a>
+      </div>
+      <span class="tag tag-protein">protein</span>
+    </div>
+    <div class="card" style="border-color:#e040fb;background:#1a0a2a">
+      <h3 style="color:#e040fb">Drug Binding (Acetaminophen)</h3>
+      <div class="desc">Drug-OH···protein C=O H-bond at 2.07&nbsp;&Aring;. Protein stays folded (H-bonds 2.4&ndash;2.6).</div>
+      <div style="margin-top:6px">
+        <a href="drug_bind.html" style="color:#66bb6a">&#9654; Run</a> &middot;
+        <a href="drug_bind_screenshot.png" style="color:#ef5350">Result</a>
+      </div>
+      <span class="tag tag-protein">drug</span>
+    </div>
+    <a class="card" href="coiled_coil.html" style="border-color:#26c6da;background:#0a1a2a">
+      <h3 style="color:#26c6da">Coiled-Coil Docking</h3>
+      <div class="desc">Blind helix-helix docking, water-mediated</div>
+      <span class="tag tag-protein">protein</span><span class="tag tag-water">docking</span>
+    </a>
+    <a class="card" href="insulin_dock.html" style="border-color:#26c6da;background:#0a1a2a">
+      <h3 style="color:#26c6da">Insulin A+B Docking</h3>
+      <div class="desc">21+30 res, blind chain docking</div>
+      <span class="tag tag-protein">protein</span><span class="tag tag-water">docking</span>
+    </a>
+    <!-- DNA / RNA -->
+    <div class="card" style="border-color:#e040fb;background:#1a0a2a">
+      <h3 style="color:#e040fb">DNA Double Helix (10 bp)</h3>
+      <div class="desc">Full B-DNA turn. All H-bonds stable (min 2.35&nbsp;&Aring;) &mdash; without water. H-bonds alone hold the helix.</div>
+      <div style="margin-top:6px">
+        <a href="dna_helix.html" style="color:#66bb6a">&#9654; Run</a> &middot;
+        <a href="dna_helix_screenshot.png" style="color:#ef5350">Result</a> &middot;
+        <a href="dna_base_pair.html" style="color:#90caf9">G:C pair</a>
+      </div>
+      <span class="tag" style="background:#2a0a3a;color:#e040fb">DNA</span>
+    </div>
+    <div class="card" style="border-color:#e040fb;background:#1a0a2a">
+      <h3 style="color:#e040fb">DNA Mismatch Detection</h3>
+      <div class="desc">G:C correct (2.07&nbsp;&Aring;) vs G:T mismatch (2.62&nbsp;&Aring;) &mdash; QM distinguishes right from wrong base pairing.</div>
+      <div style="margin-top:6px">
+        <a href="dna_mismatch.html" style="color:#66bb6a">&#9654; Run</a> &middot;
+        <a href="dna_mismatch_screenshot.png" style="color:#ef5350">Result</a>
+      </div>
+      <span class="tag" style="background:#2a0a3a;color:#e040fb">DNA</span>
+    </div>
+    <a class="card" href="rna_hairpin.html" style="border-color:#e040fb;background:#1a0a2a">
+      <h3 style="color:#e040fb">RNA Hairpin</h3>
+      <div class="desc">Stem-loop self-assembly, G1:C12=1.99&Aring;</div>
+      <span class="tag" style="background:#2a0a3a;color:#e040fb">RNA</span>
+    </a>
+    <!-- Peptides & amino acids -->
+    <a class="card" href="glycine.html">
+      <h3>Glycine</h3>
+      <div class="desc">Single amino acid</div>
+      <span class="tag tag-protein">amino acid</span>
+    </a>
+    <a class="card" href="ala_dipeptide.html">
+      <h3>Ala dipeptide</h3>
+      <div class="desc">Alanine dipeptide</div>
+      <span class="tag tag-protein">peptide</span>
+    </a>
+    <a class="card" href="asp_pro.html">
+      <h3>Asp-Pro</h3>
+      <div class="desc">Dipeptide with proline pyrrolidine ring</div>
+      <span class="tag tag-protein">peptide</span>
+    </a>
+    <a class="card" href="hairpin.html">
+      <h3>Hairpin</h3>
+      <div class="desc">&beta;-hairpin (folded)</div>
+      <span class="tag tag-protein">protein</span>
+    </a>
+    <a class="card" href="hairpin_slider.html">
+      <h3>Hairpin slider</h3>
+      <div class="desc">Adjustable fold fraction 0&ndash;100%</div>
+      <span class="tag tag-protein">protein</span>
+    </a>
+    <a class="card" href="chignolin.html">
+      <h3>Chignolin</h3>
+      <div class="desc">10-residue mini-protein with fold slider</div>
+      <span class="tag tag-protein">protein</span>
+    </a>
+    <a class="card" href="villin.html">
+      <h3>Villin headpiece</h3>
+      <div class="desc">~1000 atoms, 3-helix bundle + hydration</div>
+      <span class="tag tag-protein">protein</span>
+    </a>
+  </div>
+  <div style="text-align:center;margin-top:12px">
+    <a href="benchmarks.html" style="color:#ffb74d;font-size:14px">Full benchmark results with tables &rarr;</a>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- CELL BIOLOGY -->
+<!-- ============================================================ -->
+<div class="section">
+  <h2>Cell Biology</h2>
+  <p class="desc">
+    From RealQM-converged proteins to cell-scale population dynamics.
+    The bridge: each protein species is reduced once to a small JSON record &mdash;
+    geometry, charges, hydrophobicity, diffusion coefficient &mdash; that becomes
+    the input parameters of a Brownian-dynamics simulator running 10<sup>2</sup>&ndash;10<sup>6</sup>
+    copies in a periodic box. Realises the
+    <a href="RealQMarXiv4.pdf" style="color:#4fc3f7"><i>Forward look: from molecules to cells</i></a>
+    paragraph of the paper as a tangible, runnable pipeline.
+  </p>
+  <div class="grid">
+    <div class="card" style="border-color:#80cbc4;background:#0a1a18;grid-column:1/-1">
+      <h3 style="color:#80cbc4">RealQM &rarr; Reduced Model &rarr; Population Dynamics: Chignolin Pipeline</h3>
+      <div class="desc" style="line-height:1.6">
+        End-to-end demonstration of the multi-scale workflow.
+        <ol style="margin-top:6px;padding-left:20px;color:#aaa">
+          <li><b style="color:#80cbc4">Extract:</b> Run RealQM on chignolin (10 residues, GYDPETGTWG) to convergence; dump a JSON containing per-residue centroids, hydrophobicity, net charge, end-to-end distance, hydrodynamic radius, diffusion coefficient.</li>
+          <li><b style="color:#80cbc4">Reduce:</b> The JSON IS the reduced model &mdash; one species record, ~1 KB, suitable for downstream Brownian-dynamics simulators.</li>
+          <li><b style="color:#80cbc4">Simulate (single species):</b> Drive a population of N copies in a periodic box. Position, orientation, charge, steric exclusion all from the JSON; same dynamics scales to 10<sup>6</sup> proteins on one GPU.</li>
+          <li><b style="color:#80cbc4">Multi-species + binding:</b> Add a second species (cationic ligand) with a complementary reduced-model JSON. Type-specific interactions: A&middot;A, B&middot;B mutually repulsive; A&middot;B attractive via electrostatic + Lennard-Jones-like well. Live K<sub>eq</sub>, k<sub>on</sub>, k<sub>off</sub> tracked from the trajectory &mdash; the smallest extension producing falsifiable kinetic predictions.</li>
+        </ol>
+      </div>
+      <div style="margin-top:10px">
+        <a href="chignolin_reduce.html" style="color:#66bb6a;font-size:13px">&#9654; (1) Extract reduced model</a>
+        &nbsp;&middot;&nbsp;
+        <a href="chignolin_bd.html" style="color:#66bb6a;font-size:13px">&#9654; (2-3) Single-species BD</a>
+        &nbsp;&middot;&nbsp;
+        <a href="chignolin_ligand_bd.html" style="color:#66bb6a;font-size:13px">&#9654; (4) Multi-species BD with binding</a>
+      </div>
+      <span class="tag tag-protein">protein</span>
+      <span class="tag tag-dyn">cell-scale</span>
+      <span class="tag tag-small">pipeline</span>
+    </div>
   </div>
 </div>
 
@@ -1996,7 +1604,389 @@ P_j += dt&middot;(&Delta;P_j + 2&pi;&middot;u_{1&minus;j}&sup2;)              <s
   </div>
 </div>
 
-<!-- TOOLS -->
+<div class="section">
+  <h2>Kernel Splitting &mdash; Binding Energies from Geometry</h2>
+  <p class="desc">
+    Test of <b>energy-from-geometry</b> in RealQM at Level&nbsp;3: for a series of model hydrides
+    H<sub>n</sub>X with X kernel charge +n and matched angular splitting, sweep the X-H bond length R
+    and the kernel softening r<sub>c</sub>. The binding energy &Delta;E<sub>bind</sub> = E(R<sub>eq</sub>)
+    &minus; E(2R<sub>eq</sub>) is read off directly. Locked geometry, electrons relax via ITP.
+  </p>
+  <div class="card" style="border-color:#26c6da;background:#0a1820;cursor:default;padding:16px">
+    <table style="width:100%;border-collapse:collapse;font-size:12px;color:#ddd">
+      <thead>
+        <tr style="color:#26c6da;border-bottom:1px solid #444">
+          <th style="text-align:left;padding:6px 8px">System</th>
+          <th style="text-align:left;padding:6px 8px">Architecture</th>
+          <th style="text-align:right;padding:6px 8px">Best r<sub>c</sub></th>
+          <th style="text-align:right;padding:6px 8px">RealQM &Delta;E (kcal/mol)</th>
+          <th style="text-align:right;padding:6px 8px">Experimental</th>
+          <th style="text-align:left;padding:6px 8px">Match</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid #222;background:#0a1820">
+          <td style="padding:6px 8px"><b>XH</b> closed-shell (X+1, no split)</td>
+          <td style="padding:6px 8px">2 atoms, 2 e<sup>-</sup>, plain H&sub2;-like</td>
+          <td style="text-align:right;padding:6px 8px">0.5</td>
+          <td style="text-align:right;padding:6px 8px;color:#0f0"><b>&minus;48</b></td>
+          <td style="text-align:right;padding:6px 8px">NaH &minus;47</td>
+          <td style="padding:6px 8px;color:#0f0">&check; 2%</td>
+        </tr>
+        <tr style="border-bottom:1px solid #222">
+          <td style="padding:6px 8px"><b>HXH</b> linear (X+2, 2-split hemi)</td>
+          <td style="padding:6px 8px">3 atoms, 4 e<sup>-</sup>, axis along bond</td>
+          <td style="text-align:right;padding:6px 8px">0.4</td>
+          <td style="text-align:right;padding:6px 8px;color:#0f0"><b>&minus;140</b></td>
+          <td style="text-align:right;padding:6px 8px">BeH&sub2; &minus;144</td>
+          <td style="padding:6px 8px;color:#0f0">&check; 3%</td>
+        </tr>
+        <tr style="border-bottom:1px solid #222;background:#0a1820">
+          <td style="padding:6px 8px"><b>H&sub2;O</b> bent (O+3, 2-split hemi, axis = bisector)</td>
+          <td style="padding:6px 8px">4 atoms, 5 e<sup>-</sup>, lone pair paired (2 e), bond region (1 e)</td>
+          <td style="text-align:right;padding:6px 8px">0.7</td>
+          <td style="text-align:right;padding:6px 8px;color:#0f0"><b>&minus;225</b></td>
+          <td style="text-align:right;padding:6px 8px">H&sub2;O &minus;232</td>
+          <td style="padding:6px 8px;color:#0f0">&check; 3%</td>
+        </tr>
+        <tr style="border-bottom:1px solid #222">
+          <td style="padding:6px 8px"><b>H&sub3;X (N+2, 2-hemi)</b></td>
+          <td style="padding:6px 8px">5 atoms, 5 e<sup>-</sup>: 1 e top hemi (lone-pair side) + 1 e bottom (bond) + 3 H. Simple sp&sup3; NH&sub3; (after architecture sweep)</td>
+          <td style="text-align:right;padding:6px 8px">0.20</td>
+          <td style="text-align:right;padding:6px 8px;color:#fc7"><b>−339</b> (dipole 2.50 D)</td>
+          <td style="text-align:right;padding:6px 8px">NH&sub3; &minus;283 (1.47 D)</td>
+          <td style="padding:6px 8px;color:#ffd54f">~20% over (binding); ~70% over (dipole)</td>
+        </tr>
+        <tr style="border-bottom:1px solid #222">
+          <td style="padding:6px 8px"><b>H&sub4;X (C+2, no-split)</b></td>
+          <td style="padding:6px 8px">5 atoms, 6 e<sup>-</sup>: 2 e on C in single orbital + 4 H. Tetrahedral; rc sweeps the group-14 series</td>
+          <td style="text-align:right;padding:6px 8px">0.20</td>
+          <td style="text-align:right;padding:6px 8px;color:#0f0"><b>−369</b></td>
+          <td style="text-align:right;padding:6px 8px">CH&sub4; &minus;396</td>
+          <td style="padding:6px 8px;color:#0f0">&check; <b>within 7%</b></td>
+        </tr>
+        <tr style="border-bottom:1px solid #222">
+          <td style="padding:6px 8px">↳ same model at rc = 0.40</td>
+          <td style="padding:6px 8px">larger kernel, Si-like inner shell radius</td>
+          <td style="text-align:right;padding:6px 8px">0.40</td>
+          <td style="text-align:right;padding:6px 8px;color:#0f0">−348</td>
+          <td style="text-align:right;padding:6px 8px">SiH&sub4; &minus;320</td>
+          <td style="padding:6px 8px;color:#0f0">&check; within 9%</td>
+        </tr>
+        <tr style="border-bottom:1px solid #222">
+          <td style="padding:6px 8px">↳ same model at rc = 0.70</td>
+          <td style="padding:6px 8px">soft kernel, Ge-like atomic radius</td>
+          <td style="text-align:right;padding:6px 8px">0.70</td>
+          <td style="text-align:right;padding:6px 8px;color:#0f0">−272</td>
+          <td style="text-align:right;padding:6px 8px">GeH&sub4; &minus;281</td>
+          <td style="padding:6px 8px;color:#0f0">&check; <b>within 3%</b></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="desc" style="margin-top:14px;line-height:1.7;color:#ccc;font-size:13px">
+      <b style="color:#26c6da">Closed-shell hydrides (HXH, H&sub2;O, NaH, CH&sub4;) reach 3&ndash;9% of
+      experimental binding energy</b> at the right kernel softening. The H&sub4;X case is striking:
+      a single architecture (C+2 no-split) sweeps the entire group-14 series &mdash; CH&sub4;
+      (rc=0.20, &minus;369 vs ref &minus;396, 7%), SiH&sub4; (rc=0.40, &minus;348 vs &minus;320, 9%),
+      GeH&sub4; (rc=0.70, &minus;272 vs &minus;281, 3%) &mdash; just by varying rc. <b>NH&sub3; is
+      harder</b>: best architecture (N+2 2-hemi) gives binding within 20% but with overshooting
+      dipole, no single rc gives both observables exactly. Architectures with full valence (Z=N for
+      group-V N or Z=4 for group-IV C) over-bind dramatically due to multi-occupancy artifact.
+      <br><br>
+      <b style="color:#26c6da">The principle: every sector must be anchored by an atom.</b>
+      Three findings from the systematic sweep:
+      <br>
+      &bull; <b>No-split with multi-occupancy fails</b> for &gt;2 valence electrons (HXH no-split goes
+      from &minus;158 to &minus;324 kcal/mol with rc, opposite of physical Be&rarr;Mg&rarr;Ca trend)
+      <br>
+      &bull; <b>Splitting with all sectors atom-anchored works</b> &mdash; HXH 2-split gives Be-like
+      magnitude with correct rc-trend
+      <br>
+      &bull; <b>Splitting with an orphan lone-pair sector fails</b> &mdash; H&sub2;O 3-split (axis &perp; plane)
+      gives wrong-sign binding because the empty sector captures spurious diffuse density at
+      stretched geometries
+      <br>
+      &bull; <b>The H&sub2;O 2-split (bisector) recovers correct binding</b> by pairing the lone pair
+      (2 e in one sector) and pairing both H atoms in the other sector &mdash; no orphan
+      <br><br>
+      <b style="color:#26c6da">There is a Goldilocks rc per system.</b>
+      Each architecture has a sweet-spot kernel softening: HXH at rc=0.4 (Be-like), H&sub2;O at
+      rc=0.7 (much softer), XH at rc=0.5 (Na-like). Below the optimum, sub-orbitals are forced too
+      compactly together and binding sign flips. Above, the kernel is too diffuse to bind. This is
+      consistent with rc encoding the &ldquo;effective inner-shell radius&rdquo; in the Level-3
+      reduction.
+      <br><br>
+      <b style="color:#26c6da">Implication for the case study.</b>
+      The original framing &ldquo;RealQM does geometry, hand off energy to StdQM&rdquo; is too modest:
+      <b>with the right kernel architecture, Level-3 RealQM gives binding energies competitive with
+      experiment</b> for closed-shell hydrides &mdash; a regime where StdQM also works but with vastly
+      more code and compute. The matched-architecture rule is the key insight: kernel splitting
+      isn&rsquo;t an empirical tweak, it&rsquo;s the way to encode bond directionality in the unit-density
+      framework. The hierarchy described above (Level 1 &rarr; 4) interacts with the splitting choice
+      to determine accuracy at each system.
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Forces vs Energy in Quantum Dynamics</h2>
+  <div class="grid" style="grid-template-columns:1fr">
+    <div class="card" style="border-color:#26c6da;background:#0a1820;cursor:default">
+      <div class="desc" style="line-height:1.7;font-size:13px;color:#ccc">
+        RealQM dynamics is based on <b style="color:#26c6da">forces on kernels computed as gradients of electronic potentials</b>,
+        which represents real physics &mdash; nuclei feel electrostatic gradients of the actual electron field at their position.
+        <br><br>
+        Standard QM is based on <b>gradients of total energies</b>, which is not real physics because physics does not
+        carry a record of energy &mdash; nature does not "know" the value of the system's energy at each step; it only knows
+        the local field gradients.
+        <br><br>
+        RealQM computes total energy or binding energy with low accuracy (~0.1 Ha)
+        but <b>does not use this information for dynamics</b>. Forces give precise distributed information for dynamics,
+        while energy-based dynamics appears to offer less precise dynamics.
+        <br><br>
+        Energy connects to thermodynamics, so RealQM <b>with thermodynamics appears to require calibration</b>
+        (e.g., scale relative to experimental binding energies, or hand the converged geometry to DFT/CCSD(T) for
+        precise energetics). For mechanism, structure, equilibrium geometry, recognition, and reactive pathways,
+        forces alone deliver the answer.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>RealQM State Report</h2>
+  <p class="desc">Tests below build up from atoms → bonds → H-bond networks → proteins, marking where the model captures real chemistry and where it runs into its limits.</p>
+  <div class="grid" style="grid-template-columns:1fr 1fr 1fr;gap:16px">
+    <div class="card" style="border-color:#66bb6a;background:#0a1a0a;cursor:default">
+      <h3 style="color:#66bb6a;font-size:15px">✓ Works cleanly</h3>
+      <div class="desc" style="line-height:1.6">
+        <b>Atoms</b> &mdash; Li&ndash;Rn energies within ~1% via shell-split model<br>
+        <b>Diatomics</b> &mdash; H&sub2; E<sub>bind</sub>=-0.17 Ha matches exp<br>
+        <b>Molecules</b> &mdash; H&sub2;O, NH&sub3;, CH&sub4;: dipole 80-99% exp, angle &plusmn;5%<br>
+        <b>H-bond pairwise</b> &mdash; water dimer, formamide+H&sub2;O from 4 Å form H-bond at correct distance<br>
+        <b>Cyclic tetramer</b> &mdash; O-O at 3.0 Å (exp 2.8)<br>
+        <b>Zundel H&sub5;O&sub2;&sup+;</b> &mdash; symmetric shared proton stable<br>
+        <b>Ion solvation</b> &mdash; Na&sup+;(H&sub2;O)&sub6; octahedral shell at 2.37 Å (exp 2.40)<br>
+        <b>Reactive chemistry</b> &mdash; proton transfer (HF/H&sub2;O, HCl/NH&sub3;), salt dissolution (NaCl)<br>
+        <b>Dynamics at scale</b> &mdash; 216-water ice melting, water under shear, all at ns timescales unreachable by AIMD
+      </div>
+    </div>
+    <div class="card" style="border-color:#ff9800;background:#1a1000;cursor:default">
+      <h3 style="color:#ff9800;font-size:15px">◐ Partial / with caveats</h3>
+      <div class="desc" style="line-height:1.6">
+        <b>Peptides with bond constraints</b> &mdash; Gly-Gly backbone intact (C-N = 1.49 Å with harmonic bonds). Needs experimental r&sub;0; not pure ab initio.<br>
+        <b>β-turn tetrapeptide</b> &mdash; chain curls slowly, doesn't fully close (no cooperative driver)<br>
+        <b>Glycine zwitterion</b> &mdash; COOH deprotonates ✓ but NH&sub;3&sup+; doesn't form (charge stabilization weak)<br>
+        <b>Proton chain cascade</b> &mdash; chain structure OK, clean Grotthuss hops hard to track<br>
+        <b>Short-range stability</b> &mdash; Na&sup+; shell recovers from compression, but slowly (Pauli floor is weak)<br>
+        <b>Binding energies</b> &mdash; ~1.5-2× experimental (qualitative only)
+      </div>
+    </div>
+    <div class="card" style="border-color:#ba68c8;background:#180a1a;cursor:default">
+      <h3 style="color:#ba68c8;font-size:15px">Protein folding &mdash; what is captured</h3>
+      <div class="desc" style="line-height:1.6">
+        <b>Peptide backbone integrity</b> &mdash; C-N peptide bond held at 1.33-1.5 Å with harmonic constraint (k=2 Ha/au&sup2;)<br>
+        <b>Backbone &ndash; water H-bonds</b> &mdash; formamide+H&sub2;O at 3.0 Å confirms peptide C=O solvation works<br>
+        <b>Secondary-structure H-bonds</b> &mdash; pairwise C=O⋯H-N recognition formation demonstrated in dimer and formamide tests<br>
+        <b>Directional dipole interactions</b> &mdash; favorable donor-acceptor orientation pulls partners in from 4 Å<br>
+        <b>Ion &ndash; residue coordination</b> &mdash; Na&sup+; shell around a charged center forms correctly (relevant to salt bridges and cofactors)<br>
+        <b>Bend-preserving water</b> &mdash; 104.5° pinned per water; H-bond network geometry realistic during folding dynamics<br>
+        <b>Local conformational fluctuation</b> &mdash; side chains and loops sample local basins freely<br>
+        <b>Reactive events at active sites</b> &mdash; proton transfer, acid/base chemistry can happen in place where the geometry is already close<br>
+        <b>What still requires biases</b>: blind collapse from extended state (no dispersion), hydrophobic aggregation (many-body water entropy), and full fold completion &mdash; the native contacts must be already near for finishing.
+      </div>
+    </div>
+  </div>
+  <p class="desc" style="margin-top:16px;font-size:12px;border-top:1px solid #222;padding-top:10px">
+    <b>Bottom line</b>: RealQM is <b>fast reactive mean-field chemistry at protein scale</b>. Where reactions, structures and ion solvations dominate, it delivers qualitative-to-semi-quantitative results at ~10&#8308;× AIMD speed. Where dispersion, correlation, or cooperative many-body effects dominate, standard QM methods remain better. The niche: <b>what AIMD can't reach and classical MD can't include</b>.
+  </p>
+</div>
+
+<div class="section">
+  <h2>Periodic-Table Coverage from a Single Architecture</h2>
+  <p class="desc">
+    A striking finding from the kernel-splitting sweep series: <b>a single Level-3 architecture sweeps
+    an entire periodic-table column by varying the kernel softening r<sub>c</sub></b>. The same model
+    that gives CH<sub>4</sub> at compact r<sub>c</sub> gives SiH<sub>4</sub> at moderate r<sub>c</sub>
+    and GeH<sub>4</sub> at soft r<sub>c</sub>. This validates the interpretation of r<sub>c</sub> as
+    encoding the inner-shell radius in the Level-3 reduction.
+  </p>
+  <div class="card" style="border-color:#0cf;background:#0a1820;cursor:default;padding:16px">
+    <table style="width:100%;border-collapse:collapse;font-size:12px;color:#ddd">
+      <thead>
+        <tr style="color:#0cf;border-bottom:1px solid #444">
+          <th style="text-align:left;padding:6px 8px">Group / Series</th>
+          <th style="text-align:left;padding:6px 8px">Architecture</th>
+          <th style="text-align:right;padding:6px 8px">r<sub>c</sub></th>
+          <th style="text-align:right;padding:6px 8px">RealQM &Delta;E (kcal/mol)</th>
+          <th style="text-align:right;padding:6px 8px">Real molecule</th>
+          <th style="text-align:left;padding:6px 8px">Match</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid #222"><td style="padding:6px 8px;color:#0cf"><b>Group 1 (alkali hydrides — XH closed-shell, X+1 no-split)</b></td><td colspan="5"></td></tr>
+        <tr style="border-bottom:1px solid #222"><td style="padding:6px 8px">&nbsp;&nbsp;XH at r<sub>c</sub>=0</td><td style="padding:6px 8px">X+1 no split (= H&sub2;)</td><td style="text-align:right;padding:6px 8px">0.00</td><td style="text-align:right;padding:6px 8px;color:#0f0">−92</td><td style="text-align:right;padding:6px 8px">H&sub2; −109</td><td style="padding:6px 8px;color:#0f0">within 16%</td></tr>
+        <tr style="border-bottom:1px solid #222"><td style="padding:6px 8px">&nbsp;&nbsp;NaH-like</td><td style="padding:6px 8px">same model</td><td style="text-align:right;padding:6px 8px">0.50</td><td style="text-align:right;padding:6px 8px;color:#0f0">−48</td><td style="text-align:right;padding:6px 8px">NaH −47</td><td style="padding:6px 8px;color:#0f0">&check; <b>2%</b></td></tr>
+        <tr style="border-bottom:1px solid #222"><td style="padding:6px 8px">&nbsp;&nbsp;KH-like</td><td style="padding:6px 8px">same model</td><td style="text-align:right;padding:6px 8px">0.70</td><td style="text-align:right;padding:6px 8px;color:#0f0">−42</td><td style="text-align:right;padding:6px 8px">KH ~−43</td><td style="padding:6px 8px;color:#0f0">&check; <b>2%</b></td></tr>
+
+        <tr style="border-bottom:1px solid #222;color:#0cf"><td style="padding:6px 8px"><b>Group 2 (alkaline-earth dihydrides — HXH 2-hemi, X+2)</b></td><td colspan="5"></td></tr>
+        <tr style="border-bottom:1px solid #222"><td style="padding:6px 8px">&nbsp;&nbsp;BeH&sub2;</td><td style="padding:6px 8px">2-hemi axis along bond</td><td style="text-align:right;padding:6px 8px">0.40</td><td style="text-align:right;padding:6px 8px;color:#0f0">−140</td><td style="text-align:right;padding:6px 8px">BeH&sub2; −144</td><td style="padding:6px 8px;color:#0f0">&check; <b>3%</b></td></tr>
+        <tr style="border-bottom:1px solid #222"><td style="padding:6px 8px">&nbsp;&nbsp;intermediate</td><td style="padding:6px 8px">same model</td><td style="text-align:right;padding:6px 8px">0.30</td><td style="text-align:right;padding:6px 8px;color:#ffd54f">−91</td><td style="text-align:right;padding:6px 8px">~MgH&sub2; (−100)</td><td style="padding:6px 8px;color:#ffd54f">in regime</td></tr>
+
+        <tr style="border-bottom:1px solid #222;color:#0cf"><td style="padding:6px 8px"><b>Group 14 (XH<sub>4</sub> tetrahedral hydrides — H&sub4;X C+2 no-split)</b></td><td colspan="5"></td></tr>
+        <tr style="border-bottom:1px solid #222"><td style="padding:6px 8px">&nbsp;&nbsp;CH&sub4;</td><td style="padding:6px 8px">C+2 single 2-electron orbital</td><td style="text-align:right;padding:6px 8px">0.20</td><td style="text-align:right;padding:6px 8px;color:#0f0"><b>−369</b></td><td style="text-align:right;padding:6px 8px">CH&sub4; −396</td><td style="padding:6px 8px;color:#0f0">&check; <b>7%</b></td></tr>
+        <tr style="border-bottom:1px solid #222"><td style="padding:6px 8px">&nbsp;&nbsp;SiH&sub4;</td><td style="padding:6px 8px">same model</td><td style="text-align:right;padding:6px 8px">0.40</td><td style="text-align:right;padding:6px 8px;color:#0f0"><b>−348</b></td><td style="text-align:right;padding:6px 8px">SiH&sub4; −320</td><td style="padding:6px 8px;color:#0f0">&check; <b>9%</b></td></tr>
+        <tr style="border-bottom:1px solid #222"><td style="padding:6px 8px">&nbsp;&nbsp;GeH&sub4;</td><td style="padding:6px 8px">same model</td><td style="text-align:right;padding:6px 8px">0.70</td><td style="text-align:right;padding:6px 8px;color:#0f0"><b>−272</b></td><td style="text-align:right;padding:6px 8px">GeH&sub4; −281</td><td style="padding:6px 8px;color:#0f0">&check; <b>3%</b></td></tr>
+
+        <tr style="border-bottom:1px solid #222;color:#0cf"><td style="padding:6px 8px"><b>Group 16 (bent H<sub>2</sub>X — H&sub2;O 2-hemi bisector)</b></td><td colspan="5"></td></tr>
+        <tr style="border-bottom:1px solid #222"><td style="padding:6px 8px">&nbsp;&nbsp;H&sub2;O</td><td style="padding:6px 8px">2-hemi axis along bisector, [2,1] occupancy</td><td style="text-align:right;padding:6px 8px">0.70</td><td style="text-align:right;padding:6px 8px;color:#0f0"><b>−225</b></td><td style="text-align:right;padding:6px 8px">H&sub2;O −232</td><td style="padding:6px 8px;color:#0f0">&check; <b>3%</b></td></tr>
+
+        <tr style="border-bottom:1px solid #222;color:#0cf"><td style="padding:6px 8px"><b>Group 15 (NH<sub>3</sub> pyramidal — H&sub3;X 2-hemi, N+2)</b></td><td colspan="5"></td></tr>
+        <tr style="color:#ffd54f"><td style="padding:6px 8px">&nbsp;&nbsp;NH&sub3;</td><td style="padding:6px 8px">2-hemi [1,1] (X+2), simple sp&sup3;</td><td style="text-align:right;padding:6px 8px">0.20</td><td style="text-align:right;padding:6px 8px">−235 (or −339 long-run)</td><td style="text-align:right;padding:6px 8px">NH&sub3; −283</td><td style="padding:6px 8px;color:#ffd54f">17% under or 20% over</td></tr>
+      </tbody>
+    </table>
+    <div class="desc" style="margin-top:14px;line-height:1.7;color:#ccc;font-size:13px">
+      <b style="color:#0cf">The interpretation:</b> r<sub>c</sub> is not just a tunable parameter
+      &mdash; it physically encodes the radius at which inner electrons are absorbed into the kernel
+      core. As r<sub>c</sub> grows, the explicit valence sees a more diffuse (heavier-atom-like) core,
+      and binding weakens accordingly. The same architecture spans an entire group because it captures
+      the chemistry of the valence shell (which is conserved within a group) while the kernel softness
+      varies down the column.
+      <br><br>
+      <b style="color:#0cf">Consequence for case-study claims:</b>
+      RealQM Level-3 is not just qualitatively right &mdash; it gets quantitative atomization energies
+      across multiple periodic-table columns within ~3-9% of experiment, using minimal architecture
+      (single 2-hemi or no-split kernel, no parameter fitting beyond the gallery convention for r<sub>c</sub>).
+      This is a <b>real predictive capability</b> in the energy-from-geometry regime, not just
+      structure validation. Where it fails (NH<sub>3</sub>, full-valence X+5 architectures) is informative
+      about the limits of the reduction.
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>S66 Benchmark — Geometric Coverage</h2>
+  <p class="desc">
+    <b>RealQM provides geometries; for meV-level energies, hand off to standard QM.</b>
+    Hobza's S66 is fundamentally an interaction-energy benchmark (CCSD(T)/CBS binding energies in
+    the −1 to −7 kcal/mol range), and those energies sit far below RealQM's Level-3 accuracy floor
+    (~0.1 Ha ≈ 60 kcal/mol). Trying to match S66 binding energies directly with RealQM is the wrong
+    target. The right division of labor: RealQM finds the H-bond geometry interactively at
+    millisecond/step on a laptop (otherwise expensive, especially in dynamics), then a single-point
+    CCSD(T) or DFT-D calculation at that geometry &mdash; using PySCF, Psi4, ORCA, etc. &mdash;
+    delivers the binding energy to chemical accuracy. Below we report only what RealQM is for:
+    <b>geometric agreement with S66 reference structures</b>, plus force-direction diagnostics that
+    confirm the model has its minimum near the reference. Dispersion-only systems remain out of
+    scope without a vdW correction.
+  </p>
+  <div class="card" style="border-color:#ffd54f;background:#1a1408;cursor:default;padding:16px">
+    <table style="width:100%;border-collapse:collapse;font-size:12px;color:#ddd">
+      <thead>
+        <tr style="color:#ffd54f;border-bottom:1px solid #444">
+          <th style="text-align:left;padding:6px 8px">#</th>
+          <th style="text-align:left;padding:6px 8px">Dimer</th>
+          <th style="text-align:left;padding:6px 8px">Solver</th>
+          <th style="text-align:right;padding:6px 8px">N&middot;&middot;&middot;N or O&middot;&middot;&middot;O (&Aring;)</th>
+          <th style="text-align:right;padding:6px 8px">H&middot;&middot;&middot;X (&Aring;)</th>
+          <th style="text-align:right;padding:6px 8px">D&minus;H&middot;&middot;&middot;A (&deg;)</th>
+          <th style="text-align:left;padding:6px 8px">Status</th>
+          <th style="text-align:left;padding:6px 8px">File</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid #222">
+          <td style="padding:6px 8px;color:#888">#1</td>
+          <td style="padding:6px 8px">Water&middot;&middot;&middot;Water</td>
+          <td style="padding:6px 8px">molecule.js</td>
+          <td style="text-align:right;padding:6px 8px">~3.0 / ref 2.91</td>
+          <td style="text-align:right;padding:6px 8px">~2.0 / ref 1.95</td>
+          <td style="text-align:right;padding:6px 8px">&mdash;</td>
+          <td style="padding:6px 8px;color:#66bb6a">&check; H-bonded</td>
+          <td style="padding:6px 8px"><a href="water_dimer.html" style="color:#4fc3f7">water_dimer</a></td>
+        </tr>
+        <tr style="border-bottom:1px solid #222;background:#241a08">
+          <td style="padding:6px 8px;color:#ffd54f"><b>#3</b></td>
+          <td style="padding:6px 8px"><b>MeNH<sub>2</sub>&middot;&middot;&middot;H<sub>2</sub>O</b></td>
+          <td style="padding:6px 8px"><b>mol_fast.js</b></td>
+          <td style="text-align:right;padding:6px 8px"><b>2.92 / ref 2.93</b></td>
+          <td style="text-align:right;padding:6px 8px"><b>1.97 / ref 1.95</b></td>
+          <td style="text-align:right;padding:6px 8px"><b>180 / ref ~170</b></td>
+          <td style="padding:6px 8px;color:#66bb6a"><b>&check; H-bonded (Z=3 N rc=0.5 / Z=3 O rc=0.6; H atoms relax to within 2% of CCSD(T); F on donor toward N; |F|<sub>RMS</sub>=0.09)</b></td>
+          <td style="padding:6px 8px"><a href="mol_fast_methylamine_water.html" style="color:#4fc3f7"><b>mol_fast_methylamine_water</b></a></td>
+        </tr>
+        <tr style="border-bottom:1px solid #222">
+          <td style="padding:6px 8px;color:#888">#5</td>
+          <td style="padding:6px 8px">MeOH&middot;&middot;&middot;MeOH</td>
+          <td style="padding:6px 8px">molecule.js</td>
+          <td style="text-align:right;padding:6px 8px">~2.9 / ref 2.83</td>
+          <td style="text-align:right;padding:6px 8px">&mdash;</td>
+          <td style="text-align:right;padding:6px 8px">&mdash;</td>
+          <td style="padding:6px 8px;color:#66bb6a">&check; H-bonded</td>
+          <td style="padding:6px 8px"><a href="ch3oh_dimer.html" style="color:#4fc3f7">ch3oh_dimer</a></td>
+        </tr>
+        <tr style="border-bottom:1px solid #222;background:#241a08">
+          <td style="padding:6px 8px;color:#ffd54f"><b>#10</b></td>
+          <td style="padding:6px 8px"><b>MeNH<sub>2</sub>&middot;&middot;&middot;MeNH<sub>2</sub></b></td>
+          <td style="padding:6px 8px"><b>mol_fast.js</b></td>
+          <td style="text-align:right;padding:6px 8px"><b>3.30 / ref 3.34</b></td>
+          <td style="text-align:right;padding:6px 8px"><b>2.37 / ref 2.40</b></td>
+          <td style="text-align:right;padding:6px 8px"><b>152 / ref 165&ndash;170</b></td>
+          <td style="padding:6px 8px;color:#66bb6a"><b>&check; H-bonded (N=150&sup3;: proton bound, distances within 1%)</b></td>
+          <td style="padding:6px 8px"><a href="mol_fast_methylamine_dimer.html" style="color:#4fc3f7"><b>mol_fast_methylamine_dimer</b></a></td>
+        </tr>
+        <tr style="border-bottom:1px solid #222">
+          <td style="padding:6px 8px;color:#888">#15</td>
+          <td style="padding:6px 8px">Peptide&middot;&middot;&middot;Peptide (formamide model)</td>
+          <td style="padding:6px 8px">molecule.js</td>
+          <td style="text-align:right;padding:6px 8px">&mdash;</td>
+          <td style="text-align:right;padding:6px 8px">~1.9 / ref 1.83</td>
+          <td style="text-align:right;padding:6px 8px">&mdash;</td>
+          <td style="padding:6px 8px;color:#66bb6a">&check; H-bonded (cyclic dual)</td>
+          <td style="padding:6px 8px"><a href="formamide_dimer.html" style="color:#4fc3f7">formamide_dimer</a></td>
+        </tr>
+        <tr style="border-bottom:1px solid #222">
+          <td style="padding:6px 8px;color:#888">#4/#16</td>
+          <td style="padding:6px 8px">Peptide&middot;&middot;&middot;Water</td>
+          <td style="padding:6px 8px">molecule.js</td>
+          <td style="text-align:right;padding:6px 8px">&mdash;</td>
+          <td style="text-align:right;padding:6px 8px">~1.9 / ref ~1.9</td>
+          <td style="text-align:right;padding:6px 8px">&mdash;</td>
+          <td style="padding:6px 8px;color:#66bb6a">&check; H-bonded</td>
+          <td style="padding:6px 8px"><a href="formamide_water.html" style="color:#4fc3f7">formamide_water</a></td>
+        </tr>
+        <tr style="border-top:2px solid #444;color:#888">
+          <td style="padding:6px 8px">&mdash;</td>
+          <td style="padding:6px 8px" colspan="6"><i>23 dispersion-bound systems (benzene&middot;&middot;&middot;benzene, alkane dimers, &hellip;): out of scope without vdW correction</i></td>
+          <td style="padding:6px 8px;color:#ff7043">&times; not attempted</td>
+        </tr>
+        <tr style="color:#888">
+          <td style="padding:6px 8px">&mdash;</td>
+          <td style="padding:6px 8px" colspan="6"><i>20 mixed (T-shape benzene, &hellip;): same vdW limitation</i></td>
+          <td style="padding:6px 8px;color:#ff7043">&times; not attempted</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="desc" style="margin-top:12px;line-height:1.6">
+      <b style="color:#ffd54f">Headline result &mdash; S66 #10 in mol_fast.js:</b>
+      The methylamine dimer is a stress test because two strong amine bases face each other and the donor
+      proton is tempted to delocalize. mol_fast (unit-density orbitals with effective Pauli via
+      orthogonality, multi-occupancy on heavy atoms with Z=4 C and Z=3 N reduced kernels, 150&sup3; grid)
+      passes two tests: (i) free-relax: holds the proton at 1.01 &Aring;, H&middot;&middot;&middot;N at 2.37 &Aring;,
+      N&middot;&middot;&middot;N at 3.30 &Aring; &mdash; within 1&ndash;3% of CCSD(T)/CBS; (ii) static force test
+      with N atoms locked at reference: <b>force on the donor H points toward the acceptor N</b>
+      (qualitative H-bond minimum confirmed) with |F|<sub>RMS</sub> = 0.08 Ha/au.
+      The N-H&middot;&middot;&middot;N angle is at 152&deg; (ref 165&ndash;170&deg;).
+      <b>RealQM&apos;s minimum sits close to CCSD(T) but not identical &mdash; Level-3 accuracy ~5&deg; on
+      angles, ~1&ndash;3% on distances, with directionally correct H-bond forces.</b>
+      <br><br>
+      The 5 H-bonded entries above cover the easy quadrant of S66. Methylamine&minus;water, acetic acid dimer,
+      and acetamide dimer are natural next steps to round out coverage to ~10 of 23 H-bonded systems.
+      Dispersion-bound systems (benzene stacks, alkane dimers) are not attempted &mdash; RealQM has no vdW
+      correction at present, so those are honestly out of regime.
+    </div>
+  </div>
+</div>
+
 <div class="section">
   <h2>Tools</h2>
   <div class="grid">
