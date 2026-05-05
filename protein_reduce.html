@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>Protein reduced model — PDB-driven RealQM extractor</title>
+  <style>
+    body { margin: 0; background: #000; color: #ddd; font-family: monospace; padding: 8px; }
+    #panel { position: fixed; right: 8px; top: 8px; width: 480px;
+             background: rgba(0,0,0,0.88); border: 1px solid #4fc3f7; padding: 10px;
+             font-size: 11px; line-height: 1.4; z-index: 9999; max-height: 95vh; overflow-y: auto; }
+    #panel h3 { margin: 0 0 4px 0; color: #4fc3f7; font-size: 13px; }
+    pre { background: #111; border: 1px solid #333; padding: 6px; font-size: 10px;
+          max-height: 320px; overflow: auto; color: #b0e0b0; }
+    button { font-family: monospace; padding: 3px 10px; cursor: pointer; }
+    input[type=text] { font-family: monospace; padding: 2px 4px; background: #111; color: #fff; border: 1px solid #555; }
+    .label { color: #aaa; }
+    .num { color: #ffe082; font-weight: bold; }
+    .ok { color: #66bb6a; }
+    .warn { color: #ffca28; }
+    .err { color: #ef5350; }
+  </style>
+</head><body>
+<div id="panel">
+  <h3>Protein reduced model — PDB → RealQM → JSON</h3>
+  <div style="font-size:10px;color:#aaa">
+    Enter a PDB ID, fetch from RCSB, parse atomic coordinates, run molecule.js to convergence,
+    extract a reduced-model JSON. Defaults to chignolin (1UAO).
+    Suggested small proteins:
+    <a href="?pdb=1UAO" style="color:#80cbc4">1UAO</a> (chignolin),
+    <a href="?pdb=1L2Y" style="color:#80cbc4">1L2Y</a> (Trp-cage),
+    <a href="?pdb=1VII" style="color:#80cbc4">1VII</a> (villin HP35),
+    <a href="?pdb=1UBQ" style="color:#80cbc4">1UBQ</a> (ubiquitin),
+    <a href="?pdb=2OOB" style="color:#80cbc4">2OOB</a> (BPTI).
+    For larger proteins, the box may be too small; adjust SCREEN below.
+  </div>
+
+  <div style="margin-top:8px">
+    <label>PDB ID <input id="pdb_in" type="text" value="1UAO" size="6"></label>
+    <label>SCREEN (a.u.) <input id="scr_in" type="text" value="auto" size="6"></label>
+    <button id="loadBtn">Fetch &amp; run</button>
+    <button id="pasteBtn">Paste PDB content…</button>
+  </div>
+  <textarea id="pdbPaste" rows="4" placeholder="If fetch fails (CORS from file://), download the .pdb file from rcsb.org/structure/[ID] and paste its contents here, then click Run pasted PDB."
+    style="display:none;width:100%;margin-top:6px;font-family:monospace;font-size:10px;background:#111;color:#cfc;border:1px solid #555"></textarea>
+  <button id="pasteRunBtn" style="display:none;margin-top:4px">Run pasted PDB</button>
+
+  <div style="margin-top:8px">
+    <span class="label">Status:</span> <span id="statusVal" class="num">idle</span><br>
+    <span class="label">PDB ID:</span> <span id="pdbVal" class="num">—</span><br>
+    <span class="label">Residues:</span> <span id="resVal" class="num">—</span> &nbsp;
+    <span class="label">Atoms (heavy):</span> <span id="atomVal" class="num">—</span><br>
+    <span class="label">Box:</span> <span id="boxVal" class="num">—</span> a.u.<br>
+    <span class="label">Energy:</span> <span id="EVal" class="num">—</span> Ha<br>
+    <span class="label">Net charge:</span> <span id="netChargeVal" class="num">—</span> e<br>
+    <span class="label">End-to-end:</span> <span id="endToEndVal" class="num">—</span> Å<br>
+  </div>
+
+  <div style="margin-top:8px">
+    <button id="extractBtn">Extract now</button>
+    <button id="dlBtn" disabled>Download JSON</button>
+  </div>
+
+  <div style="margin-top:8px">
+    <span class="label">Reduced-model preview:</span>
+    <pre id="modelPreview">(no PDB loaded yet)</pre>
+  </div>
+</div>
+
+<script>
+// ==================================================================
+// PDB parser — minimal, handles ATOM records, picks first model only
+// ==================================================================
+function parsePDB(text) {
+  const atoms = [];
+  let inModel = true;     // default: first MODEL or no MODEL records
+  let seenModel1 = false;
+  for (const line of text.split("\n")) {
+    if (line.startsWith("MODEL")) {
+      const modelNum = parseInt(line.substring(10).trim());
+      inModel = (modelNum === 1);
+      if (modelNum === 1) seenModel1 = true;
+    } else if (line.startsWith("ENDMDL")) {
+      if (seenModel1) inModel = false;
+    } else if (line.startsWith("ATOM") && inModel) {
+      const atomName = line.substring(12, 16).trim();
+      const resName  = line.substring(17, 20).trim();
+      const chain    = line.substring(21, 22);
+      const resNum   = parseInt(line.substring(22, 26));
+      const x        = parseFloat(line.substring(30, 38));
+      const y        = parseFloat(line.substring(38, 46));
+      const z        = parseFloat(line.substring(46, 54));
+      let element    = line.substring(76, 78).trim();
+      if (!element) {
+        // Some old PDBs miss element column; infer from atom name
+        element = (atomName[0] === 'H' || atomName[0] === 'D') ? 'H' :
+                  atomName[0];
+      }
+      // Skip hydrogens — RealQM uses bare H kernels which we add only for backbone N–H and OH
+      // (or, more practically, model treats them implicitly). For first pass: drop H.
+      if (element === 'H' || element === 'D') continue;
+      atoms.push({ x_AA: x, y_AA: y, z_AA: z,
+                   element, atomName, resName, chain, resNum });
+    }
+  }
+  return atoms;
+}
+
+// 3-letter residue code → 1-letter
+const RES3to1 = {
+  ALA:'A', ARG:'R', ASN:'N', ASP:'D', CYS:'C', GLN:'Q', GLU:'E',
+  GLY:'G', HIS:'H', ILE:'I', LEU:'L', LYS:'K', MET:'M', PHE:'F',
+  PRO:'P', SER:'S', THR:'T', TRP:'W', TYR:'Y', VAL:'V'
+};
+// Kyte-Doolittle hydrophobicity scale (1982)
+const HYDRO_KD = {
+  A: 1.8, R:-4.5, N:-3.5, D:-3.5, C: 2.5, Q:-3.5, E:-3.5,
+  G:-0.4, H:-3.2, I: 4.5, L: 3.8, K:-3.9, M: 1.9, F: 2.8,
+  P:-1.6, S:-0.8, T:-0.7, W:-0.9, Y:-1.3, V: 4.2
+};
+const A_TO_AU = 1.8897;
+
+// ==================================================================
+// Set up molecule.js from a parsed atom list
+// ==================================================================
+function configureMolecule(atoms, screenAuOverride) {
+  // Centre coordinates on origin and convert to a.u.
+  let xmin=1e9,xmax=-1e9,ymin=1e9,ymax=-1e9,zmin=1e9,zmax=-1e9;
+  for (const a of atoms) {
+    a.x_au = a.x_AA * A_TO_AU; a.y_au = a.y_AA * A_TO_AU; a.z_au = a.z_AA * A_TO_AU;
+    xmin = Math.min(xmin, a.x_au); xmax = Math.max(xmax, a.x_au);
+    ymin = Math.min(ymin, a.y_au); ymax = Math.max(ymax, a.y_au);
+    zmin = Math.min(zmin, a.z_au); zmax = Math.max(zmax, a.z_au);
+  }
+  const cx = (xmin+xmax)/2, cy=(ymin+ymax)/2, cz=(zmin+zmax)/2;
+  for (const a of atoms) { a.x_au -= cx; a.y_au -= cy; a.z_au -= cz; }
+  const span = Math.max(xmax-xmin, ymax-ymin, zmax-zmin);
+  const SCREEN = screenAuOverride || (span + 6);  // 3 a.u. margin each side
+  const gridN = SCREEN < 25 ? 200 : (SCREEN < 40 ? 250 : 300);
+  const N2 = gridN / 2;
+  const h = SCREEN / gridN;
+  const usrAtoms = [];
+  const Zlist = [], rcList = [];
+  function ZforElement(el) {
+    return { H:1, C:4, N:3, O:2, S:2, P:3, SE:2, FE:6 }[el] || 4;
+  }
+  function rcForElement(el) {
+    return { H:0, C:0.3, N:0.3, O:0.4, S:0.5, P:0.4, SE:0.5, FE:0.6 }[el] || 0.3;
+  }
+  for (const a of atoms) {
+    const Z = ZforElement(a.element);
+    usrAtoms.push({
+      i: Math.round(N2 + a.x_au / h),
+      j: Math.round(N2 + a.y_au / h),
+      k: Math.round(N2 + a.z_au / h),
+      Z, el: a.element,
+    });
+    Zlist.push(Z);
+    rcList.push(rcForElement(a.element));
+  }
+  window.USER_NN = gridN;
+  window.USER_SCREEN = SCREEN;
+  window.USER_ATOMS = usrAtoms;
+  window.USER_Z = Zlist;
+  window.USER_RC = rcList;
+  window.USER_STEPS = 200000;
+  window.USER_DYNAMICS = false;
+  window.NO_AUTO_DYNAMICS = true;
+  window.CONVERGENCE_THRESHOLD = 0.001;
+  return { gridN, SCREEN, h, N2, span };
+}
+
+// ==================================================================
+// Extract reduced model from converged atoms + window state
+// ==================================================================
+function makeReducedModel(atoms, pdbId, gridInfo) {
+  const { gridN, SCREEN, h, N2 } = gridInfo;
+  // Use updated nuclear positions from molecule.js if available
+  const np = window._nucPos;
+  const x_au = atoms.map((a, i) => {
+    if (np && np[i]) {
+      return [(np[i][0]-N2)*h, (np[i][1]-N2)*h, (np[i][2]-N2)*h];
+    }
+    return [a.x_au, a.y_au, a.z_au];
+  });
+  // Group atoms by residue
+  const resByKey = new Map();
+  atoms.forEach((a, i) => {
+    const key = a.chain + ":" + a.resNum;
+    if (!resByKey.has(key)) {
+      resByKey.set(key, { chain: a.chain, resNum: a.resNum, resName: a.resName,
+                          aa: RES3to1[a.resName] || 'X', atomIdxs: [], caIdx: -1 });
+    }
+    const r = resByKey.get(key);
+    r.atomIdxs.push(i);
+    if (a.atomName === 'CA') r.caIdx = i;
+  });
+  const residues = [];
+  let netCharge = 0;
+  for (const r of resByKey.values()) {
+    let cx=0,cy=0,cz=0;
+    for (const i of r.atomIdxs) { cx+=x_au[i][0]; cy+=x_au[i][1]; cz+=x_au[i][2]; }
+    const n = r.atomIdxs.length;
+    cx /= n; cy /= n; cz /= n;
+    const ca = r.caIdx >= 0 ? x_au[r.caIdx] : null;
+    const aa = r.aa;
+    const sc = (aa === 'D' || aa === 'E') ? -1 :
+               (aa === 'K' || aa === 'R') ? +1 :
+               (aa === 'H') ? 0.1 : 0;
+    netCharge += sc;
+    residues.push({
+      chain: r.chain, num: r.resNum, name: r.resName, aa,
+      ca_au: ca ? [+ca[0].toFixed(3), +ca[1].toFixed(3), +ca[2].toFixed(3)] : null,
+      centroid_au: [+cx.toFixed(3), +cy.toFixed(3), +cz.toFixed(3)],
+      hydrophobicity_kd: HYDRO_KD[aa] !== undefined ? HYDRO_KD[aa] : null,
+      sidechain_charge: sc,
+    });
+  }
+  // Bounding box and end-to-end Cα0–CαN-1
+  let xmin=1e9,xmax=-1e9,ymin=1e9,ymax=-1e9,zmin=1e9,zmax=-1e9;
+  for (const p of x_au) {
+    xmin=Math.min(xmin,p[0]); xmax=Math.max(xmax,p[0]);
+    ymin=Math.min(ymin,p[1]); ymax=Math.max(ymax,p[1]);
+    zmin=Math.min(zmin,p[2]); zmax=Math.max(zmax,p[2]);
+  }
+  const cas = residues.filter(r => r.ca_au !== null).map(r => r.ca_au);
+  const e2e_au = cas.length >= 2 ?
+    Math.hypot(cas[cas.length-1][0]-cas[0][0],
+               cas[cas.length-1][1]-cas[0][1],
+               cas[cas.length-1][2]-cas[0][2]) : null;
+  const sequence = residues.map(r => r.aa).join('');
+  const dims = [xmax-xmin, ymax-ymin, zmax-zmin];
+  const rh_au = Math.max(...dims) / 2;
+  // Average hydrophobicity along the sequence
+  const hydroAvg = residues.reduce((s, r) => s + (r.hydrophobicity_kd || 0), 0) / residues.length;
+  // Rough mass: 110 Da × residues
+  const mass_Da = residues.length * 110;
+  return {
+    species: pdbId,
+    pdb_id: pdbId,
+    sequence,
+    n_residues: residues.length,
+    n_atoms_heavy: atoms.length,
+    energy_Ha: window._E !== undefined ? +window._E.toFixed(4) : null,
+    net_charge_e: netCharge,
+    mass_Da,
+    end_to_end_au: e2e_au !== null ? +e2e_au.toFixed(3) : null,
+    end_to_end_AA: e2e_au !== null ? +(e2e_au / A_TO_AU).toFixed(3) : null,
+    bounding_box_au: { x:[+xmin.toFixed(3),+xmax.toFixed(3)],
+                       y:[+ymin.toFixed(3),+ymax.toFixed(3)],
+                       z:[+zmin.toFixed(3),+zmax.toFixed(3)] },
+    hydrodynamic_radius_au: +rh_au.toFixed(2),
+    hydrophobicity_avg_kd: +hydroAvg.toFixed(2),
+    diffusion_translational_au_per_step: '~Stokes-Einstein @300K (η_water)',
+    residues,
+    modes: 'TODO — Cα-Hessian via displacement runs',
+    surface_electrostatic: 'TODO — marching-cubes on density grid',
+    provenance: {
+      method: 'RealQM via molecule.js',
+      grid: gridN + '³',
+      screen_au: SCREEN,
+      h_au: +h.toFixed(4),
+      pdb_source: 'https://files.rcsb.org/download/' + pdbId + '.pdb',
+      date: new Date().toISOString(),
+    },
+  };
+}
+
+// ==================================================================
+// Driver
+// ==================================================================
+let parsedAtoms = null;
+let extractedModel = null;
+let gridInfo = null;
+let molJsLoaded = false;
+const $ = id => document.getElementById(id);
+
+function setStatus(msg, cls) {
+  const el = $("statusVal");
+  el.textContent = msg;
+  el.className = "num " + (cls || "");
+}
+
+async function loadAndRun() {
+  const pdbId = $("pdb_in").value.trim().toUpperCase();
+  const scrIn = $("scr_in").value.trim();
+  const scrOverride = (scrIn && scrIn !== "auto") ? parseFloat(scrIn) : null;
+  setStatus("fetching " + pdbId + "…", "warn");
+  try {
+    const r = await fetch("https://files.rcsb.org/download/" + pdbId + ".pdb");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const text = await r.text();
+    parsedAtoms = parsePDB(text);
+    if (parsedAtoms.length === 0) throw new Error("no ATOM records found");
+    setStatus("parsed " + parsedAtoms.length + " heavy atoms; configuring molecule.js…", "ok");
+    gridInfo = configureMolecule(parsedAtoms, scrOverride);
+    $("pdbVal").textContent = pdbId;
+    $("atomVal").textContent = parsedAtoms.length;
+    const resCount = new Set(parsedAtoms.map(a => a.chain+":"+a.resNum)).size;
+    $("resVal").textContent = resCount;
+    $("boxVal").textContent = gridInfo.SCREEN.toFixed(1) + " (" + gridInfo.gridN + "³, h=" + gridInfo.h.toFixed(3) + ")";
+    if (!molJsLoaded) {
+      const s = document.createElement("script");
+      s.src = "molecule.js?t=" + Date.now();
+      s.onload = () => {
+        const p5s = document.createElement("script");
+        p5s.src = "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js";
+        document.body.appendChild(p5s);
+        molJsLoaded = true;
+        setStatus("molecule.js running — wait for convergence", "ok");
+      };
+      document.body.appendChild(s);
+    } else {
+      // Re-init via molecule.js's restartWithPositions if available
+      if (window.restartWithPositions) {
+        const positions = window.USER_ATOMS.map(a => [a.i, a.j, a.k]);
+        await window.restartWithPositions(positions);
+        setStatus("re-initialised with new geometry", "ok");
+      } else {
+        setStatus("molecule.js loaded; refresh page for new PDB", "warn");
+      }
+    }
+  } catch (e) {
+    setStatus("ERROR: " + e.message, "err");
+    console.error(e);
+  }
+}
+
+$("loadBtn").onclick = loadAndRun;
+$("pasteBtn").onclick = () => {
+  $("pdbPaste").style.display = "block";
+  $("pasteRunBtn").style.display = "inline-block";
+  $("pdbPaste").focus();
+};
+$("pasteRunBtn").onclick = () => {
+  const text = $("pdbPaste").value;
+  if (!text || text.length < 100) { setStatus("paste a PDB file (multi-line ATOM records)", "warn"); return; }
+  const pdbId = ($("pdb_in").value.trim().toUpperCase() || "PASTE");
+  const scrIn = $("scr_in").value.trim();
+  const scrOverride = (scrIn && scrIn !== "auto") ? parseFloat(scrIn) : null;
+  parsedAtoms = parsePDB(text);
+  if (parsedAtoms.length === 0) { setStatus("no ATOM records parsed", "err"); return; }
+  setStatus("parsed " + parsedAtoms.length + " heavy atoms; configuring molecule.js…", "ok");
+  gridInfo = configureMolecule(parsedAtoms, scrOverride);
+  $("pdbVal").textContent = pdbId;
+  $("atomVal").textContent = parsedAtoms.length;
+  const resCount = new Set(parsedAtoms.map(a => a.chain+":"+a.resNum)).size;
+  $("resVal").textContent = resCount;
+  $("boxVal").textContent = gridInfo.SCREEN.toFixed(1) + " (" + gridInfo.gridN + "³, h=" + gridInfo.h.toFixed(3) + ")";
+  if (!molJsLoaded) {
+    const s = document.createElement("script");
+    s.src = "molecule.js?t=" + Date.now();
+    s.onload = () => {
+      const p5s = document.createElement("script");
+      p5s.src = "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js";
+      document.body.appendChild(p5s);
+      molJsLoaded = true;
+      setStatus("molecule.js running — wait for convergence", "ok");
+    };
+    document.body.appendChild(s);
+  } else {
+    setStatus("molecule.js already loaded; refresh for new geometry", "warn");
+  }
+};
+$("extractBtn").onclick = () => {
+  if (!parsedAtoms || !gridInfo) { setStatus("load a PDB first", "warn"); return; }
+  const pdbId = $("pdb_in").value.trim().toUpperCase();
+  extractedModel = makeReducedModel(parsedAtoms, pdbId, gridInfo);
+  $("modelPreview").textContent = JSON.stringify(extractedModel, null, 2);
+  $("dlBtn").disabled = false;
+  $("netChargeVal").textContent = extractedModel.net_charge_e;
+  $("endToEndVal").textContent = extractedModel.end_to_end_AA !== null ? extractedModel.end_to_end_AA : "—";
+};
+$("dlBtn").onclick = () => {
+  if (!extractedModel) return;
+  const blob = new Blob([JSON.stringify(extractedModel, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = (extractedModel.pdb_id || "protein") + "-reduced.json";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+// Live energy readout
+setInterval(() => {
+  if (window._E !== undefined) $("EVal").textContent = window._E.toFixed(4);
+}, 500);
+
+// Auto-load if URL has ?pdb=...
+const urlParams = new URLSearchParams(location.search);
+if (urlParams.get("pdb")) {
+  $("pdb_in").value = urlParams.get("pdb").toUpperCase();
+  setTimeout(loadAndRun, 100);
+}
+</script>
+</body></html>
