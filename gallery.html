@@ -923,29 +923,6 @@ P_j += dt&middot;(&Delta;P_j + 2&pi;&middot;u_{1&minus;j}&sup2;)              <s
       <div style="margin-top:6px"><a href="chignolin_dry.html" style="color:#66bb6a">&#9654; Run</a> &middot; <a href="chignolin_fold.webm" style="color:#ef5350">&#9654; Video</a></div>
       <span class="tag tag-protein">protein</span>
     </div>
-    <div class="card" style="border-color:#80cbc4;background:#0a1a18;grid-column:1/-1">
-      <h3 style="color:#80cbc4">RealQM &rarr; Reduced Model &rarr; Population Dynamics: Chignolin Pipeline</h3>
-      <div class="desc" style="line-height:1.6">
-        End-to-end demonstration of the cell-scale workflow described in the paper's
-        <a href="RealQMarXiv4.pdf" style="color:#80cbc4"><i>Forward look: from molecules to cells</i></a> paragraph.
-        <ol style="margin-top:6px;padding-left:20px;color:#aaa">
-          <li><b style="color:#80cbc4">Extract:</b> Run RealQM on chignolin (10 residues, GYDPETGTWG) to convergence; dump a JSON containing per-residue centroids, hydrophobicity, net charge, end-to-end distance, hydrodynamic radius, diffusion coefficient.</li>
-          <li><b style="color:#80cbc4">Reduce:</b> The JSON IS the reduced model &mdash; one species record, ~1 KB, suitable for downstream Brownian-dynamics simulators.</li>
-          <li><b style="color:#80cbc4">Simulate (single species):</b> Drive a population of N copies in a periodic box. Position, orientation, charge, steric exclusion all from the JSON; same dynamics scales to 10⁶ proteins on one GPU.</li>
-          <li><b style="color:#80cbc4">Multi-species + binding:</b> Add a second species (cationic ligand) with a complementary reduced-model JSON. Type-specific interactions: A&middot;A, B&middot;B mutually repulsive; A&middot;B attractive via electrostatic + Lennard-Jones-like well. Live K<sub>eq</sub>, k<sub>on</sub>, k<sub>off</sub> tracked from the trajectory &mdash; the smallest extension producing falsifiable kinetic predictions.</li>
-        </ol>
-      </div>
-      <div style="margin-top:10px">
-        <a href="chignolin_reduce.html" style="color:#66bb6a;font-size:13px">&#9654; (1) Extract reduced model</a>
-        &nbsp;&middot;&nbsp;
-        <a href="chignolin_bd.html" style="color:#66bb6a;font-size:13px">&#9654; (2-3) Single-species BD</a>
-        &nbsp;&middot;&nbsp;
-        <a href="chignolin_ligand_bd.html" style="color:#66bb6a;font-size:13px">&#9654; (4) Multi-species BD with binding</a>
-      </div>
-      <span class="tag tag-protein">protein</span>
-      <span class="tag tag-dyn">cell-scale</span>
-      <span class="tag tag-small">pipeline</span>
-    </div>
     <a class="card" href="hairpin_vs_chignolin.html" style="border-color:#26c6da;background:#0a1a1a">
       <h3 style="color:#26c6da">Hairpin vs Chignolin</h3>
       <div class="desc">Side chains need hydrophobic pressure to fold &mdash; backbone H-bonds alone are not enough.</div>
@@ -1087,6 +1064,46 @@ P_j += dt&middot;(&Delta;P_j + 2&pi;&middot;u_{1&minus;j}&sup2;)              <s
   </div>
   <div style="text-align:center;margin-top:12px">
     <a href="benchmarks.html" style="color:#ffb74d;font-size:14px">Full benchmark results with tables &rarr;</a>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- CELL BIOLOGY -->
+<!-- ============================================================ -->
+<div class="section">
+  <h2>Cell Biology</h2>
+  <p class="desc">
+    From RealQM-converged proteins to cell-scale population dynamics.
+    The bridge: each protein species is reduced once to a small JSON record &mdash;
+    geometry, charges, hydrophobicity, diffusion coefficient &mdash; that becomes
+    the input parameters of a Brownian-dynamics simulator running 10<sup>2</sup>&ndash;10<sup>6</sup>
+    copies in a periodic box. Realises the
+    <a href="RealQMarXiv4.pdf" style="color:#4fc3f7"><i>Forward look: from molecules to cells</i></a>
+    paragraph of the paper as a tangible, runnable pipeline.
+  </p>
+  <div class="grid">
+    <div class="card" style="border-color:#80cbc4;background:#0a1a18;grid-column:1/-1">
+      <h3 style="color:#80cbc4">RealQM &rarr; Reduced Model &rarr; Population Dynamics: Chignolin Pipeline</h3>
+      <div class="desc" style="line-height:1.6">
+        End-to-end demonstration of the multi-scale workflow.
+        <ol style="margin-top:6px;padding-left:20px;color:#aaa">
+          <li><b style="color:#80cbc4">Extract:</b> Run RealQM on chignolin (10 residues, GYDPETGTWG) to convergence; dump a JSON containing per-residue centroids, hydrophobicity, net charge, end-to-end distance, hydrodynamic radius, diffusion coefficient.</li>
+          <li><b style="color:#80cbc4">Reduce:</b> The JSON IS the reduced model &mdash; one species record, ~1 KB, suitable for downstream Brownian-dynamics simulators.</li>
+          <li><b style="color:#80cbc4">Simulate (single species):</b> Drive a population of N copies in a periodic box. Position, orientation, charge, steric exclusion all from the JSON; same dynamics scales to 10<sup>6</sup> proteins on one GPU.</li>
+          <li><b style="color:#80cbc4">Multi-species + binding:</b> Add a second species (cationic ligand) with a complementary reduced-model JSON. Type-specific interactions: A&middot;A, B&middot;B mutually repulsive; A&middot;B attractive via electrostatic + Lennard-Jones-like well. Live K<sub>eq</sub>, k<sub>on</sub>, k<sub>off</sub> tracked from the trajectory &mdash; the smallest extension producing falsifiable kinetic predictions.</li>
+        </ol>
+      </div>
+      <div style="margin-top:10px">
+        <a href="chignolin_reduce.html" style="color:#66bb6a;font-size:13px">&#9654; (1) Extract reduced model</a>
+        &nbsp;&middot;&nbsp;
+        <a href="chignolin_bd.html" style="color:#66bb6a;font-size:13px">&#9654; (2-3) Single-species BD</a>
+        &nbsp;&middot;&nbsp;
+        <a href="chignolin_ligand_bd.html" style="color:#66bb6a;font-size:13px">&#9654; (4) Multi-species BD with binding</a>
+      </div>
+      <span class="tag tag-protein">protein</span>
+      <span class="tag tag-dyn">cell-scale</span>
+      <span class="tag tag-small">pipeline</span>
+    </div>
   </div>
 </div>
 
