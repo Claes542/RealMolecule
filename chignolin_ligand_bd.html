@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>Multi-species BD: chignolin + ligand</title>
+  <style>
+    body { margin: 0; background: #0a0a0a; color: #ddd; font-family: monospace; padding: 8px; }
+    #panel { position: fixed; right: 8px; top: 8px; width: 380px;
+             background: rgba(0,0,0,0.88); border: 1px solid #4fc3f7; padding: 10px;
+             font-size: 11px; line-height: 1.45; z-index: 9999; max-height: 95vh; overflow-y: auto; }
+    #panel h3 { margin: 0 0 4px 0; color: #4fc3f7; font-size: 13px; }
+    canvas { background: #050510; border: 1px solid #333; display: block; }
+    button { font-family: monospace; padding: 3px 10px; cursor: pointer; }
+    .num { color: #ffe082; font-weight: bold; }
+    .label { color: #aaa; }
+    pre { background:#111;border:1px solid #333;padding:4px 6px;font-size:9px;color:#b0e0b0; overflow-x:auto }
+  </style>
+</head><body>
+
+<canvas id="cvs" width="900" height="700"></canvas>
+
+<div id="panel">
+  <h3>Multi-species BD: chignolin + ligand</h3>
+  <div style="font-size:10px;color:#aaa">
+    Two reduced-model JSONs drive the simulation. Chignolin (green, q=&minus;2) and a small
+    cationic peptide ligand (orange, q=+1). Specific A-B binding via electrostatic +
+    hydrophobic complementarity; A-A and B-B mutually repulsive only.
+    Bound pairs highlighted with a yellow line.
+    Live K<sub>eq</sub>, k<sub>on</sub>, k<sub>off</sub> tracked from the trajectory.
+  </div>
+
+  <div style="margin-top:6px">
+    <label>N chignolin <input id="NA_in" type="range" min="2" max="80" value="20" style="width:120px"> <span id="NA_v" class="num">20</span></label><br>
+    <label>N ligand <input id="NB_in" type="range" min="2" max="80" value="20" style="width:120px"> <span id="NB_v" class="num">20</span></label><br>
+    <label>T (k<sub>B</sub>T) <input id="T_in" type="range" min="0.2" max="3" step="0.1" value="1" style="width:120px"> <span id="T_v" class="num">1.0</span></label><br>
+    <label>A&middot;B affinity ε <input id="eps_in" type="range" min="0" max="20" step="0.5" value="6" style="width:120px"> <span id="eps_v" class="num">6.0</span></label><br>
+    <button id="resetBtn">Reset</button>
+    <button id="pauseBtn">Pause</button>
+  </div>
+
+  <div style="margin-top:8px">
+    <span class="label">step:</span> <span id="stepVal" class="num">0</span><br>
+    <span class="label">bound A&middot;B pairs:</span> <span id="boundVal" class="num">0</span> /
+      <span id="maxBoundVal">—</span> max possible<br>
+    <span class="label">time-avg bound fraction:</span> <span id="fracVal" class="num">—</span><br>
+    <span class="label">K<sub>eq</sub> = [AB] / ([A][B]):</span> <span id="KeqVal" class="num">—</span> (a.u.<sup>2</sup>)<br>
+    <span class="label">binding events / step:</span> <span id="konVal" class="num">—</span><br>
+    <span class="label">unbinding events / step:</span> <span id="koffVal" class="num">—</span><br>
+  </div>
+
+  <div style="margin-top:8px">
+    <span class="label">Inlined reduced models:</span>
+    <pre id="modelJson"></pre>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// Two reduced-model species
+// ============================================================
+const speciesA = {
+  species: "chignolin",
+  net_charge_e: -2,
+  hydrodynamic_radius_au: 12,
+  diffusion_translational_au: 0.0008,
+  hydrophobicity_avg_kd: -1.2,
+  has_aromatic_patch: true,         // Tyr2 + Trp9 — drives stacking
+  notes: "from chignolin_reduce.html"
+};
+
+const speciesB = {
+  species: "ligand_KWG",            // hypothetical 3-residue cationic peptide
+  net_charge_e: +1,
+  hydrodynamic_radius_au: 5,
+  diffusion_translational_au: 0.002,
+  hydrophobicity_avg_kd: +0.5,      // Trp dominant
+  has_aromatic_patch: true,         // Trp side chain — pi-stacks with chignolin's Tyr/Trp
+  notes: "small Lys-Trp-Gly ligand designed to bind chignolin"
+};
+document.getElementById("modelJson").textContent =
+  JSON.stringify({ A: speciesA, B: speciesB }, null, 2);
+
+// ============================================================
+// Binding criterion + interaction matrix
+// ============================================================
+const cvs = document.getElementById("cvs");
+const ctx = cvs.getContext("2d");
+const W = cvs.width, H = cvs.height;
+const L_AU = 100;
+const PX_PER_AU = W / L_AU;
+
+const RhA = speciesA.hydrodynamic_radius_au, RhB = speciesB.hydrodynamic_radius_au;
+const massA = 1100 * 1836 / 1000, massB = 350 * 1836 / 1000;
+const D_A = speciesA.diffusion_translational_au, D_B = speciesB.diffusion_translational_au;
+const qA = speciesA.net_charge_e, qB = speciesB.net_charge_e;
+const debye = 30;     // Yukawa screening length (a.u.)
+
+// Specific A-B Lennard-Jones-like attractive potential at r0 = RhA + RhB
+const r0_AB = RhA + RhB;             // 17 a.u.
+const r_bound_AB = r0_AB + 4;        // bound if r < r_bound
+
+let NA = 20, NB = 20, kT = 1.0, epsAB = 6.0;
+let A_copies = [], B_copies = [];
+let nStep = 0, running = true;
+let boundOccupancy = [];    // history of bound counts
+let bondEvents = { on: 0, off: 0 };
+let prevBound = new Set();   // serialized "i_j" of bound A-B pairs last frame
+
+document.getElementById("NA_in").addEventListener("input", e => {
+  NA = +e.target.value; document.getElementById("NA_v").textContent = NA; resetCopies();
+});
+document.getElementById("NB_in").addEventListener("input", e => {
+  NB = +e.target.value; document.getElementById("NB_v").textContent = NB; resetCopies();
+});
+document.getElementById("T_in").addEventListener("input", e => {
+  kT = +e.target.value; document.getElementById("T_v").textContent = kT.toFixed(1);
+});
+document.getElementById("eps_in").addEventListener("input", e => {
+  epsAB = +e.target.value; document.getElementById("eps_v").textContent = epsAB.toFixed(1);
+});
+document.getElementById("resetBtn").onclick = resetCopies;
+document.getElementById("pauseBtn").onclick = () => {
+  running = !running;
+  document.getElementById("pauseBtn").textContent = running ? "Pause" : "Resume";
+};
+
+function gauss() {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+function resetCopies() {
+  A_copies = []; B_copies = [];
+  for (let i = 0; i < NA; i++) {
+    A_copies.push({ x: Math.random() * L_AU, y: Math.random() * L_AU,
+                    theta: Math.random() * 2 * Math.PI, type: 'A' });
+  }
+  for (let i = 0; i < NB; i++) {
+    B_copies.push({ x: Math.random() * L_AU, y: Math.random() * L_AU,
+                    theta: Math.random() * 2 * Math.PI, type: 'B' });
+  }
+  nStep = 0;
+  boundOccupancy = [];
+  bondEvents = { on: 0, off: 0 };
+  prevBound.clear();
+}
+resetCopies();
+
+const dt = 0.5;
+function stepBD() {
+  // Force arrays
+  const fxA = new Array(NA).fill(0), fyA = new Array(NA).fill(0);
+  const fxB = new Array(NB).fill(0), fyB = new Array(NB).fill(0);
+  // Helper: minimum-image displacement
+  function mid(a, b) {
+    let dx = a.x - b.x, dy = a.y - b.y;
+    if (dx >  L_AU * 0.5) dx -= L_AU; if (dx < -L_AU * 0.5) dx += L_AU;
+    if (dy >  L_AU * 0.5) dy -= L_AU; if (dy < -L_AU * 0.5) dy += L_AU;
+    return [dx, dy];
+  }
+  // A-A: steric + electrostatic repulsion only
+  for (let i = 0; i < NA; i++) for (let j = i + 1; j < NA; j++) {
+    const [dx, dy] = mid(A_copies[i], A_copies[j]);
+    const r2 = dx*dx + dy*dy + 1e-9, r = Math.sqrt(r2);
+    if (r < 2 * RhA) {
+      const f = 200 * (2 * RhA - r) / RhA;
+      fxA[i] += f * dx / r; fyA[i] += f * dy / r;
+      fxA[j] -= f * dx / r; fyA[j] -= f * dy / r;
+    }
+    const fE = qA * qA * Math.exp(-r / debye) * (1 / r2);
+    fxA[i] += fE * dx / r; fyA[i] += fE * dy / r;
+    fxA[j] -= fE * dx / r; fyA[j] -= fE * dy / r;
+  }
+  // B-B: steric + electrostatic repulsion only
+  for (let i = 0; i < NB; i++) for (let j = i + 1; j < NB; j++) {
+    const [dx, dy] = mid(B_copies[i], B_copies[j]);
+    const r2 = dx*dx + dy*dy + 1e-9, r = Math.sqrt(r2);
+    if (r < 2 * RhB) {
+      const f = 100 * (2 * RhB - r) / RhB;
+      fxB[i] += f * dx / r; fyB[i] += f * dy / r;
+      fxB[j] -= f * dx / r; fyB[j] -= f * dy / r;
+    }
+    const fE = qB * qB * Math.exp(-r / debye) * (1 / r2);
+    fxB[i] += fE * dx / r; fyB[i] += fE * dy / r;
+    fxB[j] -= fE * dx / r; fyB[j] -= fE * dy / r;
+  }
+  // A-B: steric + electrostatic ATTRACTION (qA·qB < 0) + specific affinity
+  let curBound = new Set();
+  for (let i = 0; i < NA; i++) {
+    for (let j = 0; j < NB; j++) {
+      const [dx, dy] = mid(A_copies[i], B_copies[j]);
+      const r2 = dx*dx + dy*dy + 1e-9, r = Math.sqrt(r2);
+      // Steric core repulsion at r < (RhA + RhB) * 0.6 — bodies can't overlap fully
+      const r_core = (RhA + RhB) * 0.6;
+      if (r < r_core) {
+        const f = 200 * (r_core - r) / r_core;
+        fxA[i] += f * dx / r; fyA[i] += f * dy / r;
+        fxB[j] -= f * dx / r; fyB[j] -= f * dy / r;
+      }
+      // Electrostatic attraction (qA = -2, qB = +1 → qA·qB = -2, attractive)
+      const fE = qA * qB * Math.exp(-r / debye) * (1 / r2);
+      fxA[i] += fE * dx / r; fyA[i] += fE * dy / r;
+      fxB[j] -= fE * dx / r; fyB[j] -= fE * dy / r;
+      // Specific A-B affinity: Lennard-Jones-like well at r0
+      const sigma = r0_AB;
+      const u = sigma / r;
+      // F_LJ = 24 ε [2·(σ/r)¹³ − (σ/r)⁷] / r — radial
+      const fLJ = epsAB * 24 * (2 * Math.pow(u, 13) - Math.pow(u, 7)) / r;
+      fxA[i] += fLJ * dx / r; fyA[i] += fLJ * dy / r;
+      fxB[j] -= fLJ * dx / r; fyB[j] -= fLJ * dy / r;
+      // Track bound state
+      if (r < r_bound_AB) curBound.add(i + "_" + j);
+    }
+  }
+  // Detect on/off events vs previous frame
+  for (const k of curBound) if (!prevBound.has(k)) bondEvents.on++;
+  for (const k of prevBound) if (!curBound.has(k)) bondEvents.off++;
+  prevBound = curBound;
+  boundOccupancy.push(curBound.size);
+  if (boundOccupancy.length > 600) boundOccupancy.shift();
+
+  // Langevin updates
+  const sigA = Math.sqrt(2 * D_A * kT * dt);
+  const sigB = Math.sqrt(2 * D_B * kT * dt);
+  const gammaA = 1 / (massA * D_A), gammaB = 1 / (massB * D_B);
+  for (let i = 0; i < NA; i++) {
+    A_copies[i].x += (fxA[i] / (massA * gammaA)) * dt + sigA * gauss();
+    A_copies[i].y += (fyA[i] / (massA * gammaA)) * dt + sigA * gauss();
+    A_copies[i].x = ((A_copies[i].x % L_AU) + L_AU) % L_AU;
+    A_copies[i].y = ((A_copies[i].y % L_AU) + L_AU) % L_AU;
+  }
+  for (let j = 0; j < NB; j++) {
+    B_copies[j].x += (fxB[j] / (massB * gammaB)) * dt + sigB * gauss();
+    B_copies[j].y += (fyB[j] / (massB * gammaB)) * dt + sigB * gauss();
+    B_copies[j].x = ((B_copies[j].x % L_AU) + L_AU) % L_AU;
+    B_copies[j].y = ((B_copies[j].y % L_AU) + L_AU) % L_AU;
+  }
+  nStep++;
+  // Diagnostics
+  document.getElementById("stepVal").textContent = nStep;
+  document.getElementById("boundVal").textContent = curBound.size;
+  document.getElementById("maxBoundVal").textContent = Math.min(NA, NB);
+  if (boundOccupancy.length > 50) {
+    const recent = boundOccupancy.slice(-200);
+    const avgBound = recent.reduce((s, x) => s + x, 0) / recent.length;
+    const frac = avgBound / Math.min(NA, NB);
+    document.getElementById("fracVal").textContent = frac.toFixed(3);
+    // K_eq = [AB] / ([A_free][B_free])
+    const A_free = NA - avgBound;
+    const B_free = NB - avgBound;
+    const V = L_AU * L_AU;
+    const Keq = (avgBound / V) / ((A_free / V) * (B_free / V) + 1e-9);
+    document.getElementById("KeqVal").textContent = Keq.toExponential(3);
+  }
+  if (nStep > 50) {
+    document.getElementById("konVal").textContent = (bondEvents.on / nStep).toFixed(4);
+    document.getElementById("koffVal").textContent = (bondEvents.off / nStep).toFixed(4);
+  }
+}
+
+function draw() {
+  ctx.fillStyle = "#050510";
+  ctx.fillRect(0, 0, W, H);
+  // Bound-pair lines first (so atoms cover them)
+  ctx.strokeStyle = "rgba(255, 220, 60, 0.7)";
+  ctx.lineWidth = 1;
+  for (const k of prevBound) {
+    const [i, j] = k.split("_").map(Number);
+    if (!A_copies[i] || !B_copies[j]) continue;
+    let dx = A_copies[i].x - B_copies[j].x, dy = A_copies[i].y - B_copies[j].y;
+    if (Math.abs(dx) > L_AU * 0.5 || Math.abs(dy) > L_AU * 0.5) continue;  // skip wrapped
+    ctx.beginPath();
+    ctx.moveTo(A_copies[i].x * PX_PER_AU, A_copies[i].y * PX_PER_AU);
+    ctx.lineTo(B_copies[j].x * PX_PER_AU, B_copies[j].y * PX_PER_AU);
+    ctx.stroke();
+  }
+  // A copies — green
+  for (const c of A_copies) {
+    ctx.beginPath();
+    ctx.arc(c.x * PX_PER_AU, c.y * PX_PER_AU, RhA * PX_PER_AU, 0, 2 * Math.PI);
+    ctx.fillStyle = "rgba(80, 200, 150, 0.9)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(180, 220, 200, 0.95)"; ctx.lineWidth = 1; ctx.stroke();
+  }
+  // B copies — orange
+  for (const c of B_copies) {
+    ctx.beginPath();
+    ctx.arc(c.x * PX_PER_AU, c.y * PX_PER_AU, RhB * PX_PER_AU, 0, 2 * Math.PI);
+    ctx.fillStyle = "rgba(255, 160, 80, 0.95)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255, 220, 180, 0.95)"; ctx.lineWidth = 1; ctx.stroke();
+  }
+  ctx.strokeStyle = "#444";
+  ctx.strokeRect(0, 0, W - 1, H - 1);
+  ctx.fillStyle = "#888"; ctx.font = "11px monospace";
+  ctx.fillText("Periodic box: " + L_AU + " a.u. (~5.3 nm)", 10, 16);
+  ctx.fillText("Green: chignolin (q=−2). Orange: ligand (q=+1). Yellow line: bound A·B pair.", 10, 30);
+  ctx.fillText("ε A·B affinity = " + epsAB.toFixed(1) + " (LJ-like well at r₀ = " + r0_AB + " a.u.)", 10, 44);
+}
+
+function loop() {
+  if (running) for (let s = 0; s < 4; s++) stepBD();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body></html>
