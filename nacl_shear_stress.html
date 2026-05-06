@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>NaCl shear modulus — stress-controlled</title>
+  <style>
+    body { margin: 0; background: #000; color: #ddd; font-family: monospace; }
+    #panel { position: fixed; left: 8px; top: 8px; width: 400px;
+             background: rgba(0,0,0,0.88); border: 1px solid #4fc3f7; padding: 10px;
+             font-size: 11px; line-height: 1.45; z-index: 9999; max-height: 95vh; overflow-y: auto; }
+    #panel.collapsed { width: 180px; max-height: 32px; overflow: hidden; }
+    #panel.collapsed > *:not(h3) { display: none; }
+    #panel h3 { margin: 0 0 4px 0; color: #4fc3f7; font-size: 13px; cursor: pointer; user-select: none; }
+    .label { color: #aaa; }
+    .num { color: #ffe082; font-weight: bold; }
+    .ok { color: #66bb6a; }
+    .warn { color: #ffca28; }
+  </style>
+</head><body>
+<div id="panel">
+  <h3 onclick="document.getElementById('panel').classList.toggle('collapsed')">▾ NaCl shear stress (click to collapse)</h3>
+  <div style="font-size:10px;color:#aaa">
+    <b>Inverse of strain control:</b> apply a constant shear force F<sub>x</sub>·N<sub>top</sub>
+    to the top y-layer; bottom y-layer frozen. Atoms move under dynamics + damping until
+    elastic restoring force balances the applied force.<br>
+    Measure top-layer displacement δ<sub>x</sub>; γ = δ<sub>x</sub>/L<sub>y</sub>;
+    σ<sub>xy</sub> = ΣF<sub>x</sub>/(L<sub>x</sub>L<sub>z</sub>); G = σ<sub>xy</sub>/γ.<br>
+    URL params: <code>?Ftot=0.05&n=5</code> (total external x-force in Ha/Bohr).
+  </div>
+  <div style="margin-top:8px;padding:6px;background:#0a1a18;border:1px solid #335">
+    <label>F<sub>total</sub> (Ha/Bohr) <input id="FIn" type="number" step="0.005" min="-0.5" max="0.5" value="0.05" style="width:80px"></label>
+    &nbsp;<label>n <input id="nIn" type="number" min="2" max="10" value="5" style="width:50px"></label>
+    <button id="applyBtn">Apply &amp; rerun</button>
+  </div>
+  <div style="margin-top:8px">
+    <span class="label">Status:</span> <span id="statusVal" class="num warn">setting up…</span><br>
+    <span class="label">Applied F<sub>total</sub> in x:</span> <span id="FtotVal" class="num">—</span> Ha/Bohr<br>
+    <span class="label">Top atoms (force-loaded):</span> <span id="nTop" class="num">—</span><br>
+    <span class="label">Cross-section L<sub>x</sub>·L<sub>z</sub>:</span> <span id="areaVal" class="num">—</span> au²<br>
+    <span class="label">Applied σ<sub>xy</sub>:</span> <span id="sigmaVal" class="num">—</span> GPa<br>
+    <hr style="border-color:#444">
+    <span class="label">⟨δ<sub>x</sub>⟩ top layer (live):</span> <span id="dxLive" class="num">—</span> au<br>
+    <span class="label">⟨δ<sub>x</sub>⟩ snapshot (steady state):</span> <span id="dxSnap" class="num ok">—</span> au<br>
+    <span class="label">γ = δ<sub>x</sub>/L<sub>y</sub>:</span> <span id="gamVal" class="num">—</span><br>
+    <span class="label">G = σ<sub>xy</sub>/γ:</span> <span id="GVal" class="num">—</span> GPa<br>
+    <span class="label">G/G<sub>exp</sub>:</span> <span id="GratioVal" class="num">—</span><br>
+    <span class="label">recent Δ⟨δ<sub>x</sub>⟩ (per 250ms):</span> <span id="ddxVal" class="num">—</span> au<br>
+    <hr style="border-color:#444">
+    <span class="label">DEBUG &mdash; first top atom:</span><br>
+    <span class="label">init grid i:</span> <span id="dbgInitI" class="num">—</span> &nbsp;
+    <span class="label">curr grid i:</span> <span id="dbgCurrI" class="num">—</span><br>
+    <span class="label">first interior atom curr grid i:</span> <span id="dbgInterior" class="num">—</span><br>
+    <span class="label">ext force applied to N atoms, ΣF<sub>x</sub>:</span> <span id="dbgExtForce" class="num">—</span><br>
+    <span class="label">F<sub>x</sub> on top atom 0 (live):</span> <span id="dbgFxTop" class="num">—</span> Ha/au<br>
+    <span class="label">v<sub>x</sub> on top atom 0 (live):</span> <span id="dbgVxTop" class="num">—</span> au/t<br>
+  </div>
+  <div style="margin-top:6px">
+    <button id="snapBtn">Snapshot now (mark steady-state)</button>
+  </div>
+  <div style="margin-top:6px;font-size:10px;color:#888">
+    Reference: NaCl C<sub>44</sub> ≈ 12.6 GPa, polycrystalline G ≈ 14.7 GPa.<br>
+    Watch Δ⟨δ<sub>x</sub>⟩ → 0 (top layer has stopped moving), then click "Snapshot now".
+  </div>
+</div>
+<script>
+(function () {
+  const params = new URLSearchParams(location.search);
+  const N_PER_AXIS = Math.max(2, Math.min(10, parseInt(params.get("n") || "5")));
+  const F_TOT = parseFloat(params.get("Ftot") || "0.05");
+
+  const A_TO_AU = 1.8897;
+  const D_NN = 2.82 * A_TO_AU;
+  const Lx_au = (N_PER_AXIS - 1) * D_NN;
+  const Ly_au = (N_PER_AXIS - 1) * D_NN;
+  const Lz_au = (N_PER_AXIS - 1) * D_NN;
+  const SCREEN = Math.max(20, Lx_au * 1.6);
+  const NN = SCREEN < 22 ? 150 : (SCREEN < 30 ? 200 : 250);
+  const N2 = NN / 2;
+  const h = SCREEN / NN;
+
+  const atoms = [];
+  const isNa = (i, j, k) => ((i + j + k) % 2) === 0;
+  const cx = -Lx_au / 2, cy = -Ly_au / 2, cz = -Lz_au / 2;
+
+  const topAtomGridIdx = [];
+  const bottomAtomGridIdx = [];
+
+  function addAtomXYZ(x_au, y_au, z_au, type, isTop, isBottom) {
+    if (type === 'Cl') {
+      const off = 0.10;
+      const e1 = atoms.length;
+      atoms.push({ x_au, y_au, z_au: z_au - off, Z: 1, Z_nuc: 1, el: 'Cl' });
+      const e2 = atoms.length;
+      atoms.push({ x_au, y_au, z_au: z_au + off, Z: 1, Z_nuc: 0, el: 'Cl' });
+      if (isTop) { topAtomGridIdx.push(e1); topAtomGridIdx.push(e2); }
+      if (isBottom) { bottomAtomGridIdx.push(e1); bottomAtomGridIdx.push(e2); }
+    } else {
+      const e = atoms.length;
+      atoms.push({ x_au, y_au, z_au, Z: 0, Z_nuc: 1, el: 'Na' });
+      if (isTop) topAtomGridIdx.push(e);
+      if (isBottom) bottomAtomGridIdx.push(e);
+    }
+  }
+
+  // Build crystal — no shear displacement applied here (top is force-loaded, not strain-loaded)
+  for (let j = 0; j < N_PER_AXIS; j++) {
+    const y = cy + j * D_NN;
+    const isTop = (j === N_PER_AXIS - 1);
+    const isBottom = (j === 0);
+    for (let i = 0; i < N_PER_AXIS; i++) {
+      const x = cx + i * D_NN;
+      for (let k = 0; k < N_PER_AXIS; k++) {
+        const z = cz + k * D_NN;
+        const type = isNa(i, j, k) ? 'Na' : 'Cl';
+        addAtomXYZ(x, y, z, type, isTop, isBottom);
+      }
+    }
+  }
+
+  const usrAtoms = atoms.map(a => ({
+    i: Math.round(N2 + a.x_au / h),
+    j: Math.round(N2 + a.y_au / h),
+    k: Math.round(N2 + a.z_au / h),
+    Z: a.Z, Z_nuc: a.Z_nuc, el: a.el,
+  }));
+  // Record initial grid x positions of top atoms for later displacement readout
+  const topInitI = topAtomGridIdx.map(idx => usrAtoms[idx].i);
+
+  // External force: only on top atoms; spread F_TOT across them
+  const F_per_atom = F_TOT / topAtomGridIdx.length;
+  const extForce = atoms.map(() => [0, 0, 0]);
+  for (const idx of topAtomGridIdx) extForce[idx] = [F_per_atom, 0, 0];
+
+  // Frozen: only the bottom layer
+  const frozenAtoms = bottomAtomGridIdx.slice();
+
+  window.USER_NN = NN;
+  window.USER_SCREEN = SCREEN;
+  window.USER_ATOMS = usrAtoms;
+  window.USER_Z = atoms.map(a => a.Z);
+  window.USER_Z_NUC = atoms.map(a => a.Z_nuc);
+  window.USER_RC = atoms.map(a => 1.0);
+  window.USER_FROZEN_ATOMS = frozenAtoms;
+  window.USER_EXTERNAL_FORCE = extForce;
+  window.USER_DYNAMICS = true;          // dynamics on; damping handles equilibration
+  window.NO_AUTO_DYNAMICS = false;
+  window.USER_DAMPING = 0.95;            // overdamped (1 − 0.95 = 0.05 friction)
+  window.USER_N_MOVE = 1;                // step nuclei every frame
+  window.USER_FORCE_SCALE = 5.0;         // moderate; reduce if dynamics goes unstable
+  window.USER_STEPS = 5000000;
+  window.langevinKT = 0;                 // no thermal noise
+
+  const area_au2 = Lx_au * Lz_au;
+  const HARTREE_BOHR3_TO_GPA = 29421;
+  const sigma_xy_GPa = (F_TOT / area_au2) * HARTREE_BOHR3_TO_GPA;
+
+  document.getElementById("FIn").value = F_TOT;
+  document.getElementById("nIn").value = N_PER_AXIS;
+  document.getElementById("FtotVal").textContent = F_TOT.toFixed(4);
+  document.getElementById("nTop").textContent = topAtomGridIdx.length;
+  document.getElementById("areaVal").textContent = area_au2.toFixed(2);
+  document.getElementById("sigmaVal").textContent = sigma_xy_GPa.toFixed(4);
+
+  document.getElementById("applyBtn").onclick = () => {
+    const F = document.getElementById("FIn").value;
+    const n = document.getElementById("nIn").value;
+    location.search = "?Ftot=" + F + "&n=" + n;
+  };
+
+  let snapshotTaken = false, snapDx = null;
+  document.getElementById("snapBtn").onclick = () => {
+    const dx = currentDx();
+    if (dx === null) return;
+    snapshotTaken = true;
+    snapDx = dx;
+    document.getElementById("dxSnap").textContent = dx.toFixed(4);
+    const gam = dx / Ly_au;
+    document.getElementById("gamVal").textContent = gam.toExponential(3);
+    if (Math.abs(gam) > 1e-9) {
+      const G = sigma_xy_GPa / gam;
+      document.getElementById("GVal").textContent = G.toFixed(2);
+      document.getElementById("GratioVal").textContent = (G / 12.6).toFixed(2);
+    }
+  };
+
+  function currentDx() {
+    const np = window._nucPos;
+    if (!np) return null;
+    let sumDx = 0, n = 0;
+    for (let k = 0; k < topAtomGridIdx.length; k++) {
+      const idx = topAtomGridIdx[k];
+      if (np[idx]) {
+        sumDx += (np[idx][0] - topInitI[k]) * h;
+        n++;
+      }
+    }
+    return n > 0 ? sumDx / n : null;
+  }
+
+  let prevDx = null;
+  function pollDx() {
+    const dx = currentDx();
+    const np = window._nucPos;
+    if (dx === null) {
+      document.getElementById("statusVal").textContent = "GPU initialising…";
+      document.getElementById("statusVal").className = "num warn";
+      return;
+    }
+    document.getElementById("dxLive").textContent = dx.toFixed(4);
+    // Debug: show first top-atom and a representative interior atom
+    if (topAtomGridIdx.length > 0) {
+      document.getElementById("dbgInitI").textContent = topInitI[0].toFixed(2);
+      if (np[topAtomGridIdx[0]]) {
+        document.getElementById("dbgCurrI").textContent = np[topAtomGridIdx[0]][0].toFixed(2);
+      }
+    }
+    // First non-frozen, non-top atom (interior)
+    for (let a = 0; a < usrAtoms.length; a++) {
+      if (frozenAtoms.includes(a) || topAtomGridIdx.includes(a)) continue;
+      if (np[a]) {
+        document.getElementById("dbgInterior").textContent = np[a][0].toFixed(2);
+        break;
+      }
+    }
+    // Verify external force is actually being applied by molecule.js
+    const eapp = window._extForceApplied;
+    if (eapp) {
+      document.getElementById("dbgExtForce").textContent =
+        eapp.count + ", ΣFx=" + eapp.sumFx.toExponential(2);
+    } else {
+      document.getElementById("dbgExtForce").textContent = "NOT APPLIED (probably stale molecule.js)";
+    }
+    // Force and velocity on first top atom
+    const F = window._nucForceTotal;
+    const V = window._nucVel;
+    if (F && F[topAtomGridIdx[0]]) {
+      document.getElementById("dbgFxTop").textContent = F[topAtomGridIdx[0]][0].toExponential(2);
+    }
+    if (V && V[topAtomGridIdx[0]]) {
+      document.getElementById("dbgVxTop").textContent = V[topAtomGridIdx[0]][0].toExponential(2);
+    }
+    // Show full debug snapshot from molecule.js
+    if (window._extDebug) {
+      const d = window._extDebug;
+      console.log("[shear stress] idx=" + d.idx + " Z=" + d.Z + " Znuc=" + d.Z_nuc +
+                  " frozen=" + d.frozen + " F=" + d.F[0].toExponential(2) +
+                  " V=" + d.Vbefore[0].toExponential(2) +
+                  " P=" + d.Pbefore[0].toFixed(3));
+    }
+    if (prevDx !== null) {
+      const ddx = dx - prevDx;
+      document.getElementById("ddxVal").textContent = ddx.toExponential(2);
+      if (Math.abs(ddx) < 1e-3 && !snapshotTaken) {
+        document.getElementById("statusVal").textContent = "near steady-state — click Snapshot";
+        document.getElementById("statusVal").className = "num ok";
+      } else if (!snapshotTaken) {
+        document.getElementById("statusVal").textContent = "running, top layer moving";
+        document.getElementById("statusVal").className = "num warn";
+      }
+    }
+    prevDx = dx;
+  }
+  setInterval(pollDx, 250);
+
+  const s = document.createElement("script");
+  s.src = "molecule.js?t=" + Date.now();
+  s.onload = () => {
+    const p5s = document.createElement("script");
+    p5s.src = "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js";
+    document.body.appendChild(p5s);
+  };
+  document.body.appendChild(s);
+})();
+</script>
+</body></html>

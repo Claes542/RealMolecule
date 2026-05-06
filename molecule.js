@@ -59,7 +59,9 @@ const uniqueNuclei = [..._nucMap.values()]; // [{idx, Z_eff, elecIndices}, ...]
 const elecToNuc = new Array(_atoms.length).fill(-1);
 for (const nuc of uniqueNuclei) for (const e of nuc.elecIndices) elecToNuc[e] = nuc.idx;
 let nucPos = _atoms.map(a => [a.i, a.j, a.k !== undefined ? a.k : N2]);
-window._nucPos = nucPos;
+// Live getter so external readers always see the current nucPos array,
+// even if it gets reassigned later (e.g., by restartWithPositions).
+Object.defineProperty(window, '_nucPos', { get() { return nucPos; }, configurable: true });
 const molNucPos = nucPos.map(p => [...p]);
 
 let E_min = Infinity;
@@ -125,7 +127,7 @@ Object.defineProperty(window, 'langevinKT', {
 });
 let boundarySpeed = 0.5;    // dt_w for free boundary evolution
 let nucVel = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
-window._nucVel = nucVel;
+Object.defineProperty(window, '_nucVel', { get() { return nucVel; }, configurable: true });
 // Apply initial velocities if specified
 if (window.USER_INIT_VEL) {
   for (let a = 0; a < window.USER_INIT_VEL.length && a < MAX_ATOMS; a++) {
@@ -3120,6 +3122,7 @@ async function doSteps(n) {
         nucForceElec[a][2] + nucForceNuc[a][2]
       ];
     }
+    // (External forces for display are added later when nucForce is updated for dynamics.)
     // Zero display forces on hinge atoms
     if (window.USER_HINGE_ATOMS) {
       for (const a of window.USER_HINGE_ATOMS) {
@@ -3631,6 +3634,46 @@ async function moveNuclei(gpuForces) {
       nucForce[e][0] += fx;
       nucForce[e][1] += fy;
       nucForce[e][2] += fz;
+    }
+  }
+
+  // Add user-supplied external forces per atom (in atomic units, Ha/Bohr).
+  // window.USER_EXTERNAL_FORCE = [[Fx, Fy, Fz], ...] indexed by atom.
+  // null/undefined entries leave that atom unchanged. Applied to BOTH nucForce
+  // (used by the integrator) and nucForceTotal (used for display readout).
+  if (window.USER_EXTERNAL_FORCE) {
+    const extF = window.USER_EXTERNAL_FORCE;
+    let countApplied = 0, sumFxApplied = 0, firstExtIdx = -1;
+    for (let a = 0; a < extF.length && a < NELEC; a++) {
+      const f = extF[a];
+      if (f && nucForce[a]) {
+        nucForce[a][0] += f[0] || 0;
+        nucForce[a][1] += f[1] || 0;
+        nucForce[a][2] += f[2] || 0;
+        if (f[0] || f[1] || f[2]) {
+          countApplied++; sumFxApplied += f[0] || 0;
+          if (firstExtIdx < 0) firstExtIdx = a;
+        }
+      }
+      if (f && nucForceTotal[a]) {
+        nucForceTotal[a][0] += f[0] || 0;
+        nucForceTotal[a][1] += f[1] || 0;
+        nucForceTotal[a][2] += f[2] || 0;
+      }
+    }
+    // Expose for diagnostic readout
+    window._extForceApplied = { count: countApplied, sumFx: sumFxApplied };
+    // Debug snapshot of first force-loaded atom — captured BEFORE dynamics step
+    if (firstExtIdx >= 0) {
+      window._extDebug = {
+        idx: firstExtIdx,
+        F: [nucForce[firstExtIdx][0], nucForce[firstExtIdx][1], nucForce[firstExtIdx][2]],
+        Vbefore: [nucVel[firstExtIdx][0], nucVel[firstExtIdx][1], nucVel[firstExtIdx][2]],
+        Pbefore: [nucPos[firstExtIdx][0], nucPos[firstExtIdx][1], nucPos[firstExtIdx][2]],
+        Z: Z[firstExtIdx],
+        Z_nuc: Z_nuc[firstExtIdx],
+        frozen: (window.USER_FROZEN_ATOMS || []).indexOf(firstExtIdx) >= 0,
+      };
     }
   }
 

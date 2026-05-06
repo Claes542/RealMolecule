@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>NaCl shear — body-force approach</title>
+  <style>
+    body { margin: 0; background: #000; color: #ddd; font-family: monospace; }
+    #panel { position: fixed; left: 8px; top: 8px; width: 400px;
+             background: rgba(0,0,0,0.88); border: 1px solid #4fc3f7; padding: 10px;
+             font-size: 11px; line-height: 1.45; z-index: 9999; max-height: 95vh; overflow-y: auto; }
+    #panel.collapsed { width: 200px; max-height: 32px; overflow: hidden; }
+    #panel.collapsed > *:not(h3) { display: none; }
+    #panel h3 { margin: 0 0 4px 0; color: #4fc3f7; font-size: 13px; cursor: pointer; user-select: none; }
+    .label { color: #aaa; }
+    .num { color: #ffe082; font-weight: bold; }
+    .ok { color: #66bb6a; }
+    .warn { color: #ffca28; }
+  </style>
+</head><body>
+<div id="panel">
+  <h3 onclick="document.getElementById('panel').classList.toggle('collapsed')">▾ NaCl shear (body-force) — click to collapse</h3>
+  <div style="font-size:10px;color:#aaa">
+    <b>Body-force shear (Couette-like):</b> apply F<sub>x</sub> = m·γ̇·(y−y<sub>c</sub>) to every atom,
+    so each layer gets a uniform shear rate γ̇. Top atoms drift in +x, bottom in −x. No frozen
+    boundaries, no surface artifacts; the deformation is uniform shear by construction.<br><br>
+    <b>For a solid:</b> at small γ̇ the shear strain γ accumulates linearly in time
+    (γ(t) = γ̇·t) until the elastic restoring force balances the body force.
+    Steady-state strain: γ_∞ = γ̇·m·D / k_eff (where k_eff is effective elastic stiffness).<br><br>
+    URL params: <code>?shear=1e-5&n=5</code>.
+  </div>
+  <div style="margin-top:8px;padding:6px;background:#0a1a18;border:1px solid #335">
+    <label>γ̇ (1/au-time²) <input id="gIn" type="number" min="0" max="0.001" step="1e-6" value="1e-5" style="width:100px"></label>
+    &nbsp;<label>n <input id="nIn" type="number" min="2" max="10" value="5" style="width:50px"></label>
+    <button id="applyBtn">Apply &amp; rerun</button>
+  </div>
+  <div style="margin-top:8px">
+    <span class="label">Status:</span> <span id="statusVal" class="num warn">setting up…</span><br>
+    <span class="label">Shear rate γ̇:</span> <span id="gVal" class="num">—</span> 1/au-time²<br>
+    <span class="label">y_center:</span> <span id="ycVal" class="num">—</span> grid cells<br>
+    <span class="label">Total atoms:</span> <span id="nAtomsVal" class="num">—</span><br>
+    <hr style="border-color:#444">
+    <span class="label">Top-atom v<sub>x</sub> (live):</span> <span id="vxTopVal" class="num">—</span> au/t<br>
+    <span class="label">Bottom-atom v<sub>x</sub> (live):</span> <span id="vxBotVal" class="num">—</span> au/t<br>
+    <span class="label">Top-atom δ<sub>x</sub> (live):</span> <span id="dxTopVal" class="num">—</span> au<br>
+    <span class="label">Bottom-atom δ<sub>x</sub> (live):</span> <span id="dxBotVal" class="num">—</span> au<br>
+    <span class="label">Strain γ = (δ<sub>top</sub>−δ<sub>bot</sub>)/L<sub>y</sub> (live):</span> <span id="gammaLiveVal" class="num">—</span><br>
+    <hr style="border-color:#444">
+    <span class="label">Accumulated shear work _shearWork:</span> <span id="workVal" class="num">—</span> Ha<br>
+  </div>
+  <div style="margin-top:6px;font-size:10px;color:#888">
+    <b>Watch:</b> δ<sub>x</sub>(top) growing positive, δ<sub>x</sub>(bottom) growing negative;
+    γ should plateau at steady state. Then γ_∞/γ̇ relates to elastic stiffness.<br>
+    Reference: NaCl C<sub>44</sub> ≈ 12.6 GPa.
+  </div>
+</div>
+<script>
+(function () {
+  const params = new URLSearchParams(location.search);
+  const N_PER_AXIS = Math.max(2, Math.min(10, parseInt(params.get("n") || "5")));
+  const SHEAR_RATE = parseFloat(params.get("shear") || "1e-5");
+
+  const A_TO_AU = 1.8897;
+  const D_NN = 2.82 * A_TO_AU;
+  const Lx_au = (N_PER_AXIS - 1) * D_NN;
+  const Ly_au = (N_PER_AXIS - 1) * D_NN;
+  const Lz_au = (N_PER_AXIS - 1) * D_NN;
+  const SCREEN = Math.max(20, Lx_au * 1.6);
+  const NN = SCREEN < 22 ? 150 : (SCREEN < 30 ? 200 : 250);
+  const N2 = NN / 2;
+  const h = SCREEN / NN;
+
+  const atoms = [];
+  const isNa = (i, j, k) => ((i + j + k) % 2) === 0;
+  const cx = -Lx_au / 2, cy = -Ly_au / 2, cz = -Lz_au / 2;
+
+  const topAtomGridIdx = [];
+  const bottomAtomGridIdx = [];
+
+  function addAtomXYZ(x_au, y_au, z_au, type, isTop, isBottom) {
+    if (type === 'Cl') {
+      const off = 0.10;
+      const e1 = atoms.length;
+      atoms.push({ x_au, y_au, z_au: z_au - off, Z: 1, Z_nuc: 1, el: 'Cl' });
+      const e2 = atoms.length;
+      atoms.push({ x_au, y_au, z_au: z_au + off, Z: 1, Z_nuc: 0, el: 'Cl' });
+      if (isTop) { topAtomGridIdx.push(e1); topAtomGridIdx.push(e2); }
+      if (isBottom) { bottomAtomGridIdx.push(e1); bottomAtomGridIdx.push(e2); }
+    } else {
+      const e = atoms.length;
+      atoms.push({ x_au, y_au, z_au, Z: 0, Z_nuc: 1, el: 'Na' });
+      if (isTop) topAtomGridIdx.push(e);
+      if (isBottom) bottomAtomGridIdx.push(e);
+    }
+  }
+
+  for (let j = 0; j < N_PER_AXIS; j++) {
+    const y = cy + j * D_NN;
+    const isTop = (j === N_PER_AXIS - 1);
+    const isBottom = (j === 0);
+    for (let i = 0; i < N_PER_AXIS; i++) {
+      const x = cx + i * D_NN;
+      for (let k = 0; k < N_PER_AXIS; k++) {
+        const z = cz + k * D_NN;
+        const type = isNa(i, j, k) ? 'Na' : 'Cl';
+        addAtomXYZ(x, y, z, type, isTop, isBottom);
+      }
+    }
+  }
+
+  const usrAtoms = atoms.map(a => ({
+    i: Math.round(N2 + a.x_au / h),
+    j: Math.round(N2 + a.y_au / h),
+    k: Math.round(N2 + a.z_au / h),
+    Z: a.Z, Z_nuc: a.Z_nuc, el: a.el,
+  }));
+  const topInitI = topAtomGridIdx.map(idx => usrAtoms[idx].i);
+  const bottomInitI = bottomAtomGridIdx.map(idx => usrAtoms[idx].i);
+
+  window.USER_NN = NN;
+  window.USER_SCREEN = SCREEN;
+  window.USER_ATOMS = usrAtoms;
+  window.USER_Z = atoms.map(a => a.Z);
+  window.USER_Z_NUC = atoms.map(a => a.Z_nuc);
+  window.USER_RC = atoms.map(a => 1.0);
+
+  // The body-force approach: NO frozen atoms. molecule.js applies F_x = m·γ̇·(y−y_c) to all atoms.
+  window.USER_FROZEN_ATOMS = [];
+  window.USER_SHEAR_RATE = SHEAR_RATE;       // <-- the key: built into molecule.js
+  window.USER_DYNAMICS = true;
+  window.NO_AUTO_DYNAMICS = false;
+  window.USER_DAMPING = 0.95;
+  window.USER_N_MOVE = 1;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_STEPS = 5000000;
+  window.langevinKT = 0;
+
+  document.getElementById("gIn").value = SHEAR_RATE;
+  document.getElementById("nIn").value = N_PER_AXIS;
+  document.getElementById("gVal").textContent = SHEAR_RATE.toExponential(2);
+  document.getElementById("nAtomsVal").textContent = atoms.length;
+
+  document.getElementById("applyBtn").onclick = () => {
+    const g = document.getElementById("gIn").value;
+    const n = document.getElementById("nIn").value;
+    location.search = "?shear=" + g + "&n=" + n;
+  };
+
+  function avgIdxX(idxs, initIs) {
+    const np = window._nucPos;
+    if (!np) return null;
+    let sumDx = 0, sumX = 0, n = 0;
+    for (let k = 0; k < idxs.length; k++) {
+      const idx = idxs[k];
+      if (np[idx]) {
+        sumDx += (np[idx][0] - initIs[k]) * h;
+        sumX += np[idx][0] * h;
+        n++;
+      }
+    }
+    return n > 0 ? { dx: sumDx / n, x: sumX / n } : null;
+  }
+  function avgVx(idxs) {
+    const nv = window._nucVel;
+    if (!nv) return null;
+    let sumVx = 0, n = 0;
+    for (const idx of idxs) {
+      if (nv[idx]) { sumVx += nv[idx][0]; n++; }
+    }
+    return n > 0 ? sumVx / n : null;
+  }
+
+  function poll() {
+    const np = window._nucPos;
+    if (!np) {
+      document.getElementById("statusVal").textContent = "GPU initialising…";
+      return;
+    }
+    const top = avgIdxX(topAtomGridIdx, topInitI);
+    const bot = avgIdxX(bottomAtomGridIdx, bottomInitI);
+    const vTop = avgVx(topAtomGridIdx);
+    const vBot = avgVx(bottomAtomGridIdx);
+    if (top) document.getElementById("dxTopVal").textContent = top.dx.toFixed(4);
+    if (bot) document.getElementById("dxBotVal").textContent = bot.dx.toFixed(4);
+    if (vTop !== null) document.getElementById("vxTopVal").textContent = vTop.toExponential(2);
+    if (vBot !== null) document.getElementById("vxBotVal").textContent = vBot.toExponential(2);
+    if (top && bot) {
+      const gamma = (top.dx - bot.dx) / Ly_au;
+      document.getElementById("gammaLiveVal").textContent = gamma.toExponential(3);
+    }
+    if (window._shearYC !== undefined) document.getElementById("ycVal").textContent = window._shearYC.toFixed(2);
+    if (window._shearWork !== undefined) document.getElementById("workVal").textContent = window._shearWork.toExponential(3);
+    document.getElementById("statusVal").textContent = "running, body-force shear active";
+    document.getElementById("statusVal").className = "num ok";
+  }
+  setInterval(poll, 250);
+
+  const s = document.createElement("script");
+  s.src = "molecule.js?t=" + Date.now();
+  s.onload = () => {
+    const p5s = document.createElement("script");
+    p5s.src = "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js";
+    document.body.appendChild(p5s);
+  };
+  document.body.appendChild(s);
+})();
+</script>
+</body></html>

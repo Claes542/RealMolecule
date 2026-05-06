@@ -979,6 +979,53 @@ P_j += dt&middot;(&Delta;P_j + 2&pi;&middot;u_{1&minus;j}&sup2;)              <s
       </div>
       <span class="tag tag-dyn">dynamics</span><span class="tag tag-small">solid&middot;melt</span><span class="tag tag-small">test it yourself</span>
     </div>
+    <div class="card" style="border-color:#80cbc4;background:#0a1a18;grid-column:1/-1;cursor:default">
+      <h3 style="color:#80cbc4">NaCl under Shear &mdash; Body-Force Couette Flow</h3>
+      <div class="desc" style="font-size:13px;line-height:1.6;color:#ddd">
+        Apply a body force F<sub>x</sub> = m&middot;γ̇&middot;(y&minus;y<sub>c</sub>) to every atom of a 5&times;5&times;5 NaCl crystallite,
+        producing a Couette-like shear: top atoms drift in +x, bottom in &minus;x.
+        Used the same infrastructure (<code>USER_SHEAR_RATE</code>) added to <code>molecule.js</code> for
+        ice-melt experiments. No frozen layers, no surface artifacts &mdash; deformation is uniform shear by construction.
+        <h4 style="color:#80cbc4;margin:14px 0 4px;font-size:14px">What we observed</h4>
+        <ul style="margin:6px 0 6px 18px;padding:0">
+          <li><b style="color:#4fc3f7">Body force applied correctly</b>: top atoms feel +F<sub>x</sub>,
+            bottom feel &minus;F<sub>x</sub>; energy budget is consistent (accumulated shear work ~500 Ha
+            for γ̇=10<sup>&minus;5</sup> after a minute).</li>
+          <li><b style="color:#4fc3f7">Strain γ grows linearly with time</b>, not asymptotically. dγ/dt is constant
+            within ~0.013% per step. The system is in <i>plastic-flow / viscous-like regime</i>, not elastic plateau.</li>
+          <li><b style="color:#4fc3f7">Why plastic, not elastic</b>: at γ̇=10<sup>&minus;5</sup> the body force is
+            ~0.2 Ha/Bohr per atom, corresponding to an effective stress ~10<sup>3</sup>&times; the experimental
+            NaCl yield strength. The crystallite yields immediately and flows.</li>
+        </ul>
+        <h4 style="color:#80cbc4;margin:14px 0 4px;font-size:14px">What this demonstrates</h4>
+        RealQM <b>responds correctly to applied stress</b> &mdash; atoms flow under shear in the expected pattern.
+        The signal we measured (linear-in-time strain accumulation) is the natural transport-coefficient observable for a
+        body-force NEMD experiment. Extracting a quantitative <i>elastic shear modulus</i>, however, requires
+        either dropping γ̇ below the yield threshold (probably γ̇ &lt; 10<sup>&minus;7</sup>) or using a much
+        larger crystal with periodic boundary conditions. <b>Methodology demo, not a quantitative C<sub>44</sub> measurement.</b>
+        <h4 style="color:#80cbc4;margin:14px 0 4px;font-size:14px">Open issues, honest record</h4>
+        <ul style="margin:6px 0 6px 18px;padding:0">
+          <li>Mass approximation: <code>nucMass()</code> in molecule.js returns the proton mass (~1836 a.u.) for
+            any atom with Z<sub>nuc</sub>=1, regardless of species. Real Na (~42 000 a.u.) and Cl (~64 000 a.u.) would
+            slow the dynamics by a factor of ~25, but ratios γ/γ̇ are preserved.</li>
+          <li>Surface effects dominate: 5<sup>3</sup> = 125 ions has 78% surface fraction. Bulk elastic constants
+            require periodic boundary conditions (not yet in the codebase).</li>
+          <li>Earlier strain-controlled and stress-controlled approaches (<code>nacl_shear.html</code>,
+            <code>nacl_shear_stress.html</code>) hit the same finite-system limitations.</li>
+        </ul>
+        <div style="margin-top:10px">
+          <a href="nacl_shear_bodyforce.html?shear=1e-5&n=5" style="color:#66bb6a;font-size:14px">&#9654; Run body-force shear (γ̇=10<sup>&minus;5</sup>)</a>
+          &nbsp;&middot;&nbsp;
+          <a href="nacl_shear_bodyforce.html?shear=1e-7&n=5" style="color:#888;font-size:12px">γ̇=10<sup>&minus;7</sup> (smaller, may reach elastic plateau)</a>
+          &nbsp;&middot;&nbsp;
+          <a href="nacl_shear_bodyforce.html?shear=1e-5&n=8" style="color:#888;font-size:12px">8<sup>3</sup> ions (larger crystal)</a>
+        </div>
+      </div>
+      <span class="tag tag-dyn">dynamics</span>
+      <span class="tag tag-small">shear&middot;NEMD</span>
+      <span class="tag tag-small">methodology</span>
+      <span class="tag-small" style="background:#2a2a08;color:#ffca28;display:inline-block;font-size:10px;padding:2px 6px;border-radius:3px;margin-right:4px;margin-top:6px">honest record</span>
+    </div>
     <div class="card" style="border-color:#7e57c2;background:#180a1a;grid-column:1/-1;cursor:default">
       <h3 style="color:#ce93d8">CO&sub2; Monomer &mdash; Atomization Energy</h3>
       <div class="desc" style="font-size:13px;line-height:1.6;color:#ddd">

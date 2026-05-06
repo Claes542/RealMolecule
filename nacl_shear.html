@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>NaCl shear modulus — RealQM strain-controlled</title>
+  <style>
+    body { margin: 0; background: #000; color: #ddd; font-family: monospace; }
+    #panel { position: fixed; left: 8px; top: 8px; width: 380px;
+             background: rgba(0,0,0,0.88); border: 1px solid #4fc3f7; padding: 10px;
+             font-size: 11px; line-height: 1.45; z-index: 9999; max-height: 95vh; overflow-y: auto; }
+    #panel h3 { margin: 0 0 4px 0; color: #4fc3f7; font-size: 13px; }
+    .label { color: #aaa; }
+    .num { color: #ffe082; font-weight: bold; }
+    .ok { color: #66bb6a; }
+    .warn { color: #ffca28; }
+  </style>
+</head><body>
+<div id="panel">
+  <h3>NaCl shear modulus — strain-controlled</h3>
+  <div style="font-size:10px;color:#aaa">
+    Small NaCl crystallite (3×3×3 ions). Top y-layer is frozen and <b>displaced in x by ε·L<sub>y</sub></b>;
+    bottom y-layer is frozen at original positions. Middle y-layer is free.
+    After RealQM convergence, the sum of x-forces on the displaced top atoms gives the shear stress
+    σ<sub>xy</sub> = ΣF<sub>x</sub> / (L<sub>x</sub> L<sub>z</sub>). Repeat for several ε; G = slope of σ<sub>xy</sub> vs ε.<br><br>
+    <b>Reference:</b> NaCl C<sub>44</sub> ≈ 12.6 GPa (single-crystal, 300 K).
+    Polycrystalline G ≈ 14.7 GPa.<br><br>
+    URL params: <code>?eps=0.02&n=3</code>.
+  </div>
+  <div style="margin-top:8px;padding:6px;background:#0a1a18;border:1px solid #335">
+    <label>ε <input id="epsIn" type="number" step="0.005" min="-0.05" max="0.05" value="0.02" style="width:70px"></label>
+    &nbsp;<label>n <input id="nIn" type="number" min="2" max="10" value="3" style="width:50px"></label>
+    <button id="applyBtn">Apply &amp; rerun</button>
+    &nbsp;<span style="color:#888;font-size:10px">Suggested sweep: 0, 0.005, 0.01, 0.02, 0.03, 0.05</span>
+  </div>
+  <div style="margin-top:8px">
+    <span class="label">Status:</span> <span id="statusVal" class="num">setting up…</span><br>
+    <span class="label">Applied strain ε:</span> <span id="epsVal" class="num">—</span><br>
+    <span class="label">Top-layer atoms (frozen, displaced):</span> <span id="nTop" class="num">—</span><br>
+    <div style="margin:6px 0;padding:6px;background:#0a1a14;border:1px solid #66bb6a;border-radius:4px">
+      <span style="color:#66bb6a;font-weight:bold">Total energy:</span><br>
+      <span class="label">E (live):</span>   <span id="EVal" class="num" style="font-size:14px">—</span> Ha<br>
+      <span class="label">E (snapshot at convergence):</span> <span id="EsnapVal" class="num" style="font-size:14px;color:#66bb6a">—</span> Ha
+    </div>
+    <span class="label">Σ F<sub>x</sub> on top layer:</span> <span id="FxTop" class="num">—</span> Ha/au<br>
+    <span class="label">Cross-section L<sub>x</sub>·L<sub>z</sub>:</span> <span id="areaVal" class="num">—</span> au²<br>
+    <span class="label">σ<sub>xy</sub> (RealQM):</span> <span id="sigmaVal" class="num">—</span> GPa<br>
+    <span class="label">G estimate (σ<sub>xy</sub>/ε):</span> <span id="GVal" class="num">—</span> GPa<br>
+    <span class="label">G/G<sub>exp</sub>:</span> <span id="GratioVal" class="num">—</span><br>
+    <span class="label">recent ΔE (per 250 ms):</span> <span id="dEval" class="num">—</span> Ha<br>
+    <span class="label">recent Δσ (per 250 ms):</span> <span id="dSval" class="num">—</span> GPa<br>
+  </div>
+  <div style="margin-top:6px">
+    <button id="markBtn">Mark converged manually</button>
+    &nbsp;<span style="color:#888;font-size:10px">if Δσ has been ≪0.1 GPa for ~30 s</span>
+  </div>
+  <div style="margin-top:6px;font-size:10px;color:#888">
+    Caveat: 3³ ion crystallite is small; surface/edge effects are substantial.
+    Expect G estimate to deviate from bulk by tens of percent. Methodology is the point;
+    accuracy improves with bigger crystals.
+  </div>
+</div>
+<script>
+(function () {
+  const params = new URLSearchParams(location.search);
+  const N_PER_AXIS = Math.max(2, Math.min(10, parseInt(params.get("n") || "3")));
+  const EPS = parseFloat(params.get("eps") || "0.02");
+
+  const A_TO_AU = 1.8897;
+  const D_NN = 2.82 * A_TO_AU;     // NaCl nearest-neighbour 2.82 Å → 5.33 a.u.
+  const Lx_au = (N_PER_AXIS - 1) * D_NN;
+  const Ly_au = (N_PER_AXIS - 1) * D_NN;
+  const Lz_au = (N_PER_AXIS - 1) * D_NN;
+  const SCREEN = Math.max(20, Lx_au * 1.6);
+  const NN = SCREEN < 22 ? 150 : (SCREEN < 30 ? 200 : 250);
+  const N2 = NN / 2;
+  const h = SCREEN / NN;
+
+  // Build 3D NaCl alternating lattice
+  const atoms = [];
+  const isNa = (i, j, k) => ((i + j + k) % 2) === 0;
+  // Centre origin
+  const cx = -Lx_au / 2, cy = -Ly_au / 2, cz = -Lz_au / 2;
+
+  // Track top-layer indices (will be displaced and frozen)
+  const topAtomGridIdx = [];   // per-atom-entry indices of frozen top atoms
+  const bottomAtomGridIdx = [];
+
+  function addAtomXYZ(x_au, y_au, z_au, type, isTop, isBottom) {
+    if (type === 'Cl') {
+      // Cl⁻: 2 entries split in *z* direction (perpendicular to shear xy-plane)
+      // so the split asymmetry doesn't contaminate σ_xy.
+      const off = 0.10;
+      const e1 = atoms.length;
+      atoms.push({ x_au, y_au, z_au: z_au - off, Z: 1, Z_nuc: 1, el: 'Cl' });
+      const e2 = atoms.length;
+      atoms.push({ x_au, y_au, z_au: z_au + off, Z: 1, Z_nuc: 0, el: 'Cl' });
+      if (isTop) { topAtomGridIdx.push(e1); topAtomGridIdx.push(e2); }
+      if (isBottom) { bottomAtomGridIdx.push(e1); bottomAtomGridIdx.push(e2); }
+    } else {
+      const e = atoms.length;
+      atoms.push({ x_au, y_au, z_au, Z: 0, Z_nuc: 1, el: 'Na' });
+      if (isTop) topAtomGridIdx.push(e);
+      if (isBottom) bottomAtomGridIdx.push(e);
+    }
+  }
+
+  for (let j = 0; j < N_PER_AXIS; j++) {
+    const y = cy + j * D_NN;
+    const isTop = (j === N_PER_AXIS - 1);
+    const isBottom = (j === 0);
+    // Apply shear displacement to top layer
+    const dx_shear = isTop ? EPS * Ly_au : 0;
+    for (let i = 0; i < N_PER_AXIS; i++) {
+      const x = cx + i * D_NN + dx_shear;
+      for (let k = 0; k < N_PER_AXIS; k++) {
+        const z = cz + k * D_NN;
+        const type = isNa(i, j, k) ? 'Na' : 'Cl';
+        addAtomXYZ(x, y, z, type, isTop, isBottom);
+      }
+    }
+  }
+
+  // Convert to molecule.js USER_ATOMS format
+  const usrAtoms = atoms.map(a => ({
+    i: Math.round(N2 + a.x_au / h),
+    j: Math.round(N2 + a.y_au / h),
+    k: Math.round(N2 + a.z_au / h),
+    Z: a.Z, Z_nuc: a.Z_nuc, el: a.el,
+  }));
+
+  // Frozen atom indices: top + bottom layers
+  const frozenAtoms = [...new Set([...topAtomGridIdx, ...bottomAtomGridIdx])];
+
+  window.USER_NN = NN;
+  window.USER_SCREEN = SCREEN;
+  window.USER_ATOMS = usrAtoms;
+  window.USER_Z = atoms.map(a => a.Z);
+  window.USER_Z_NUC = atoms.map(a => a.Z_nuc);
+  window.USER_RC = atoms.map(a =>
+    a.Z_nuc === 1 && a.Z === 0 ? 1.0 :   // Na⁺
+    (a.el === 'Cl') ? 1.0 :              // Cl half
+    1.0);
+  window.USER_FROZEN_ATOMS = frozenAtoms;
+  window.USER_DYNAMICS = false;
+  window.NO_AUTO_DYNAMICS = true;
+  window.CONVERGENCE_THRESHOLD = 0.002;        // looser: ~2 mHa per frame
+  window.USER_STEPS = 200000;
+
+  // Cross-section area perpendicular to y (i.e., x-z plane)
+  // For a finite crystallite, take A = Lx · Lz with one-cell padding
+  const area_au2 = Lx_au * Lz_au;
+  // Conversion: 1 Hartree/(Bohr^3) = 29421 GPa
+  const HARTREE_BOHR3_TO_GPA = 29421;
+
+  document.getElementById("epsVal").textContent = EPS.toFixed(4);
+  document.getElementById("nTop").textContent = topAtomGridIdx.length;
+  document.getElementById("areaVal").textContent = area_au2.toFixed(2);
+
+  // Convergence flag set by molecule.js when sweep completes
+  let converged = false;
+  let convE = null, convStep = null;
+  window.onSweepDone = function (E, steps) {
+    converged = true;
+    convE = E;
+    convStep = steps;
+    document.getElementById("EsnapVal").textContent = E.toFixed(4);
+    console.log("[shear] CONVERGED at step " + steps + ", E=" + E.toFixed(5));
+  };
+
+  // Wire up Apply button
+  document.getElementById("epsIn").value = EPS;
+  document.getElementById("nIn").value = N_PER_AXIS;
+  document.getElementById("applyBtn").onclick = () => {
+    const e = document.getElementById("epsIn").value;
+    const n = document.getElementById("nIn").value;
+    location.search = "?eps=" + e + "&n=" + n;
+  };
+  document.getElementById("markBtn").onclick = () => {
+    converged = true;
+    convE = window._E;
+    convStep = "manual";
+    if (window._E !== undefined) document.getElementById("EsnapVal").textContent = window._E.toFixed(4);
+  };
+
+  let prevE = null, prevSigma = null;
+  function updateReadout() {
+    const F = window._nucForceTotal;
+    const E = window._E;
+    if (E !== undefined) document.getElementById("EVal").textContent = E.toFixed(4);
+    if (!F) return;
+    let sumFx = 0;
+    for (const idx of topAtomGridIdx) {
+      if (F[idx]) sumFx += F[idx][0];
+    }
+    document.getElementById("FxTop").textContent = sumFx.toExponential(3);
+    const sigma_xy_au = sumFx / area_au2;
+    const sigma_GPa = sigma_xy_au * HARTREE_BOHR3_TO_GPA;
+    document.getElementById("sigmaVal").textContent = sigma_GPa.toFixed(2);
+    if (E !== undefined && prevE !== null) {
+      document.getElementById("dEval").textContent = (E - prevE).toExponential(2);
+    }
+    if (prevSigma !== null) {
+      document.getElementById("dSval").textContent = (sigma_GPa - prevSigma).toFixed(3);
+    }
+    prevE = E;
+    prevSigma = sigma_GPa;
+    if (Math.abs(EPS) > 1e-6) {
+      const G_GPa = sigma_GPa / EPS;
+      const G_exp = 12.6;
+      document.getElementById("GVal").textContent = G_GPa.toFixed(1);
+      document.getElementById("GratioVal").textContent = (G_GPa / G_exp).toFixed(2);
+    }
+    const stEl = document.getElementById("statusVal");
+    if (converged) {
+      stEl.textContent = "✓ converged at step " + convStep + " (E=" + convE.toFixed(4) + ")";
+      stEl.className = "num ok";
+    } else {
+      stEl.textContent = "running…";
+      stEl.className = "num warn";
+    }
+  }
+  setInterval(updateReadout, 250);
+
+  // Bootstrap
+  const s = document.createElement("script");
+  s.src = "molecule.js?t=" + Date.now();
+  s.onload = () => {
+    const p5s = document.createElement("script");
+    p5s.src = "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js";
+    document.body.appendChild(p5s);
+  };
+  document.body.appendChild(s);
+})();
+</script>
+</body></html>
