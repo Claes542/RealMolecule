@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>Alkaline-earth triplet outer-electron spectrum: 1 valence over (closed-shell + 1 inner s) core</title>
+  <style>
+    body { margin: 0; background: #0a0a0a; color: #ddd; font-family: monospace; padding: 8px; }
+    h3 { margin: 4px 0; color: #4fc3f7; }
+    .panel { display: inline-block; vertical-align: top; padding: 8px;
+             background: rgba(0,0,0,0.7); border: 1px solid #555; margin-right: 8px;
+             font-size: 11px; }
+    button, input, select { font-family: monospace; padding: 2px 6px;
+             background: #111; color: #fff; border: 1px solid #555; }
+    table { border-collapse: collapse; font-size: 11px; }
+    th, td { padding: 3px 8px; border: 1px solid #444; text-align: right; }
+    th { color: #4fc3f7; background: #0a1820; }
+    .num { color: #ffe082; font-weight: bold; }
+    .ok { color: #66bb6a; }
+    .label { color: #aaa; }
+  </style>
+</head><body>
+
+<h3>Alkaline-earth triplet spectrum — outer valence electron with inner-s Hartree screening</h3>
+
+<div style="font-size: 11px; color: #aaa; max-width: 900px; line-height: 1.55">
+Model an alkaline-earth atom as <i>2+2</i> (or 0+2 for He): closed-shell inner core absorbed
+into a reduced kernel of charge Z<sub>kernel</sub>, plus two valence electrons. In the excited
+triplet state, one valence electron stays in the ground s orbital (creating a Hartree screening
+parameterized by Z<sub>inner</sub>) and the other is the explicit "outer" electron. The outer
+electron solves
+<code>−½u″ + [ℓ(ℓ+1)/(2r²) + V_eff(r)]u = Eu</code>
+on <code>r ∈ [r_c, R_max]</code> with empty-core + Neumann at r_c, where<br>
+&nbsp;&nbsp;<code>V_eff(r) = −Z<sub>kernel</sub>/r + V_H(r; Z<sub>inner</sub>)</code>,
+&nbsp;<code>V_H(r) = (1/r)·[1 − (1+Z<sub>inner</sub>·r)·exp(−2Z<sub>inner</sub>·r)]</code><br>
+He: r_c=0, Z<sub>kernel</sub>=2, Z<sub>inner</sub>≈1.69 (Slater for 1s). Be: r_c absorbs [He],
+Z<sub>kernel</sub>=2, Z<sub>inner</sub>≈2.3 (Slater for 2s). Same shape for Mg, Ca.
+</div>
+
+<div class="panel">
+  <h4 style="color:#80cbc4;margin:0 0 6px 0">Parameters</h4>
+  Atom <select id="atomIn">
+    <option value="He">He (no core)</option>
+    <option value="Be" selected>Be ([He] core)</option>
+    <option value="Mg">Mg ([Ne] core)</option>
+    <option value="Ca">Ca ([Ar] core)</option>
+  </select><br><br>
+  Z_kernel <input id="zIn" type="number" min="0.5" max="5" step="0.05" value="2" style="width:60px"><br><br>
+  Z_inner <input id="ziIn" type="number" min="0" max="20" step="0.05" value="1.7" style="width:80px"><br><br>
+  r_c (a.u.) <input id="rcIn" type="number" min="0" max="5" step="0.05" value="0.0" style="width:80px"><br><br>
+  R_max (a.u.) <input id="RmaxIn" type="number" min="20" max="200" step="10" value="80" style="width:80px"><br><br>
+  Grid points <input id="NIn" type="number" min="500" max="5000" step="100" value="1500" style="width:80px"><br><br>
+  <button id="computeBtn">Compute</button>
+  <button id="fitBtn">Auto-fit (Z_kernel, Z_inner, r_c)</button>
+  <button id="fitNoZiBtn">Auto-fit Z_inner=0 (H-like in empty-core)</button>
+  <div id="fitMsg" style="margin-top:6px;color:#ffe082;font-size:10px"></div>
+</div>
+
+<div class="panel">
+  <h4 style="color:#80cbc4;margin:0 0 6px 0">Model vs observed (Ha)</h4>
+  <table id="cmpTable">
+    <thead><tr><th>Term</th><th>n,ℓ</th><th>model</th><th>obs</th><th>Δ</th></tr></thead>
+    <tbody id="cmpBody"></tbody>
+  </table>
+  <div style="margin-top:6px;font-size:10px;color:#aaa">
+    RMS error <span id="rmsVal" class="num">—</span> Ha over fitted levels.
+  </div>
+</div>
+
+<script>
+// ============================================================
+// Observed triplet outer-electron binding energies (Ha) per atom.
+// = E(atom in n³L excited state) − E(atom+ ground state).
+// Sources: NIST atomic spectra database (term values converted from cm⁻¹).
+// 1 Ha = 219474.63 cm⁻¹.
+// ============================================================
+const ATOM_DATA = {
+  He: {
+    n_min_s: 2, n_min_p: 2, n_min_d: 3,
+    levels: {
+      0: [-0.17523, -0.06869, -0.03654, -0.02297],   // 2³S, 3³S, 4³S, 5³S
+      1: [-0.13316, -0.05828, -0.03250, -0.02074],   // 2³P, 3³P, 4³P, 5³P
+      2: [-0.05559, -0.03124, -0.01999],             // 3³D, 4³D, 5³D
+    },
+  },
+  Be: {
+    n_min_s: 3, n_min_p: 2, n_min_d: 3,
+    // 2³P=2s2p; 3³S=2s3s; 3³P=2s3p; 3³D=2s3d; 4³S, 4³P, 4³D from NIST.
+    levels: {
+      0: [-0.10535, -0.04903, -0.02867],     // 3³S, 4³S, 5³S
+      1: [-0.24249, -0.07419, -0.04528, -0.02906],  // 2³P, 3³P, 4³P, 5³P
+      2: [-0.05988, -0.03414, -0.02197],     // 3³D, 4³D, 5³D
+    },
+  },
+  Mg: {
+    n_min_s: 4, n_min_p: 3, n_min_d: 3,
+    // 3³P=3s3p (21870 cm⁻¹); 4³S=3s4s (41197); 4³P=3s4p (47957); 3³D=3s3d (47957→ check).
+    levels: {
+      0: [-0.09328, -0.04540, -0.02692],     // 4³S, 5³S, 6³S
+      1: [-0.18133, -0.06246, -0.03629],     // 3³P, 4³P, 5³P
+      2: [-0.06125, -0.03491, -0.02236],     // 3³D, 4³D, 5³D
+    },
+  },
+  Ca: {
+    n_min_s: 5, n_min_p: 4, n_min_d: 3,
+    // 4³P=4s4p (15210); 3³D=4s3d (20349); 5³S=4s5s (31539); etc.
+    levels: {
+      0: [-0.13768, -0.06212, -0.03467],     // 5³S, 6³S, 7³S
+      1: [-0.16310, -0.06912, -0.03821],     // 4³P, 5³P, 6³P
+      2: [-0.13502, -0.06200, -0.03515],     // 3³D, 4³D, 5³D
+    },
+  },
+};
+
+// V_eff = -Z_kernel / r + V_H_from_inner_s(r; Z_inner) on r > r_c.
+// Empty core + Neumann at r_c absorbs the closed inner shell;
+// inner s electron treated explicitly via hydrogenic Hartree screening.
+function V_eff(r, Z_kernel, Z_inner) {
+  if (r < 1e-12) r = 1e-12;
+  const VH = (1.0 / r) * (1 - (1 + Z_inner * r) * Math.exp(-2 * Z_inner * r));
+  return -Z_kernel / r + VH;
+}
+
+function radialEig(Z_kernel, Z_inner, ell, r_c, R_max, N, n_levels) {
+  const r0 = Math.max(r_c, 1e-3);
+  const h = (R_max - r0) / (N - 1);
+  const h2 = h * h;
+
+  function shootInward(E) {
+    let uPlus = 0, u = 1;
+    for (let i = N - 2; i > 0; i--) {
+      const r = r0 + i * h;
+      const V = ell * (ell + 1) / (2 * r * r) + V_eff(r, Z_kernel, Z_inner);
+      const f = 2 * (V - E);
+      const uMinus = 2 * u - uPlus + h2 * f * u;
+      uPlus = u;
+      u = uMinus;
+      if (Math.abs(u) > 1e30) { u *= 1e-30; uPlus *= 1e-30; }
+    }
+    if (r_c > 0) {
+      return (uPlus - u) / h - u / r_c;
+    } else {
+      return u;
+    }
+  }
+
+  // Bracket eigenvalues by sign changes of shootInward(E).
+  const E_min = -Z_kernel * Z_kernel * 1.2;
+  const E_max = -1e-6;
+  const nScan = 5000;
+  const dE = (E_max - E_min) / nScan;
+  const eigs = [];
+  let prevD = shootInward(E_min);
+  let prevE = E_min;
+  for (let k = 1; k <= nScan && eigs.length < n_levels; k++) {
+    const E = E_min + k * dE;
+    const D = shootInward(E);
+    if (prevD * D < 0 && isFinite(prevD) && isFinite(D)) {
+      let lo = prevE, hi = E, dLo = prevD;
+      for (let it = 0; it < 60; it++) {
+        const mid = (lo + hi) / 2;
+        const dM = shootInward(mid);
+        if (dLo * dM < 0) hi = mid;
+        else { lo = mid; dLo = dM; }
+      }
+      eigs.push((lo + hi) / 2);
+    }
+    prevD = D;
+    prevE = E;
+  }
+  return eigs;
+}
+
+const $ = id => document.getElementById(id);
+
+function spectrum(Z_kernel, Z_inner, r_c, R_max, N, N_LEVELS) {
+  return [0, 1, 2].map(ell => radialEig(Z_kernel, Z_inner, ell, r_c, R_max, N, N_LEVELS));
+}
+
+function rmsError(spec, atom) {
+  const data = ATOM_DATA[atom];
+  if (!data) return null;
+  let s = 0, c = 0;
+  for (let ell = 0; ell <= 2; ell++) {
+    const obs = data.levels[ell];
+    // Find first model eigenvalue for this ℓ that matches ground term:
+    // For atoms with Pauli excluding lower-n outer states (e.g. Be 3s, 4s, 5s),
+    // the "lowest available" model state corresponds to n_min for that ℓ.
+    // We assume the model's lowest ℓ-state matches the lowest observed term.
+    const offset = 0;
+    for (let k = 0; k < obs.length; k++) {
+      const E_model = spec[ell][k + offset];
+      if (E_model == null || !isFinite(E_model)) continue;
+      s += (E_model - obs[k]) ** 2;
+      c++;
+    }
+  }
+  return c > 0 ? Math.sqrt(s / c) : null;
+}
+
+function compute() {
+  const Z_kernel = +$("zIn").value;
+  const Z_inner = +$("ziIn").value;
+  const r_c = +$("rcIn").value;
+  const R_max = +$("RmaxIn").value;
+  const N = +$("NIn").value;
+  const atom = $("atomIn").value;
+  const data = ATOM_DATA[atom];
+  const N_LEVELS = 6;
+
+  const spec = spectrum(Z_kernel, Z_inner, r_c, R_max, N, N_LEVELS);
+
+  const cmpBody = $("cmpBody");
+  cmpBody.innerHTML = "";
+  let sumSq = 0, count = 0;
+  const ellNames = ["s", "p", "d"];
+  for (let ell = 0; ell <= 2; ell++) {
+    const obs = data.levels[ell];
+    const n_min = ell === 0 ? data.n_min_s : (ell === 1 ? data.n_min_p : data.n_min_d);
+    for (let k = 0; k < obs.length; k++) {
+      const nPhys = n_min + k;
+      const E_model = spec[ell][k];
+      const E_obs = obs[k];
+      const dE = (E_model != null && isFinite(E_model)) ? E_model - E_obs : null;
+      const dStr = dE != null ? (dE >= 0 ? "+" : "") + dE.toFixed(5) : "—";
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        "<th>" + nPhys + "³" + ellNames[ell].toUpperCase() + "</th>" +
+        "<td>" + nPhys + "," + ell + "</td>" +
+        "<td>" + (E_model != null ? E_model.toFixed(5) : "—") + "</td>" +
+        "<td>" + E_obs.toFixed(5) + "</td>" +
+        "<td style='color:" + (dE != null && Math.abs(dE) < 0.005 ? "#66bb6a" : "#ef9a9a") + "'>" + dStr + "</td>";
+      cmpBody.appendChild(tr);
+      if (dE != null) { sumSq += dE * dE; count++; }
+    }
+  }
+  $("rmsVal").textContent = count > 0 ? Math.sqrt(sumSq / count).toFixed(5) : "—";
+}
+
+function autoFit() {
+  const atom = $("atomIn").value;
+  const R_max = +$("RmaxIn").value;
+  const N = Math.min(+$("NIn").value, 1200);
+  const N_LEVELS = 6;
+  $("fitMsg").textContent = "fitting…";
+
+  let best = { rms: Infinity, Z: 2.0, Zi: 1.7, r_c: 0.0 };
+  const Zs = [1.5, 1.8, 2.0, 2.2, 2.5];
+  const Zis = [1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0];
+  const rcs = atom === "He" ? [0.0, 0.2, 0.5, 0.8]
+            : atom === "Be" ? [0.3, 0.6, 1.0, 1.4, 1.8]
+            : atom === "Mg" ? [1.0, 1.5, 2.0, 2.5, 3.0]
+            : /* Ca */        [2.0, 2.5, 3.0, 3.5, 4.0];
+
+  for (const Z of Zs) {
+    for (const Zi of Zis) {
+      for (const rc of rcs) {
+        const sp = spectrum(Z, Zi, rc, R_max, N, N_LEVELS);
+        const r = rmsError(sp, atom);
+        if (r != null && r < best.rms) best = { rms: r, Z, Zi, r_c: rc };
+      }
+    }
+  }
+  const Z0 = best.Z, Zi0 = best.Zi, rc0 = best.r_c;
+  for (let dz = -0.3; dz <= 0.3; dz += 0.05) {
+    for (let dzi = -0.7; dzi <= 0.7; dzi += 0.1) {
+      for (let drc = -0.4; drc <= 0.4; drc += 0.1) {
+        const Z = Z0 + dz, Zi = Zi0 + dzi, rc = Math.max(0, rc0 + drc);
+        if (Z < 0.5 || Zi < 0.5) continue;
+        const sp = spectrum(Z, Zi, rc, R_max, N, N_LEVELS);
+        const r = rmsError(sp, atom);
+        if (r != null && r < best.rms) best = { rms: r, Z, Zi, r_c: rc };
+      }
+    }
+  }
+  $("zIn").value = best.Z.toFixed(3);
+  $("ziIn").value = best.Zi.toFixed(3);
+  $("rcIn").value = best.r_c.toFixed(3);
+  $("fitMsg").textContent = "best: Z=" + best.Z.toFixed(2) +
+                            ", Z_inner=" + best.Zi.toFixed(2) +
+                            ", r_c=" + best.r_c.toFixed(2) +
+                            " a.u., RMS=" + best.rms.toFixed(5) + " Ha";
+  compute();
+}
+
+function autoFitNoZi() {
+  const atom = $("atomIn").value;
+  const R_max = +$("RmaxIn").value;
+  const N = Math.min(+$("NIn").value, 1200);
+  const N_LEVELS = 6;
+  $("fitMsg").textContent = "fitting (Z_inner=0)…";
+  let best = { rms: Infinity, Z: 1.0, r_c: 1.0 };
+  // Fine coarse grid:
+  const Zs = [];
+  for (let z = 0.5; z <= 3.0; z += 0.1) Zs.push(+z.toFixed(2));
+  const rcs = [];
+  for (let rc = 0.0; rc <= 6.0; rc += 0.25) rcs.push(+rc.toFixed(2));
+  for (const Z of Zs) for (const rc of rcs) {
+    const sp = spectrum(Z, 0, rc, R_max, N, N_LEVELS);
+    const r = rmsError(sp, atom);
+    if (r != null && r < best.rms) best = { rms: r, Z, r_c: rc };
+  }
+  // Two-pass refinement
+  for (let pass = 0; pass < 2; pass++) {
+    const Z0 = best.Z, rc0 = best.r_c;
+    const dStep = pass === 0 ? 0.05 : 0.01;
+    const dRange = pass === 0 ? 0.4 : 0.1;
+    for (let dz = -dRange; dz <= dRange; dz += dStep) {
+      for (let drc = -dRange; drc <= dRange; drc += dStep) {
+        const Z = Z0 + dz, rc = Math.max(0, rc0 + drc);
+        if (Z < 0.3) continue;
+        const sp = spectrum(Z, 0, rc, R_max, N, N_LEVELS);
+        const r = rmsError(sp, atom);
+        if (r != null && r < best.rms) best = { rms: r, Z, r_c: rc };
+      }
+    }
+  }
+  $("zIn").value = best.Z.toFixed(3);
+  $("ziIn").value = "0";
+  $("rcIn").value = best.r_c.toFixed(3);
+  $("fitMsg").textContent = "best (Z_inner=0): Z=" + best.Z.toFixed(3) +
+                            ", r_c=" + best.r_c.toFixed(3) +
+                            " a.u., RMS=" + best.rms.toFixed(5) + " Ha";
+  compute();
+}
+
+$("computeBtn").onclick = compute;
+$("fitBtn").onclick = autoFit;
+$("fitNoZiBtn").onclick = autoFitNoZi;
+$("atomIn").onchange = () => {
+  const atom = $("atomIn").value;
+  $("zIn").value = 2.0;
+  if (atom === "He") { $("rcIn").value = 0.0; $("ziIn").value = 1.69; }
+  if (atom === "Be") { $("rcIn").value = 1.0; $("ziIn").value = 2.3; }
+  if (atom === "Mg") { $("rcIn").value = 2.0; $("ziIn").value = 3.0; }
+  if (atom === "Ca") { $("rcIn").value = 3.0; $("ziIn").value = 4.0; }
+  compute();
+};
+compute();
+</script>
+</body></html>
