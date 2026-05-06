@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>RealQM ITP coupled to heat field T(r,τ) — deterministic finite-T extension</title>
+  <style>
+    body { margin: 0; background: #0a0a0a; color: #ddd; font-family: monospace; padding: 8px; }
+    h3 { margin: 4px 0; color: #4fc3f7; }
+    .panel { padding: 8px; background: rgba(0,0,0,0.7); border: 1px solid #555;
+             margin: 6px 0; font-size: 11px; }
+    button, input { font-family: monospace; padding: 2px 8px;
+             background: #111; color: #fff; border: 1px solid #555; }
+    canvas { background: #050510; border: 1px solid #555; }
+    .num { color: #ffe082; }
+    .ok { color: #66bb6a; }
+    .label { color: #aaa; }
+  </style>
+</head><body>
+
+<h3>RealQM ITP + heat field T(r,τ) — deterministic finite-T extension</h3>
+
+<div class="panel">
+ITP releases energy as <i>u</i> relaxes to ground state. That energy is fed as a local source
+into a heat equation for T(r,τ):<br>
+&nbsp;&nbsp;<code>∂u/∂τ = ½∇²u + (K − 2P)u</code> &nbsp;(ITP relaxation)<br>
+&nbsp;&nbsp;<code>∂T/∂τ = D ∇²T + Q(r,τ)</code> &nbsp;where <code>Q(r,τ) = −∂e_wave(r,τ)/∂τ</code><br>
+With <code>e_wave(r) = ½(u′)²·r² + (K(r) − 2P(r))·u²·r²</code> the local energy density.
+Total bookkeeping: <code>E_wave + ∫T·r²·dr·4π = const</code> (energy conservation, no statistics).
+</div>
+
+<div class="panel">
+  Z <input id="zIn" type="number" min="1" max="10" step="1" value="2" style="width:50px">
+  N_e <input id="neIn" type="number" min="1" max="2" step="1" value="2" style="width:50px">
+  D (thermal diffusivity) <input id="DIn" type="number" min="0" max="10" step="0.1" value="0.5" style="width:60px">
+  &nbsp;<button id="runBtn">Run</button>
+  <button id="stopBtn">Stop</button>
+  <button id="resetBtn">Reset</button>
+  <span id="statusMsg" style="margin-left: 16px; color: #aaa">click Run</span>
+</div>
+
+<canvas id="cvs" width="900" height="320"></canvas>
+
+<div class="panel" style="margin-top: 4px">
+  <span class="label">step:</span> <span id="stepVal" class="num">0</span>
+  &nbsp;<span class="label">E_wave:</span> <span id="EwaveVal" class="num">—</span> Ha
+  &nbsp;<span class="label">∫T:</span> <span id="ETotVal" class="num">—</span> Ha
+  &nbsp;<span class="label">E_total:</span> <span id="EsumVal" class="num">—</span> Ha
+  &nbsp;<span class="label">drift from start:</span> <span id="EdriftVal" class="num">—</span> Ha
+</div>
+
+<canvas id="cvsLog" width="900" height="180" style="margin-top: 8px"></canvas>
+
+<script>
+// Single-shell radial ITP + heat field T(r,τ).
+
+const N = 400;
+const D_dom = 5.0;       // domain extent in a.u.
+let h = D_dom / N;
+let dt = 0.5 * h * h;
+
+let u = new Float64Array(N + 1);
+let P = new Float64Array(N + 1);
+let Karr = new Float64Array(N + 1);
+let T = new Float64Array(N + 1);
+let e_prev = new Float64Array(N + 1);
+
+let Z = 2, N_e = 2;
+let D_thermal = 0.5;
+let Ered = 0.5;            // self-interaction reduction for 2-e shell
+
+let step = 0;
+let running = false;
+let E_initial = null;
+
+const $ = id => document.getElementById(id);
+
+function init() {
+  Z = +$("zIn").value;
+  N_e = +$("neIn").value;
+  D_thermal = +$("DIn").value;
+  Ered = N_e > 1 ? (N_e - 1) / N_e : 0;
+
+  for (let i = 0; i <= N; i++) {
+    u[i] = Math.exp(-Z * i * h);
+    T[i] = 0;
+    P[i] = 0;
+  }
+  u[N] = 0;
+  Karr[0] = 0;
+  for (let i = 1; i <= N; i++) Karr[i] = Z / (i * h);
+  computePoisson();
+  computeLocalEnergy(e_prev);
+  step = 0;
+  E_initial = totalEnergy();
+  energyHistory = [];
+  $("EsumVal").textContent = E_initial.toFixed(4);
+}
+
+function computePoisson() {
+  for (let i = 1; i <= N; i++) {
+    P[i] = 0;
+    const ri = i * h;
+    for (let j = 1; j <= N; j++) {
+      const rj = j * h;
+      const rho_j = u[j] * u[j] * rj * rj * h;
+      if (j < i) P[i] += 0.5 * Ered * rho_j / ri;
+      else       P[i] += 0.5 * Ered * rho_j / rj;
+    }
+  }
+}
+
+function computeLocalEnergy(out) {
+  // local energy density per dr: ½(u')² r² + (K-2P) u² r²  (kinetic + potential)
+  for (let i = 0; i <= N; i++) out[i] = 0;
+  for (let i = 1; i < N; i++) {
+    const r = i * h;
+    const gr = (u[i + 1] - u[i - 1]) / (2 * h);
+    const dT  = 0.5 * gr * gr * r * r;
+    const dV  = (-Karr[i] + 2 * P[i]) * u[i] * u[i] * r * r;  // signs: V_eff for outer e in shell
+    // Wait — the proper energy is Σ ½ |∇u|² + V*u² with V = -K + P (per electron in shell)
+    // Multi-electron: energy = N_e × per-electron stuff with self-interaction reduced.
+    out[i] = (0.5 * gr * gr + (-Karr[i] + Ered * P[i]) * u[i] * u[i]) * r * r * 4 * Math.PI;
+  }
+}
+
+function totalEnergy() {
+  computeLocalEnergy(e_prev);
+  let E_wave = 0;
+  for (let i = 0; i < N; i++) E_wave += e_prev[i] * h;
+  let E_thermal = 0;
+  for (let i = 0; i <= N; i++) E_thermal += T[i] * h;
+  return E_wave + E_thermal;
+}
+
+function stepWaveAndHeat() {
+  // ITP step
+  u[0] = u[1] / (1 - Z * h);
+  u[N] = u[N - 1];
+
+  const new_u = new Float64Array(N + 1);
+  for (let i = 1; i < N; i++) {
+    const lap = (u[i + 1] - 2 * u[i] + u[i - 1]) / (h * h);
+    const grad_correction = (u[i + 1] - u[i - 1]) / (2 * h * i * h);
+    new_u[i] = u[i] + 0.5 * dt * lap + dt * grad_correction
+             + dt * Karr[i] * u[i] - dt * 2 * P[i] * u[i];
+  }
+  new_u[0] = new_u[1] / (1 - Z * h);
+  new_u[N] = 0;
+  for (let i = 0; i <= N; i++) u[i] = new_u[i];
+
+  // Normalize to N_e electrons
+  let normsq = 0;
+  for (let i = 0; i <= N; i++) normsq += (u[i] * i * h) * (u[i] * i * h) * h;
+  if (normsq > 0) {
+    const sc = Math.sqrt(N_e / normsq);
+    for (let i = 0; i <= N; i++) u[i] *= sc;
+  }
+  computePoisson();
+
+  // Compute new local energy density (already includes 4πr² shell-volume factor).
+  // Track T in the SAME units as e_local (energy per dr). Conservation:
+  // Σ(e_local + T)·h = const.  Source: ΔT_i = -(e_new_i - e_prev_i) directly.
+  const e_new = new Float64Array(N + 1);
+  computeLocalEnergy(e_new);
+
+  // Heat eq step: ∂T/∂τ = D ∂²T/∂r² + Q,  with Q_i = -(e_new_i - e_prev_i)/dt
+  // (1D diffusion of "energy per dr" along r — captures spreading without needing
+  // radial-laplacian volume factors, since T is already shell-integrated.)
+  const new_T = new Float64Array(N + 1);
+  for (let i = 1; i < N; i++) {
+    const lap_T = (T[i + 1] - 2 * T[i] + T[i - 1]) / (h * h);
+    const Q_i = -(e_new[i] - e_prev[i]) / dt;
+    new_T[i] = T[i] + dt * D_thermal * lap_T + dt * Q_i;
+  }
+  new_T[0] = new_T[1];
+  new_T[N] = new_T[N - 1];
+  for (let i = 0; i <= N; i++) T[i] = new_T[i];
+
+  for (let i = 0; i <= N; i++) e_prev[i] = e_new[i];
+  step++;
+}
+
+let energyHistory = [];
+
+function loop() {
+  if (!running) return;
+  for (let m = 0; m < 50; m++) stepWaveAndHeat();
+
+  let E_wave = 0;
+  for (let i = 0; i < N; i++) E_wave += e_prev[i] * h;
+  let E_thermal = 0;
+  for (let i = 0; i <= N; i++) E_thermal += T[i] * h;
+  const E_sum = E_wave + E_thermal;
+
+  $("stepVal").textContent = step;
+  $("EwaveVal").textContent = E_wave.toFixed(4);
+  $("ETotVal").textContent = E_thermal.toFixed(4);
+  $("EsumVal").textContent = E_sum.toFixed(4);
+  $("EdriftVal").textContent = (E_sum - E_initial).toFixed(4);
+
+  energyHistory.push({ step, E_wave, E_thermal, E_sum });
+  if (energyHistory.length > 1000) energyHistory.shift();
+
+  drawState();
+  drawHistory();
+  requestAnimationFrame(loop);
+}
+
+function drawState() {
+  const cv = $("cvs");
+  const ctx = cv.getContext("2d");
+  const W = cv.width, H = cv.height;
+  ctx.fillStyle = "#050510";
+  ctx.fillRect(0, 0, W, H);
+  // Plot u(r) red, T(r) green, e_density blue (not P or K to keep clean)
+  const pad = 50;
+  const plotW = W - pad - 20, plotH = H - 50;
+  ctx.strokeStyle = "#444";
+  ctx.beginPath(); ctx.moveTo(pad, pad); ctx.lineTo(pad, pad + plotH); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pad, pad + plotH); ctx.lineTo(pad + plotW, pad + plotH); ctx.stroke();
+  ctx.fillStyle = "#aaa";
+  ctx.font = "10px monospace";
+  ctx.fillText("r (a.u.)", W - 60, H - 8);
+  ctx.fillText("u (red), T·100 (green), e_local (blue)", 10, 14);
+
+  let uMax = 0, TMax = 1e-12, eMax = 1e-12;
+  for (let i = 0; i <= N; i++) {
+    if (u[i] > uMax) uMax = u[i];
+    if (Math.abs(T[i]) > TMax) TMax = Math.abs(T[i]);
+    if (Math.abs(e_prev[i]) > eMax) eMax = Math.abs(e_prev[i]);
+  }
+  function px(r) { return pad + plotW * r / D_dom; }
+
+  // u (red)
+  ctx.strokeStyle = "#ef5350"; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) {
+    const x = px(i * h);
+    const y = pad + plotH * (1 - u[i] / uMax * 0.4);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // T (green) — scaled by larger factor to be visible
+  ctx.strokeStyle = "#66bb6a"; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) {
+    const x = px(i * h);
+    const y = pad + plotH * (0.6 - T[i] / TMax * 0.3);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // e_local (blue)
+  ctx.strokeStyle = "#42a5f5"; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) {
+    const x = px(i * h);
+    const y = pad + plotH * (0.85 - e_prev[i] / eMax * 0.2);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // x-axis ticks
+  ctx.fillStyle = "#666";
+  for (let r = 0; r <= D_dom; r++) {
+    ctx.beginPath();
+    ctx.moveTo(px(r), pad + plotH);
+    ctx.lineTo(px(r), pad + plotH + 4);
+    ctx.stroke();
+    ctx.fillText(r.toFixed(0), px(r) - 3, pad + plotH + 16);
+  }
+
+  // Label scales
+  ctx.fillStyle = "#ef5350"; ctx.fillText("u_max=" + uMax.toFixed(3), pad + 10, 30);
+  ctx.fillStyle = "#66bb6a"; ctx.fillText("T_max=" + TMax.toExponential(2), pad + 130, 30);
+  ctx.fillStyle = "#42a5f5"; ctx.fillText("e_max=" + eMax.toExponential(2), pad + 280, 30);
+}
+
+function drawHistory() {
+  const cv = $("cvsLog");
+  const ctx = cv.getContext("2d");
+  const W = cv.width, H = cv.height;
+  ctx.fillStyle = "#050510";
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#aaa"; ctx.font = "10px monospace";
+  ctx.fillText("Energy bookkeeping (E_wave red, ∫T green, sum yellow)", 10, 14);
+
+  if (energyHistory.length < 2) return;
+  let Emin = Infinity, Emax = -Infinity;
+  for (const e of energyHistory) {
+    Emin = Math.min(Emin, e.E_wave, e.E_thermal, e.E_sum);
+    Emax = Math.max(Emax, e.E_wave, e.E_thermal, e.E_sum);
+  }
+  const range = Emax - Emin || 1;
+  const pad = 40;
+  const plotW = W - pad - 10, plotH = H - 30;
+
+  ctx.strokeStyle = "#444";
+  ctx.beginPath(); ctx.moveTo(pad, pad); ctx.lineTo(pad, pad + plotH); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pad, pad + plotH); ctx.lineTo(pad + plotW, pad + plotH); ctx.stroke();
+
+  function py(E) { return pad + plotH * (Emax - E) / range; }
+  function px(k) { return pad + plotW * k / Math.max(energyHistory.length - 1, 1); }
+
+  for (const [field, color] of [["E_wave", "#ef5350"], ["E_thermal", "#66bb6a"], ["E_sum", "#ffe082"]]) {
+    ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (let k = 0; k < energyHistory.length; k++) {
+      const x = px(k), y = py(energyHistory[k][field]);
+      if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  ctx.fillStyle = "#888";
+  ctx.fillText(Emax.toFixed(3), 5, py(Emax) + 4);
+  ctx.fillText(Emin.toFixed(3), 5, py(Emin) + 4);
+}
+
+$("runBtn").onclick = () => { if (!running) { running = true; if (step === 0) init(); loop(); $("statusMsg").textContent = "running"; } };
+$("stopBtn").onclick = () => { running = false; $("statusMsg").textContent = "paused"; };
+$("resetBtn").onclick = () => { running = false; init(); drawState(); drawHistory(); $("statusMsg").textContent = "reset"; };
+
+init();
+drawState();
+</script>
+</body></html>
