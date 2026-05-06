@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>RealQM core radius r_c — extracted from Atom Simulator</title>
+  <style>
+    body { margin: 0; background: #0a0a0a; color: #ddd; font-family: monospace; padding: 12px; }
+    h3 { margin: 4px 0 8px; color: #4fc3f7; }
+    .panel { padding: 8px; background: rgba(0,0,0,0.7); border: 1px solid #555;
+             margin-right: 8px; font-size: 11px; max-width: 980px; }
+    button { font-family: monospace; padding: 4px 12px;
+             background: #111; color: #fff; border: 1px solid #555; }
+    table { border-collapse: collapse; font-size: 11px; margin-top: 8px; }
+    th, td { padding: 4px 10px; border: 1px solid #444; text-align: right; }
+    th { color: #4fc3f7; background: #0a1820; }
+    .num { color: #ffe082; font-weight: bold; }
+    .ok { color: #66bb6a; }
+    .warn { color: #ffca28; }
+    canvas { background: #050510; border: 1px solid #555; margin-top: 8px; }
+  </style>
+</head><body>
+
+<h3>Core radius r_c extracted from RealQM Atom Simulator (neutral alkalis)</h3>
+
+<div class="panel">
+For each neutral alkali atom (Li, Na, K), run the spherically-symmetric multi-shell
+RealQM solver to ground state, then read off the boundary <code>M[NSHELLS−1]·h</code>
+between the outermost <i>core</i> shell and the valence shell. That radius is the
+RealQM-native <b>r_c</b> for the empty-core + Neumann reduced model. Compare to the
+r_c values fitted in <code>valence1_spectrum.html</code>.<br><br>
+<b>Note:</b> The simulator's MAXSHELLS=6 limit covers Li, Na, K but not Rb, Cs.
+</div>
+
+<div class="panel" style="margin-top: 8px">
+  <button id="runBtn">Run Li, Na, K to convergence</button>
+  <span id="statusMsg" style="margin-left: 16px; color: #aaa">click Run</span>
+</div>
+
+<table id="resultTable">
+  <thead><tr>
+    <th>Atom</th><th>Z</th><th>Shells</th>
+    <th>r_c<br>(boundary)</th>
+    <th>r_c<br>(outer ⟨r⟩)</th>
+    <th>r_c (fitted<br>from spectrum)</th>
+    <th>E_total<br>(Ha)</th>
+    <th>E_obs<br>(Ha)</th>
+  </tr></thead>
+  <tbody id="resultBody"></tbody>
+</table>
+
+<canvas id="cvs" width="900" height="320" style="margin-top: 10px"></canvas>
+
+<script>
+// ============================================================
+// Headless port of atom_simulator.html ITP solver.
+// ============================================================
+
+function runAtom(Z, Es_in, D, fix, N, totalSteps) {
+  const MAXSHELLS = 6;
+  const Es = new Array(MAXSHELLS).fill(0);
+  for (let i = 0; i < Es_in.length; i++) Es[i] = Es_in[i];
+  let NSHELLS = 1;
+  for (let s = 1; s < MAXSHELLS; s++) if (Es[s] > 0) NSHELLS = s + 1; else break;
+
+  const Ered = Es.map(e => e > 1 ? (e - 1) / e : 0);
+  const h = D / N;
+  const dt = 0.5 * h * h;
+  const diff = 0.001;
+
+  const u = new Float64Array(N + 1);
+  const P = new Float64Array(N + 1);
+  const Karr = new Float64Array(N + 1);
+  const M = new Array(MAXSHELLS + 1).fill(0);
+
+  M[0] = 0;
+  for (let s = 1; s < NSHELLS; s++) M[s] = Math.round(s * N / NSHELLS);
+  M[NSHELLS] = N;
+  for (let s = NSHELLS + 1; s <= MAXSHELLS; s++) M[s] = N;
+
+  for (let i = 0; i <= N; i++) u[i] = Math.exp(-Z * i * h);
+  u[N] = 0;
+
+  Karr[0] = 0;
+  for (let i = 1; i <= N; i++) Karr[i] = Z / (i * h + fix * h);
+
+  function computePoisson() {
+    for (let i = 1; i <= N; i++) {
+      P[i] = 0;
+      let myShell = -1;
+      for (let s = 0; s < NSHELLS; s++) {
+        if (i > M[s] && i <= M[s + 1]) { myShell = s; break; }
+      }
+      if (myShell < 0) continue;
+      for (let s = 0; s < NSHELLS; s++) {
+        const iStart = M[s] + 1;
+        const iEnd = M[s + 1];
+        const factor = (s === myShell) ? 0.5 * Ered[s] : 0.5;
+        for (let j = iStart; j <= iEnd; j++) {
+          const rj = j * h;
+          const ri = i * h;
+          const rho_j = u[j] * u[j] * rj * rj * h;
+          if (j < i) P[i] += factor * rho_j / ri;
+          else       P[i] += factor * rho_j / rj;
+        }
+      }
+    }
+  }
+
+  computePoisson();
+
+  const energy_T = new Array(MAXSHELLS).fill(0);
+  const energy_eK = new Array(MAXSHELLS).fill(0);
+  const energy_ee = new Array(MAXSHELLS).fill(0);
+  const energy = new Array(MAXSHELLS).fill(0);
+  const normu = new Array(MAXSHELLS).fill(0);
+
+  for (let big = 0; big < totalSteps; big++) {
+    // Free boundary tracking
+    for (let s = 1; s < NSHELLS; s++) {
+      if (M[s] < M[s + 1] - 2 && M[s] > M[s - 1] + 2) {
+        if (u[M[s]] > u[M[s] + 1] + diff) M[s]++;
+        if (u[M[s]] < u[M[s] + 1] - diff) M[s]--;
+      }
+    }
+    for (let k = 0; k < 5; k++) {
+      u[0] = u[1] / (1 - Z * h);
+      for (let s = 0; s < NSHELLS; s++) {
+        const lo = M[s], hi = M[s + 1];
+        energy[s] = 0; energy_T[s] = 0; energy_eK[s] = 0; energy_ee[s] = 0;
+        if (s === 0) u[hi] = u[hi - 1];
+        else { u[lo + 1] = u[lo + 2]; u[hi] = u[hi - 1]; }
+        const iStart = (s === 0) ? 1 : lo + 2;
+        const iEnd = hi;
+        for (let i = iStart; i < iEnd; i++) {
+          const du_dr = (s === 0) ? (u[i + 1] - u[i - 1]) : (u[i + 1] - u[i]);
+          u[i] += 0.5 * dt * (u[i + 1] - 2 * u[i] + u[i - 1]) / (h * h)
+                + 0.5 * dt * du_dr / (h * i * h)
+                + dt * Karr[i] * u[i] - dt * 2 * P[i] * u[i];
+          const gr = (u[i + 1] - u[i - 1]) / (2 * h);
+          const r2dr = (i * h) * (i * h) * h;
+          const dT  =  0.5 * gr * gr * r2dr;
+          const dK  = -Karr[i] * u[i] * u[i] * r2dr;
+          const dee =  P[i] * u[i] * u[i] * r2dr;
+          energy_T[s]  += dT;
+          energy_eK[s] += dK;
+          energy_ee[s] += dee;
+          energy[s]    += dT + dK + dee;
+        }
+      }
+      computePoisson();
+    }
+    // Normalize per shell
+    for (let s = 0; s < NSHELLS; s++) {
+      const lo = M[s], hi = M[s + 1];
+      const iStart = (s === 0) ? 0 : lo + 1;
+      normu[s] = 0;
+      for (let i = iStart; i <= hi; i++) normu[s] += (u[i] * i * h) * (u[i] * i * h) * h;
+      if (normu[s] > 0) {
+        const scale = Math.sqrt(Es[s]) / Math.sqrt(normu[s]);
+        for (let i = iStart; i <= hi; i++) u[i] *= scale;
+      }
+    }
+  }
+
+  // Boundary between outermost-core shell and valence shell:
+  // valence shell index = NSHELLS - 1 (the last one), so its lower edge is M[NSHELLS-1].
+  const r_c_boundary = M[NSHELLS - 1] * h;
+
+  // Outer-core ⟨r⟩: weighted average over the second-to-last shell
+  const sCore = NSHELLS - 2;
+  let sumR = 0, sumW = 0;
+  if (sCore >= 0) {
+    const lo = M[sCore], hi = M[sCore + 1];
+    for (let i = lo + 1; i <= hi; i++) {
+      const r = i * h;
+      const w = u[i] * u[i] * r * r * h;
+      sumR += r * w;
+      sumW += w;
+    }
+  }
+  const r_c_meanR = sumW > 0 ? sumR / sumW : null;
+
+  let etot = 0;
+  for (let s = 0; s < NSHELLS; s++) etot += energy[s];
+
+  return { Z, Es: Es.slice(0, NSHELLS), NSHELLS, h, N, D,
+           u: Array.from(u), M: M.slice(0, NSHELLS + 1),
+           r_c_boundary, r_c_meanR, etot };
+}
+
+// Fitted r_c from valence1_spectrum.html auto-fits:
+const FITTED = {
+  Li: { r_c: 1.95, RMS: 0.002 },
+  Na: { r_c: 2.00, RMS: 0.0040 },
+  K:  { r_c: 2.90, RMS: 0.00425 },
+  Rb: { r_c: 3.10, RMS: 0.0051 },
+  Cs: { r_c: 3.30, RMS: 0.0050 },
+};
+
+// Observed total energies (Ha) for neutral atoms (NIST).
+const E_OBS = { Li: -7.4781, Na: -162.255, K: -599.917 };
+
+const PRESETS = [
+  { name: "Li", Z: 3,  Es: [2, 1],       D: 5,  fix: 0.1, N: 400, steps: 1500 },
+  { name: "Na", Z: 11, Es: [2, 8, 1],    D: 10, fix: 0.3, N: 600, steps: 5000 },
+  { name: "K",  Z: 19, Es: [2, 8, 8, 1], D: 12, fix: 0.2, N: 600, steps: 8000 },
+];
+
+const $ = id => document.getElementById(id);
+
+async function runAll() {
+  $("statusMsg").textContent = "running…";
+  $("resultBody").innerHTML = "";
+  const results = [];
+  for (const p of PRESETS) {
+    $("statusMsg").textContent = "running " + p.name + "…";
+    await new Promise(r => setTimeout(r, 30));
+    const t0 = performance.now();
+    const res = runAtom(p.Z, p.Es, p.D, p.fix, p.N, p.steps);
+    const dt = (performance.now() - t0) / 1000;
+    res.name = p.name;
+    res.steps = p.steps;
+    res.runTime = dt;
+    results.push(res);
+
+    const fitted = FITTED[p.name];
+    const obs = E_OBS[p.name];
+    const tr = document.createElement("tr");
+    const fitStr = fitted && fitted.r_c != null ? fitted.r_c.toFixed(3) : "—";
+    tr.innerHTML =
+      "<th>" + p.name + "</th>" +
+      "<td>" + p.Z + "</td>" +
+      "<td>" + p.Es.join("+") + "</td>" +
+      "<td>" + res.r_c_boundary.toFixed(3) + "</td>" +
+      "<td>" + (res.r_c_meanR != null ? res.r_c_meanR.toFixed(3) : "—") + "</td>" +
+      "<td>" + fitStr + "</td>" +
+      "<td>" + res.etot.toFixed(3) + "</td>" +
+      "<td>" + (obs != null ? obs.toFixed(3) : "—") + "</td>";
+    $("resultBody").appendChild(tr);
+  }
+  $("statusMsg").textContent = "done (total " +
+    results.reduce((s, r) => s + r.runTime, 0).toFixed(1) + " s)";
+  drawDensities(results);
+}
+
+function drawDensities(results) {
+  const cv = $("cvs");
+  const ctx = cv.getContext("2d");
+  const W = cv.width, H = cv.height;
+  ctx.fillStyle = "#050510";
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = "#444";
+  ctx.beginPath(); ctx.moveTo(50, H - 30); ctx.lineTo(W - 20, H - 30); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(50, 20); ctx.lineTo(50, H - 30); ctx.stroke();
+  ctx.fillStyle = "#aaa";
+  ctx.font = "11px monospace";
+  ctx.fillText("ρ(r) · 4πr² (per shell)", 8, 30);
+  ctx.fillText("r (a.u.)", W - 70, H - 8);
+
+  const r_max = Math.max(...results.map(r => r.D));
+  const colors = ["#ef5350", "#42a5f5", "#66bb6a"];
+
+  // Find max ρ for scaling
+  let rhoMax = 0;
+  for (const res of results) {
+    for (let i = 1; i <= res.N; i++) {
+      const r = i * res.h;
+      const rho = res.u[i] * res.u[i] * r * r;
+      if (rho > rhoMax) rhoMax = rho;
+    }
+  }
+
+  function px(r) { return 50 + (W - 70) * r / r_max; }
+  function py(rho) { return 20 + (H - 50) * (1 - rho / rhoMax); }
+
+  // Tick marks
+  ctx.fillStyle = "#666";
+  for (let r = 0; r <= r_max; r += 1) {
+    ctx.beginPath();
+    ctx.moveTo(px(r), H - 30);
+    ctx.lineTo(px(r), H - 28);
+    ctx.stroke();
+    if (r % 2 === 0) ctx.fillText(r.toFixed(0), px(r) - 4, H - 16);
+  }
+
+  for (let k = 0; k < results.length; k++) {
+    const res = results[k];
+    ctx.strokeStyle = colors[k];
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    let started = false;
+    for (let i = 1; i <= res.N; i++) {
+      const r = i * res.h;
+      const rho = res.u[i] * res.u[i] * r * r;
+      const x = px(r), y = py(rho);
+      if (!started) { ctx.moveTo(x, y); started = true; }
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // r_c boundary marker
+    ctx.strokeStyle = colors[k];
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(px(res.r_c_boundary), 20);
+    ctx.lineTo(px(res.r_c_boundary), H - 30);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = colors[k];
+    ctx.fillText(res.name + " (r_c=" + res.r_c_boundary.toFixed(2) + " a.u.)",
+                 60 + k * 200, 50);
+  }
+}
+
+$("runBtn").onclick = runAll;
+</script>
+</body></html>

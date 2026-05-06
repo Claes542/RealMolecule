@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>Valence-1 spectrum from RealQM empty-core + Neumann</title>
+  <style>
+    body { margin: 0; background: #0a0a0a; color: #ddd; font-family: monospace; padding: 8px; }
+    h3 { margin: 4px 0; color: #4fc3f7; }
+    .panel { display: inline-block; vertical-align: top; padding: 8px;
+             background: rgba(0,0,0,0.7); border: 1px solid #555; margin-right: 8px;
+             font-size: 11px; }
+    button, input[type=number] { font-family: monospace; padding: 2px 6px;
+             background: #111; color: #fff; border: 1px solid #555; }
+    table { border-collapse: collapse; font-size: 11px; }
+    th, td { padding: 3px 8px; border: 1px solid #444; text-align: right; }
+    th { color: #4fc3f7; background: #0a1820; }
+    .num { color: #ffe082; font-weight: bold; }
+    .label { color: #aaa; }
+    canvas { background: #050510; border: 1px solid #555; }
+  </style>
+</head><body>
+
+<h3>Valence-1 spectrum — empty-core + Neumann (RealQM-native)</h3>
+
+<div style="font-size: 11px; color: #aaa; max-width: 900px; line-height: 1.5">
+Solve <code>−½ u″ + [ℓ(ℓ+1)/(2r²) − Z/r] u = E u</code> on <code>r ∈ [r_c, R_max]</code><br>
+with <b>Neumann ψ′(r_c) = 0</b> (i.e. <code>u′(r_c) = u(r_c)/r_c</code>) at the inner boundary
+and <b>u(R_max) = 0</b> at the outer. The interior <code>r &lt; r_c</code> is empty (no wave function);
+inner shells are conceptually absorbed into the bare Coulomb kernel <code>−Z/r</code> outside <code>r_c</code>.
+This is the proper RealQM treatment for a single valence electron over a closed inner core.
+</div>
+
+<div class="panel">
+  <h4 style="color:#80cbc4;margin:0 0 6px 0">Parameters</h4>
+  Atom <select id="atomIn" style="font-family:monospace;background:#111;color:#fff;border:1px solid #555">
+    <option value="H">H (n_min=1)</option>
+    <option value="Li" selected>Li (n_min=2)</option>
+    <option value="Na">Na (n_min=3)</option>
+    <option value="K">K (n_min=4)</option>
+    <option value="Rb">Rb (n_min=5)</option>
+    <option value="Cs">Cs (n_min=6)</option>
+  </select><br><br>
+  Z_kernel <input id="zIn" type="number" min="0.5" max="20" step="0.05" value="1" style="width:60px"><br><br>
+  r_c (a.u.) <input id="rcIn" type="number" min="0.0001" max="5" step="0.05" value="0.5" style="width:80px"><br><br>
+  R_max (a.u.) <input id="RmaxIn" type="number" min="20" max="200" step="10" value="60" style="width:80px"><br><br>
+  Grid points <input id="NIn" type="number" min="500" max="5000" step="100" value="1500" style="width:80px"><br><br>
+  <button id="computeBtn">Compute spectrum</button>
+  <button id="fitBtn">Auto-fit (Z_kernel, r_c)</button>
+  <div id="fitMsg" style="margin-top:6px;color:#ffe082;font-size:10px"></div>
+</div>
+
+<div class="panel">
+  <h4 style="color:#80cbc4;margin:0 0 6px 0">Eigenvalues E_{n,ℓ}</h4>
+  <table id="table">
+    <thead>
+      <tr><th>n \ ℓ</th><th>0 (s)</th><th>1 (p)</th><th>2 (d)</th></tr>
+    </thead>
+    <tbody id="tbody"><tr><td colspan="4" style="color:#888">click Compute</td></tr></tbody>
+  </table>
+  <div style="margin-top:6px;font-size:10px;color:#888">
+    Reference: hydrogen E_n = −Z²/(2n²) = −0.500, −0.125, −0.0556, −0.0312 Ha for n=1,2,3,4.
+  </div>
+</div>
+
+<div class="panel">
+  <h4 style="color:#80cbc4;margin:0 0 6px 0">Quantum defect δ_ℓ</h4>
+  <div style="font-size:10px;color:#aaa">
+    Computed from E_{n,ℓ} = −1/(2(n−δ)²): δ_ℓ = n − 1/√(−2E).<br>
+    Reference defects (NIST): Li 0.40/0.05/0.00; Na 1.35/0.86/0.01; K 2.18/1.71/0.28.
+  </div>
+  <table id="defTable">
+    <thead><tr><th>n \ ℓ</th><th>0 (s)</th><th>1 (p)</th><th>2 (d)</th></tr></thead>
+    <tbody id="defBody"></tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <h4 style="color:#80cbc4;margin:0 0 6px 0">Model vs observed (Ha)</h4>
+  <table id="cmpTable">
+    <thead><tr><th>n,ℓ</th><th>model</th><th>obs</th><th>Δ</th></tr></thead>
+    <tbody id="cmpBody"></tbody>
+  </table>
+  <div style="margin-top:6px;font-size:10px;color:#aaa">
+    RMS error <span id="rmsVal" class="num">—</span> Ha over fitted levels.
+  </div>
+</div>
+
+<canvas id="cvs" width="900" height="300" style="margin-top:10px"></canvas>
+
+<script>
+// ============================================================
+// Solve radial Schrodinger on [r_c, R_max]:
+//   -1/2 u" + [l(l+1)/(2 r²) - Z/r] u = E u
+// BC at r_c: u'(r_c) = u(r_c) / r_c (homogeneous Neumann on psi=u/r)
+// BC at R_max: u(R_max) = 0
+// Eigenvalue problem: find E such that the inward shoot satisfies the BC at r_c.
+// ============================================================
+
+function radialEig(Z, ell, r_c, R_max, N, n_levels) {
+  const h = (R_max - r_c) / (N - 1);
+  const h2 = h * h;
+
+  // Build tridiagonal Hamiltonian:
+  //   diag_i  = 1/h² + V_eff(r_i)
+  //   offdiag = -1/(2 h²)
+  // (factor of -1/2 in kinetic absorbed)
+  const diag = new Float64Array(N);
+  const off  = new Float64Array(N - 1);
+  for (let i = 0; i < N; i++) {
+    const r = r_c + i * h;
+    const Veff = ell * (ell + 1) / (2 * r * r) - Z / r;
+    diag[i] = 1 / h2 + Veff;
+  }
+  for (let i = 0; i < N - 1; i++) off[i] = -1 / (2 * h2);
+
+  // Apply Neumann BC at r_c (i=0): u'(r_c) = u_0 / r_c
+  // FD: u'(r_0) = (u_1 - u_{-1}) / (2 h)
+  // Set (u_1 - u_{-1})/(2 h) = u_0 / r_c  →  u_{-1} = u_1 - 2 h u_0 / r_c
+  //
+  // Standard interior:  -½ u''(r_0) = (-u_{-1} + 2 u_0 - u_1) / (2 h²)
+  // Substituting:        -½ u''(r_0) = (-(u_1 - 2h u_0/r_c) + 2 u_0 - u_1) / (2 h²)
+  //                                 = (-2 u_1 + 2 u_0 + 2 h u_0 / r_c) / (2 h²)
+  //                                 = (u_0 - u_1) / h² + u_0 / (h r_c)
+  // → diag[0] modified: 1/h² + 1/(h r_c) + Veff(r_0)
+  //   off[0]:           -1/h²   (different from interior -1/(2h²) — ASYMMETRIC)
+  //
+  // Symmetrize via change of variable: introduce row scale s_0 such that
+  // row 0 written as: s_0 * diag[0] u_0 + s_0 * off[0] u_1 = E s_0 u_0
+  // For symmetry in eigenvalue problem we want s_0 * off[0] = off[1] = -1/(2h²)
+  // s_0 = (off[1])/off[0] = (-1/(2h²)) / (-1/h²) = 1/2
+  // Then row 0 becomes: s_0 * diag[0] u_0 + s_0 * off[0] u_1 = E s_0 u_0
+  //   → diag[0] -> diag[0]/2 = (1/h² + 1/(h r_c) + Veff(r_0))/2
+  //   → off[0]  -> -1/(2 h²)
+  //   → mass row 0 -> 1/2 (i.e., generalized eigenvalue problem becomes
+  //     (H_sym - E B) u = 0 with B = diag(1/2, 1, 1, ..., 1))
+  //
+  // For simplicity, use power-of-h symmetric form by using ψ-form of equation,
+  // but that introduces (1/r) ψ' singular term. Instead, use shooting method below
+  // for clean numerical result without symmetry hassle.
+
+  // SHOOTING METHOD: integrate inward from R_max with u(R_max)=0, u(R_max-h)=eps.
+  // At each E, compute log-derivative D(E) = u'(r_c) - u(r_c)/r_c.
+  // Bisect on D(E) sign change to find each eigenvalue.
+
+  function shootInward(E) {
+    // u_{N-1} = 0, u_{N-2} = 1 (any small nonzero)
+    let uPlus = 0, u = 1;
+    for (let i = N - 2; i > 0; i--) {
+      const r = r_c + i * h;
+      const Veff = ell * (ell + 1) / (2 * r * r) - Z / r;
+      const f = 2 * (Veff - E);   // u'' = f * u
+      // u_{i-1} = 2 u_i - u_{i+1} + h² f u_i
+      const uMinus = 2 * u - uPlus + h2 * f * u;
+      uPlus = u;
+      u = uMinus;
+      // Renormalize if growing too large
+      if (Math.abs(u) > 1e30) { u *= 1e-30; uPlus *= 1e-30; }
+    }
+    // Now u_0 (= u after the loop) and uPlus (= u_1 from last iteration)
+    // u'(r_0) ≈ (u_1 - u_0)/h (forward FD, simple) or (uPlus - u)/h
+    const uAtRc = u;
+    const uPrime = (uPlus - u) / h;
+    return { D: uPrime - uAtRc / r_c, u0: u };
+  }
+
+  // Find eigenvalues by bisection on E ∈ [E_min, 0]
+  // E_min ~ -Z² / (2 * 1²) for ground state, but allow some headroom
+  const E_min = -Z * Z * 1.2;
+  const E_max = -1e-6;
+  const nScan = 5000;
+  const dE = (E_max - E_min) / nScan;
+  // Find sign changes in D(E)
+  const eigs = [];
+  let prevD = shootInward(E_min).D;
+  let prevE = E_min;
+  for (let k = 1; k <= nScan && eigs.length < n_levels; k++) {
+    const E = E_min + k * dE;
+    const { D } = shootInward(E);
+    if (prevD * D < 0 && isFinite(prevD) && isFinite(D)) {
+      // Bisect to refine
+      let lo = prevE, hi = E, dLo = prevD, dHi = D;
+      for (let iter = 0; iter < 60; iter++) {
+        const mid = (lo + hi) / 2;
+        const { D: dM } = shootInward(mid);
+        if (dLo * dM < 0) { hi = mid; dHi = dM; }
+        else              { lo = mid; dLo = dM; }
+      }
+      eigs.push((lo + hi) / 2);
+    }
+    prevD = D;
+    prevE = E;
+  }
+  return eigs;
+}
+
+const $ = id => document.getElementById(id);
+
+// Observed energies E_{n,ℓ} in Ha (negative). Source: NIST atomic spectra,
+// converted from term values (E = -T_n/R_inf with R_inf = 109737.31 cm^-1 ≈ 0.5 Ha).
+// Indexed by [atom][ell] = array of E for n = n_min, n_min+1, ...
+const ATOM_DATA = {
+  H:  { n_min: 1, levels: { 0: [-0.50000, -0.12500, -0.05556, -0.03125],
+                            1: [        -0.12500, -0.05556, -0.03125],
+                            2: [                  -0.05556, -0.03125] } },
+  Li: { n_min: 2, levels: { 0: [-0.19815, -0.07418, -0.03862, -0.02360],
+                            1: [-0.13024, -0.05724, -0.03198, -0.02038],
+                            2: [-0.05561, -0.03128, -0.02002, -0.01390] } },
+  Na: { n_min: 3, levels: { 0: [-0.18886, -0.07158, -0.03758, -0.02309],
+                            1: [-0.10984, -0.05094, -0.02919, -0.01890],
+                            2: [-0.05594, -0.03143, -0.02010, -0.01396] } },
+  K:  { n_min: 4, levels: { 0: [-0.15952, -0.06370, -0.03439, -0.02143],
+                            1: [-0.10026, -0.04763, -0.02775, -0.01816],
+                            2: [-0.06138, -0.03379, -0.02132, -0.01464] } },
+  Rb: { n_min: 5, levels: { 0: [-0.15351, -0.06175, -0.03351, -0.02094],
+                            1: [-0.09619, -0.04612, -0.02701, -0.01775],
+                            2: [-0.06520, -0.03546, -0.02220, -0.01516] } },
+  Cs: { n_min: 6, levels: { 0: [-0.14310, -0.05864, -0.03212, -0.02019],
+                            1: [-0.09217, -0.04465, -0.02631, -0.01736],
+                            2: [-0.06400, -0.03495, -0.02194, -0.01501] } },
+};
+
+function computeSpectrum(Z, r_c, R_max, N, N_LEVELS) {
+  return [0, 1, 2].map(ell => radialEig(Z, ell, r_c, R_max, N, N_LEVELS));
+}
+
+function rmsError(spectra, atom) {
+  const data = ATOM_DATA[atom];
+  if (!data) return null;
+  let s = 0, c = 0;
+  for (let ell = 0; ell <= 2; ell++) {
+    const obs = data.levels[ell];
+    for (let k = 0; k < obs.length; k++) {
+      const E_model = spectra[ell][k];
+      if (E_model == null || !isFinite(E_model)) continue;
+      s += (E_model - obs[k]) ** 2;
+      c++;
+    }
+  }
+  return c > 0 ? Math.sqrt(s / c) : null;
+}
+
+function compute() {
+  const Z = +$("zIn").value;
+  const r_c = +$("rcIn").value;
+  const R_max = +$("RmaxIn").value;
+  const N = +$("NIn").value;
+  const atom = $("atomIn").value;
+  const data = ATOM_DATA[atom];
+  const n_min = data.n_min;
+  const N_LEVELS = 6;
+
+  const tbody = $("tbody");
+  const defBody = $("defBody");
+  const cmpBody = $("cmpBody");
+  tbody.innerHTML = "";
+  defBody.innerHTML = "";
+  cmpBody.innerHTML = "";
+
+  const spectra = computeSpectrum(Z, r_c, R_max, N, N_LEVELS);
+
+  // Eigenvalue + defect tables: label rows by physical n = n_min, n_min+1, ...
+  for (let row = 0; row < N_LEVELS; row++) {
+    const nPhys = n_min + row;
+    const tr = document.createElement("tr");
+    tr.innerHTML = "<th>" + nPhys + "</th>";
+    const trDef = document.createElement("tr");
+    trDef.innerHTML = "<th>" + nPhys + "</th>";
+    for (let ell = 0; ell <= 2; ell++) {
+      // For ℓ ≥ 1, the lowest physical n is ell+1 (e.g. p starts at n=2 for H, n=3 for Na's outer)
+      // In empty-core model the lowest eigenstate of ℓ is mapped to n = max(n_min, ell+1)
+      const n_lo = Math.max(n_min, ell + 1);
+      const idx = nPhys - n_lo;
+      const E = (idx >= 0 && idx < spectra[ell].length) ? spectra[ell][idx] : null;
+      tr.innerHTML += "<td>" + (E != null ? E.toFixed(5) : "—") + "</td>";
+      const def = (E != null && E < 0) ? (nPhys - 1 / Math.sqrt(-2 * E)) : null;
+      trDef.innerHTML += "<td>" + (def != null ? def.toFixed(3) : "—") + "</td>";
+    }
+    tbody.appendChild(tr);
+    defBody.appendChild(trDef);
+  }
+
+  // Comparison table: model vs observed
+  let sumSq = 0, count = 0;
+  const ellNames = ["s", "p", "d"];
+  for (let ell = 0; ell <= 2; ell++) {
+    const obs = data.levels[ell];
+    const n_lo = Math.max(n_min, ell + 1);
+    for (let k = 0; k < obs.length; k++) {
+      const nPhys = n_lo + k;
+      const E_model = spectra[ell][k];
+      const E_obs = obs[k];
+      const tr = document.createElement("tr");
+      const dE = (E_model != null && isFinite(E_model)) ? E_model - E_obs : null;
+      const dStr = dE != null ? (dE >= 0 ? "+" : "") + dE.toFixed(5) : "—";
+      tr.innerHTML = "<th>" + nPhys + ellNames[ell] + "</th>" +
+                     "<td>" + (E_model != null ? E_model.toFixed(5) : "—") + "</td>" +
+                     "<td>" + E_obs.toFixed(5) + "</td>" +
+                     "<td style='color:" + (dE != null && Math.abs(dE) < 0.005 ? "#66bb6a" : "#ef9a9a") + "'>" + dStr + "</td>";
+      cmpBody.appendChild(tr);
+      if (dE != null) { sumSq += dE * dE; count++; }
+    }
+  }
+  const rms = count > 0 ? Math.sqrt(sumSq / count) : null;
+  $("rmsVal").textContent = rms != null ? rms.toFixed(5) : "—";
+
+  drawSweep(Z, R_max, N);
+}
+
+function autoFit() {
+  const atom = $("atomIn").value;
+  const R_max = +$("RmaxIn").value;
+  const N = Math.min(+$("NIn").value, 1200);
+  const N_LEVELS = 6;
+  $("fitMsg").textContent = "fitting…";
+
+  // Coarse-to-fine grid scan over (Z_kernel, r_c)
+  let best = { rms: Infinity, Z: 1, r_c: 0.5 };
+  const stages = [
+    { Zs: [1.0, 1.2, 1.5, 1.8, 2.2, 2.7, 3.3, 4.0, 5.0, 6.0],
+      rcs: [0.1, 0.3, 0.5, 0.8, 1.2, 1.7, 2.3, 3.0] },
+  ];
+  for (const stg of stages) {
+    for (const Z of stg.Zs) {
+      for (const rc of stg.rcs) {
+        const sp = computeSpectrum(Z, rc, R_max, N, N_LEVELS);
+        const r = rmsError(sp, atom);
+        if (r != null && r < best.rms) best = { rms: r, Z, r_c: rc };
+      }
+    }
+  }
+  // Refine around best
+  const Z0 = best.Z, rc0 = best.r_c;
+  for (let dz = -0.4; dz <= 0.4; dz += 0.05) {
+    for (let dr = -0.3; dr <= 0.3; dr += 0.05) {
+      const Z = Z0 + dz, rc = rc0 + dr;
+      if (Z <= 0.5 || rc <= 0.05) continue;
+      const sp = computeSpectrum(Z, rc, R_max, N, N_LEVELS);
+      const r = rmsError(sp, atom);
+      if (r != null && r < best.rms) best = { rms: r, Z, r_c: rc };
+    }
+  }
+  $("zIn").value = best.Z.toFixed(3);
+  $("rcIn").value = best.r_c.toFixed(3);
+  $("fitMsg").textContent = "best: Z=" + best.Z.toFixed(3) + ", r_c=" + best.r_c.toFixed(3) +
+                            " a.u., RMS=" + best.rms.toFixed(5) + " Ha";
+  compute();
+}
+
+function drawSweep(Z, R_max, N) {
+  const cv = $("cvs");
+  const ctx = cv.getContext("2d");
+  const W = cv.width, H = cv.height;
+  ctx.fillStyle = "#050510";
+  ctx.fillRect(0, 0, W, H);
+  // Axes
+  ctx.strokeStyle = "#888";
+  ctx.beginPath(); ctx.moveTo(60, H - 30); ctx.lineTo(W - 20, H - 30); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(60, 20); ctx.lineTo(60, H - 30); ctx.stroke();
+  ctx.fillStyle = "#aaa";
+  ctx.font = "10px monospace";
+  ctx.fillText("E_{n,ℓ} (Ha)", 5, 30);
+  ctx.fillText("r_c (a.u.)", W / 2, H - 5);
+
+  // Sweep r_c ∈ [0.05, 3]
+  const r_cs = [];
+  const N_SCAN = 30;
+  for (let k = 0; k <= N_SCAN; k++) r_cs.push(0.05 + k * (3 - 0.05) / N_SCAN);
+
+  const E_min = -Z * Z * 0.55, E_max = 0;
+  const x_min = 0, x_max = 3;
+  function px(rc) { return 60 + (W - 80) * (rc - x_min) / (x_max - x_min); }
+  function py(E)  { return 20 + (H - 50) * (E_max - E) / (E_max - E_min); }
+
+  // Grid lines
+  ctx.strokeStyle = "#222";
+  for (let e = -0.5; e <= 0; e += 0.05) {
+    if (e < E_min) continue;
+    ctx.beginPath(); ctx.moveTo(60, py(e)); ctx.lineTo(W - 20, py(e)); ctx.stroke();
+    ctx.fillStyle = "#666"; ctx.fillText(e.toFixed(2), 25, py(e) + 3);
+  }
+  for (let r = 0.5; r <= 3; r += 0.5) {
+    ctx.beginPath(); ctx.moveTo(px(r), 20); ctx.lineTo(px(r), H - 30); ctx.stroke();
+    ctx.fillStyle = "#666"; ctx.fillText(r.toFixed(1), px(r) - 6, H - 18);
+  }
+
+  // For each (ℓ, n), draw curve E vs r_c
+  const colors = { 0: ["#ef5350", "#f06292", "#ce93d8"], 1: ["#42a5f5", "#26c6da", "#80deea"], 2: ["#66bb6a", "#9ccc65", "#ffee58"] };
+  for (let ell = 0; ell <= 2; ell++) {
+    const series = [];
+    for (const rc of r_cs) {
+      const eigs = radialEig(Z, ell, rc, R_max, Math.min(N, 800), 4);
+      series.push(eigs);
+    }
+    for (let n_idx = 0; n_idx < 3; n_idx++) {
+      ctx.strokeStyle = colors[ell][n_idx];
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      let started = false;
+      for (let k = 0; k < r_cs.length; k++) {
+        const E = series[k][n_idx];
+        if (E == null || !isFinite(E)) continue;
+        const x = px(r_cs[k]);
+        const y = py(E);
+        if (y < 20 || y > H - 30) continue;
+        if (!started) { ctx.moveTo(x, y); started = true; }
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  }
+
+  // Legend
+  ctx.font = "10px monospace";
+  let lx = 80, ly = 35;
+  for (let ell = 0; ell <= 2; ell++) {
+    for (let n_idx = 0; n_idx < 3; n_idx++) {
+      ctx.fillStyle = colors[ell][n_idx];
+      const n_actual = n_idx + ell + 1;
+      ctx.fillText("(n=" + n_actual + ", ℓ=" + ell + ")", lx, ly);
+      lx += 80;
+      if (lx > W - 100) { lx = 80; ly += 14; }
+    }
+  }
+}
+
+$("computeBtn").onclick = compute;
+$("fitBtn").onclick = autoFit;
+$("atomIn").onchange = compute;
+compute();
+</script>
+</body></html>
