@@ -40,9 +40,10 @@ Z<sub>kernel</sub>=2, Z<sub>inner</sub>≈2.3 (Slater for 2s). Same shape for Mg
   Atom <select id="atomIn">
     <option value="He">He triplet (ortho)</option>
     <option value="HePara">He singlet (para)</option>
-    <option value="Be" selected>Be ([He] core)</option>
-    <option value="Mg">Mg ([Ne] core)</option>
-    <option value="Ca">Ca ([Ar] core)</option>
+    <option value="Be" selected>Be triplet</option>
+    <option value="BePara">Be singlet</option>
+    <option value="Mg">Mg triplet</option>
+    <option value="Ca">Ca triplet</option>
   </select><br><br>
   Z_kernel <input id="zIn" type="number" min="0.5" max="5" step="0.05" value="2" style="width:60px"><br><br>
   Z_inner <input id="ziIn" type="number" min="0" max="20" step="0.05" value="1.7" style="width:80px"><br><br>
@@ -117,6 +118,16 @@ const ATOM_DATA = {
       0: [-0.14600, -0.06141, -0.03366, -0.02125],   // 2¹S, 3¹S, 4¹S, 5¹S
       1: [-0.12386, -0.05549, -0.03129, -0.02000],   // 2¹P, 3¹P, 4¹P, 5¹P
       2: [-0.05547, -0.03119, -0.02000],             // 3¹D, 4¹D, 5¹D
+    },
+  },
+  // Be singlet outer-electron binding: 1s²2s nl ¹L states.
+  // NIST term values converted to outer binding via IP1 = 75193 cm⁻¹.
+  BePara: {
+    n_min_s: 3, n_min_p: 2, n_min_d: 3,
+    levels: {
+      0: [-0.09343, -0.04532, -0.02697],     // 3¹S, 4¹S, 5¹S
+      1: [-0.14866, -0.06829, -0.03709],     // 2¹P, 3¹P, 4¹P
+      2: [-0.04902, -0.03038, -0.02012],     // 3¹D, 4¹D, 5¹D
     },
   },
 };
@@ -338,12 +349,14 @@ $("fitBtn").onclick = autoFit;
 $("fitNoZiBtn").onclick = autoFitNoZi;
 $("atomIn").onchange = () => {
   const atom = $("atomIn").value;
-  $("zIn").value = atom === "HePara" ? 1.0 : 2.0;
-  if (atom === "He") { $("rcIn").value = 2.5; $("ziIn").value = 0; }
-  if (atom === "HePara") { $("rcIn").value = 2.5; $("ziIn").value = 0; }
-  if (atom === "Be") { $("rcIn").value = 1.0; $("ziIn").value = 2.3; }
-  if (atom === "Mg") { $("rcIn").value = 2.0; $("ziIn").value = 3.0; }
-  if (atom === "Ca") { $("rcIn").value = 3.0; $("ziIn").value = 4.0; }
+  $("zIn").value = (atom === "HePara" || atom === "He") ? 1.0 : 1.0;
+  $("ziIn").value = 0;
+  if (atom === "He") $("rcIn").value = 2.5;
+  if (atom === "HePara") $("rcIn").value = 3.2;
+  if (atom === "Be") $("rcIn").value = 4.0;
+  if (atom === "BePara") $("rcIn").value = 4.5;
+  if (atom === "Mg") $("rcIn").value = 5.0;
+  if (atom === "Ca") $("rcIn").value = 6.0;
   compute();
 };
 compute();
