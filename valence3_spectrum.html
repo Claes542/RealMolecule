@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>Valence-3 spectrum: 3rd valence electron over (closed shell + s²) core</title>
+  <style>
+    body { margin: 0; background: #0a0a0a; color: #ddd; font-family: monospace; padding: 8px; }
+    h3 { margin: 4px 0; color: #4fc3f7; }
+    .panel { display: inline-block; vertical-align: top; padding: 8px;
+             background: rgba(0,0,0,0.7); border: 1px solid #555; margin-right: 8px;
+             font-size: 11px; }
+    button, input, select { font-family: monospace; padding: 2px 6px;
+             background: #111; color: #fff; border: 1px solid #555; }
+    table { border-collapse: collapse; font-size: 11px; }
+    th, td { padding: 3px 8px; border: 1px solid #444; text-align: right; }
+    th { color: #4fc3f7; background: #0a1820; }
+    .num { color: #ffe082; font-weight: bold; }
+    .label { color: #aaa; }
+  </style>
+</head><body>
+
+<h3>Group-13 spectrum — 3-valence reduced kernel (closed shell + s² absorbed)</h3>
+
+<div style="font-size: 11px; color: #aaa; max-width: 900px; line-height: 1.55">
+For B, Al, Ga, In, Tl: shell occupation [closed]·s²·p¹. The closed inner shell <i>plus</i> the inner
+s² pair are absorbed into a reduced kernel of charge +1, leaving only the outer p electron explicit.
+Same empty-core + Neumann model as the alkalis, applied to the ground p and excited s/p/d
+levels. Solve <code>−½u″ + [ℓ(ℓ+1)/(2r²) − Z/r]u = Eu</code> on <code>r ∈ [r_c, R_max]</code> and
+fit (Z<sub>kernel</sub>, r_c) to NIST.
+</div>
+
+<div class="panel">
+  <h4 style="color:#80cbc4;margin:0 0 6px 0">Parameters</h4>
+  Atom <select id="atomIn">
+    <option value="B" selected>B (n_min p=2)</option>
+    <option value="Al">Al (n_min p=3)</option>
+    <option value="Ga">Ga (n_min p=4)</option>
+    <option value="In">In (n_min p=5)</option>
+    <option value="Tl">Tl (n_min p=6)</option>
+  </select><br><br>
+  Z_kernel <input id="zIn" type="number" min="0.5" max="5" step="0.05" value="1" style="width:60px"><br><br>
+  r_c (a.u.) <input id="rcIn" type="number" min="0" max="6" step="0.05" value="1.5" style="width:80px"><br><br>
+  R_max (a.u.) <input id="RmaxIn" type="number" min="20" max="200" step="10" value="80" style="width:80px"><br><br>
+  Grid points <input id="NIn" type="number" min="500" max="5000" step="100" value="1500" style="width:80px"><br><br>
+  <button id="computeBtn">Compute</button>
+  <button id="fitBtn">Auto-fit (Z_kernel, r_c)</button>
+  <div id="fitMsg" style="margin-top:6px;color:#ffe082;font-size:10px"></div>
+</div>
+
+<div class="panel">
+  <h4 style="color:#80cbc4;margin:0 0 6px 0">Model vs observed (Ha)</h4>
+  <table id="cmpTable">
+    <thead><tr><th>Term</th><th>n,ℓ</th><th>model</th><th>obs</th><th>Δ</th></tr></thead>
+    <tbody id="cmpBody"></tbody>
+  </table>
+  <div style="margin-top:6px;font-size:10px;color:#aaa">
+    RMS error <span id="rmsVal" class="num">—</span> Ha over fitted levels.
+  </div>
+</div>
+
+<script>
+// Observed outer-p-electron binding energies (Ha) for group-13 atoms.
+// = E(atom in [closed]·s²·nl excited) − E(atom+ in [closed]·s² ground).
+// 1 Ha = 219474.63 cm^-1.  Sources: NIST atomic spectra database.
+
+const ATOM_DATA = {
+  // B: [He]·2s²·2p, IP1 = 8.298 eV = 66928 cm⁻¹.
+  B: {
+    n_min_s: 3, n_min_p: 2, n_min_d: 3,
+    levels: {
+      0: [-0.12253, -0.05428, -0.03020],     // 3s, 4s, 5s
+      1: [-0.30498, -0.08691, -0.04706, -0.02960],  // 2p, 3p, 4p, 5p
+      2: [-0.07666, -0.04150, -0.02613],     // 3d, 4d, 5d
+    },
+  },
+  // Al: [Ne]·3s²·3p, IP1 = 5.986 eV = 48278 cm⁻¹.
+  Al: {
+    n_min_s: 4, n_min_p: 3, n_min_d: 3,
+    levels: {
+      0: [-0.10434, -0.04830, -0.02756],     // 4s, 5s, 6s
+      1: [-0.21996, -0.07207, -0.03930, -0.02484],  // 3p, 4p, 5p, 6p
+      2: [-0.07206, -0.03862, -0.02428],     // 3d, 4d, 5d
+    },
+  },
+  // Ga: [Ar]·3d¹⁰·4s²·4p, IP1 = 5.999 eV = 48388 cm⁻¹.
+  Ga: {
+    n_min_s: 5, n_min_p: 4, n_min_d: 4,
+    levels: {
+      0: [-0.11430, -0.05221, -0.02960],     // 5s, 6s, 7s
+      1: [-0.22033, -0.07581, -0.04079],     // 4p, 5p, 6p
+      2: [-0.06262, -0.03468, -0.02213],     // 4d, 5d, 6d
+    },
+  },
+  // In: [Kr]·4d¹⁰·5s²·5p, IP1 = 5.786 eV = 46670 cm⁻¹.
+  In: {
+    n_min_s: 6, n_min_p: 5, n_min_d: 5,
+    levels: {
+      0: [-0.11250, -0.05129, -0.02914],     // 6s, 7s, 8s
+      1: [-0.21250, -0.07306, -0.03943],     // 5p, 6p, 7p
+      2: [-0.06091, -0.03382, -0.02163],     // 5d, 6d, 7d
+    },
+  },
+  // Tl: [Xe]·4f¹⁴·5d¹⁰·6s²·6p, IP1 = 6.108 eV = 49266 cm⁻¹.
+  Tl: {
+    n_min_s: 7, n_min_p: 6, n_min_d: 6,
+    levels: {
+      0: [-0.11900, -0.05400, -0.03050],     // 7s, 8s, 9s
+      1: [-0.22440, -0.07720, -0.04150],     // 6p, 7p, 8p
+      2: [-0.06150, -0.03420, -0.02180],     // 6d, 7d, 8d
+    },
+  },
+};
+
+function radialEig(Z_kernel, ell, r_c, R_max, N, n_levels) {
+  const r0 = Math.max(r_c, 1e-3);
+  const h = (R_max - r0) / (N - 1);
+  const h2 = h * h;
+
+  function shootInward(E) {
+    let uPlus = 0, u = 1;
+    for (let i = N - 2; i > 0; i--) {
+      const r = r0 + i * h;
+      const V = ell * (ell + 1) / (2 * r * r) - Z_kernel / r;
+      const f = 2 * (V - E);
+      const uMinus = 2 * u - uPlus + h2 * f * u;
+      uPlus = u;
+      u = uMinus;
+      if (Math.abs(u) > 1e30) { u *= 1e-30; uPlus *= 1e-30; }
+    }
+    if (r_c > 0) return (uPlus - u) / h - u / r_c;
+    return u;
+  }
+
+  const E_min = -Z_kernel * Z_kernel * 1.2;
+  const E_max = -1e-6;
+  const nScan = 5000;
+  const dE = (E_max - E_min) / nScan;
+  const eigs = [];
+  let prevD = shootInward(E_min);
+  let prevE = E_min;
+  for (let k = 1; k <= nScan && eigs.length < n_levels; k++) {
+    const E = E_min + k * dE;
+    const D = shootInward(E);
+    if (prevD * D < 0 && isFinite(prevD) && isFinite(D)) {
+      let lo = prevE, hi = E, dLo = prevD;
+      for (let it = 0; it < 60; it++) {
+        const mid = (lo + hi) / 2;
+        const dM = shootInward(mid);
+        if (dLo * dM < 0) hi = mid;
+        else { lo = mid; dLo = dM; }
+      }
+      eigs.push((lo + hi) / 2);
+    }
+    prevD = D;
+    prevE = E;
+  }
+  return eigs;
+}
+
+const $ = id => document.getElementById(id);
+
+function spectrum(Z_kernel, r_c, R_max, N, N_LEVELS) {
+  return [0, 1, 2].map(ell => radialEig(Z_kernel, ell, r_c, R_max, N, N_LEVELS));
+}
+
+function rmsError(spec, atom) {
+  const data = ATOM_DATA[atom];
+  if (!data) return null;
+  let s = 0, c = 0;
+  for (let ell = 0; ell <= 2; ell++) {
+    const obs = data.levels[ell];
+    for (let k = 0; k < obs.length; k++) {
+      const E_model = spec[ell][k];
+      if (E_model == null || !isFinite(E_model)) continue;
+      s += (E_model - obs[k]) ** 2;
+      c++;
+    }
+  }
+  return c > 0 ? Math.sqrt(s / c) : null;
+}
+
+function compute() {
+  const Z_kernel = +$("zIn").value;
+  const r_c = +$("rcIn").value;
+  const R_max = +$("RmaxIn").value;
+  const N = +$("NIn").value;
+  const atom = $("atomIn").value;
+  const data = ATOM_DATA[atom];
+  const N_LEVELS = 6;
+
+  const spec = spectrum(Z_kernel, r_c, R_max, N, N_LEVELS);
+
+  const cmpBody = $("cmpBody");
+  cmpBody.innerHTML = "";
+  let sumSq = 0, count = 0;
+  const ellNames = ["s", "p", "d"];
+  for (let ell = 0; ell <= 2; ell++) {
+    const obs = data.levels[ell];
+    const n_min = ell === 0 ? data.n_min_s : (ell === 1 ? data.n_min_p : data.n_min_d);
+    for (let k = 0; k < obs.length; k++) {
+      const nPhys = n_min + k;
+      const E_model = spec[ell][k];
+      const E_obs = obs[k];
+      const dE = (E_model != null && isFinite(E_model)) ? E_model - E_obs : null;
+      const dStr = dE != null ? (dE >= 0 ? "+" : "") + dE.toFixed(5) : "—";
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        "<th>" + nPhys + ellNames[ell] + "</th>" +
+        "<td>" + nPhys + "," + ell + "</td>" +
+        "<td>" + (E_model != null ? E_model.toFixed(5) : "—") + "</td>" +
+        "<td>" + E_obs.toFixed(5) + "</td>" +
+        "<td style='color:" + (dE != null && Math.abs(dE) < 0.005 ? "#66bb6a" : "#ef9a9a") + "'>" + dStr + "</td>";
+      cmpBody.appendChild(tr);
+      if (dE != null) { sumSq += dE * dE; count++; }
+    }
+  }
+  $("rmsVal").textContent = count > 0 ? Math.sqrt(sumSq / count).toFixed(5) : "—";
+}
+
+function autoFit() {
+  const atom = $("atomIn").value;
+  const R_max = +$("RmaxIn").value;
+  const N = Math.min(+$("NIn").value, 1200);
+  const N_LEVELS = 6;
+  $("fitMsg").textContent = "fitting…";
+  let best = { rms: Infinity, Z: 1.0, r_c: 1.0 };
+  const Zs = [];
+  for (let z = 0.5; z <= 2.5; z += 0.1) Zs.push(+z.toFixed(2));
+  const rcs = [];
+  for (let rc = 0.0; rc <= 6.0; rc += 0.25) rcs.push(+rc.toFixed(2));
+  for (const Z of Zs) for (const rc of rcs) {
+    const sp = spectrum(Z, rc, R_max, N, N_LEVELS);
+    const r = rmsError(sp, atom);
+    if (r != null && r < best.rms) best = { rms: r, Z, r_c: rc };
+  }
+  for (let pass = 0; pass < 2; pass++) {
+    const Z0 = best.Z, rc0 = best.r_c;
+    const dStep = pass === 0 ? 0.05 : 0.01;
+    const dRange = pass === 0 ? 0.4 : 0.1;
+    for (let dz = -dRange; dz <= dRange; dz += dStep) {
+      for (let drc = -dRange; drc <= dRange; drc += dStep) {
+        const Z = Z0 + dz, rc = Math.max(0, rc0 + drc);
+        if (Z < 0.3) continue;
+        const sp = spectrum(Z, rc, R_max, N, N_LEVELS);
+        const r = rmsError(sp, atom);
+        if (r != null && r < best.rms) best = { rms: r, Z, r_c: rc };
+      }
+    }
+  }
+  $("zIn").value = best.Z.toFixed(3);
+  $("rcIn").value = best.r_c.toFixed(3);
+  $("fitMsg").textContent = "best: Z=" + best.Z.toFixed(2) +
+                            ", r_c=" + best.r_c.toFixed(2) +
+                            " a.u., RMS=" + best.rms.toFixed(5) + " Ha";
+  compute();
+}
+
+$("computeBtn").onclick = compute;
+$("fitBtn").onclick = autoFit;
+$("atomIn").onchange = () => {
+  const atom = $("atomIn").value;
+  $("zIn").value = 1.0;
+  if (atom === "B") $("rcIn").value = 1.0;
+  if (atom === "Al") $("rcIn").value = 1.8;
+  if (atom === "Ga") $("rcIn").value = 2.5;
+  if (atom === "In") $("rcIn").value = 3.0;
+  if (atom === "Tl") $("rcIn").value = 3.5;
+  compute();
+};
+compute();
+</script>
+</body></html>
