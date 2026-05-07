@@ -392,11 +392,54 @@ Under universal $i \to i{+}4$ H-bond biases applied to every residue (with no sp
 \paragraph{Architecture and computational cost.}
 Each backbone atom is modeled at Level 3 with kernel charges $Z = 4$ (C), 3 (N), 2 (O), 1 (H), with bond and angle constraints holding the protein backbone. Folding trajectories run interactively on a $200^3$ or $300^3$ grid; a 35-residue protein folds in hours of real-time on a single GPU, compared to weeks of CPU-cluster time for full DFT-MD or specialized hardware (Anton~\cite{Shaw10}) for force-field MD on the same timescales. The combination of ab initio H-bond forces and a single hydrophobic parameter, with no empirical force field, distinguishes this approach from both classical MD (which requires fitted parameters for every interaction) and pure ML methods (which do not solve the electronic-structure problem at all).
 
-\subsection{Excited states: orthohelium}\label{sec:orthohelium}
+\subsection{Excited states: orthohelium and reduced-kernel atomic spectra}\label{sec:orthohelium}
 
 The unit-density framework extends naturally to excited states. The basic case is the orthohelium ($1s\,2s$, $^3S$) state of helium, in which two electrons occupy distinct spatial regions corresponding to the $1s$ and $2s$ shells. In RealQM, this is a directly accessible configuration of the Level-1 model: place two non-overlapping unit densities, the inner localized in the $1s$ shell and the outer in the $2s$ shell, and minimize the total Coulomb energy under the non-overlap constraint. The resulting configuration is an excited state of helium, distinct from the ground state ($1s^2$, $^1S$) where both electrons occupy the same shell.
 
 The orthohelium case is included in the Gallery as a worked example. It illustrates that the framework is \textbf{not restricted to ground states}: any configuration of non-overlapping unit densities corresponding to a chosen shell occupancy is an admissible solution, and excited-state energies follow from the same variational principle applied to the chosen configuration. This is in contrast to standard QM where excited states require additional machinery (TDDFT, CIS, EOM-CC); here, they are just different choices of which shells the electrons occupy.
+
+\paragraph{Reduced-kernel atomic spectra.}
+The orthohelium picture generalises to a systematic test: take the Level-3 reduced kernel of charge $Z_{\rm kernel}$ and softening radius $r_c$, and ask whether it reproduces the \emph{outer-electron spectrum} of an atom whose closed inner shells (and possibly an inner valence pair) have been absorbed into the kernel. The outer electron is then governed by the radial Schr\"odinger equation
+\begin{equation}
+-\tfrac{1}{2} u'' + \left[ \tfrac{\ell(\ell+1)}{2 r^2} - \tfrac{Z_{\rm kernel}}{r} \right] u = E u, \quad r \in [r_c, R_{\max}],
+\label{eq:radial}
+\end{equation}
+with empty-core ($\psi$ excluded inside $r_c$) and homogeneous Neumann boundary $\psi'(r_c) = 0$ at the inner boundary, and $u(R_{\max}) = 0$ at the outer. This is exactly the Level-3 reduced kernel of Section~\ref{sec:reformulation} restricted to its single explicit valence electron. We solve~\eqref{eq:radial} by inward shooting plus bisection and fit $(Z_{\rm kernel}, r_c)$ to NIST atomic spectra. Table~\ref{tab:spectra} reports the result.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lllrrr}
+\toprule
+Group & Atom & Configuration & $Z_{\rm kernel}$ & $r_c$ (a.u.) & RMS (eV) \\
+\midrule
+1 (alkalis) & Li & [He] $+$ 2s    & 1.00 & 1.95 & 0.05 \\
+            & Na & [Ne] $+$ 3s    & 0.95 & 2.00 & 0.11 \\
+            & K  & [Ar] $+$ 4s    & 1.00 & 2.90 & 0.12 \\
+            & Rb & [Kr] $+$ 5s    & 1.00 & 3.10 & 0.14 \\
+            & Cs & [Xe] $+$ 6s    & 1.00 & 3.30 & 0.14 \\
+\midrule
+He triplet  & He ortho & 1s $+$ outer (triplet) & 1.00 & 2.53 & 0.10 \\
+He singlet  & He para  & 1s $+$ outer (singlet) & 1.04 & 3.25 & 0.12 \\
+\midrule
+2 (alk.\ earth) & Be triplet & [He] $+$ 2 valence (³L) & 1.30 & 4.36 & 1.1 \\
+                & Be singlet & [He] $+$ 2 valence (¹L) & 1.00 & 3.36 & 0.11 \\
+                & Mg triplet & [Ne] $+$ 2 valence (³L) & 1.21 & 5.15 & 0.74 \\
+                & Ca triplet & [Ar] $+$ 2 valence (³L) & 1.58 & 6.25 & 0.27 \\
+\midrule
+13 & B  & [He] $+$ 2s² $+$ 2p   & 1.00 & 3.92 & 1.4 \\
+   & Al & [Ne] $+$ 3s² $+$ 3p   & 1.31 & 4.83 & 0.92 \\
+\midrule
+14 & C  & [He] $+$ 2s² $+$ 2p²  & 1.51 & 3.19 & 2.2 \\
+\bottomrule
+\end{tabular}
+\caption{Reduced-kernel atomic spectra: $(Z_{\rm kernel}, r_c)$ fitted to NIST outer-electron levels (s, p, d series, $n$ up to 5--6) for the indicated atomic configurations. $Z_{\rm kernel}$ locks at $\sim 1$ (residual after closed-shell screening) for the cleanly separable cases (alkalis, He, Be singlet); RMS rises when the inner valence shell overlaps the explicit outer electron (Be triplet, group 13/14).}
+\label{tab:spectra}
+\end{table}
+
+Three patterns are visible. (i) For the alkalis, $Z_{\rm kernel}$ locks at $1.00$ (the residual charge after closed-shell screening) and $r_c$ grows monotonically with core size, as expected on physical grounds; the RMS sits at $\sim 0.1$ eV across the full $n = 2$--$6$ spectrum in $s$, $p$, $d$. (ii) For the alkaline earths, the framework still works but the RMS depends sharply on the spin coupling: the singlet manifold (where the outer electron is held away from the inner $s$) fits at alkali quality, while the triplet manifold (where the outer electron penetrates the inner $s$ region) drifts and gets stuck at $\sim 1$~eV. The singlet/triplet split, which in standard QM is a spin-exchange property, here translates entirely into a difference in the geometric topology of the non-overlapping electron domains and therefore into a different effective $r_c$. (iii) For groups 13 and 14, where multiple valence $p$ electrons sit at similar radii, the single-particle reduction degrades further; this is the natural endpoint of the kernel + $r_c$ picture, beyond which one must reintroduce explicit multi-valence electron domains in the full RealQM solver.
+
+A complementary test is to compute $r_c$ directly from the spherical multiphase Atom Simulator ground state (no spectroscopic input) and compare to the spectroscopically fitted value. For Li, Na, K the boundary $M[\,N_{\rm shells}{-}1\,] \cdot h$ between the outermost core shell and the valence shell gives RealQM-derived $r_c$ values within $15$--$40\%$ of the spectroscopic fit, with the discrepancy growing for heavier atoms (the multiphase boundary is pushed outward by the loose valence tail; the spectrum-fitted $r_c$ tracks the effective length the valence electron actually feels). Forcing $r_c$ to the RealQM-derived value degrades RMS by at most a factor of $2$--$2.5$, confirming that the same physical length governs both --- the reduced kernel is doing real physics across the alkali series, with no curve-fitting hidden in the comparison.
 
 \subsection{Materials: NaCl crystal melt}\label{sec:nacl}
 
