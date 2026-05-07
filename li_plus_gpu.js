@@ -1,5 +1,5 @@
-// Li Quantum Simulation — WebGPU Compute Shaders
-// Single Li atom (Z=3), 3 electrons: 2 inner shell hemispheres + 1 outer (2s)
+// Li+ Quantum Simulation — WebGPU Compute Shaders
+// Single Li+ ion (Z=3), 2 electrons: 1s² hemispheres only (no outer 2s)
 
 const NN = 200;
 const S = NN + 1;
@@ -7,21 +7,21 @@ const S2 = S * S;
 const S3 = S * S * S;
 const N2 = Math.round(NN / 2);
 
-// Li nucleus at center
+// Li+ nucleus at center
 const nucPos = { Li: [N2, N2, N2] };
-const R1 = 10;    // initial outer radius
-const R_inner = 3.0;  // inner shell radius (au) for init
+const R1 = 10;
+const R_inner = 3.0;
 let sweepResults = [];
 let E_min = Infinity;
-const hv = 12 / NN, h2v = hv * hv, h3v = hv * hv * hv;
+const hv = 8 / NN, h2v = hv * hv, h3v = hv * hv * hv;
 const dv = 0.12;
 const dtv = dv * h2v, half_dv = 0.5 * dv;
 const PX = 400 / NN;
 const INTERIOR = (NN - 1) * (NN - 1) * (NN - 1);
 const STEPS_PER_FRAME = 500;
 const NORM_INTERVAL = 20;
-const NELEC = 3;
-const NRED = NELEC + 1;  // 4 values: 3 norms + 1 energy
+const NELEC = 2;
+const NRED = 4;  // shader writes 4 slots per workgroup (norms 0..NELEC-1, energy at slot 3)
 
 // ===== WGSL SHADERS =====
 
@@ -59,9 +59,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = (gid.x / (NM * NM)) + 1u;
   let id = i * p.S2 + j * p.S + k;
 
-  // c[m]: other electrons' density
+  // c[m]: other electrons' density (Li+ has 2 electrons)
   var cm: f32 = 0.0;
-  cm -= Ui[0u * p.S3 + id] + Ui[1u * p.S3 + id] + Ui[2u * p.S3 + id];
+  cm -= Ui[0u * p.S3 + id] + Ui[1u * p.S3 + id];
   cm += Ui[o + id];
   cm = 0.5 * (cm + Ui[o + id]);
 
@@ -78,8 +78,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   var nw = wc;
   let di = abs(i32(i) - i32(p.N2));
-  if (m == 2u || (m < 2u && di > 3)) {
-    // Update W for outer electron everywhere, inner electrons only away from hemisphere split
+  if (di > 3) {
+    // Inner electrons only update W away from hemisphere split (Li+ has only inner electrons)
     nw = clamp(wc + dw, 0.0, 1.0);
   }
   Wo[o + id] = nw;
@@ -97,8 +97,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   let Pc = Pi[o + id];
   var rho: f32 = 0.0;
-  let u0 = Ui[0u * p.S3 + id]; let u1 = Ui[1u * p.S3 + id]; let u2 = Ui[2u * p.S3 + id];
-  rho = u0*u0 + u1*u1 + u2*u2;
+  let u0 = Ui[0u * p.S3 + id]; let u1 = Ui[1u * p.S3 + id];
+  rho = u0*u0 + u1*u1;
   let self_u = Ui[o + id];
   rho -= self_u * self_u;
 
@@ -138,7 +138,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
     let id = i * p.S2 + j * p.S + k;
 
     var en: f32 = 0.0;
-    for (var m: u32 = 0u; m < 3u; m++) {
+    for (var m: u32 = 0u; m < 2u; m++) {
       let o = m * p.S3;
       let v = U[o + id];
       sn[lid * 4u + m] = v * v * p.h3;
@@ -227,7 +227,7 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
   let i = (g.x / (NM * NM)) + 1u;
   let id = i * p.S2 + j * p.S + k;
 
-  for (var m: u32 = 0u; m < 3u; m++) {
+  for (var m: u32 = 0u; m < 2u; m++) {
     let n = sums[m];
     if (n > 0.0) { U[m * p.S3 + id] *= inverseSqrt(n); }
   }
@@ -250,13 +250,13 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
   let SS = p.NN + 1u;
   if (i > p.NN || j > p.NN) { return; }
 
-  for (var m: u32 = 0u; m < 3u; m++) {
+  for (var m: u32 = 0u; m < 2u; m++) {
     out[m * SS * SS + i * SS + j] = U[m * p.S3 + i * p.S2 + j * p.S + p.N2] * W[m * p.S3 + i * p.S2 + j * p.S + p.N2];
   }
 
   if (j == 0u) {
     let b = 3u * SS * SS;
-    for (var m: u32 = 0u; m < 3u; m++) {
+    for (var m: u32 = 0u; m < 2u; m++) {
       out[b + m * SS + i] = W[m * p.S3 + i * p.S2 + (p.N2 + 8u) * p.S + p.N2];
       out[b + 3u * SS + m * SS + i] = U[m * p.S3 + i * p.S2 + (p.N2 + 5u) * p.S + p.N2];
       out[b + 6u * SS + m * SS + i] = Pv[m * p.S3 + i * p.S2 + p.N2 * p.S + p.N2];
@@ -311,17 +311,13 @@ function uploadInitialData() {
         // Nuclear potential: Z=3
         Kd[id] = 3*irLi;
 
-        // m=0: inner hemisphere i < liI, r < R_inner, init exp(-3r)
+        // m=0: 1s hemisphere, W in i < liI within r < R_inner
         if (rLi < R_inner && i < liI) {
           Ud[0*S3+id] = Math.exp(-3*rLi); Wd[0*S3+id] = 1;
         }
-        // m=1: inner hemisphere i > liI, r < R_inner, init exp(-3r)
+        // m=1: 1s hemisphere, W in i > liI within r < R_inner
         if (rLi < R_inner && i > liI) {
           Ud[1*S3+id] = Math.exp(-3*rLi); Wd[1*S3+id] = 1;
-        }
-        // m=2: outer shell (2s), r > R_inner, init exp(-r)
-        if (rLi < R1 && rLi > R_inner) {
-          Ud[2*S3+id] = Math.exp(-rLi); Wd[2*S3+id] = 1;
         }
 
         for (let m = 0; m < NELEC; m++) {
