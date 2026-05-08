@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>He thermal occupations from RealQM spectrum</title>
+  <style>
+    body { margin: 0; background: #0a0a0a; color: #ddd; font-family: monospace; padding: 12px; }
+    h3 { color: #4fc3f7; margin: 4px 0; }
+    .panel { display: inline-block; vertical-align: top; padding: 10px;
+             background: rgba(0,0,0,0.7); border: 1px solid #555; margin: 6px 6px 0 0;
+             font-size: 12px; max-width: 540px; }
+    table { border-collapse: collapse; font-size: 11px; }
+    th, td { padding: 3px 8px; border: 1px solid #444; text-align: right; }
+    th { color: #4fc3f7; background: #0a1820; }
+    .num { color: #ffe082; font-weight: bold; }
+    canvas { background: #050510; border: 1px solid #555; margin-top: 8px; }
+  </style>
+</head><body>
+
+<h3>He thermal occupations from RealQM spectrum</h3>
+
+<div class="panel">
+Compute the canonical partition function and Boltzmann populations of He's ground and excited
+states using the RealQM-computed total energies. Each state is a different multiphase configuration
+(halfspace pair for 1¹S; nested 1s + outer for ortho/para excited states):
+<pre style="font-size:11px;color:#aaa;margin-top:6px">P_n(T) = exp(−β·E_n) / Z(T),
+Z(T) = Σ_n exp(−β·E_n),    β = 1/(k_B T)</pre>
+At room T the ground state dominates (gaps are ~20 eV); at plasma temperatures (10⁴–10⁵ K)
+excited states become populated.
+</div>
+
+<div class="panel">
+  <h4 style="color:#80cbc4;margin:0 0 6px 0">Spectrum (Ha) — RealQM total energies</h4>
+  <table>
+    <thead><tr><th>Term</th><th>E (Ha)</th><th>Topology</th></tr></thead>
+    <tbody>
+      <tr><td>1¹S (ground)</td><td>−2.904</td><td>halfspace pair (para)</td></tr>
+      <tr><td>2³S</td><td>−2.175</td><td>nested 1s + 2s (ortho)</td></tr>
+      <tr><td>2¹S</td><td>−2.146</td><td>split 1s/2s (para)</td></tr>
+      <tr><td>2³P</td><td>−2.133</td><td>nested 1s + 2p (ortho)</td></tr>
+      <tr><td>2¹P</td><td>−2.124</td><td>split 1s/2p (para)</td></tr>
+      <tr><td>3³S</td><td>−2.069</td><td>nested 1s + 3s (ortho)</td></tr>
+      <tr><td>3¹S</td><td>−2.061</td><td>split 1s/3s (para)</td></tr>
+      <tr><td>He⁺ (ionized)</td><td>−2.000</td><td>1 electron</td></tr>
+    </tbody>
+  </table>
+  <div style="font-size:10px;color:#888;margin-top:6px">
+    Reference: NIST atomic spectra. RealQM reproduces these via configuration energies.
+  </div>
+</div>
+
+<div class="panel">
+  <h4 style="color:#80cbc4;margin:0 0 6px 0">Populations vs T</h4>
+  <table id="popTable">
+    <thead><tr><th>T (K)</th><th>k_B T (eV)</th><th>P(1¹S)</th><th>P(2³S)</th><th>P(2¹S)</th><th>P(2³P)</th><th>Σ excited</th></tr></thead>
+    <tbody id="popBody"></tbody>
+  </table>
+</div>
+
+<canvas id="cvs" width="900" height="320" style="margin-top: 10px"></canvas>
+
+<script>
+const k_B_Ha_K = 3.1668e-6;
+const Ha_eV = 27.2114;
+const eV_K = 11604.5;
+
+// State energies in Ha (relative to vacuum, i.e. He completely ionized at 0)
+const states = [
+  { term: "1¹S", E: -2.904 },
+  { term: "2³S", E: -2.175 },
+  { term: "2¹S", E: -2.146 },
+  { term: "2³P", E: -2.133 },
+  { term: "2¹P", E: -2.124 },
+  { term: "3³S", E: -2.069 },
+  { term: "3¹S", E: -2.061 },
+];
+
+function populations(T) {
+  const beta = 1 / (k_B_Ha_K * T);
+  // For numerical stability, subtract minimum energy (highest weight) before exponential
+  const E_min = Math.min(...states.map(s => s.E));
+  const w = states.map(s => Math.exp(-beta * (s.E - E_min)));
+  const Z = w.reduce((a, b) => a + b, 0);
+  return states.map((s, i) => ({ term: s.term, P: w[i] / Z }));
+}
+
+function compute() {
+  const Ts = [300, 1000, 3000, 10000, 30000, 100000, 300000];
+  const body = document.getElementById("popBody");
+  body.innerHTML = "";
+  for (const T of Ts) {
+    const ps = populations(T);
+    const kT_eV = (k_B_Ha_K * T) * Ha_eV;
+    const ground = ps[0].P;
+    const sumExcited = ps.slice(1).reduce((a, b) => a + b.P, 0);
+    const tr = document.createElement("tr");
+    tr.innerHTML = "<td>" + T.toLocaleString() + "</td>" +
+                   "<td>" + kT_eV.toFixed(3) + "</td>" +
+                   "<td>" + ground.toExponential(3) + "</td>" +
+                   "<td>" + ps[1].P.toExponential(3) + "</td>" +
+                   "<td>" + ps[2].P.toExponential(3) + "</td>" +
+                   "<td>" + ps[3].P.toExponential(3) + "</td>" +
+                   "<td>" + sumExcited.toExponential(3) + "</td>";
+    body.appendChild(tr);
+  }
+  drawPlot();
+}
+
+function drawPlot() {
+  const cv = document.getElementById("cvs");
+  const ctx = cv.getContext("2d");
+  const W = cv.width, H = cv.height;
+  ctx.fillStyle = "#050510"; ctx.fillRect(0, 0, W, H);
+
+  ctx.strokeStyle = "#666"; ctx.fillStyle = "#aaa"; ctx.font = "11px monospace";
+  ctx.beginPath(); ctx.moveTo(60, H - 30); ctx.lineTo(W - 30, H - 30); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(60, 20); ctx.lineTo(60, H - 30); ctx.stroke();
+  ctx.fillText("log₁₀ T (K)", W - 80, H - 8);
+  ctx.fillText("Population (log₁₀)", 8, 14);
+
+  // T from 100 to 1e6 K, log spaced
+  const Ts = [];
+  for (let p = 2; p <= 6; p += 0.05) Ts.push(Math.pow(10, p));
+
+  const seriesColors = ["#ef5350", "#42a5f5", "#66bb6a", "#ffe082", "#ce93d8", "#ff9e80", "#80cbc4"];
+  const allP = Ts.map(T => populations(T));
+
+  function px(T) { return 60 + (W - 90) * (Math.log10(T) - 2) / 4; }
+  function py(P) {
+    const lp = Math.max(-12, Math.log10(Math.max(P, 1e-12)));
+    return 20 + (H - 50) * (-lp) / 12;
+  }
+
+  // Grid lines
+  ctx.strokeStyle = "#222";
+  for (let p = 2; p <= 6; p++) {
+    ctx.beginPath(); ctx.moveTo(px(Math.pow(10, p)), 20); ctx.lineTo(px(Math.pow(10, p)), H - 30); ctx.stroke();
+    ctx.fillStyle = "#666"; ctx.fillText("10^" + p, px(Math.pow(10, p)) - 12, H - 14);
+  }
+  for (let l = 0; l >= -12; l -= 2) {
+    ctx.beginPath(); ctx.moveTo(60, py(Math.pow(10, l))); ctx.lineTo(W - 30, py(Math.pow(10, l))); ctx.stroke();
+    ctx.fillStyle = "#666"; ctx.fillText("10^" + l, 28, py(Math.pow(10, l)) + 3);
+  }
+
+  for (let s = 0; s < states.length; s++) {
+    ctx.strokeStyle = seriesColors[s % seriesColors.length]; ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (let k = 0; k < Ts.length; k++) {
+      const x = px(Ts[k]);
+      const y = py(allP[k][s].P);
+      if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    // Legend
+    ctx.fillStyle = seriesColors[s % seriesColors.length];
+    ctx.fillText(states[s].term, 80 + s * 60, 30);
+  }
+}
+
+compute();
+</script>
+</body></html>

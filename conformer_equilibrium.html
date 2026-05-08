@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>Conformer equilibrium from RealQM ΔE</title>
+  <style>
+    body { margin: 0; background: #0a0a0a; color: #ddd; font-family: monospace; padding: 12px; }
+    h3 { color: #4fc3f7; margin: 4px 0; }
+    .panel { display: inline-block; vertical-align: top; padding: 10px;
+             background: rgba(0,0,0,0.7); border: 1px solid #555; margin: 6px 6px 0 0;
+             font-size: 12px; max-width: 540px; }
+    button, input { font-family: monospace; padding: 3px 8px;
+             background: #111; color: #fff; border: 1px solid #555; }
+    table { border-collapse: collapse; font-size: 11px; }
+    th, td { padding: 3px 8px; border: 1px solid #444; text-align: right; }
+    th { color: #4fc3f7; background: #0a1820; }
+    .num { color: #ffe082; font-weight: bold; }
+    canvas { background: #050510; border: 1px solid #555; margin-top: 8px; }
+  </style>
+</head><body>
+
+<h3>Conformer equilibrium from RealQM ΔE</h3>
+
+<div class="panel">
+For molecules with two competing conformers (e.g.\ ethanol gauche vs anti, butane gauche vs anti,
+peptide ϕ/ψ rotamers): compute the energy difference ΔE = E(B) − E(A) by running RealQM at the
+two geometries, then form the canonical equilibrium ratio:
+<pre style="font-size:11px;color:#aaa;margin-top:6px">K(T) = [B] / [A] = g_B/g_A · exp(−ΔE / k_B T)</pre>
+g_A and g_B are degeneracies (e.g.\ g_gauche=2, g_anti=1 for two equivalent gauche minima).
+</div>
+
+<div class="panel">
+  <h4 style="color:#80cbc4;margin:0 0 6px 0">Inputs</h4>
+  Conformer A (lower energy):<br>
+  &nbsp;&nbsp;label <input id="labelA" type="text" value="anti" style="width:60px">,
+  degeneracy g_A <input id="gA" type="number" min="1" max="20" value="1" style="width:50px">,
+  E_A <input id="EA" type="number" step="0.0001" value="0" style="width:90px"> Ha<br><br>
+  Conformer B (higher):<br>
+  &nbsp;&nbsp;label <input id="labelB" type="text" value="gauche" style="width:60px">,
+  degeneracy g_B <input id="gB" type="number" min="1" max="20" value="2" style="width:50px">,
+  E_B <input id="EB" type="number" step="0.0001" value="0.0008" style="width:90px"> Ha<br><br>
+  <button id="computeBtn">Compute</button>
+  <div style="margin-top:8px;font-size:10px;color:#888">
+    Default ΔE = 0.0008 Ha ≈ 2.1 kJ/mol — typical small-organic conformer gap.<br>
+    Ethanol experimental (anti, gauche): ΔE ≈ 0.0006 Ha = 0.4 kcal/mol; gauche has g=2.
+  </div>
+</div>
+
+<div class="panel">
+  <h4 style="color:#80cbc4;margin:0 0 6px 0">Equilibrium ratio K(T) = [B]/[A]</h4>
+  <table id="eqTable">
+    <thead><tr><th>T (K)</th><th>k_B T (Ha)</th><th>K = [B]/[A]</th><th>P(A) %</th><th>P(B) %</th></tr></thead>
+    <tbody id="eqBody"></tbody>
+  </table>
+</div>
+
+<canvas id="cvs" width="900" height="280" style="margin-top: 10px"></canvas>
+
+<script>
+const k_B_Ha_K = 3.1668e-6;
+const Ha_kJmol = 2625.5;
+const $ = id => document.getElementById(id);
+
+function compute() {
+  const EA = parseFloat($("EA").value);
+  const EB = parseFloat($("EB").value);
+  const gA = parseFloat($("gA").value);
+  const gB = parseFloat($("gB").value);
+  const labA = $("labelA").value || "A";
+  const labB = $("labelB").value || "B";
+  const dE = EB - EA;
+
+  const Ts = [100, 200, 298, 400, 500, 1000, 2000, 5000];
+  const tbody = $("eqBody");
+  tbody.innerHTML = "";
+  for (const T of Ts) {
+    const beta = 1 / (k_B_Ha_K * T);
+    const K = (gB / gA) * Math.exp(-beta * dE);
+    const PA = 1 / (1 + K);
+    const PB = K / (1 + K);
+    const tr = document.createElement("tr");
+    tr.innerHTML = "<td>" + T + "</td>" +
+                   "<td>" + (1 / beta).toExponential(3) + "</td>" +
+                   "<td>" + K.toFixed(4) + "</td>" +
+                   "<td>" + (100 * PA).toFixed(2) + "</td>" +
+                   "<td>" + (100 * PB).toFixed(2) + "</td>";
+    tbody.appendChild(tr);
+  }
+  // Update header labels
+  const head = $("eqTable").querySelector("thead tr");
+  head.innerHTML = "<th>T (K)</th><th>k_B T (Ha)</th><th>K = ["+labB+"]/["+labA+"]</th>" +
+                   "<th>P("+labA+") %</th><th>P("+labB+") %</th>";
+
+  drawPlot(dE, gA, gB, labA, labB);
+}
+
+function drawPlot(dE, gA, gB, labA, labB) {
+  const cv = $("cvs");
+  const ctx = cv.getContext("2d");
+  const W = cv.width, H = cv.height;
+  ctx.fillStyle = "#050510"; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = "#666"; ctx.fillStyle = "#aaa"; ctx.font = "11px monospace";
+  ctx.beginPath(); ctx.moveTo(60, H - 30); ctx.lineTo(W - 30, H - 30); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(60, 20); ctx.lineTo(60, H - 30); ctx.stroke();
+  ctx.fillText("T (K)", W - 60, H - 8);
+  ctx.fillText("Population fraction", 8, 14);
+
+  const Tmin = 50, Tmax = 5000;
+  const Ts = [];
+  for (let T = Tmin; T <= Tmax; T += 50) Ts.push(T);
+
+  function px(T) { return 60 + (W - 90) * (T - Tmin) / (Tmax - Tmin); }
+  function py(P) { return (H - 30) - (H - 50) * P; }
+
+  // P(A), P(B)
+  ctx.strokeStyle = "#42a5f5"; ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  for (let k = 0; k < Ts.length; k++) {
+    const beta = 1 / (k_B_Ha_K * Ts[k]);
+    const K = (gB / gA) * Math.exp(-beta * dE);
+    const PA = 1 / (1 + K);
+    const x = px(Ts[k]); const y = py(PA);
+    if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.fillStyle = "#42a5f5"; ctx.fillText("P(" + labA + ")", 80, 30);
+
+  ctx.strokeStyle = "#ef5350";
+  ctx.beginPath();
+  for (let k = 0; k < Ts.length; k++) {
+    const beta = 1 / (k_B_Ha_K * Ts[k]);
+    const K = (gB / gA) * Math.exp(-beta * dE);
+    const PB = K / (1 + K);
+    const x = px(Ts[k]); const y = py(PB);
+    if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.fillStyle = "#ef5350"; ctx.fillText("P(" + labB + ")", 160, 30);
+
+  // High-T limit lines
+  const limitA = 1 / (1 + gB / gA);
+  const limitB = (gB / gA) / (1 + gB / gA);
+  ctx.strokeStyle = "#666"; ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(60, py(limitA)); ctx.lineTo(W - 30, py(limitA)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(60, py(limitB)); ctx.lineTo(W - 30, py(limitB)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = "#888"; ctx.fillText("high-T limit (degeneracy only)", 250, 30);
+
+  // Tick labels
+  ctx.fillStyle = "#888";
+  for (let T = 1000; T <= 5000; T += 1000) {
+    ctx.fillText(T, px(T) - 14, H - 14);
+  }
+  for (let p = 0; p <= 1.0001; p += 0.25) {
+    ctx.fillText(p.toFixed(2), 30, py(p) + 4);
+  }
+
+  // Annotation
+  ctx.fillStyle = "#aaa";
+  ctx.fillText("ΔE = " + dE.toFixed(5) + " Ha = " + (dE * Ha_kJmol).toFixed(2) + " kJ/mol", 350, 30);
+}
+
+$("computeBtn").onclick = compute;
+compute();
+</script>
+</body></html>
