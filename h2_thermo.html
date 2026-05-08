@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>H₂ vibrational thermodynamics from RealQM E(R)</title>
+  <style>
+    body { margin: 0; background: #0a0a0a; color: #ddd; font-family: monospace; padding: 12px; }
+    h3 { color: #4fc3f7; margin: 4px 0; }
+    .panel { display: inline-block; vertical-align: top; padding: 10px;
+             background: rgba(0,0,0,0.7); border: 1px solid #555; margin: 6px 6px 0 0;
+             font-size: 12px; max-width: 540px; }
+    button, input { font-family: monospace; padding: 3px 8px;
+             background: #111; color: #fff; border: 1px solid #555; }
+    table { border-collapse: collapse; font-size: 11px; }
+    th, td { padding: 3px 8px; border: 1px solid #444; text-align: right; }
+    th { color: #4fc3f7; background: #0a1820; }
+    .num { color: #ffe082; font-weight: bold; }
+    .ok { color: #66bb6a; }
+    .label { color: #aaa; }
+    canvas { background: #050510; border: 1px solid #555; margin-top: 8px; }
+  </style>
+</head><body>
+
+<h3>H₂ vibrational thermodynamics — from RealQM E(R)</h3>
+
+<div class="panel">
+A concrete RealQM-based statistical-mechanics calculation.<br><br>
+<b>Step 1.</b> Compute the H₂ ground-state energy E(R) at several internuclear separations R using RealQM
+(via <code>sweep_h2_adaptive.html</code> or repeated runs of <code>mol_fast_h2.html</code>).<br>
+<b>Step 2.</b> Fit a parabola near the minimum: E(R) ≈ E₀ + ½k(R−R₀)². Extract <code>k = E″(R₀)</code> and the
+harmonic frequency <code>ω = √(k/μ)</code>, with reduced mass μ = m_p/2 = 918.08 m_e (atomic units).<br>
+<b>Step 3.</b> Compute the canonical vibrational partition function and thermodynamics:
+<pre style="font-size: 11px; color: #aaa">
+Z_vib(T) = e^(−βℏω/2) / (1 − e^(−βℏω))
+U_vib(T) = (ℏω/2) coth(βℏω/2)
+C_vib(T) = k_B (βℏω/2)² / sinh²(βℏω/2)
+</pre>
+where β = 1/(k_B T). All formulas exact for a harmonic oscillator.
+</div>
+
+<div class="panel">
+  <h4 style="color:#80cbc4;margin:0 0 6px 0">Input: E(R) data points</h4>
+  <p style="font-size:10px;color:#888;margin-top:0">
+    Defaults are KW exact reference values. Replace with RealQM-computed E(R) to see how the
+    fit and thermodynamics shift.
+  </p>
+  <table id="dataTable">
+    <thead><tr><th>R (a.u.)</th><th>E (Ha) — KW</th><th>E (Ha) — RealQM (optional)</th></tr></thead>
+    <tbody id="dataBody">
+      <tr><td>1.2</td><td>-1.16493</td><td><input type="number" step="0.0001" data-r="1.2" style="width:90px"></td></tr>
+      <tr><td>1.3</td><td>-1.17234</td><td><input type="number" step="0.0001" data-r="1.3" style="width:90px"></td></tr>
+      <tr><td>1.4</td><td>-1.17448</td><td><input type="number" step="0.0001" data-r="1.4" style="width:90px"></td></tr>
+      <tr><td>1.5</td><td>-1.17285</td><td><input type="number" step="0.0001" data-r="1.5" style="width:90px"></td></tr>
+      <tr><td>1.6</td><td>-1.16858</td><td><input type="number" step="0.0001" data-r="1.6" style="width:90px"></td></tr>
+    </tbody>
+  </table>
+  <button id="useKWBtn" style="margin-top:8px">Use KW (default)</button>
+  <button id="useRealQMBtn" style="margin-top:8px">Use RealQM column</button>
+</div>
+
+<div class="panel">
+  <h4 style="color:#80cbc4;margin:0 0 6px 0">Fit results</h4>
+  <table>
+    <tr><td>R₀ (eq. bond length)</td><td><span id="R0" class="num">—</span> a.u.</td></tr>
+    <tr><td>E(R₀) minimum</td><td><span id="E0" class="num">—</span> Ha</td></tr>
+    <tr><td>k = E″(R₀)</td><td><span id="kVal" class="num">—</span> Ha/a.u.²</td></tr>
+    <tr><td>ω = √(k/μ)</td><td><span id="omega" class="num">—</span> Ha</td></tr>
+    <tr><td>ω (cm⁻¹)</td><td><span id="omegaCm" class="num">—</span> cm⁻¹</td></tr>
+    <tr><td>Experimental ω</td><td><span class="num">4401</span> cm⁻¹</td></tr>
+    <tr><td>ZPE = ℏω/2</td><td><span id="zpe" class="num">—</span> Ha</td></tr>
+  </table>
+</div>
+
+<div class="panel">
+  <h4 style="color:#80cbc4;margin:0 0 6px 0">Thermodynamics vs T</h4>
+  <table id="thermoTable">
+    <thead><tr><th>T (K)</th><th>U_vib (Ha)</th><th>U_vib (kJ/mol)</th><th>C_vib (k_B)</th></tr></thead>
+    <tbody id="thermoBody"></tbody>
+  </table>
+</div>
+
+<canvas id="cvs" width="900" height="280" style="margin-top:10px"></canvas>
+
+<script>
+const Ha_kJmol = 2625.5;
+const Ha_cm = 219474.63;
+const k_B_Ha_K = 3.1668e-6;     // Boltzmann constant in Ha/K
+const mu_H2 = 918.08;            // reduced mass H+H, atomic units (m_p/2)
+
+const $ = id => document.getElementById(id);
+
+function parabolicFit(pts) {
+  // Fit y = a + b*x + c*x² to (x_i, y_i). Returns {a, b, c}.
+  let n = pts.length;
+  let sx = 0, sx2 = 0, sx3 = 0, sx4 = 0;
+  let sy = 0, sxy = 0, sx2y = 0;
+  for (const [x, y] of pts) {
+    sx += x; sx2 += x*x; sx3 += x*x*x; sx4 += x*x*x*x;
+    sy += y; sxy += x*y; sx2y += x*x*y;
+  }
+  // Solve normal equations
+  const A = [
+    [n,  sx, sx2],
+    [sx, sx2, sx3],
+    [sx2, sx3, sx4],
+  ];
+  const b_vec = [sy, sxy, sx2y];
+  // Gaussian elimination 3x3
+  function det3(M) {
+    return M[0][0]*(M[1][1]*M[2][2] - M[1][2]*M[2][1])
+         - M[0][1]*(M[1][0]*M[2][2] - M[1][2]*M[2][0])
+         + M[0][2]*(M[1][0]*M[2][1] - M[1][1]*M[2][0]);
+  }
+  const D = det3(A);
+  function replaceCol(M, col, v) {
+    return M.map((row, i) => row.map((x, j) => j === col ? v[i] : x));
+  }
+  const a = det3(replaceCol(A, 0, b_vec)) / D;
+  const b = det3(replaceCol(A, 1, b_vec)) / D;
+  const c = det3(replaceCol(A, 2, b_vec)) / D;
+  return { a, b, c };
+}
+
+function vibThermo(omega, T) {
+  if (T < 1e-6) return { U: 0.5 * omega, C: 0 };
+  const x = omega / (k_B_Ha_K * T);  // = ℏω / kT (atomic units, ℏ=1)
+  const U = 0.5 * omega / Math.tanh(x / 2);
+  const sinh_half = Math.sinh(x / 2);
+  const C = (x / 2) * (x / 2) / (sinh_half * sinh_half);
+  return { U, C };
+}
+
+function compute() {
+  // Read data points
+  const rows = $("dataBody").querySelectorAll("tr");
+  const pts = [];
+  for (const row of rows) {
+    const cells = row.querySelectorAll("td");
+    const R = parseFloat(cells[0].textContent);
+    const E_use = parseFloat(cells[1].textContent);  // currently active column
+    if (!isNaN(R) && !isNaN(E_use)) pts.push([R, E_use]);
+  }
+  if (pts.length < 3) {
+    $("R0").textContent = "need ≥3 points";
+    return;
+  }
+  const { a, b, c } = parabolicFit(pts);
+  const R0 = -b / (2 * c);
+  const E0 = a + b * R0 + c * R0 * R0;
+  const k = 2 * c;
+  if (k <= 0) {
+    $("R0").textContent = "non-convex fit";
+    return;
+  }
+  const omega = Math.sqrt(k / mu_H2);
+  const omegaCm = omega * Ha_cm;
+  const zpe = 0.5 * omega;
+
+  $("R0").textContent = R0.toFixed(4);
+  $("E0").textContent = E0.toFixed(5);
+  $("kVal").textContent = k.toFixed(4);
+  $("omega").textContent = omega.toFixed(5);
+  $("omegaCm").textContent = omegaCm.toFixed(0);
+  $("zpe").textContent = zpe.toFixed(5);
+
+  // Thermodynamics at selected T
+  const Ts = [100, 300, 500, 1000, 2000, 3000, 5000];
+  $("thermoBody").innerHTML = "";
+  for (const T of Ts) {
+    const { U, C } = vibThermo(omega, T);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${T}</td><td>${U.toFixed(5)}</td><td>${(U * Ha_kJmol).toFixed(2)}</td><td>${C.toFixed(4)}</td>`;
+    $("thermoBody").appendChild(tr);
+  }
+  drawPlot(omega);
+}
+
+function drawPlot(omega) {
+  const cv = $("cvs");
+  const ctx = cv.getContext("2d");
+  const W = cv.width, H = cv.height;
+  ctx.fillStyle = "#050510";
+  ctx.fillRect(0, 0, W, H);
+
+  const Ts = [];
+  for (let T = 50; T <= 6000; T += 50) Ts.push(T);
+
+  const Cs = Ts.map(T => vibThermo(omega, T).C);
+  const Us = Ts.map(T => vibThermo(omega, T).U);
+
+  ctx.strokeStyle = "#666"; ctx.fillStyle = "#aaa"; ctx.font = "11px monospace";
+  ctx.beginPath(); ctx.moveTo(60, H - 30); ctx.lineTo(W - 30, H - 30); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(60, 20); ctx.lineTo(60, H - 30); ctx.stroke();
+  ctx.fillText("T (K)", W - 60, H - 8);
+  ctx.fillText("C_vib / k_B (red),  U_vib − ZPE (Ha × 200, green)", 70, 14);
+
+  function px(T) { return 60 + (W - 90) * T / 6000; }
+
+  // C_vib in red (range 0..1)
+  ctx.strokeStyle = "#ef5350"; ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  for (let i = 0; i < Ts.length; i++) {
+    const x = px(Ts[i]);
+    const y = (H - 30) - (H - 50) * Cs[i];
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // U_vib − ZPE in green
+  ctx.strokeStyle = "#66bb6a";
+  ctx.beginPath();
+  for (let i = 0; i < Ts.length; i++) {
+    const x = px(Ts[i]);
+    const dU = Us[i] - 0.5 * omega;
+    const y = (H - 30) - (H - 50) * (dU * 200);  // scale factor
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // x-axis ticks
+  ctx.fillStyle = "#888";
+  for (let T = 1000; T <= 6000; T += 1000) {
+    const x = px(T);
+    ctx.beginPath(); ctx.moveTo(x, H - 30); ctx.lineTo(x, H - 26); ctx.stroke();
+    ctx.fillText(T, x - 14, H - 14);
+  }
+  // y-axis
+  ctx.fillText("0", 45, H - 28);
+  ctx.fillText("1 k_B", 28, 30);
+
+  // experimental high-T limit dashed
+  ctx.strokeStyle = "#ffe082"; ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(60, 20);
+  ctx.lineTo(W - 30, 20);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = "#ffe082"; ctx.fillText("equipartition C_vib = k_B", W - 220, 18);
+}
+
+function setColumn(useRealQM) {
+  const rows = $("dataBody").querySelectorAll("tr");
+  for (const row of rows) {
+    const cells = row.querySelectorAll("td");
+    const inp = row.querySelector("input");
+    if (useRealQM) {
+      const v = parseFloat(inp.value);
+      if (!isNaN(v)) cells[1].textContent = v.toFixed(5);
+    }
+  }
+  compute();
+}
+
+$("useKWBtn").onclick = () => location.reload();
+$("useRealQMBtn").onclick = () => setColumn(true);
+compute();
+</script>
+</body></html>
