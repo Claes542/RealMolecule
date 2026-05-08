@@ -802,15 +802,41 @@ Z(\beta) = \sum_\mathcal{C} \exp(-\beta\,E_\mathcal{C}), \qquad
 \end{equation}
 but the sum is over real-space tilings rather than over $3N$-dim eigenstates. Each $E_\mathcal{C}$ is a browser-class computation; the canonical machinery (Boltzmann weights, free energy $F = -k_B T \ln Z$, equilibrium probabilities) sits on top unchanged.
 
-The RealQM model can be extended to describe interaction matter--radiation following a principle developed in~\cite{Johnson2010BB}, which can be expressed as a classical wave equation with an Abraham--Lorentz radiative damping term:
-\begin{equation}
-u_{tt} - u_{xx} - \gamma u_{ttt} = f.
-\end{equation}
-Here $f$ is incoming radiation forcing, and $-\gamma u_{ttt}$ is the radiation reaction on accelerating charge density. The damping term replaces photon statistics, and a high-frequency cutoff is supplied by finite-precision discretisation rather than by Planck quantisation. Spectral analysis of the damped oscillator yields the Rayleigh--Jeans law $R \propto \nu^2 T$ directly from the PDE; the cutoff at $\nu \approx kT/h$ removes the ultraviolet catastrophe without invoking quanta. The structural parallel to RealQM is exact: in both cases (matter and radiation) the move is to replace a probabilistic statistical postulate with a deterministic continuum equation plus a regularisation length/precision scale, and to recover the macroscopic law as a property of the regularised PDE rather than as the average of an underlying random process. RealQM and the blackbody wave model are siblings of the same anti-statistical program.
-
 For nuclear motion the existing implementation already realises this scheme deterministically: classical Newton dynamics with a Langevin thermostat (the \texttt{USER\_DAMPING} and \texttt{langevinKT} parameters of \texttt{molecule.js}) samples the Boltzmann distribution by ergodic time-averaging, never computing $Z$ explicitly. The NaCl crystal-melt simulation of Section~\ref{sec:nacl} is exactly this in action: every observable reported there (the Lindemann ratio, the Na--Cl radial distribution function, the melting-temperature window) is a thermal average $\langle A \rangle(T)$ over the canonical ensemble of ionic configurations, computed by time-averaging a single deterministic-plus-Langevin trajectory rather than enumerating states. This is RealQM-based statistical mechanics already in operation, on a 256-ion system, in a browser. The deterministic heat-equation extension of Section~\ref{sec:dissipation} adds an intrinsic finite-$T$ mechanism by coupling the wave dynamics to a parabolic heat field $T(x, \tau)$, with exact bookkeeping $E_{\rm wave} + E_{\rm thermal} = \mathrm{const}$.
 
 Two limitations remain. (a) Enumerating multiphase topologies is not yet automated for general systems; in current practice they are constructed manually (halfspace splits, concentric shells, angular sectors) per problem. (b) For protein folding the conformational state space is exponential in residue count, an irreducible scaling that no formalism makes intrinsically easier; the practical route is sampling, e.g.\ MD trajectories with a thermostat. But the \emph{spectrum} side is dramatically simplified: each ``state'' is a 3D field with explicit physical meaning rather than an antisymmetric many-body wave function in $3N$-dim configuration space. RealQM thus offers an alternative form of quantum statistical mechanics in which the canonical ensemble retains its standard structure while the underlying spectrum is real-space, deterministic, and tractable.
+
+\section{Interaction matter--radiation}\label{sec:matter-radiation}
+
+The RealQM model can be extended to describe interaction matter--radiation following a principle developed in~\cite{Johnson2010BB}, which can be expressed as a classical wave equation with an Abraham--Lorentz radiative damping term:
+\begin{equation}
+u_{tt} - u_{xx} - \gamma u_{ttt} = f.
+\label{eq:bbwave}
+\end{equation}
+Here $u(x,t)$ is the displacement of a vibrating medium representing matter (a forced charged string), $f$ is incoming radiation forcing, and $-\gamma u_{ttt}$ is the radiation-reaction term on accelerating charge density (Abraham--Lorentz). A second dissipative channel can be added as an internal viscous term $-\delta^2 u_{xxt}$ for heat generation; together the two channels carry energy out of the wave equation as either radiated waves or internal heating.
+
+\paragraph{Energy balance and the second law of radiation.}
+Multiplying~\eqref{eq:bbwave} by $\dot u$ and integrating gives an energy balance $\dot E = A - R$ with absorbed energy $A = \int f \dot u\,dx$ and radiated energy $R = \gamma \int \ddot u^2\,dx \ge 0$, the latter dissipative by the form of the damping term. For incoming radiation $f$ to actually \emph{heat} the medium ($\dot E > 0$) one needs $A > R$, i.e.\ the incoming intensity must exceed the outgoing intensity. This is the second law of radiation: heat flows from hotter to colder, derived directly from the PDE without invoking entropy or photons.
+
+\paragraph{Rayleigh--Jeans from spectral analysis.}
+Decomposing $u$ in Fourier modes $u_\nu(x,t)$, each mode is a damped linear oscillator
+$\ddot u_\nu + \nu^2 u_\nu - \gamma u_\nu^{(3)} = f_\nu$.
+Near-resonance analysis at frequency $\nu$ shows that the radiated intensity satisfies
+\begin{equation}
+R(\nu, T) \propto \nu^2 \, T_\nu,
+\label{eq:rayleighjeans}
+\end{equation}
+which is the Rayleigh--Jeans law, with $T_\nu \approx \dot u_\nu^2$ identified as the temperature of the corresponding mode. This recovers the classical thermal-radiation law as a property of the deterministic PDE, with no probabilistic postulate at any step.
+
+\paragraph{Ultraviolet cutoff from finite precision.}
+The Rayleigh--Jeans law alone gives an ultraviolet catastrophe ($\int \nu^2 d\nu \to \infty$). In Planck's resolution this is removed by quantising radiation as photons of energy $h\nu$. In the deterministic computational picture the cutoff is supplied instead by the resolution of the discretisation: above $\nu \approx kT/h$ (with $h$ the grid spacing or finite-precision scale, not Planck's constant), coherent waves cannot be resolved by the numerical scheme and their energy is converted to incoherent heat by the same dissipative term. The Planck spectrum
+\begin{equation}
+R_{\rm Planck}(\nu, T) \propto \frac{\nu^2 T}{1 + (\nu/\nu_c)^p}, \qquad \nu_c \approx kT/h
+\end{equation}
+emerges as the Rayleigh--Jeans intensity multiplied by a cutoff factor whose physical origin is the finite resolution of the medium, not quantisation. The blackbody acts as a high-pass filter: it re-emits frequencies below cut-off and stores frequencies above cut-off as heat.
+
+\paragraph{Connection to RealQM.}
+The structural parallel is exact: in both cases the move is to replace a probabilistic statistical postulate (Born rule for matter; photon statistics for radiation) with a deterministic continuum equation plus a regularisation length/precision scale (kernel softening $r_c$ for matter; numerical resolution $h$ for radiation), and to recover the macroscopic law as a property of the regularised PDE rather than as the average of an underlying random process. RealQM and the blackbody wave model are siblings of the same anti-statistical program. A natural future direction is the unified system that couples electrons under the RealQM PDE to the radiation field~\eqref{eq:bbwave}: matter and radiation, deterministic throughout, with all thermal and spectral phenomena emerging from the equations themselves.
 
 \section{The collaboration as part of the contribution}\label{sec:collaboration}
 
