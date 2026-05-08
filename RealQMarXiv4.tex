@@ -802,6 +802,10 @@ Z(\beta) = \sum_\mathcal{C} \exp(-\beta\,E_\mathcal{C}), \qquad
 \end{equation}
 but the sum is over real-space tilings rather than over $3N$-dim eigenstates. Each $E_\mathcal{C}$ is a browser-class computation; the canonical machinery (Boltzmann weights, free energy $F = -k_B T \ln Z$, equilibrium probabilities) sits on top unchanged.
 
+A parallel deterministic program exists for thermal radiation. In a series of notes~\cite{Johnson2010BB} one of us has proposed a classical wave model
+$u_{tt} - u_{xx} - \gamma u_{ttt} = f$
+in which an Abraham--Lorentz radiative damping term $-\gamma u_{ttt}$ replaces photon statistics, with a high-frequency cutoff supplied by finite-precision discretisation rather than by Planck quantisation. Spectral analysis of the damped oscillator yields the Rayleigh--Jeans law $R \propto \nu^2 T$ directly from the PDE; the cutoff at $\nu \approx kT/h$ removes the ultraviolet catastrophe without invoking quanta. The structural parallel is exact: in both cases (matter and radiation) the move is to replace a probabilistic statistical postulate with a deterministic continuum equation plus a regularisation length/precision scale, and to recover the macroscopic law as a property of the regularised PDE rather than as the average of an underlying random process. RealQM and this blackbody picture are siblings of the same anti-statistical program.
+
 For nuclear motion the existing implementation already realises this scheme deterministically: classical Newton dynamics with a Langevin thermostat (the \texttt{USER\_DAMPING} and \texttt{langevinKT} parameters of \texttt{molecule.js}) samples the Boltzmann distribution by ergodic time-averaging, never computing $Z$ explicitly. The NaCl crystal-melt simulation of Section~\ref{sec:nacl} is exactly this in action: every observable reported there (the Lindemann ratio, the Na--Cl radial distribution function, the melting-temperature window) is a thermal average $\langle A \rangle(T)$ over the canonical ensemble of ionic configurations, computed by time-averaging a single deterministic-plus-Langevin trajectory rather than enumerating states. This is RealQM-based statistical mechanics already in operation, on a 256-ion system, in a browser. The deterministic heat-equation extension of Section~\ref{sec:dissipation} adds an intrinsic finite-$T$ mechanism by coupling the wave dynamics to a parabolic heat field $T(x, \tau)$, with exact bookkeeping $E_{\rm wave} + E_{\rm thermal} = \mathrm{const}$.
 
 Two limitations remain. (a) Enumerating multiphase topologies is not yet automated for general systems; in current practice they are constructed manually (halfspace splits, concentric shells, angular sectors) per problem. (b) For protein folding the conformational state space is exponential in residue count, an irreducible scaling that no formalism makes intrinsically easier; the practical route is sampling, e.g.\ MD trajectories with a thermostat. But the \emph{spectrum} side is dramatically simplified: each ``state'' is a 3D field with explicit physical meaning rather than an antisymmetric many-body wave function in $3N$-dim configuration space. RealQM thus offers an alternative form of quantum statistical mechanics in which the canonical ensemble retains its standard structure while the underlying spectrum is real-space, deterministic, and tractable.
@@ -881,6 +885,12 @@ Angew.\ Chem.\ Int.\ Ed.\ \textbf{12}, 546 (1973).
 F.~A.~Lindemann,
 \emph{\"Uber die Berechnung molekularer Eigenfrequenzen},
 Phys.\ Z.\ \textbf{11}, 609 (1910).
+
+\bibitem{Johnson2010BB}
+C.~Johnson,
+\emph{Computational Blackbody Radiation},
+notes (2010); see also \emph{Generic Model of Interaction Matter-Radiation},
+\url{https://claesjohnson.blogspot.com/2011/11/generic-model-of-interaction-matter.html} (2011).
 
 \bibitem{BornMayer32}
 M.~Born and J.~E.~Mayer,
