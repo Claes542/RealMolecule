@@ -65,7 +65,8 @@ footer a { color: #4fc3f7; text-decoration: none; }
     <a href="#mol-s66" style="color:#80cbc4">S66 geometry benchmark</a> ·
     <a href="#mol-kernel" style="color:#80cbc4">Kernel splitting</a> ·
     <a href="#forces" style="color:#80cbc4">Molecular dynamics / Forces vs energy</a> ·
-    <a href="#thermodynamics" style="color:#80cbc4">RealQM with thermodynamics</a><br>
+    <a href="#thermodynamics" style="color:#80cbc4">RealQM with thermodynamics</a> ·
+    <a href="#stat-mech" style="color:#80cbc4">RealQM-based statistical mechanics</a><br>
 
     <b style="color:#ce93d8">Protein</b> ·
     <a href="#prot-folding" style="color:#80cbc4">Protein folding</a> ·
@@ -706,6 +707,42 @@ footer a { color: #4fc3f7; text-decoration: none; }
       </div>
       <div style="margin-top:12px">
         <a href="atom_thermal.html" style="color:#ff9e80">RealQM ITP + heat field prototype →</a>
+      </div>
+    </div>
+
+    <div id="stat-mech" class="card" style="border-color:#ce93d8;background:#150a18;grid-column:1/-1;padding:18px">
+      <h3 style="font-size:17px;color:#ce93d8">Foundation · RealQM-based statistical mechanics</h3>
+      <div class="desc" style="margin-top:8px">
+        Standard quantum statistical mechanics builds the partition function on the eigenvalues of
+        the $N$-electron Hamiltonian:
+        <code>Z(β) = Σ<sub>n</sub> exp(−βE<sub>n</sub>) = Tr exp(−βH)</code>.
+        For realistic many-body systems the spectrum is exponential in $N$ and computationally
+        inaccessible — practical applications use model Hamiltonians, mean field, perturbation theory,
+        or path-integral / quantum Monte Carlo sampling.
+      </div>
+      <div class="desc" style="margin-top:10px">
+        <b>RealQM offers a different starting point.</b> The "spectrum" of a system is the set of its
+        <i>multiphase configurations</i> {C} — distinct topologies of non-overlapping electron domains
+        Ω<sub>i</sub>, each with a deterministic variational energy E<sub>C</sub> obtained from a
+        single ground-state run on a 3D grid. The canonical form is preserved:
+        <code>Z(β) = Σ<sub>C</sub> exp(−βE<sub>C</sub>)</code>, but the sum is over
+        <b>real-space tilings</b> rather than over 3N-dim eigenstates. Each E<sub>C</sub> is a
+        browser-class computation; Boltzmann weights and free energy F = −k<sub>B</sub>T ln Z sit on
+        top unchanged.
+      </div>
+      <div class="desc" style="margin-top:10px">
+        <b>Already implemented for nuclei:</b> classical Newton dynamics with a Langevin thermostat
+        (<code>USER_DAMPING</code> + <code>langevinKT</code> in <code>molecule.js</code>) samples the
+        Boltzmann distribution by ergodic time-averaging — never computes Z explicitly.
+        <br>
+        <b>Deterministic finite-T mechanism for fields:</b> the heat-equation extension
+        (see card above) couples the wave dynamics to a parabolic T(x,τ) field with exact
+        bookkeeping E<sub>wave</sub> + E<sub>thermal</sub> = const.
+      </div>
+      <div class="desc" style="margin-top:10px">
+        <b>Bottom line:</b> the canonical ensemble retains its standard structure while the
+        underlying spectrum becomes real-space, deterministic, and tractable. Same Boltzmann
+        machinery, dramatically simplified spectrum.
       </div>
     </div>
 
