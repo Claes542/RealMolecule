@@ -64,9 +64,7 @@ footer a { color: #4fc3f7; text-decoration: none; }
     <a href="#mol-reactions" style="color:#80cbc4">Chemical reactions</a> ·
     <a href="#mol-s66" style="color:#80cbc4">S66 geometry benchmark</a> ·
     <a href="#mol-kernel" style="color:#80cbc4">Kernel splitting</a> ·
-    <a href="#forces" style="color:#80cbc4">Molecular dynamics / Forces vs energy</a> ·
-    <a href="#thermodynamics" style="color:#80cbc4">RealQM with thermodynamics</a> ·
-    <a href="#stat-mech" style="color:#80cbc4">RealQM-based statistical mechanics</a><br>
+    <a href="#forces" style="color:#80cbc4">Molecular dynamics / Forces vs energy</a><br>
 
     <b style="color:#ce93d8">Protein</b> ·
     <a href="#prot-folding" style="color:#80cbc4">Protein folding</a> ·
@@ -75,10 +73,12 @@ footer a { color: #4fc3f7; text-decoration: none; }
     <b style="color:#ffca28">Material</b> ·
     <a href="#mat" style="color:#80cbc4">Materials (NaCl, ice, dispersion, melting)</a><br>
 
-    <b style="color:#aaa">Foundations</b> ·
+    <b style="color:#aaa">Foundation</b> ·
     <a href="#assessment" style="color:#80cbc4">Assessment by Claude</a> ·
     <a href="#hierarchy" style="color:#80cbc4">Hierarchical model</a> ·
     <a href="#code" style="color:#80cbc4">Code description</a> ·
+    <a href="#thermodynamics" style="color:#80cbc4">RealQM with thermodynamics</a> ·
+    <a href="#stat-mech" style="color:#80cbc4">RealQM-based statistical mechanics</a> ·
     <a href="#tools" style="color:#80cbc4">Tools</a><br>
 
     <b style="color:#a5d6a7">News</b> ·
@@ -162,6 +162,79 @@ footer a { color: #4fc3f7; text-decoration: none; }
       <h3 style="color:#90caf9">Description of the Code by Claude →</h3>
       <div class="desc" style="margin-top:6px">~8000 lines of JavaScript and WebGPU shaders implementing the full hierarchy.</div>
     </a>
+
+    <div id="thermodynamics" class="card" style="border-color:#ff9e80;background:#1a1008;grid-column:1/-1;padding:18px">
+      <h3 style="font-size:17px;color:#ff9e80">Foundation · RealQM with thermodynamics — deterministic finite-T extension</h3>
+      <div class="desc" style="margin-top:8px">
+        <b>The role of statistics in QM.</b> Standard QM contains two statistical layers:
+        (1) the <i>Born rule</i>, intrinsic and ontological — single measurements give random outcomes;
+        (2) <i>thermal/ensemble averaging</i> — Gibbs weights over states, density matrices, partition
+        functions. RealQM rejects layer (1): the wave function is a deterministic charge density on a
+        non-overlapping domain, not a probability amplitude. So in RealQM, statistics is purely
+        bookkeeping for tractability or epistemic uncertainty — never part of the physics itself.
+      </div>
+      <div class="desc" style="margin-top:10px">
+        <b>Temperature without statistics.</b> A vibrating system has total energy distributed over
+        eigenmodes — purely deterministic. Equipartition follows from Hamilton + Liouville + ergodicity,
+        no probability axiom. T is well-defined macroscopically because for N ≈ 10²³ the law of large
+        numbers makes fluctuations invisible — a consequence of statistics' validity, not evidence
+        against the deterministic substrate.
+      </div>
+      <div class="desc" style="margin-top:10px">
+        <b>Heat equation coupled to ITP.</b> RealQM's imaginary-time PDE dissipates energy as the wave
+        function relaxes to ground state. That dissipated energy can be fed as a source into a
+        deterministic heat field T(x,τ):<br>
+        &nbsp;&nbsp;<code>∂u/∂τ = ½∇²u + (K − 2P)u</code> &nbsp;(wave relaxation)<br>
+        &nbsp;&nbsp;<code>∂T/∂τ = D ∇²T + Q(x,τ)</code> &nbsp;with <code>Q = −∂e_wave/∂τ</code><br>
+        Conservation Σ(E_wave + E_thermal) = const is exact, no statistics involved. Heat is just
+        energy that left the wave equation and entered the parabolic transport equation.
+      </div>
+      <div class="desc" style="margin-top:10px">
+        <b>Bottom line:</b> Statistics is unavoidable in StdQM (Born rule is built in). In RealQM
+        it's dispensable — thermodynamics enters as a deterministic coupled-field extension. The
+        prototype <code>atom_thermal.html</code> demonstrates exact energy bookkeeping for He
+        relaxation: red E_wave decreases, green E_thermal grows, yellow sum stays flat.
+      </div>
+      <div style="margin-top:12px">
+        <a href="atom_thermal.html" style="color:#ff9e80">RealQM ITP + heat field prototype →</a>
+      </div>
+    </div>
+
+    <div id="stat-mech" class="card" style="border-color:#ce93d8;background:#150a18;grid-column:1/-1;padding:18px">
+      <h3 style="font-size:17px;color:#ce93d8">Foundation · RealQM-based statistical mechanics</h3>
+      <div class="desc" style="margin-top:8px">
+        Standard quantum statistical mechanics builds the partition function on the eigenvalues of
+        the $N$-electron Hamiltonian:
+        <code>Z(β) = Σ<sub>n</sub> exp(−βE<sub>n</sub>) = Tr exp(−βH)</code>.
+        For realistic many-body systems the spectrum is exponential in $N$ and computationally
+        inaccessible — practical applications use model Hamiltonians, mean field, perturbation theory,
+        or path-integral / quantum Monte Carlo sampling.
+      </div>
+      <div class="desc" style="margin-top:10px">
+        <b>RealQM offers a different starting point.</b> The "spectrum" of a system is the set of its
+        <i>multiphase configurations</i> {C} — distinct topologies of non-overlapping electron domains
+        Ω<sub>i</sub>, each with a deterministic variational energy E<sub>C</sub> obtained from a
+        single ground-state run on a 3D grid. The canonical form is preserved:
+        <code>Z(β) = Σ<sub>C</sub> exp(−βE<sub>C</sub>)</code>, but the sum is over
+        <b>real-space tilings</b> rather than over 3N-dim eigenstates. Each E<sub>C</sub> is a
+        browser-class computation; Boltzmann weights and free energy F = −k<sub>B</sub>T ln Z sit on
+        top unchanged.
+      </div>
+      <div class="desc" style="margin-top:10px">
+        <b>Already implemented for nuclei:</b> classical Newton dynamics with a Langevin thermostat
+        (<code>USER_DAMPING</code> + <code>langevinKT</code> in <code>molecule.js</code>) samples the
+        Boltzmann distribution by ergodic time-averaging — never computes Z explicitly.
+        <br>
+        <b>Deterministic finite-T mechanism for fields:</b> the heat-equation extension
+        (see card above) couples the wave dynamics to a parabolic T(x,τ) field with exact
+        bookkeeping E<sub>wave</sub> + E<sub>thermal</sub> = const.
+      </div>
+      <div class="desc" style="margin-top:10px">
+        <b>Bottom line:</b> the canonical ensemble retains its standard structure while the
+        underlying spectrum becomes real-space, deterministic, and tractable. Same Boltzmann
+        machinery, dramatically simplified spectrum.
+      </div>
+    </div>
   </div>
 </div>
 
@@ -671,79 +744,6 @@ footer a { color: #4fc3f7; text-decoration: none; }
         <a href="atom_shells.html" style="color:#90caf9">&#9654; Orthohelium (atom.js)</a>
       </div>
       <span class="tag tag-small">atom</span><span class="tag tag-dyn">excitation</span>
-    </div>
-
-    <div id="thermodynamics" class="card" style="border-color:#ff9e80;background:#1a1008;grid-column:1/-1;padding:18px">
-      <h3 style="font-size:17px;color:#ff9e80">Molecule · RealQM with thermodynamics — deterministic finite-T extension</h3>
-      <div class="desc" style="margin-top:8px">
-        <b>The role of statistics in QM.</b> Standard QM contains two statistical layers:
-        (1) the <i>Born rule</i>, intrinsic and ontological — single measurements give random outcomes;
-        (2) <i>thermal/ensemble averaging</i> — Gibbs weights over states, density matrices, partition
-        functions. RealQM rejects layer (1): the wave function is a deterministic charge density on a
-        non-overlapping domain, not a probability amplitude. So in RealQM, statistics is purely
-        bookkeeping for tractability or epistemic uncertainty — never part of the physics itself.
-      </div>
-      <div class="desc" style="margin-top:10px">
-        <b>Temperature without statistics.</b> A vibrating system has total energy distributed over
-        eigenmodes — purely deterministic. Equipartition follows from Hamilton + Liouville + ergodicity,
-        no probability axiom. T is well-defined macroscopically because for N ≈ 10²³ the law of large
-        numbers makes fluctuations invisible — a consequence of statistics' validity, not evidence
-        against the deterministic substrate.
-      </div>
-      <div class="desc" style="margin-top:10px">
-        <b>Heat equation coupled to ITP.</b> RealQM's imaginary-time PDE dissipates energy as the wave
-        function relaxes to ground state. That dissipated energy can be fed as a source into a
-        deterministic heat field T(x,τ):<br>
-        &nbsp;&nbsp;<code>∂u/∂τ = ½∇²u + (K − 2P)u</code> &nbsp;(wave relaxation)<br>
-        &nbsp;&nbsp;<code>∂T/∂τ = D ∇²T + Q(x,τ)</code> &nbsp;with <code>Q = −∂e_wave/∂τ</code><br>
-        Conservation Σ(E_wave + E_thermal) = const is exact, no statistics involved. Heat is just
-        energy that left the wave equation and entered the parabolic transport equation.
-      </div>
-      <div class="desc" style="margin-top:10px">
-        <b>Bottom line:</b> Statistics is unavoidable in StdQM (Born rule is built in). In RealQM
-        it's dispensable — thermodynamics enters as a deterministic coupled-field extension. The
-        prototype <code>atom_thermal.html</code> demonstrates exact energy bookkeeping for He
-        relaxation: red E_wave decreases, green E_thermal grows, yellow sum stays flat.
-      </div>
-      <div style="margin-top:12px">
-        <a href="atom_thermal.html" style="color:#ff9e80">RealQM ITP + heat field prototype →</a>
-      </div>
-    </div>
-
-    <div id="stat-mech" class="card" style="border-color:#ce93d8;background:#150a18;grid-column:1/-1;padding:18px">
-      <h3 style="font-size:17px;color:#ce93d8">Foundation · RealQM-based statistical mechanics</h3>
-      <div class="desc" style="margin-top:8px">
-        Standard quantum statistical mechanics builds the partition function on the eigenvalues of
-        the $N$-electron Hamiltonian:
-        <code>Z(β) = Σ<sub>n</sub> exp(−βE<sub>n</sub>) = Tr exp(−βH)</code>.
-        For realistic many-body systems the spectrum is exponential in $N$ and computationally
-        inaccessible — practical applications use model Hamiltonians, mean field, perturbation theory,
-        or path-integral / quantum Monte Carlo sampling.
-      </div>
-      <div class="desc" style="margin-top:10px">
-        <b>RealQM offers a different starting point.</b> The "spectrum" of a system is the set of its
-        <i>multiphase configurations</i> {C} — distinct topologies of non-overlapping electron domains
-        Ω<sub>i</sub>, each with a deterministic variational energy E<sub>C</sub> obtained from a
-        single ground-state run on a 3D grid. The canonical form is preserved:
-        <code>Z(β) = Σ<sub>C</sub> exp(−βE<sub>C</sub>)</code>, but the sum is over
-        <b>real-space tilings</b> rather than over 3N-dim eigenstates. Each E<sub>C</sub> is a
-        browser-class computation; Boltzmann weights and free energy F = −k<sub>B</sub>T ln Z sit on
-        top unchanged.
-      </div>
-      <div class="desc" style="margin-top:10px">
-        <b>Already implemented for nuclei:</b> classical Newton dynamics with a Langevin thermostat
-        (<code>USER_DAMPING</code> + <code>langevinKT</code> in <code>molecule.js</code>) samples the
-        Boltzmann distribution by ergodic time-averaging — never computes Z explicitly.
-        <br>
-        <b>Deterministic finite-T mechanism for fields:</b> the heat-equation extension
-        (see card above) couples the wave dynamics to a parabolic T(x,τ) field with exact
-        bookkeeping E<sub>wave</sub> + E<sub>thermal</sub> = const.
-      </div>
-      <div class="desc" style="margin-top:10px">
-        <b>Bottom line:</b> the canonical ensemble retains its standard structure while the
-        underlying spectrum becomes real-space, deterministic, and tractable. Same Boltzmann
-        machinery, dramatically simplified spectrum.
-      </div>
     </div>
 
     <a class="card" href="molecule.html" style="border-color:#4fc3f7;background:#1a1a2a;grid-column:1/-1;text-align:center;padding:24px">
