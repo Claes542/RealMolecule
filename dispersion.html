@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>Dispersion energy from atomic polarizabilities (Casimir–Polder / London)</title>
+  <style>
+    body { margin: 0; background: #0a0a0a; color: #ddd; font-family: monospace; padding: 12px; }
+    h3 { color: #4fc3f7; margin: 4px 0; }
+    .panel { display: inline-block; vertical-align: top; padding: 10px;
+             background: rgba(0,0,0,0.7); border: 1px solid #555; margin: 6px 6px 0 0;
+             font-size: 12px; max-width: 540px; }
+    button, input, select { font-family: monospace; padding: 3px 8px;
+             background: #111; color: #fff; border: 1px solid #555; }
+    table { border-collapse: collapse; font-size: 11px; }
+    th, td { padding: 3px 8px; border: 1px solid #444; text-align: right; }
+    th { color: #4fc3f7; background: #0a1820; }
+    .num { color: #ffe082; font-weight: bold; }
+    canvas { background: #050510; border: 1px solid #555; margin-top: 8px; }
+  </style>
+</head><body>
+
+<h3>Dispersion energy −C₆/R⁶ from atomic polarizabilities</h3>
+
+<div class="panel">
+Deterministic dispersion: instead of postulating quantum fluctuations, use the static
+<b>polarizability</b> α (response of the ground-state charge density to a dipole field) and the
+ionization potential I of each atom. Compute the C₆ coefficient via the
+<b>Slater–Kirkwood / London formula</b>:
+<pre style="font-size:11px;color:#aaa;margin-top:6px">C₆^{AB} ≈ (3/2) · α_A · α_B · I_A · I_B / (I_A + I_B)</pre>
+This is the static-polarizability limit of the Casimir–Polder integral
+<code>C₆ = (3/π) ∫₀^∞ α_A(iω)·α_B(iω) dω</code>. Then the dispersion energy
+<code>E_disp(R) = −C₆/R⁶</code> emerges from coupled-oscillator algebra alone — no Born rule, no
+fluctuations, no full TDSE.
+</div>
+
+<div class="panel">
+  <h4 style="color:#80cbc4;margin:0 0 6px 0">Atomic data (atomic units)</h4>
+  <p style="font-size:10px;color:#888;margin:0">α: experimental polarizabilities · I: ionization energies (Ha)</p>
+  <table id="atomTable">
+    <thead><tr><th>Atom</th><th>α (a.u.)</th><th>I (Ha)</th></tr></thead>
+    <tbody>
+      <tr><td>H</td><td>4.50</td><td>0.500</td></tr>
+      <tr><td>He</td><td>1.38</td><td>0.904</td></tr>
+      <tr><td>Li</td><td>164.</td><td>0.198</td></tr>
+      <tr><td>Be</td><td>37.7</td><td>0.342</td></tr>
+      <tr><td>Ne</td><td>2.67</td><td>0.793</td></tr>
+      <tr><td>Na</td><td>163.</td><td>0.189</td></tr>
+      <tr><td>Ar</td><td>11.1</td><td>0.579</td></tr>
+      <tr><td>Kr</td><td>16.8</td><td>0.515</td></tr>
+      <tr><td>Xe</td><td>27.3</td><td>0.446</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <h4 style="color:#80cbc4;margin:0 0 6px 0">Pair selector</h4>
+  Atom A <select id="atomA"></select>
+  &nbsp;Atom B <select id="atomB"></select>
+  <br><br>
+  <button id="computeBtn">Compute C₆ &amp; plot −C₆/R⁶</button>
+  <div id="result" style="margin-top:8px;font-size:13px"></div>
+</div>
+
+<canvas id="cvs" width="900" height="320" style="margin-top:8px"></canvas>
+
+<div class="panel" style="margin-top:8px">
+  <h4 style="color:#80cbc4;margin:0 0 6px 0">Reference C₆ values (a.u.)</h4>
+  <table>
+    <tr><th>Pair</th><th>London (this calc)</th><th>Reference</th></tr>
+    <tr><td>H–H</td><td><span id="ref_HH">—</span></td><td>6.50</td></tr>
+    <tr><td>He–He</td><td><span id="ref_HeHe">—</span></td><td>1.46</td></tr>
+    <tr><td>Ne–Ne</td><td><span id="ref_NeNe">—</span></td><td>6.38</td></tr>
+    <tr><td>Ar–Ar</td><td><span id="ref_ArAr">—</span></td><td>64.3</td></tr>
+    <tr><td>Kr–Kr</td><td><span id="ref_KrKr">—</span></td><td>130</td></tr>
+    <tr><td>Xe–Xe</td><td><span id="ref_XeXe">—</span></td><td>286</td></tr>
+  </table>
+  <div style="font-size:10px;color:#888;margin-top:6px">
+    The London formula is the leading approximation; it captures C₆ within ~30% of full Casimir–Polder values for noble gases. With α(iω) instead of static α, accuracy &lt; 5%.
+  </div>
+</div>
+
+<script>
+const atoms = {
+  "H":  { alpha: 4.50,  I: 0.500 },
+  "He": { alpha: 1.38,  I: 0.904 },
+  "Li": { alpha: 164.0, I: 0.198 },
+  "Be": { alpha: 37.7,  I: 0.342 },
+  "Ne": { alpha: 2.67,  I: 0.793 },
+  "Na": { alpha: 163.0, I: 0.189 },
+  "Ar": { alpha: 11.1,  I: 0.579 },
+  "Kr": { alpha: 16.8,  I: 0.515 },
+  "Xe": { alpha: 27.3,  I: 0.446 },
+};
+const Ha_kJmol = 2625.5;
+const Ha_meV  = 27211.4;
+
+const $ = id => document.getElementById(id);
+
+function london_C6(a, b) {
+  const A = atoms[a], B = atoms[b];
+  return 1.5 * A.alpha * B.alpha * A.I * B.I / (A.I + B.I);
+}
+
+function compute() {
+  const a = $("atomA").value, b = $("atomB").value;
+  const C6 = london_C6(a, b);
+  $("result").innerHTML =
+    `<b>Pair: ${a}–${b}</b> &nbsp; α_A=${atoms[a].alpha}, I_A=${atoms[a].I}; α_B=${atoms[b].alpha}, I_B=${atoms[b].I}<br>` +
+    `<span class="num">C₆ = ${C6.toFixed(2)} a.u.</span> &nbsp; (${(C6*Ha_kJmol).toFixed(0)} kJ·mol⁻¹·Å⁶/0.529⁶ ≈ ${(C6*0.957).toFixed(0)} kJ·mol⁻¹·Å⁶)`;
+  drawDispersion(a, b, C6);
+}
+
+function drawDispersion(a, b, C6) {
+  const cv = $("cvs");
+  const ctx = cv.getContext("2d");
+  const W = cv.width, H = cv.height;
+  ctx.fillStyle = "#050510"; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = "#666"; ctx.fillStyle = "#aaa"; ctx.font = "11px monospace";
+  ctx.beginPath(); ctx.moveTo(60, H - 30); ctx.lineTo(W - 30, H - 30); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(60, 20); ctx.lineTo(60, H - 30); ctx.stroke();
+  ctx.fillText("R (a.u.)", W - 60, H - 8);
+  ctx.fillText("E_disp (Ha) = −C₆/R⁶", 8, 14);
+
+  const Rmin = 3, Rmax = 12;
+  const Es = [];
+  for (let R = Rmin; R <= Rmax; R += 0.05) Es.push({ R, E: -C6 / Math.pow(R, 6) });
+
+  const Emin = Math.min(...Es.map(p => p.E));
+  const Emax = 0;
+  function px(R) { return 60 + (W - 90) * (R - Rmin) / (Rmax - Rmin); }
+  function py(E) { return 20 + (H - 50) * (Emax - E) / (Emax - Emin); }
+
+  // Grid lines
+  ctx.strokeStyle = "#222";
+  for (let R = 4; R <= Rmax; R += 2) {
+    ctx.beginPath(); ctx.moveTo(px(R), 20); ctx.lineTo(px(R), H - 30); ctx.stroke();
+    ctx.fillStyle = "#666"; ctx.fillText(R.toFixed(0), px(R) - 4, H - 14);
+  }
+  // Curve
+  ctx.strokeStyle = "#42a5f5"; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i < Es.length; i++) {
+    const x = px(Es[i].R), y = py(Es[i].E);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  // Tick marks on E axis
+  ctx.fillStyle = "#888";
+  ctx.fillText("0", 45, py(0) + 4);
+  ctx.fillText(Emin.toExponential(2), 8, py(Emin) + 4);
+  // Marker at R = 6 a.u.
+  const R6 = 6, E6 = -C6 / Math.pow(R6, 6);
+  ctx.fillStyle = "#ffe082";
+  ctx.beginPath(); ctx.arc(px(R6), py(E6), 4, 0, 2 * Math.PI); ctx.fill();
+  ctx.fillText(`R=6 au, E=${(E6*Ha_meV).toFixed(2)} meV`, px(R6) + 8, py(E6) - 6);
+  // Title
+  ctx.fillStyle = "#42a5f5";
+  ctx.fillText(`${a}–${b}: C₆ = ${C6.toFixed(2)} a.u.`, 70, 30);
+}
+
+// Populate selectors
+function init() {
+  for (const k of Object.keys(atoms)) {
+    $("atomA").innerHTML += `<option value="${k}">${k}</option>`;
+    $("atomB").innerHTML += `<option value="${k}">${k}</option>`;
+  }
+  $("atomA").value = "He";
+  $("atomB").value = "He";
+  $("computeBtn").onclick = compute;
+  // Reference table
+  const refs = [["HH","H","H"], ["HeHe","He","He"], ["NeNe","Ne","Ne"], ["ArAr","Ar","Ar"], ["KrKr","Kr","Kr"], ["XeXe","Xe","Xe"]];
+  for (const [id, a, b] of refs) {
+    $("ref_" + id).textContent = london_C6(a, b).toFixed(2);
+  }
+  compute();
+}
+init();
+</script>
+</body></html>

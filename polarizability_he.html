@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>He polarizability via finite-field RealQM (Z=2, dipole perturbation εz)</title>
+  <style>body{margin:0;background:#fff;font-family:monospace;padding:6px}#info{font-size:12px;color:#222;margin:4px 0}</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<div id="info"></div>
+<script>
+// Finite-field polarizability of He.
+// Add a dipole perturbation V_pert = epsilon * x to the single-electron potential.
+// Run ITP to convergence. Extract induced dipole mu_x = sum_m integral( x * u_m^2 d^3x ).
+// alpha_xx = mu_x / epsilon.
+//
+// Repeat at several epsilon to verify linearity: alpha = lim_{eps->0} mu/eps.
+
+let u = [], K = [], P = [], w = [], norm = [];
+let r=0,E=0,Ek=0,Ep=0,c=[],t=1;
+const N=80, N2=40, h=4/N, dt=0.1*h*h, d=0.1, M=3;
+let eps = 0.02;          // dipole perturbation amplitude (atomic units)
+let mu_x_history = [];   // induced dipole over time
+let E_history = [];
+
+function setup(){
+  createCanvas(420, 280);
+  for(let m=1;m<M;m++){ w[m]=[];u[m]=[];P[m]=[];norm[m]=0;c[m]=1; }
+  for(let m=1;m<M;m++){
+    for(let i=0;i<N+1;i++){ w[m][i]=[];u[m][i]=[];K[i]=[];P[m][i]=[];
+      for(let j=0;j<N+1;j++){ w[m][i][j]=[];u[m][i][j]=[];K[i][j]=[];P[m][i][j]=[];
+        for(let k=0;k<N+1;k++){ w[m][i][j][k]=0;u[m][i][j][k]=0;K[i][j][k]=0;P[m][i][j][k]=0; }
+      }
+    }
+  }
+  for(let i=0;i<N+1;i++) for(let j=0;j<N+1;j++) for(let k=0;k<N+1;k++){
+    r=Math.sqrt(((i-N2)*h)**2+((j-N2)*h)**2+((k-N2)*h)**2 + h*h);
+    u[1][i][j][k]=Math.exp(-2*r); P[1][i][j][k]=0.5/r;
+    u[2][i][j][k]=Math.exp(-2*r); P[2][i][j][k]=0.5/r;
+    // Bare kernel Z=2 plus dipole perturbation eps * x
+    const kbare = (r>h)? 2/r : 2/h;
+    K[i][j][k] = kbare + eps * (i - N2) * h;
+  }
+  for(let i=0;i<N+1;i++) for(let j=0;j<N+1;j++) for(let k=0;k<N+1;k++){
+    if (i<N2-1) w[1][i][j][k]=1;
+    if (i<N2+2) u[2][i][j][k]=0;
+    if (i>N2+1) w[2][i][j][k]=1;
+    if (i>N2-2) u[1][i][j][k]=0;
+    r=Math.sqrt(((i-N2)*h)**2+((j-N2)*h)**2+((k-N2)*h)**2);
+    if (r>2.5){ w[1][i][j][k]=0; w[2][i][j][k]=0; }
+  }
+}
+
+function draw(){
+  background(255);
+  if (t < 8000){
+    t++;
+    let muX = 0;
+    E=0; Ek=0; Ep=0;
+    for(let i=1;i<N;i++) for(let j=1;j<N;j++) for(let k=1;k<N;k++){
+      c[1]=0.1*(u[1][i][j][k]-u[2][i][j][k]);
+      c[2]=0.1*(u[2][i][j][k]-u[1][i][j][k]);
+      for(let m=1;m<M;m++){
+        w[m][i][j][k] += 2*dt*Math.abs(c[m])*(w[m][i+1][j][k]+w[m][i-1][j][k]-6*w[m][i][j][k]+w[m][i][j+1][k]+w[m][i][j-1][k]+w[m][i][j][k+1]+w[m][i][j][k-1])/(h*h)
+                       + 10*dt*c[m]*Math.sqrt(((w[m][i+1][j][k]-w[m][i-1][j][k])/h)**2+((w[m][i][j+1][k]-w[m][i][j-1][k])/h)**2+((w[m][i][j][k+1]-w[m][i][j][k-1])/h)**2);
+        u[m][i][j][k] += 0.5*d*((u[m][i+1][j][k]-u[m][i][j][k])*(w[m][i+1][j][k]+w[m][i][j][k])/2 - (u[m][i][j][k]-u[m][i-1][j][k])*(w[m][i][j][k]+w[m][i-1][j][k])/2)
+                       + 0.5*d*((u[m][i][j+1][k]-u[m][i][j][k])*(w[m][i][j+1][k]+w[m][i][j][k])/2 - (u[m][i][j][k]-u[m][i][j-1][k])*(w[m][i][j][k]+w[m][i][j-1][k])/2)
+                       + 0.5*d*((u[m][i][j][k+1]-u[m][i][j][k])*(w[m][i][j][k+1]+w[m][i][j][k])/2 - (u[m][i][j][k]-u[m][i][j][k-1])*(w[m][i][j][k]+w[m][i][j][k-1])/2)
+                       + dt*(K[i][j][k]-2*P[m][i][j][k])*u[m][i][j][k]*w[m][i][j][k];
+        P[1][i][j][k] += dt*(P[1][i+1][j][k]-6*P[1][i][j][k]+P[1][i-1][j][k]+P[1][i][j+1][k]+P[1][i][j-1][k]+P[1][i][j][k+1]+P[1][i][j][k-1])/(h*h) + 2*Math.PI*dt*u[2][i][j][k]**2;
+        P[2][i][j][k] += dt*(P[2][i+1][j][k]-6*P[2][i][j][k]+P[2][i-1][j][k]+P[2][i][j+1][k]+P[2][i][j-1][k]+P[2][i][j][k+1]+P[2][i][j][k-1])/(h*h) + 2*Math.PI*dt*u[1][i][j][k]**2;
+        Ep += (P[m][i][j][k]-K[i][j][k])*u[m][i][j][k]**2*h*h*h;
+        muX += -((i-N2)*h) * u[m][i][j][k]**2 * h*h*h;  // electron charge -1
+      }
+    }
+    E = Ep + Ek;
+    // Normalise each electron to 1
+    for(let m=1;m<M;m++){
+      norm[m]=0;
+      for(let i=1;i<N;i++) for(let j=1;j<N;j++) for(let k=1;k<N;k++)
+        norm[m] += u[m][i][j][k]**2 * h*h*h;
+      const sc = 1.0/Math.sqrt(Math.max(norm[m], 1e-20));
+      for(let i=1;i<N;i++) for(let j=1;j<N;j++) for(let k=1;k<N;k++)
+        u[m][i][j][k] *= sc;
+    }
+    // Compute dipole moment after normalisation
+    let mu = 0;
+    for(let m=1;m<M;m++)
+      for(let i=1;i<N;i++) for(let j=1;j<N;j++) for(let k=1;k<N;k++)
+        mu += -((i-N2)*h) * u[m][i][j][k]**2 * h*h*h;
+    if (t % 50 === 0){ mu_x_history.push(mu); E_history.push(E); }
+    document.getElementById("info").innerHTML =
+      `step ${t} &nbsp; ε = ${eps} &nbsp; E = ${E.toFixed(4)} Ha &nbsp; ` +
+      `μ_x = ${mu.toFixed(4)} a.u. &nbsp; ` +
+      `<b>α_xx (running) ≈ ${(mu/eps).toFixed(2)} a.u.</b> ` +
+      `&nbsp; (He experimental α = 1.38)`;
+  }
+  noStroke();
+  fill(0); textSize(11);
+  text(`He polarizability via finite-field RealQM (eps=${eps}, 80³, 4 a.u. screen)`, 5, 14);
+  // Plot mu vs t
+  if (mu_x_history.length > 1){
+    fill(255); rect(40, 50, 360, 200);
+    stroke(180); strokeWeight(1);
+    line(40, 250, 400, 250); line(40, 50, 40, 250);
+    const muMin = Math.min(...mu_x_history);
+    const muMax = Math.max(...mu_x_history);
+    const range = muMax - muMin || 1e-6;
+    stroke(0,100,200); strokeWeight(1.5);
+    for(let i=1; i<mu_x_history.length; i++){
+      const x1 = 40 + 360 * (i-1)/(mu_x_history.length-1);
+      const y1 = 250 - 200*(mu_x_history[i-1]-muMin)/range;
+      const x2 = 40 + 360 * i/(mu_x_history.length-1);
+      const y2 = 250 - 200*(mu_x_history[i]-muMin)/range;
+      line(x1, y1, x2, y2);
+    }
+    noStroke(); fill(0,100,200);
+    text(`μ_x (a.u.): ${muMin.toFixed(4)} – ${muMax.toFixed(4)}`, 60, 70);
+  }
+}
+</script>
+</body></html>
