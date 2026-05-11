@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>Reduced-form docking (Level 5/6): receptor + ligand from surface records</title>
+  <style>
+    body { margin: 0; background: #0a0a0a; color: #ddd; font-family: monospace; padding: 8px; }
+    h3 { color: #4fc3f7; margin: 4px 0; }
+    .panel { display: inline-block; vertical-align: top; padding: 8px;
+             background: rgba(0,0,0,0.7); border: 1px solid #555; margin: 4px;
+             font-size: 11px; max-width: 380px; }
+    button { font-family: monospace; padding: 4px 12px;
+             background: #111; color: #fff; border: 1px solid #555; }
+    canvas { background: #050510; border: 1px solid #555; display: block; margin-top: 8px; }
+    .num { color: #ffe082; font-weight: bold; }
+    .ok { color: #66bb6a; }
+    .warn { color: #ffca28; }
+  </style>
+</head><body>
+
+<h3>Reduced-form Level-5 docking: receptor + ligand</h3>
+
+<div class="panel">
+Each species is a <b>Level-5 reduced record</b>: a set of surface points carrying a
+position, a charge, and a hydrophobicity value (instead of the full electronic
+structure). The two records interact via:
+<ul style="margin:6px 0 0 18px">
+  <li><b>Coulomb</b> between point charges: F ∝ q_A q_B / r²</li>
+  <li><b>Steric</b> repulsion: r^−12 when surface points overlap</li>
+  <li><b>Hydrophobic</b> attraction: r^−6 between hydrophobic pairs (only attractive)</li>
+</ul>
+The ligand is propagated under Brownian dynamics:
+<code>dR/dt = F/γ + √(2k_B T/γ) η</code> with rotational analog.
+The receptor is fixed at the origin.
+</div>
+
+<div class="panel">
+  <button id="startBtn">Start</button>
+  <button id="pauseBtn">Pause</button>
+  <button id="resetBtn">Reset</button>
+  <button id="rerollBtn">Reset + new pose</button>
+  <br><br>
+  <label>k_B T (kJ/mol): <input id="kTIn" type="number" min="0.1" max="20" step="0.1" value="2.5" style="width:60px"></label>
+  <label>damping γ: <input id="gammaIn" type="number" min="0.1" max="100" step="0.5" value="10" style="width:60px"></label>
+  <br><br>
+  <span id="status" style="color:#aaa">click Start</span>
+</div>
+
+<div class="panel">
+  <h4 style="color:#80cbc4;margin:0 0 6px 0">Live diagnostics</h4>
+  <span>step <span id="stepVal" class="num">0</span></span><br>
+  <span>COM distance: <span id="comDistVal" class="num">—</span> Å</span><br>
+  <span>min point–point: <span id="minDistVal" class="num">—</span> Å</span><br>
+  <span>contacts (&lt; 5 Å): <span id="contactsVal" class="num">—</span></span><br>
+  <span>energy: <span id="energyVal" class="num">—</span> a.u.</span><br>
+  <span>Coulomb: <span id="ecoulVal" class="num">—</span></span><br>
+  <span>hydrophobic: <span id="ehydroVal" class="num">—</span></span><br>
+  <span>steric: <span id="estericVal" class="num">—</span></span><br>
+  <br>
+  <span>verdict: <span id="verdict" class="num">—</span></span>
+</div>
+
+<canvas id="cvs" width="700" height="500"></canvas>
+<canvas id="cvs2" width="400" height="200" style="display:inline-block;margin-top:0"></canvas>
+
+<script>
+// ===== Level-5 records =====
+// Receptor: ~spherical with a hemispherical "binding pocket" on +z face.
+//   Pocket edge has positive charge (ring), pocket floor has negative charge,
+//   pocket interior is hydrophobic. Outside the pocket: neutral/polar.
+// Ligand: small "drug" with complementary +/- pattern.
+
+function buildReceptor() {
+  const N = 240;
+  const R_outer = 8.0;       // Å
+  const R_pocket_open = 4.0;
+  const points = [];
+  // Distribute points on sphere using golden spiral
+  const phi = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < N; i++) {
+    const y = 1 - (i / (N - 1)) * 2;
+    const r = Math.sqrt(1 - y * y);
+    const theta = phi * i;
+    const x = Math.cos(theta) * r;
+    const z = Math.sin(theta) * r;
+    const px = R_outer * x;
+    const py = R_outer * y;
+    const pz = R_outer * z;
+    // Carve a hemispherical pocket on +z face
+    const dz = pz - R_outer + 2.0;
+    const r_xy = Math.sqrt(px*px + py*py);
+    let q = 0, hydro = 0, pocket = false;
+    if (pz > 4 && r_xy < R_pocket_open) {
+      // Pocket interior: hydrophobic, deeper points negative charge
+      pocket = true;
+      // Move point inward to create a notch
+      const t = (pz - 4) / 4;        // 0 at edge → 1 deepest
+      const inset = 4.0 * t;          // pull inward
+      const pz2 = pz - inset;
+      // hydrophobicity in interior, charge gradient
+      const final_pz = pz2;
+      hydro = 1.0 * t;
+      q = -0.4 * t;                  // negative at pocket floor
+      points.push({ x: px, y: py, z: final_pz, q, hydro });
+    } else {
+      // Outer surface
+      // Positive charges around the pocket rim (z ~ 4, r_xy ~ 4)
+      if (pz > 2 && r_xy > 3.5 && r_xy < 5.5) {
+        q = 0.3;                      // ring of positive
+      }
+      points.push({ x: px, y: py, z: pz, q, hydro: 0 });
+    }
+  }
+  return points;
+}
+
+function buildLigand() {
+  // Small molecule: ~25 Å³, designed complementary to receptor pocket
+  // Concentrate negative charge at one end (matching the pocket's +ring), positive at the other end (matching the pocket's -floor), hydrophobic core
+  const points = [];
+  const R = 2.5; // Å
+  const N = 36;
+  const phi = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < N; i++) {
+    const y = 1 - (i / (N - 1)) * 2;
+    const r = Math.sqrt(1 - y * y);
+    const theta = phi * i;
+    const x = Math.cos(theta) * r;
+    const z = Math.sin(theta) * r;
+    const py = R * y;
+    const px = R * x;
+    const pz = R * z;
+    let q = 0, hydro = 0.7;
+    if (py > 1.5) q = -0.3;          // top: negative (binds the +ring of receptor)
+    if (py < -1.5) q = 0.3;          // bottom: positive (binds the -floor)
+    points.push({ x: px, y: py, z: pz, q, hydro });
+  }
+  return points;
+}
+
+// Force model
+const COUL  = 50.0;     // Coulomb prefactor (rescaled for visualization)
+const STERIC = 200.0;   // steric repulsion prefactor (r^-12)
+const HYDRO = 30.0;     // hydrophobic attraction prefactor (r^-6)
+const RVDW  = 1.5;      // hard-core radius (Å)
+
+function rotateBy(v, axis, angle) {
+  // Rodrigues rotation of v around axis by angle
+  const c = Math.cos(angle), s = Math.sin(angle);
+  const k = axis;
+  const kx = k[0], ky = k[1], kz = k[2];
+  const dot = v[0]*kx + v[1]*ky + v[2]*kz;
+  return [
+    v[0]*c + (ky*v[2] - kz*v[1])*s + kx*dot*(1-c),
+    v[1]*c + (kz*v[0] - kx*v[2])*s + ky*dot*(1-c),
+    v[2]*c + (kx*v[1] - ky*v[0])*s + kz*dot*(1-c),
+  ];
+}
+
+function computeForces(rec, lig, comL, R_mat) {
+  // R_mat is 3x3 rotation matrix for ligand
+  let Fx = 0, Fy = 0, Fz = 0;
+  let Tx = 0, Ty = 0, Tz = 0;
+  let Ec = 0, Eh = 0, Es = 0;
+  let minDist = Infinity;
+  let contacts = 0;
+  for (let i = 0; i < lig.length; i++) {
+    // Apply rotation, then translation
+    const p = lig[i];
+    const rx = R_mat[0]*p.x + R_mat[1]*p.y + R_mat[2]*p.z;
+    const ry = R_mat[3]*p.x + R_mat[4]*p.y + R_mat[5]*p.z;
+    const rz = R_mat[6]*p.x + R_mat[7]*p.y + R_mat[8]*p.z;
+    const px = comL[0] + rx, py = comL[1] + ry, pz = comL[2] + rz;
+    for (let j = 0; j < rec.length; j++) {
+      const r = rec[j];
+      const dx = px - r.x, dy = py - r.y, dz = pz - r.z;
+      const d2 = dx*dx + dy*dy + dz*dz;
+      const d = Math.sqrt(d2);
+      if (d < minDist) minDist = d;
+      if (d < 5.0) contacts++;
+      // Coulomb F = q1 q2 / r^2 * r_hat
+      const fcoul = COUL * p.q * r.q / (d2 + 0.1);
+      // Steric  F = STERIC * r^-13 * r_hat  (repulsive)
+      let fster = 0;
+      if (d < RVDW * 4) {
+        fster = -STERIC / Math.pow(d, 13);    // negative = repulsion (push apart)
+      }
+      // Hydrophobic attraction
+      const fhydro = HYDRO * p.hydro * r.hydro / Math.pow(d, 7);
+      const fmag = (fcoul - fster + fhydro);
+      const fx = fmag * dx / d;
+      const fy = fmag * dy / d;
+      const fz = fmag * dz / d;
+      Fx += fx; Fy += fy; Fz += fz;
+      // Torque = r_ligand × F  (about ligand COM)
+      Tx += ry * fz - rz * fy;
+      Ty += rz * fx - rx * fz;
+      Tz += rx * fy - ry * fx;
+      Ec += COUL * p.q * r.q / Math.sqrt(d2 + 0.1);
+      Eh += -HYDRO * p.hydro * r.hydro / (6 * Math.pow(d, 6));
+      Es += d < RVDW * 4 ? STERIC / (12 * Math.pow(d, 12)) : 0;
+    }
+  }
+  return { Fx, Fy, Fz, Tx, Ty, Tz, Ec, Eh, Es, minDist, contacts };
+}
+
+// ===== Simulation state =====
+let receptor, ligand;
+let comL, vL;        // ligand COM position, velocity
+let R_mat;           // 3x3 rotation matrix (column-major)
+let step = 0, running = false;
+let history_dist = [], history_E = [];
+
+function identity_R() { return [1,0,0, 0,1,0, 0,0,1]; }
+function multiply_R(A, B) {
+  const C = new Array(9);
+  for (let i = 0; i < 3; i++)
+    for (let j = 0; j < 3; j++) {
+      let s = 0;
+      for (let k = 0; k < 3; k++) s += A[i*3+k] * B[k*3+j];
+      C[i*3+j] = s;
+    }
+  return C;
+}
+function rotate_axis_angle(axis, angle) {
+  const c = Math.cos(angle), s = Math.sin(angle), C = 1 - c;
+  const ax = axis[0], ay = axis[1], az = axis[2];
+  return [
+    c + ax*ax*C,    ax*ay*C - az*s, ax*az*C + ay*s,
+    ay*ax*C + az*s, c + ay*ay*C,    ay*az*C - ax*s,
+    az*ax*C - ay*s, az*ay*C + ax*s, c + az*az*C,
+  ];
+}
+
+function init(reroll) {
+  receptor = buildReceptor();
+  ligand = buildLigand();
+  // Place ligand at random direction at ~ 20 Å from origin
+  const phi = Math.random() * 2 * Math.PI;
+  const ct = Math.random() * 2 - 1;
+  const st = Math.sqrt(1 - ct*ct);
+  const r0 = reroll ? 18 : 18;
+  comL = [r0 * st * Math.cos(phi), r0 * ct, r0 * st * Math.sin(phi)];
+  // Random orientation
+  R_mat = identity_R();
+  for (let k = 0; k < 3; k++) {
+    const ang = Math.random() * Math.PI;
+    const ax = [Math.random()-0.5, Math.random()-0.5, Math.random()-0.5];
+    const n = Math.sqrt(ax[0]**2 + ax[1]**2 + ax[2]**2);
+    R_mat = multiply_R(rotate_axis_angle([ax[0]/n, ax[1]/n, ax[2]/n], ang), R_mat);
+  }
+  step = 0;
+  history_dist = [];
+  history_E = [];
+}
+
+function bdStep(kT, gamma, dt) {
+  const f = computeForces(receptor, ligand, comL, R_mat);
+  // Translation:  R_n+1 = R_n + dt * F/gamma + sqrt(2 kT dt / gamma) eta
+  const sigmaT = Math.sqrt(2 * kT * dt / gamma);
+  function gauss() {
+    let u = 0, v = 0;
+    while (u === 0) u = Math.random();
+    while (v === 0) v = Math.random();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+  comL[0] += dt * f.Fx / gamma + sigmaT * gauss();
+  comL[1] += dt * f.Fy / gamma + sigmaT * gauss();
+  comL[2] += dt * f.Fz / gamma + sigmaT * gauss();
+  // Rotation by torque
+  const sigmaR = Math.sqrt(2 * kT * dt / (gamma * 5));
+  const omega = [
+    dt * f.Tx / (gamma * 5) + sigmaR * gauss(),
+    dt * f.Ty / (gamma * 5) + sigmaR * gauss(),
+    dt * f.Tz / (gamma * 5) + sigmaR * gauss(),
+  ];
+  const w = Math.sqrt(omega[0]**2 + omega[1]**2 + omega[2]**2);
+  if (w > 1e-8) {
+    const ax = [omega[0]/w, omega[1]/w, omega[2]/w];
+    R_mat = multiply_R(rotate_axis_angle(ax, w), R_mat);
+  }
+  step++;
+  return f;
+}
+
+// ===== Rendering =====
+function render(diag) {
+  const cv = document.getElementById('cvs');
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#050510'; ctx.fillRect(0, 0, cv.width, cv.height);
+  // Camera: orthographic project x,z to screen, y as depth
+  const cx = cv.width/2, cy = cv.height/2;
+  const sc = 12;  // pixels per Å
+  function proj(x, y, z) {
+    // Simple isometric: rotate around y by 30°, then around x by -20°
+    const ca = Math.cos(Math.PI/6), sa = Math.sin(Math.PI/6);
+    const cb = Math.cos(-Math.PI/9), sb = Math.sin(-Math.PI/9);
+    let X = x*ca - z*sa;
+    let Z = x*sa + z*ca;
+    let Y = y*cb - Z*sb;
+    Z = y*sb + Z*cb;
+    return { X: cx + sc * X, Y: cy - sc * Y, Z };
+  }
+  // Sort all points by depth
+  const all = [];
+  for (const r of receptor) {
+    const p = proj(r.x, r.y, r.z);
+    all.push({ ...p, q: r.q, hydro: r.hydro, kind: 'rec' });
+  }
+  for (const p of ligand) {
+    const rx = R_mat[0]*p.x + R_mat[1]*p.y + R_mat[2]*p.z;
+    const ry = R_mat[3]*p.x + R_mat[4]*p.y + R_mat[5]*p.z;
+    const rz = R_mat[6]*p.x + R_mat[7]*p.y + R_mat[8]*p.z;
+    const pp = proj(comL[0]+rx, comL[1]+ry, comL[2]+rz);
+    all.push({ ...pp, q: p.q, hydro: p.hydro, kind: 'lig' });
+  }
+  all.sort((a, b) => a.Z - b.Z);
+  for (const p of all) {
+    let r = 100, g = 100, b = 100;
+    if (p.q > 0.1) { r = 80; g = 80; b = 255; }
+    else if (p.q < -0.1) { r = 255; g = 80; b = 80; }
+    else if (p.hydro > 0.3) { r = 255; g = 200; b = 80; }
+    const alpha = 0.7;
+    ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+    const size = p.kind === 'rec' ? 5 : 7;
+    ctx.beginPath(); ctx.arc(p.X, p.Y, size, 0, 2*Math.PI); ctx.fill();
+  }
+  // Crosshair on receptor center
+  ctx.strokeStyle = '#444';
+  const orig = proj(0,0,0);
+  ctx.beginPath(); ctx.arc(orig.X, orig.Y, 4, 0, 2*Math.PI); ctx.stroke();
+
+  // Legend
+  ctx.fillStyle = '#aaa'; ctx.font = '12px monospace';
+  ctx.fillText('blue: + charge', 10, 20);
+  ctx.fillText('red:  − charge', 10, 36);
+  ctx.fillText('yellow: hydrophobic', 10, 52);
+  ctx.fillText('gray: neutral', 10, 68);
+
+  // History plot
+  const cv2 = document.getElementById('cvs2');
+  const c2 = cv2.getContext('2d');
+  c2.fillStyle = '#050510'; c2.fillRect(0, 0, cv2.width, cv2.height);
+  c2.strokeStyle = '#444';
+  c2.beginPath(); c2.moveTo(40, cv2.height-20); c2.lineTo(cv2.width-10, cv2.height-20); c2.stroke();
+  c2.beginPath(); c2.moveTo(40, 10); c2.lineTo(40, cv2.height-20); c2.stroke();
+  c2.fillStyle = '#aaa'; c2.font='10px monospace';
+  c2.fillText('COM distance (Å)', 8, 14);
+  if (history_dist.length > 1) {
+    const maxD = Math.max(...history_dist);
+    const minD = Math.min(...history_dist);
+    const range = (maxD - minD) || 1;
+    c2.strokeStyle = '#42a5f5';
+    c2.beginPath();
+    for (let i = 0; i < history_dist.length; i++) {
+      const x = 40 + (cv2.width - 50) * i / (history_dist.length-1);
+      const y = cv2.height - 20 - (cv2.height - 30) * (history_dist[i] - minD) / range;
+      if (i === 0) c2.moveTo(x, y); else c2.lineTo(x, y);
+    }
+    c2.stroke();
+    c2.fillStyle = '#888';
+    c2.fillText(maxD.toFixed(1), 4, 22);
+    c2.fillText(minD.toFixed(1), 4, cv2.height-22);
+  }
+}
+
+function loop() {
+  if (!running) return;
+  const kT = parseFloat(document.getElementById('kTIn').value);
+  const gamma = parseFloat(document.getElementById('gammaIn').value);
+  const dt = 0.01;
+  let f;
+  for (let k = 0; k < 100; k++) f = bdStep(kT, gamma, dt);
+  const com_dist = Math.sqrt(comL[0]**2 + comL[1]**2 + comL[2]**2);
+  history_dist.push(com_dist);
+  if (history_dist.length > 1000) history_dist.shift();
+  const Etot = f.Ec + f.Eh + f.Es;
+  document.getElementById('stepVal').textContent = step;
+  document.getElementById('comDistVal').textContent = com_dist.toFixed(2);
+  document.getElementById('minDistVal').textContent = f.minDist.toFixed(2);
+  document.getElementById('contactsVal').textContent = f.contacts;
+  document.getElementById('energyVal').textContent = Etot.toFixed(2);
+  document.getElementById('ecoulVal').textContent = f.Ec.toFixed(2);
+  document.getElementById('ehydroVal').textContent = f.Eh.toFixed(2);
+  document.getElementById('estericVal').textContent = f.Es.toFixed(2);
+
+  // Verdict
+  let v;
+  if (com_dist < 11 && f.contacts > 5 && Etot < -2) {
+    v = 'BOUND (in pocket)';
+    document.getElementById('verdict').className = 'num ok';
+  } else if (com_dist < 14) {
+    v = 'approaching';
+    document.getElementById('verdict').className = 'num warn';
+  } else {
+    v = 'unbound';
+    document.getElementById('verdict').className = 'num';
+  }
+  document.getElementById('verdict').textContent = v;
+  render(f);
+  requestAnimationFrame(loop);
+}
+
+document.getElementById('startBtn').onclick = () => {
+  if (!running) { running = true; if (step === 0) init(false); loop(); }
+};
+document.getElementById('pauseBtn').onclick = () => { running = false; };
+document.getElementById('resetBtn').onclick = () => { running = false; init(false); render({minDist:0,contacts:0,Ec:0,Eh:0,Es:0}); };
+document.getElementById('rerollBtn').onclick = () => { running = false; init(true); render({minDist:0,contacts:0,Ec:0,Eh:0,Es:0}); };
+
+init(false);
+render({minDist:0,contacts:0,Ec:0,Eh:0,Es:0});
+</script>
+</body></html>
