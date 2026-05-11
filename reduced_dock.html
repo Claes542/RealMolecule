@@ -38,6 +38,7 @@ The receptor is fixed at the origin.
   <button id="pauseBtn">Pause</button>
   <button id="resetBtn">Reset</button>
   <button id="rerollBtn">Reset + new pose</button>
+  <button id="multiBtn">Run 50 trials</button>
   <br><br>
   <label>k_B T (kJ/mol): <input id="kTIn" type="number" min="0.1" max="20" step="0.1" value="0.3" style="width:60px"></label>
   <label>damping γ: <input id="gammaIn" type="number" min="0.1" max="100" step="0.5" value="30" style="width:60px"></label>
@@ -61,6 +62,7 @@ The receptor is fixed at the origin.
 
 <canvas id="cvs" width="700" height="500"></canvas>
 <canvas id="cvs2" width="400" height="200" style="display:inline-block;margin-top:0"></canvas>
+<canvas id="cvsTrials" width="900" height="220" style="display:block;margin-top:8px"></canvas>
 
 <script>
 // ===== Level-5 records =====
@@ -401,12 +403,133 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
+// ===== Multi-trial mode =====
+let multiMode = false;
+let trialIdx = 0;
+let trialStepCount = 0;
+const N_TRIALS = 50;
+const STEPS_PER_TRIAL = 30000;
+const trialResults = [];
+
+function startMultiTrials() {
+  multiMode = true;
+  trialIdx = 0;
+  trialStepCount = 0;
+  trialResults.length = 0;
+  init(true);
+  running = true;
+  loopMulti();
+}
+
+function loopMulti() {
+  if (!multiMode) return;
+  const kT = parseFloat(document.getElementById('kTIn').value);
+  const gamma = parseFloat(document.getElementById('gammaIn').value);
+  const dt = 0.01;
+  // Run a batch of BD steps
+  let f;
+  const batchSize = 600;
+  for (let k = 0; k < batchSize; k++) {
+    f = bdStep(kT, gamma, dt);
+    trialStepCount++;
+    if (trialStepCount >= STEPS_PER_TRIAL) break;
+  }
+  // Status display
+  const com_dist = Math.sqrt(comL[0]**2 + comL[1]**2 + comL[2]**2);
+  document.getElementById('status').textContent =
+    `Trial ${trialIdx+1}/${N_TRIALS} · step ${trialStepCount}/${STEPS_PER_TRIAL} · COM ${com_dist.toFixed(1)} Å`;
+  document.getElementById('comDistVal').textContent = com_dist.toFixed(2);
+  document.getElementById('contactsVal').textContent = f.contacts;
+  document.getElementById('energyVal').textContent = (f.Ec + f.Eh + f.Es).toFixed(2);
+  render(f);
+
+  if (trialStepCount >= STEPS_PER_TRIAL) {
+    // Record result and move to next trial
+    trialResults.push({
+      com_x: comL[0], com_y: comL[1], com_z: comL[2],
+      com_dist: com_dist,
+      contacts: f.contacts,
+      energy: f.Ec + f.Eh + f.Es,
+      bound: com_dist < 11 && f.contacts > 5 && (f.Ec + f.Eh + f.Es) < -2,
+    });
+    drawTrials();
+    trialIdx++;
+    if (trialIdx >= N_TRIALS) {
+      multiMode = false;
+      running = false;
+      drawTrials();   // final
+      const nBound = trialResults.filter(r => r.bound).length;
+      document.getElementById('status').textContent =
+        `Done. ${nBound}/${N_TRIALS} trials bound (${(100*nBound/N_TRIALS).toFixed(0)}%).`;
+      return;
+    }
+    trialStepCount = 0;
+    init(true);
+  }
+  requestAnimationFrame(loopMulti);
+}
+
+function drawTrials() {
+  const cv = document.getElementById('cvsTrials');
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#050510'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.fillStyle = '#aaa'; ctx.font = '11px monospace';
+  ctx.fillText('Trial endpoints (final COM distance, color = bound vs unbound)', 8, 14);
+  if (trialResults.length === 0) return;
+
+  // Histogram of final COM distance
+  const bins = 20;
+  const maxD = 20;
+  const counts = new Array(bins).fill(0);
+  const counts_bound = new Array(bins).fill(0);
+  for (const r of trialResults) {
+    const b = Math.min(bins - 1, Math.floor(r.com_dist / maxD * bins));
+    counts[b]++;
+    if (r.bound) counts_bound[b]++;
+  }
+  const maxC = Math.max(...counts, 1);
+  const padL = 40, padR = 20, padT = 30, padB = 30;
+  const plotW = cv.width - padL - padR, plotH = cv.height - padT - padB;
+  for (let b = 0; b < bins; b++) {
+    const x = padL + b * plotW / bins;
+    const w = plotW / bins - 2;
+    const h = counts[b] / maxC * plotH;
+    const hb = counts_bound[b] / maxC * plotH;
+    // Total bar (gray)
+    ctx.fillStyle = '#555';
+    ctx.fillRect(x, padT + plotH - h, w, h);
+    // Bound subset (green)
+    ctx.fillStyle = '#66bb6a';
+    ctx.fillRect(x, padT + plotH - hb, w, hb);
+  }
+  // Axis labels
+  ctx.fillStyle = '#888';
+  for (let R = 0; R <= maxD; R += 5) {
+    const x = padL + R / maxD * plotW;
+    ctx.fillText(R.toString(), x - 4, padT + plotH + 14);
+  }
+  ctx.fillText('COM distance (Å)', padL + plotW - 80, padT + plotH + 26);
+  ctx.fillText('count', 4, padT + 4);
+  ctx.fillText(maxC.toString(), 4, padT + 14);
+  // Legend
+  ctx.fillStyle = '#66bb6a'; ctx.fillRect(padL + plotW - 100, 16, 12, 10);
+  ctx.fillStyle = '#aaa'; ctx.fillText('bound', padL + plotW - 84, 25);
+  ctx.fillStyle = '#555'; ctx.fillRect(padL + plotW - 40, 16, 12, 10);
+  ctx.fillStyle = '#aaa'; ctx.fillText('all', padL + plotW - 24, 25);
+
+  // Summary
+  const nBound = trialResults.filter(r => r.bound).length;
+  ctx.fillStyle = '#ffe082'; ctx.font = '12px monospace';
+  ctx.fillText(`${trialResults.length} trials, ${nBound} bound (${(100*nBound/trialResults.length).toFixed(0)}%)`, padL, padT + 18);
+}
+
 document.getElementById('startBtn').onclick = () => {
-  if (!running) { running = true; if (step === 0) init(false); loop(); }
+  if (!running) { multiMode = false; running = true; if (step === 0) init(false); loop(); }
 };
-document.getElementById('pauseBtn').onclick = () => { running = false; };
-document.getElementById('resetBtn').onclick = () => { running = false; init(false); render({minDist:0,contacts:0,Ec:0,Eh:0,Es:0}); };
-document.getElementById('rerollBtn').onclick = () => { running = false; init(true); render({minDist:0,contacts:0,Ec:0,Eh:0,Es:0}); };
+document.getElementById('pauseBtn').onclick = () => { running = false; multiMode = false; };
+document.getElementById('resetBtn').onclick = () => { running = false; multiMode = false; init(false); render({minDist:0,contacts:0,Ec:0,Eh:0,Es:0}); };
+document.getElementById('rerollBtn').onclick = () => { running = false; multiMode = false; init(true); render({minDist:0,contacts:0,Ec:0,Eh:0,Es:0}); };
+document.getElementById('multiBtn').onclick = () => { startMultiTrials(); };
 
 init(false);
 render({minDist:0,contacts:0,Ec:0,Eh:0,Es:0});
