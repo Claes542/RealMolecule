@@ -39,7 +39,7 @@ The receptor is fixed at the origin.
   <button id="resetBtn">Reset</button>
   <button id="rerollBtn">Reset + new pose</button>
   <br><br>
-  <label>k_B T (kJ/mol): <input id="kTIn" type="number" min="0.1" max="20" step="0.1" value="2.5" style="width:60px"></label>
+  <label>k_B T (kJ/mol): <input id="kTIn" type="number" min="0.1" max="20" step="0.1" value="0.8" style="width:60px"></label>
   <label>damping γ: <input id="gammaIn" type="number" min="0.1" max="100" step="0.5" value="10" style="width:60px"></label>
   <br><br>
   <span id="status" style="color:#aaa">click Start</span>
@@ -72,7 +72,7 @@ The receptor is fixed at the origin.
 function buildReceptor() {
   const N = 240;
   const R_outer = 8.0;       // Å
-  const R_pocket_open = 4.0;
+  const R_pocket_open = 5.5;
   const points = [];
   // Distribute points on sphere using golden spiral
   const phi = Math.PI * (3 - Math.sqrt(5));
@@ -99,13 +99,17 @@ function buildReceptor() {
       // hydrophobicity in interior, charge gradient
       const final_pz = pz2;
       hydro = 1.0 * t;
-      q = -0.4 * t;                  // negative at pocket floor
+      q = -0.8 * t;                  // strong negative at pocket floor
       points.push({ x: px, y: py, z: final_pz, q, hydro });
     } else {
       // Outer surface
       // Positive charges around the pocket rim (z ~ 4, r_xy ~ 4)
-      if (pz > 2 && r_xy > 3.5 && r_xy < 5.5) {
-        q = 0.3;                      // ring of positive
+      if (pz > 2 && r_xy > 3.5 && r_xy < 6.5) {
+        q = 0.6;                      // strong ring of positive
+      }
+      // Light repulsion from back face (negative pz) to discourage wrong-side binding
+      if (pz < -3) {
+        q = 0.05;                     // tiny repulsion from + ends of ligand
       }
       points.push({ x: px, y: py, z: pz, q, hydro: 0 });
     }
@@ -237,9 +241,9 @@ function init(reroll) {
   // Place ligand at random direction at ~ 14 Å from origin, biased toward +z (pocket face)
   const phi = Math.random() * 2 * Math.PI;
   // ct = cos(theta); bias to +z hemisphere so we sample the pocket-facing space
-  const ct = 0.3 + Math.random() * 0.7;     // in [0.3, 1.0]
+  const ct = 0.7 + Math.random() * 0.3;     // in [0.7, 1.0] — strongly +z
   const st = Math.sqrt(1 - ct*ct);
-  const r0 = 14;
+  const r0 = 12;
   comL = [r0 * st * Math.cos(phi), r0 * st * Math.sin(phi), r0 * ct];
   // Random orientation
   R_mat = identity_R();
