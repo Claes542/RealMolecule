@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>Chignolin reduced docking: Level-5 record from RealQM extraction</title>
+  <style>
+    body { margin: 0; background: #0a0a0a; color: #ddd; font-family: monospace; padding: 8px; }
+    h3 { color: #4fc3f7; margin: 4px 0; }
+    .panel { display: inline-block; vertical-align: top; padding: 8px;
+             background: rgba(0,0,0,0.7); border: 1px solid #555; margin: 4px;
+             font-size: 11px; max-width: 380px; }
+    button { font-family: monospace; padding: 4px 12px;
+             background: #111; color: #fff; border: 1px solid #555; }
+    canvas { background: #050510; border: 1px solid #555; }
+    .num { color: #ffe082; font-weight: bold; }
+    .ok { color: #66bb6a; }
+    .warn { color: #ffca28; }
+  </style>
+</head><body>
+
+<h3>Chignolin reduced docking — Level-5 record from RealQM extraction</h3>
+
+<div class="panel">
+The receptor is <b>chignolin</b> (10-residue β-hairpin, GYDPETGTWG), represented by
+its Level-5 reduced record: per-residue Cα coordinates, Kyte–Doolittle hydrophobicity,
+and sidechain charges, all extractable by <code>chignolin_reduce.html</code> from a
+converged Level-3 RealQM run. Each residue becomes a small surface sphere; the protein
+is a cluster of 10 such spheres in a folded β-hairpin geometry. A small ligand is
+docked against this real protein record under Brownian dynamics.
+</div>
+
+<div class="panel">
+  <button id="startBtn">Start</button>
+  <button id="pauseBtn">Pause</button>
+  <button id="resetBtn">Reset + new pose</button>
+  <br><br>
+  <label>k_B T: <input id="kTIn" type="number" min="0.1" max="5" step="0.1" value="0.5" style="width:60px"></label>
+  <label>γ: <input id="gammaIn" type="number" min="0.1" max="100" step="0.5" value="20" style="width:60px"></label>
+  <br><br>
+  <span id="status" style="color:#aaa">click Start</span>
+</div>
+
+<div class="panel">
+  <h4 style="color:#80cbc4;margin:0 0 6px 0">Live diagnostics</h4>
+  <span>step <span id="stepVal" class="num">0</span></span><br>
+  <span>COM dist: <span id="comDistVal" class="num">—</span> Å</span><br>
+  <span>contacts (&lt; 5 Å): <span id="contactsVal" class="num">—</span></span><br>
+  <span>energy: <span id="energyVal" class="num">—</span></span><br>
+  <span>nearest residue: <span id="nearestRes" class="num">—</span></span><br>
+  <br>
+  <span>verdict: <span id="verdict" class="num">—</span></span>
+</div>
+
+<canvas id="cvs" width="800" height="500"></canvas>
+
+<script>
+// ----------------------------------------------------------------------
+// Chignolin reduced record (hardcoded; same format as chignolin_reduce.html output)
+// Coordinates approximate the folded β-hairpin (PDB 1UAO geometry, simplified)
+// Hydrophobicity: Kyte-Doolittle scale (positive = hydrophobic)
+// ----------------------------------------------------------------------
+const chignolinRecord = {
+  sequence: "GYDPETGTWG",
+  residues: [
+    { aa: "G", ca: [-5.0,  2.0, 0.0], hydro: -0.4, charge:  0 },  // 0
+    { aa: "Y", ca: [-3.0,  4.0, 0.5], hydro: -1.3, charge:  0 },  // 1 — aromatic, hydrophobic core
+    { aa: "D", ca: [ 0.0,  4.5, 0.0], hydro: -3.5, charge: -1 },  // 2
+    { aa: "P", ca: [ 2.5,  6.0, 1.0], hydro: -1.6, charge:  0 },  // 3 — β-turn
+    { aa: "E", ca: [ 3.5,  4.0, 2.0], hydro: -3.5, charge: -1 },  // 4 — β-turn
+    { aa: "T", ca: [ 2.5,  1.5, 1.5], hydro: -0.7, charge:  0 },  // 5
+    { aa: "G", ca: [ 0.0,  0.0, 1.0], hydro: -0.4, charge:  0 },  // 6
+    { aa: "T", ca: [-2.5, -1.0, 0.5], hydro: -0.7, charge:  0 },  // 7
+    { aa: "W", ca: [-4.5, -3.0, 1.0], hydro: -0.9, charge:  0 },  // 8 — aromatic, hydrophobic core
+    { aa: "G", ca: [-3.5, -5.5, 0.5], hydro: -0.4, charge:  0 },  // 9
+  ],
+};
+
+// Convert reduced record into surface points (sphere per residue)
+function buildReceptorFromRecord(rec) {
+  const points = [];
+  const R_res = 3.0;       // Å — residue sphere radius
+  const N_per_res = 24;    // surface points per residue
+  const phi = Math.PI * (3 - Math.sqrt(5));
+  for (let r = 0; r < rec.residues.length; r++) {
+    const res = rec.residues[r];
+    const cx = res.ca[0], cy = res.ca[1], cz = res.ca[2];
+    // Total residue charge spread evenly across surface points
+    const q_per = res.charge / N_per_res;
+    // Map K-D hydrophobicity (-4.5 to +4.5) to [0, 1] using sigmoid; tyrosine and tryptophan get aromatic boost
+    let h = 0;
+    if (res.aa === "Y" || res.aa === "W" || res.aa === "F") h = 0.8;   // aromatic = strongly hydrophobic for binding
+    else if (res.hydro > 0) h = 0.4;
+    else h = 0.1;
+    for (let i = 0; i < N_per_res; i++) {
+      const y = 1 - (i / (N_per_res - 1)) * 2;
+      const r_xy = Math.sqrt(1 - y*y);
+      const theta = phi * i;
+      const px = cx + R_res * Math.cos(theta) * r_xy;
+      const py = cy + R_res * y;
+      const pz = cz + R_res * Math.sin(theta) * r_xy;
+      points.push({ x: px, y: py, z: pz, q: q_per, hydro: h, residue: r });
+    }
+  }
+  return points;
+}
+
+function buildLigand() {
+  // Small hydrophobic ligand with a positive head (binds chignolin's two -1 residues D and E)
+  const points = [];
+  const R = 2.0;
+  const N = 30;
+  const phi = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < N; i++) {
+    const y = 1 - (i / (N - 1)) * 2;
+    const r = Math.sqrt(1 - y * y);
+    const theta = phi * i;
+    let q = 0;
+    if (y > 0.5) q = 0.5;                  // positive head
+    points.push({
+      x: R * Math.cos(theta) * r,
+      y: R * y,
+      z: R * Math.sin(theta) * r,
+      q,
+      hydro: 0.6,
+    });
+  }
+  return points;
+}
+
+const COUL  = 500;
+const STERIC = 200;
+const HYDRO = 400;
+const RVDW = 1.5;
+
+function rotate_axis_angle(axis, angle) {
+  const c = Math.cos(angle), s = Math.sin(angle), C = 1 - c;
+  const [ax, ay, az] = axis;
+  return [
+    c + ax*ax*C,    ax*ay*C - az*s, ax*az*C + ay*s,
+    ay*ax*C + az*s, c + ay*ay*C,    ay*az*C - ax*s,
+    az*ax*C - ay*s, az*ay*C + ax*s, c + az*az*C,
+  ];
+}
+function multiply_R(A, B) {
+  const C = new Array(9);
+  for (let i = 0; i < 3; i++)
+    for (let j = 0; j < 3; j++) {
+      let s = 0;
+      for (let k = 0; k < 3; k++) s += A[i*3+k] * B[k*3+j];
+      C[i*3+j] = s;
+    }
+  return C;
+}
+
+function computeForces(rec, lig, comL, R_mat) {
+  let Fx = 0, Fy = 0, Fz = 0, Tx = 0, Ty = 0, Tz = 0;
+  let Ec = 0, Eh = 0, Es = 0;
+  let minDist = Infinity, contacts = 0;
+  let nearestRes = -1, nearestResDist = Infinity;
+  for (const p of lig) {
+    const rx = R_mat[0]*p.x + R_mat[1]*p.y + R_mat[2]*p.z;
+    const ry = R_mat[3]*p.x + R_mat[4]*p.y + R_mat[5]*p.z;
+    const rz = R_mat[6]*p.x + R_mat[7]*p.y + R_mat[8]*p.z;
+    const px = comL[0] + rx, py = comL[1] + ry, pz = comL[2] + rz;
+    for (const r of rec) {
+      const dx = px - r.x, dy = py - r.y, dz = pz - r.z;
+      const d2 = dx*dx + dy*dy + dz*dz, d = Math.sqrt(d2);
+      if (d < minDist) minDist = d;
+      if (d < 5.0) contacts++;
+      if (d < nearestResDist) { nearestResDist = d; nearestRes = r.residue; }
+      const fcoul = COUL * p.q * r.q / (d2 + 0.1);
+      let fster = 0;
+      if (d < RVDW * 4) fster = -STERIC / Math.pow(d, 13);
+      const fhydro = -HYDRO * p.hydro * r.hydro / Math.pow(d, 7);
+      const fmag = fcoul - fster + fhydro;
+      const fx = fmag * dx / d, fy = fmag * dy / d, fz = fmag * dz / d;
+      Fx += fx; Fy += fy; Fz += fz;
+      Tx += ry*fz - rz*fy; Ty += rz*fx - rx*fz; Tz += rx*fy - ry*fx;
+      Ec += COUL * p.q * r.q / Math.sqrt(d2 + 0.1);
+      Eh += -HYDRO * p.hydro * r.hydro / (6 * Math.pow(d, 6));
+      Es += d < RVDW * 4 ? STERIC / (12 * Math.pow(d, 12)) : 0;
+    }
+  }
+  return { Fx, Fy, Fz, Tx, Ty, Tz, Ec, Eh, Es, minDist, contacts, nearestRes };
+}
+
+let receptor, ligand, comL, R_mat, step = 0, running = false;
+function identity_R() { return [1,0,0, 0,1,0, 0,0,1]; }
+
+function init() {
+  receptor = buildReceptorFromRecord(chignolinRecord);
+  ligand = buildLigand();
+  // Place ligand at random direction at ~ 15 Å from receptor centre
+  const phi = Math.random() * 2 * Math.PI;
+  const ct = Math.random() * 2 - 1;
+  const st = Math.sqrt(1 - ct*ct);
+  comL = [15 * st * Math.cos(phi), 15 * ct, 15 * st * Math.sin(phi)];
+  R_mat = identity_R();
+  for (let k = 0; k < 3; k++) {
+    const ang = Math.random() * Math.PI;
+    const ax = [Math.random()-0.5, Math.random()-0.5, Math.random()-0.5];
+    const n = Math.sqrt(ax[0]**2 + ax[1]**2 + ax[2]**2);
+    R_mat = multiply_R(rotate_axis_angle([ax[0]/n, ax[1]/n, ax[2]/n], ang), R_mat);
+  }
+  step = 0;
+}
+
+function bdStep(kT, gamma, dt) {
+  const f = computeForces(receptor, ligand, comL, R_mat);
+  function gauss() {
+    let u = 0, v = 0;
+    while (u === 0) u = Math.random();
+    while (v === 0) v = Math.random();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+  const sigmaT = Math.sqrt(2 * kT * dt / gamma);
+  const fmag = Math.sqrt(f.Fx**2 + f.Fy**2 + f.Fz**2);
+  const Fmax = 500;
+  const sc = fmag > Fmax ? Fmax / fmag : 1;
+  comL[0] += dt * f.Fx * sc / gamma + sigmaT * gauss();
+  comL[1] += dt * f.Fy * sc / gamma + sigmaT * gauss();
+  comL[2] += dt * f.Fz * sc / gamma + sigmaT * gauss();
+  const sigmaR = Math.sqrt(2 * kT * dt / (gamma * 5));
+  const omega = [
+    dt * f.Tx / (gamma * 5) + sigmaR * gauss(),
+    dt * f.Ty / (gamma * 5) + sigmaR * gauss(),
+    dt * f.Tz / (gamma * 5) + sigmaR * gauss(),
+  ];
+  const w = Math.sqrt(omega[0]**2 + omega[1]**2 + omega[2]**2);
+  if (w > 1e-8) {
+    const ax = [omega[0]/w, omega[1]/w, omega[2]/w];
+    R_mat = multiply_R(rotate_axis_angle(ax, w), R_mat);
+  }
+  step++;
+  return f;
+}
+
+function render(f) {
+  const cv = document.getElementById('cvs');
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#050510'; ctx.fillRect(0, 0, cv.width, cv.height);
+  const cx = cv.width/2, cy = cv.height/2;
+  const sc = 14;
+  function proj(x, y, z) {
+    const ca = Math.cos(Math.PI/6), sa = Math.sin(Math.PI/6);
+    const cb = Math.cos(-Math.PI/9), sb = Math.sin(-Math.PI/9);
+    let X = x*ca - z*sa, Z = x*sa + z*ca;
+    let Y = y*cb - Z*sb; Z = y*sb + Z*cb;
+    return { X: cx + sc*X, Y: cy - sc*Y, Z };
+  }
+  // Residue labels: draw Cα positions
+  const all = [];
+  for (const r of receptor) {
+    const p = proj(r.x, r.y, r.z);
+    all.push({ ...p, q: r.q, hydro: r.hydro, kind: 'rec', residue: r.residue });
+  }
+  for (const p of ligand) {
+    const rx = R_mat[0]*p.x + R_mat[1]*p.y + R_mat[2]*p.z;
+    const ry = R_mat[3]*p.x + R_mat[4]*p.y + R_mat[5]*p.z;
+    const rz = R_mat[6]*p.x + R_mat[7]*p.y + R_mat[8]*p.z;
+    const pp = proj(comL[0]+rx, comL[1]+ry, comL[2]+rz);
+    all.push({ ...pp, q: p.q, hydro: p.hydro, kind: 'lig' });
+  }
+  all.sort((a, b) => a.Z - b.Z);
+  for (const p of all) {
+    let r = 100, g = 100, b = 100;
+    if (p.q > 0.01) { r = 80; g = 80; b = 255; }
+    else if (p.q < -0.01) { r = 255; g = 80; b = 80; }
+    else if (p.hydro > 0.4) { r = 255; g = 200; b = 80; }
+    ctx.fillStyle = `rgba(${r},${g},${b},0.7)`;
+    const size = p.kind === 'rec' ? 4 : 6;
+    ctx.beginPath(); ctx.arc(p.X, p.Y, size, 0, 2*Math.PI); ctx.fill();
+  }
+  // Residue labels on Cα
+  ctx.fillStyle = '#fff'; ctx.font = '11px monospace';
+  for (let r = 0; r < chignolinRecord.residues.length; r++) {
+    const res = chignolinRecord.residues[r];
+    const p = proj(res.ca[0], res.ca[1], res.ca[2]);
+    ctx.fillText(res.aa + r, p.X + 6, p.Y - 6);
+  }
+  ctx.fillStyle = '#aaa'; ctx.font = '11px monospace';
+  ctx.fillText('blue: + · red: − · yellow: hydrophobic · gray: neutral', 10, 14);
+  ctx.fillText('chignolin GYDPETGTWG (β-hairpin)', 10, 30);
+}
+
+function loop() {
+  if (!running) return;
+  const kT = parseFloat(document.getElementById('kTIn').value);
+  const gamma = parseFloat(document.getElementById('gammaIn').value);
+  const dt = 0.01;
+  let f;
+  for (let k = 0; k < 100; k++) f = bdStep(kT, gamma, dt);
+  const com_dist = Math.sqrt(comL[0]**2 + comL[1]**2 + comL[2]**2);
+  const Etot = f.Ec + f.Eh + f.Es;
+  document.getElementById('stepVal').textContent = step;
+  document.getElementById('comDistVal').textContent = com_dist.toFixed(2);
+  document.getElementById('contactsVal').textContent = f.contacts;
+  document.getElementById('energyVal').textContent = Etot.toFixed(2);
+  document.getElementById('nearestRes').textContent =
+    f.nearestRes >= 0 ? chignolinRecord.residues[f.nearestRes].aa + f.nearestRes : '—';
+  let v;
+  if (com_dist < 8 && f.contacts > 5 && Etot < -2) {
+    v = 'BOUND'; document.getElementById('verdict').className = 'num ok';
+  } else if (com_dist < 12) {
+    v = 'approaching'; document.getElementById('verdict').className = 'num warn';
+  } else {
+    v = 'unbound'; document.getElementById('verdict').className = 'num';
+  }
+  document.getElementById('verdict').textContent = v;
+  render(f);
+  requestAnimationFrame(loop);
+}
+
+document.getElementById('startBtn').onclick = () => {
+  if (!running) { running = true; if (step === 0) init(); loop(); }
+};
+document.getElementById('pauseBtn').onclick = () => { running = false; };
+document.getElementById('resetBtn').onclick = () => { running = false; init(); render({contacts:0,Ec:0,Eh:0,Es:0,nearestRes:-1}); };
+
+init();
+render({contacts:0,Ec:0,Eh:0,Es:0,nearestRes:-1});
+</script>
+</body></html>
