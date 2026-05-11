@@ -99,19 +99,11 @@ function buildReceptor() {
       // hydrophobicity in interior, charge gradient
       const final_pz = pz2;
       hydro = 1.0 * t;
-      q = -0.8 * t;                  // strong negative at pocket floor
+      q = -1.0 * t;                  // strong negative at pocket floor
       points.push({ x: px, y: py, z: final_pz, q, hydro });
     } else {
-      // Outer surface
-      // Positive charges around the pocket rim (z ~ 4, r_xy ~ 4)
-      if (pz > 2 && r_xy > 3.5 && r_xy < 6.5) {
-        q = 0.6;                      // strong ring of positive
-      }
-      // Light repulsion from back face (negative pz) to discourage wrong-side binding
-      if (pz < -3) {
-        q = 0.05;                     // tiny repulsion from + ends of ligand
-      }
-      points.push({ x: px, y: py, z: pz, q, hydro: 0 });
+      // Outer surface: completely neutral, no charges
+      points.push({ x: px, y: py, z: pz, q: 0, hydro: 0 });
     }
   }
   return points;
@@ -134,8 +126,8 @@ function buildLigand() {
     const px = R * x;
     const pz = R * z;
     let q = 0, hydro = 0.7;
-    if (py > 1.5) q = -0.3;          // top: negative (binds the +ring of receptor)
-    if (py < -1.5) q = 0.3;          // bottom: positive (binds the -floor)
+    if (py < -1.0) q = 0.6;          // bottom "head": strong + (binds the −floor)
+    // top is neutral — simple monopole ligand
     points.push({ x: px, y: py, z: pz, q, hydro });
   }
   return points;
