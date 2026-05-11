@@ -243,7 +243,7 @@ function init(reroll) {
   // ct = cos(theta); bias to +z hemisphere so we sample the pocket-facing space
   const ct = 0.7 + Math.random() * 0.3;     // in [0.7, 1.0] — strongly +z
   const st = Math.sqrt(1 - ct*ct);
-  const r0 = 12;
+  const r0 = 18;                             // safe gap to avoid initial overlap
   comL = [r0 * st * Math.cos(phi), r0 * st * Math.sin(phi), r0 * ct];
   // Random orientation
   R_mat = identity_R();
@@ -268,9 +268,13 @@ function bdStep(kT, gamma, dt) {
     while (v === 0) v = Math.random();
     return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
   }
-  comL[0] += dt * f.Fx / gamma + sigmaT * gauss();
-  comL[1] += dt * f.Fy / gamma + sigmaT * gauss();
-  comL[2] += dt * f.Fz / gamma + sigmaT * gauss();
+  // Clamp force magnitude to prevent runaway from steric singularity
+  const fmag = Math.sqrt(f.Fx*f.Fx + f.Fy*f.Fy + f.Fz*f.Fz);
+  const Fmax = 500;
+  const sc = fmag > Fmax ? Fmax / fmag : 1;
+  comL[0] += dt * f.Fx * sc / gamma + sigmaT * gauss();
+  comL[1] += dt * f.Fy * sc / gamma + sigmaT * gauss();
+  comL[2] += dt * f.Fz * sc / gamma + sigmaT * gauss();
   // Rotation by torque
   const sigmaR = Math.sqrt(2 * kT * dt / (gamma * 5));
   const omega = [
