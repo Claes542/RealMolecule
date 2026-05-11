@@ -138,9 +138,9 @@ function buildLigand() {
 }
 
 // Force model
-const COUL  = 50.0;     // Coulomb prefactor (rescaled for visualization)
+const COUL  = 500.0;    // Coulomb prefactor (rescaled)
 const STERIC = 200.0;   // steric repulsion prefactor (r^-12)
-const HYDRO = 30.0;     // hydrophobic attraction prefactor (r^-6)
+const HYDRO = 200.0;    // hydrophobic attraction prefactor (r^-6)
 const RVDW  = 1.5;      // hard-core radius (Å)
 
 function rotateBy(v, axis, angle) {
@@ -184,8 +184,8 @@ function computeForces(rec, lig, comL, R_mat) {
       if (d < RVDW * 4) {
         fster = -STERIC / Math.pow(d, 13);    // negative = repulsion (push apart)
       }
-      // Hydrophobic attraction
-      const fhydro = HYDRO * p.hydro * r.hydro / Math.pow(d, 7);
+      // Hydrophobic attraction (attractive ⇒ negative fmag along (p - r))
+      const fhydro = -HYDRO * p.hydro * r.hydro / Math.pow(d, 7);
       const fmag = (fcoul - fster + fhydro);
       const fx = fmag * dx / d;
       const fy = fmag * dy / d;
@@ -234,12 +234,13 @@ function rotate_axis_angle(axis, angle) {
 function init(reroll) {
   receptor = buildReceptor();
   ligand = buildLigand();
-  // Place ligand at random direction at ~ 20 Å from origin
+  // Place ligand at random direction at ~ 14 Å from origin, biased toward +z (pocket face)
   const phi = Math.random() * 2 * Math.PI;
-  const ct = Math.random() * 2 - 1;
+  // ct = cos(theta); bias to +z hemisphere so we sample the pocket-facing space
+  const ct = 0.3 + Math.random() * 0.7;     // in [0.3, 1.0]
   const st = Math.sqrt(1 - ct*ct);
-  const r0 = reroll ? 18 : 18;
-  comL = [r0 * st * Math.cos(phi), r0 * ct, r0 * st * Math.sin(phi)];
+  const r0 = 14;
+  comL = [r0 * st * Math.cos(phi), r0 * st * Math.sin(phi), r0 * ct];
   // Random orientation
   R_mat = identity_R();
   for (let k = 0; k < 3; k++) {
