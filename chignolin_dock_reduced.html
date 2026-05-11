@@ -32,6 +32,15 @@ docked against this real protein record under Brownian dynamics.
   <button id="startBtn">Start</button>
   <button id="pauseBtn">Pause</button>
   <button id="resetBtn">Reset + new pose</button>
+  <button id="multiBtn">Run 50 trials</button>
+  <br><br>
+  <label>Ligand:
+    <select id="ligIn">
+      <option value="cation">cationic (+ head)</option>
+      <option value="anion">anionic (− head)</option>
+      <option value="hydrophobic">neutral hydrophobic</option>
+    </select>
+  </label>
   <br><br>
   <label>k_B T: <input id="kTIn" type="number" min="0.1" max="5" step="0.1" value="0.5" style="width:60px"></label>
   <label>γ: <input id="gammaIn" type="number" min="0.1" max="100" step="0.5" value="20" style="width:60px"></label>
@@ -103,8 +112,8 @@ function buildReceptorFromRecord(rec) {
   return points;
 }
 
-function buildLigand() {
-  // Small hydrophobic ligand with a positive head (binds chignolin's two -1 residues D and E)
+function buildLigand(kind) {
+  // Three ligand variants for testing chignolin binding selectivity
   const points = [];
   const R = 2.0;
   const N = 30;
@@ -113,14 +122,16 @@ function buildLigand() {
     const y = 1 - (i / (N - 1)) * 2;
     const r = Math.sqrt(1 - y * y);
     const theta = phi * i;
-    let q = 0;
-    if (y > 0.5) q = 0.5;                  // positive head
+    let q = 0, hydro = 0.6;
+    if (kind === "cation" && y > 0.5) q = 0.5;
+    else if (kind === "anion" && y > 0.5) q = -0.5;
+    else if (kind === "hydrophobic") { q = 0; hydro = 0.9; }
     points.push({
       x: R * Math.cos(theta) * r,
       y: R * y,
       z: R * Math.sin(theta) * r,
       q,
-      hydro: 0.6,
+      hydro,
     });
   }
   return points;
@@ -188,7 +199,7 @@ function identity_R() { return [1,0,0, 0,1,0, 0,0,1]; }
 
 function init() {
   receptor = buildReceptorFromRecord(chignolinRecord);
-  ligand = buildLigand();
+  ligand = buildLigand(document.getElementById('ligIn').value);
   // Place ligand at random direction at ~ 15 Å from receptor centre
   const phi = Math.random() * 2 * Math.PI;
   const ct = Math.random() * 2 - 1;
@@ -310,11 +321,117 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
+// ===== Multi-trial mode =====
+let multiMode = false;
+let trialIdx = 0;
+let trialStepCount = 0;
+const N_TRIALS = 50;
+const STEPS_PER_TRIAL = 25000;
+const trialResults = [];
+
+function startMultiTrials() {
+  multiMode = true;
+  trialIdx = 0;
+  trialStepCount = 0;
+  trialResults.length = 0;
+  init();
+  running = true;
+  loopMulti();
+}
+
+function loopMulti() {
+  if (!multiMode) return;
+  const kT = parseFloat(document.getElementById('kTIn').value);
+  const gamma = parseFloat(document.getElementById('gammaIn').value);
+  const dt = 0.01;
+  let f;
+  for (let k = 0; k < 600; k++) {
+    f = bdStep(kT, gamma, dt);
+    trialStepCount++;
+    if (trialStepCount >= STEPS_PER_TRIAL) break;
+  }
+  const com_dist = Math.sqrt(comL[0]**2 + comL[1]**2 + comL[2]**2);
+  document.getElementById('status').textContent =
+    `Trial ${trialIdx+1}/${N_TRIALS} · step ${trialStepCount}/${STEPS_PER_TRIAL} · nearest ${
+      f.nearestRes >= 0 ? chignolinRecord.residues[f.nearestRes].aa + f.nearestRes : '—'}`;
+  document.getElementById('comDistVal').textContent = com_dist.toFixed(2);
+  document.getElementById('contactsVal').textContent = f.contacts;
+  document.getElementById('energyVal').textContent = (f.Ec + f.Eh + f.Es).toFixed(2);
+  document.getElementById('nearestRes').textContent =
+    f.nearestRes >= 0 ? chignolinRecord.residues[f.nearestRes].aa + f.nearestRes : '—';
+  render(f);
+
+  if (trialStepCount >= STEPS_PER_TRIAL) {
+    trialResults.push({
+      com_dist, contacts: f.contacts, energy: f.Ec + f.Eh + f.Es,
+      nearestRes: f.nearestRes,
+      bound: com_dist < 10 && f.contacts > 5 && (f.Ec + f.Eh + f.Es) < -2,
+    });
+    drawTrials();
+    trialIdx++;
+    if (trialIdx >= N_TRIALS) {
+      multiMode = false;
+      running = false;
+      drawTrials();
+      const nBound = trialResults.filter(r => r.bound).length;
+      // Histogram of nearest residue
+      const counts = new Array(10).fill(0);
+      for (const r of trialResults) if (r.bound && r.nearestRes >= 0) counts[r.nearestRes]++;
+      const winner = counts.indexOf(Math.max(...counts));
+      document.getElementById('status').textContent =
+        `Done. ${nBound}/${N_TRIALS} bound. Top site: ${
+          chignolinRecord.residues[winner].aa + winner} (${counts[winner]} hits).`;
+      return;
+    }
+    trialStepCount = 0;
+    init();
+  }
+  requestAnimationFrame(loopMulti);
+}
+
+function drawTrials() {
+  const cv = document.createElement('canvas');
+  cv.width = 800; cv.height = 200;
+  let existing = document.getElementById('cvsTrials');
+  if (!existing) {
+    cv.id = 'cvsTrials';
+    cv.style.display = 'block';
+    cv.style.marginTop = '8px';
+    document.body.appendChild(cv);
+    existing = cv;
+  }
+  const ctx = existing.getContext('2d');
+  ctx.fillStyle = '#050510'; ctx.fillRect(0, 0, existing.width, existing.height);
+  ctx.fillStyle = '#aaa'; ctx.font = '11px monospace';
+  ctx.fillText('Bound-trial counts per nearest residue (chignolin)', 8, 14);
+  if (trialResults.length === 0) return;
+  const counts = new Array(10).fill(0);
+  for (const r of trialResults) if (r.bound && r.nearestRes >= 0) counts[r.nearestRes]++;
+  const maxC = Math.max(...counts, 1);
+  const padL = 50, padR = 20, padT = 30, padB = 30;
+  const plotW = existing.width - padL - padR, plotH = existing.height - padT - padB;
+  const barW = plotW / 10 - 4;
+  for (let r = 0; r < 10; r++) {
+    const x = padL + r * plotW / 10;
+    const h = counts[r] / maxC * plotH;
+    ctx.fillStyle = '#66bb6a';
+    ctx.fillRect(x, padT + plotH - h, barW, h);
+    ctx.fillStyle = '#ddd';
+    ctx.fillText(chignolinRecord.residues[r].aa + r, x + barW/2 - 8, padT + plotH + 14);
+    if (counts[r] > 0) ctx.fillText(counts[r], x + barW/2 - 4, padT + plotH - h - 4);
+  }
+  const nBound = trialResults.filter(r => r.bound).length;
+  ctx.fillStyle = '#ffe082'; ctx.font = '12px monospace';
+  ctx.fillText(`${trialResults.length} trials, ${nBound} bound`, padL, padT + 18);
+}
+
 document.getElementById('startBtn').onclick = () => {
-  if (!running) { running = true; if (step === 0) init(); loop(); }
+  if (!running) { multiMode = false; running = true; if (step === 0) init(); loop(); }
 };
-document.getElementById('pauseBtn').onclick = () => { running = false; };
-document.getElementById('resetBtn').onclick = () => { running = false; init(); render({contacts:0,Ec:0,Eh:0,Es:0,nearestRes:-1}); };
+document.getElementById('pauseBtn').onclick = () => { running = false; multiMode = false; };
+document.getElementById('resetBtn').onclick = () => { running = false; multiMode = false; init(); render({contacts:0,Ec:0,Eh:0,Es:0,nearestRes:-1}); };
+document.getElementById('multiBtn').onclick = () => { startMultiTrials(); };
+document.getElementById('ligIn').onchange = () => { running = false; multiMode = false; init(); render({contacts:0,Ec:0,Eh:0,Es:0,nearestRes:-1}); };
 
 init();
 render({contacts:0,Ec:0,Eh:0,Es:0,nearestRes:-1});
