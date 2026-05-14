@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>RealNucleus single-shell model</title>
+  <style>
+    body { margin: 0; background: #fff; color: #000; font-family: monospace; padding: 12px; max-width: 1100px; }
+    h2 { color: #2196f3; margin-top: 0; }
+    .desc { max-width: 880px; font-size: 13px; line-height: 1.55; color: #333; }
+    .row { display: flex; gap: 24px; align-items: flex-start; margin-top: 12px; }
+    canvas { background: #f7f7f7; border: 1px solid #ddd; }
+    table { border-collapse: collapse; font-size: 12px; }
+    th, td { border: 1px solid #ccc; padding: 3px 8px; text-align: right; }
+    th { background: #eee; }
+    input[type=range] { width: 320px; }
+    .label { color: #555; font-size: 13px; }
+    .val { color: #2196f3; font-weight: bold; }
+    code { background: #eee; padding: 1px 4px; }
+  </style>
+</head><body>
+
+<h2>RealNucleus &mdash; single-shell packing model (reduced)</h2>
+<div class="desc">
+One inner electron core of radius <code>R<sub>e</sub></code> + Z electrons,
+surrounded by a single outer proton shell of <code>2Z</code> protons.
+Shell thickness <code>d = c/Z</code> (proton size scales with electron attraction).
+Single shell holds all <code>2Z</code> protons up to <code>Z = N<sub>max</sub>/2</code>; beyond, the model is silent.
+<br><br>
+Binding energy (single shell, exact algebra):
+<code>E = &Sigma;(&minus;P&middot;Z + P(P&minus;1)/2)/r* = &minus;Z/r*</code> with <code>r* = R<sub>e</sub> + c/(2Z)</code>.
+So <code>|E/A| = s &middot; 2.72 / (2 r*) MeV</code>, depending only on <code>c, R<sub>e</sub>, s</code>.
+As Z grows, <code>r* &rarr; R<sub>e</sub></code>, giving asymptote <code>|E/A|<sub>&infin;</sub> = s &middot; 1.36 / R<sub>e</sub></code>.
+</div>
+
+<div class="row">
+  <div>
+    <div><span class="label">Thickness constant c &nbsp;(d=c/Z)</span> = <span class="val" id="cVal">0.50</span>
+      <input type="range" id="c" min="0.05" max="3" step="0.05" value="0.50"></div>
+    <div><span class="label">Electron core radius R<sub>e</sub></span> = <span class="val" id="ReVal">0.15</span>
+      <input type="range" id="Re" min="0.05" max="2" step="0.01" value="0.15"></div>
+    <div><span class="label">Max protons per shell N<sub>max</sub></span> = <span class="val" id="nmaxVal">56</span>
+      <input type="range" id="nmax" min="2" max="200" step="1" value="56"></div>
+    <div><span class="label">Core expansion &gamma; (R<sub>e</sub><sup>eff</sup>=R<sub>e</sub>+&gamma;(Z&minus;Z<sub>break</sub>))</span> = <span class="val" id="gammaVal">0.0005</span>
+      <input type="range" id="gamma" min="0" max="0.01" step="0.0001" value="0.0005"></div>
+    <div><span class="label">Energy scale s</span> = <span class="val" id="scaleVal">1.04</span>
+      <input type="range" id="scale" min="0.1" max="3" step="0.02" value="1.04"></div>
+    <div><span class="label">Highlight Z</span> = <span class="val" id="zVal">26</span>
+      <input type="range" id="zSlide" min="2" max="92" step="1" value="26"></div>
+    <canvas id="shells" width="380" height="380"></canvas>
+    <div id="shellInfo" style="font-size:11px;margin-top:4px"></div>
+  </div>
+  <div>
+    <canvas id="curve" width="640" height="380"></canvas>
+    <div style="margin-top:6px;font-size:11px;color:#555">|E/A| vs Z (MeV/nucleon). Experimental B/A in <span style="color:#888">grey</span> (AME tables), single-shell model in <span style="color:#2196f3">blue</span>.</div>
+  </div>
+</div>
+
+<div class="row">
+  <div>
+    <h3 style="font-size:14px;color:#2196f3;margin:0">Shell data (highlighted Z)</h3>
+    <table id="tbl"></table>
+  </div>
+</div>
+
+<script>
+// Experimental B/A (MeV/nucleon) at the most-stable nuclide of each Z (AME).
+const EXP_BA = [
+  [1, 1.11],   [2, 7.07],   [3, 5.61],   [4, 6.46],   [5, 6.93],
+  [6, 7.68],   [7, 7.48],   [8, 7.98],   [9, 7.78],   [10, 8.03],
+  [11, 8.11],  [12, 8.26],  [13, 8.33],  [14, 8.45],  [15, 8.48],
+  [16, 8.49],  [17, 8.52],  [18, 8.59],  [19, 8.56],  [20, 8.55],
+  [22, 8.72],  [24, 8.78],  [26, 8.79],  [28, 8.79],  [30, 8.76],
+  [32, 8.69],  [34, 8.71],  [36, 8.71],  [38, 8.73],  [40, 8.71],
+  [42, 8.63],  [44, 8.60],  [46, 8.55],  [48, 8.54],  [50, 8.50],
+  [52, 8.42],  [54, 8.44],  [56, 8.39],  [58, 8.38],  [60, 8.33],
+  [62, 8.24],  [64, 8.17],  [66, 8.13],  [68, 8.09],  [70, 8.04],
+  [72, 8.00],  [74, 7.98],  [76, 7.94],  [78, 7.93],  [80, 7.88],
+  [82, 7.87],  [84, 7.83],  [86, 7.69],  [88, 7.66],  [90, 7.62],
+  [92, 7.57]
+];
+
+const HA_TO_MEV = 2.72;
+
+// Single-shell binding-energy formula with core expansion for Z > Z_break.
+// R_e^eff(Z) = R_e + gamma * max(0, Z - Z_break), where Z_break = N_max/2.
+// Beyond Z_break, the electron core expands so the same single shell still
+// accommodates all 2Z protons (no second shell forced).
+function effectiveRe(Z, Re, Nmax, gamma) {
+  const Zbreak = Nmax / 2;
+  return Re + gamma * Math.max(0, Z - Zbreak);
+}
+
+function modelEoverA(Z, c, Re, Nmax, scale, gamma) {
+  const ReEff = effectiveRe(Z, Re, Nmax, gamma);
+  const d = c / Z;
+  const rStar = ReEff + d / 2;
+  return -1 / (2 * rStar) * HA_TO_MEV * scale;
+}
+
+function $(id) { return document.getElementById(id); }
+const cSlider = $('c'), ReSlider = $('Re'), nmaxSlider = $('nmax'), gammaSlider = $('gamma'), scaleSlider = $('scale'), zSlider = $('zSlide');
+const cVal = $('cVal'), ReVal = $('ReVal'), nmaxVal = $('nmaxVal'), gammaVal = $('gammaVal'), scaleVal = $('scaleVal'), zVal = $('zVal');
+const tbl = $('tbl');
+const shellCanvas = $('shells');
+const curveCanvas = $('curve');
+
+function recompute() {
+  const c = parseFloat(cSlider.value);
+  const Re = parseFloat(ReSlider.value);
+  const Nmax = parseInt(nmaxSlider.value);
+  const gamma = parseFloat(gammaSlider.value);
+  const scale = parseFloat(scaleSlider.value);
+  const Zsel = parseInt(zSlider.value);
+  cVal.textContent = c.toFixed(2);
+  ReVal.textContent = Re.toFixed(2);
+  nmaxVal.textContent = Nmax;
+  gammaVal.textContent = gamma.toFixed(4);
+  scaleVal.textContent = scale.toFixed(2);
+  zVal.textContent = Zsel;
+
+  // ----- shell table (single shell) -----
+  const ReEff = effectiveRe(Zsel, Re, Nmax, gamma);
+  const d = c / Zsel;
+  const rStar = ReEff + d / 2;
+  const P = 2 * Zsel;
+  const eoaMeV = modelEoverA(Zsel, c, Re, Nmax, scale, gamma);
+  let tblHtml = '<tr><th>R<sub>e</sub><sup>eff</sup></th><th>d</th><th>r*</th><th>P</th></tr>';
+  tblHtml += `<tr><td>${ReEff.toFixed(3)}</td><td>${d.toFixed(3)}</td><td>${rStar.toFixed(3)}</td><td>${P}</td></tr>`;
+  tblHtml += `<tr><th colspan=2>|E/A| (MeV)</th><td colspan=2>${Math.abs(eoaMeV).toFixed(3)}</td></tr>`;
+  tblHtml += `<tr><th colspan=2>|E/A| (Z=&infin; if &gamma;=0)</th><td colspan=2>${(scale * 1.36 / Re).toFixed(3)}</td></tr>`;
+  tbl.innerHTML = tblHtml;
+
+  // ----- draw the geometry (single shell with expanded core for Z > Z_break) -----
+  const ctx = shellCanvas.getContext('2d');
+  ctx.clearRect(0, 0, 380, 380);
+  const cx = 190, cy = 190;
+  const maxR = (ReEff + d) * 1.4;
+  const pxScale = 170 / maxR;
+  ctx.fillStyle = '#ffcdd2';
+  ctx.beginPath(); ctx.arc(cx, cy, ReEff * pxScale, 0, 2*Math.PI); ctx.fill();
+  ctx.strokeStyle = '#b71c1c'; ctx.stroke();
+  ctx.fillStyle = '#b71c1c';
+  ctx.font = '11px monospace';
+  ctx.fillText(`e core: ${Zsel}`, cx + 4, cy + 4);
+  ctx.beginPath();
+  ctx.arc(cx, cy, ReEff * pxScale, 0, 2*Math.PI);
+  ctx.strokeStyle = '#1565c0'; ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, cy, (ReEff + d) * pxScale, 0, 2*Math.PI);
+  ctx.strokeStyle = '#90caf9'; ctx.stroke();
+  const rmid = rStar * pxScale;
+  const angleStep = 2 * Math.PI / P;
+  ctx.fillStyle = '#1565c0';
+  for (let k = 0; k < P; k++) {
+    const a = k * angleStep;
+    const px = cx + rmid * Math.cos(a);
+    const py = cy + rmid * Math.sin(a);
+    ctx.beginPath(); ctx.arc(px, py, 2.5, 0, 2*Math.PI); ctx.fill();
+  }
+  $('shellInfo').textContent = `1 shell, ${P} protons (R_e^eff = ${ReEff.toFixed(3)})`;
+
+  // ----- curve -----
+  const cctx = curveCanvas.getContext('2d');
+  cctx.clearRect(0, 0, 640, 380);
+  cctx.strokeStyle = '#999'; cctx.lineWidth = 1;
+  cctx.beginPath(); cctx.moveTo(40, 20); cctx.lineTo(40, 350); cctx.lineTo(620, 350); cctx.stroke();
+  cctx.fillStyle = '#333'; cctx.font = '11px monospace';
+  cctx.fillText('|E/A| (MeV)', 4, 14);
+  cctx.fillText('Z', 610, 365);
+  const yMax = 12;
+  for (let y = 0; y <= yMax; y += 2) {
+    const py = 350 - (y / yMax) * 320;
+    cctx.fillText(String(y), 18, py + 4);
+    cctx.strokeStyle = '#eee'; cctx.beginPath();
+    cctx.moveTo(40, py); cctx.lineTo(620, py); cctx.stroke();
+  }
+  const xMin = 2, xMax = 92;
+  for (let x = 10; x <= 92; x += 10) {
+    const px = 40 + (x - xMin) / (xMax - xMin) * 580;
+    cctx.fillStyle = '#333';
+    cctx.fillText(String(x), px - 6, 365);
+  }
+  // experimental dots + line
+  cctx.strokeStyle = '#888'; cctx.lineWidth = 1.5;
+  cctx.beginPath();
+  EXP_BA.forEach(([z, ba], i) => {
+    const px = 40 + (z - xMin) / (xMax - xMin) * 580;
+    const py = 350 - Math.min(ba, yMax) / yMax * 320;
+    if (i === 0) cctx.moveTo(px, py); else cctx.lineTo(px, py);
+  });
+  cctx.stroke();
+  cctx.fillStyle = '#555';
+  EXP_BA.forEach(([z, ba]) => {
+    const px = 40 + (z - xMin) / (xMax - xMin) * 580;
+    const py = 350 - Math.min(ba, yMax) / yMax * 320;
+    cctx.beginPath(); cctx.arc(px, py, 2.5, 0, 2*Math.PI); cctx.fill();
+  });
+  // model curve
+  cctx.strokeStyle = '#2196f3'; cctx.lineWidth = 2.5;
+  cctx.beginPath();
+  let first = true;
+  const pts = [];
+  for (let Z = 2; Z <= 92; Z++) {
+    const e = modelEoverA(Z, c, Re, Nmax, scale, gamma);
+    if (e === null) continue;
+    const absE = Math.abs(e);
+    const px = 40 + (Z - xMin) / (xMax - xMin) * 580;
+    const py = 350 - Math.max(0, Math.min(absE, yMax)) / yMax * 320;
+    pts.push({ px, py });
+    if (first) { cctx.moveTo(px, py); first = false; } else cctx.lineTo(px, py);
+  }
+  cctx.stroke();
+  cctx.fillStyle = '#2196f3';
+  pts.forEach(p => { cctx.beginPath(); cctx.arc(p.px, p.py, 2.5, 0, 2*Math.PI); cctx.fill(); });
+  // mark highlighted Z
+  const pxSel = 40 + (Zsel - xMin) / (xMax - xMin) * 580;
+  cctx.strokeStyle = '#ff7043'; cctx.setLineDash([3,3]);
+  cctx.beginPath(); cctx.moveTo(pxSel, 20); cctx.lineTo(pxSel, 350); cctx.stroke();
+  cctx.setLineDash([]);
+  cctx.fillStyle = '#ff7043'; cctx.fillText(`Z=${Zsel}`, pxSel + 2, 30);
+}
+
+[cSlider, ReSlider, nmaxSlider, gammaSlider, scaleSlider, zSlider].forEach(s => s.addEventListener('input', recompute));
+recompute();
+</script>
+</body></html>
