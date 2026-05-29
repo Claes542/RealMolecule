@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Joule's Experiment — original p5.js sketch</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+<style>
+  body { margin: 0; background: #fff; font-family: sans-serif; }
+</style>
+</head>
+<body>
+<script>
+//Compressible Flow: Joule's Experiment
+//Conservation of mass, momentum and internal energy
+let vx = [];
+let vy= [];
+//momentum
+let mx=[];
+let my=[];
+//density
+let rho=[];
+//internal energy
+let e=[];
+//pressure
+let p=[];
+let sxx = [];
+let syy= [];
+let sxy= [];
+//particle trace
+let x = [];
+let y = [];
+//external force
+let fx = [];
+let fy = [];
+let N=100;
+let dt;
+let t=0;
+let h;
+let nu;
+let mu;
+//gas constant
+let gamma =0.1;
+let totalenergy=0;
+
+
+function setup() {
+  createCanvas(400, 400);
+  for (var i=0;i<N;i++){
+    x[i]=[];
+    y[i]=[];
+    vx[i]=[];
+    vy[i]=[];
+    mx[i]=[];
+    my[i]=[];
+    rho[i]=[];
+    e[i]=[];
+    p[i]=[];
+    fx[i]=[];
+    fy[i]=[];
+    sxx[i]=[];
+    syy[i]=[];
+    sxy[i]=[];
+  for (var j=0;j<N;j++){
+    x[i][j]=4*i;
+    y[i][j]=4*j;
+    vx[i][j]=0;
+    vy[i][j]=0;
+    vx[i][j]=0;
+    vy[i][j]=0;
+    rho[i][j]=1;
+    e[i][j]=1;
+    if (i<40){
+    rho[i][j]=10;
+    e[i][j]=10;
+    }
+    p[i][j]=0;
+    mx[i][j]=0;
+    my[i][j]=0;
+    fx[i][j]=0;
+    fy[i][j]=0;
+    sxx[i][j]=0;
+    syy[i][j]=0;
+    sxy[i][j]=0;
+  }
+  }
+
+  h=1/N;
+  nu=0.01*h;
+  dt=0.05*h;
+  mu=0.2;
+}
+
+function draw() {
+  background(255,255,255,50);
+  noStroke();
+  t=t+dt;
+
+  for (var q=0;q<10;q++){
+  for (var i=1;i<40;i++){
+  for (var j=1;j<N-1;j++){
+
+vx[i][j]=mx[i][j]/rho[i][j];
+vy[i][j]=my[i][j]/rho[i][j];
+p[i][j]=gamma*e[i][j];
+
+sxx[i][j]=nu*(vx[i][j]-vx[i-1][j])/h;
+sxy[i][j]=nu*0.5*(vx[i][j]-vx[i][j-1]+vy[i][j]-vy[i-1][j])/h;
+syy[i][j]=nu*(vy[i][j]-vy[i][j-1])/h;
+
+mx[i][j]=mx[i][j]+mu*dt*(vx[i+1][j]+vx[i-1][j]-4*vx[i][j]+vx[i][j+1]+vx[i][j-1])/h-0.5*dt*(vx[i+1][j]*mx[i+1][j]-vx[i-1][j]*mx[i-1][j])/h-0.5*dt*(vy[i][j+1]*mx[i][j+1]-vy[i][j-1]*mx[i][j-1])/h-dt*gamma*(e[i+1][j]-e[i-1][j])/h+dt*(sxx[i+1][j]-sxx[i][j]+sxy[i][j+1]-sxy[i][j])/h+dt*fx[i][j];
+
+my[i][j]=my[i][j]+mu*dt*(vy[i+1][j]+vy[i-1][j]-4*vy[i][j]+vy[i][j+1]+vy[i][j-1])/h-0.5*dt*(vx[i+1][j]*my[i+1][j]-vx[i-1][j]*my[i-1][j])/h-0.5*dt*(vy[i][j+1]*my[i][j+1]-vy[i][j-1]*my[i][j-1])/h-dt*gamma*(e[i][j+1]-e[i][j-1])/h+dt*(sxy[i+1][j]-sxy[i][j]+syy[i][j+1]-syy[i][j])/h;
+
+rho[i][j]=rho[i][j]-0.5*dt*(mx[i+1][j]-mx[i-1][j])/h
+-0.5*dt*(my[i][j+1]-my[i][j-1])/h+mu*dt*(rho[i+1][j]+rho[i-1][j]-4*rho[i][j]+rho[i][j+1]+rho[i][j-1])/h;
+
+e[i][j]=e[i][j]+mu*dt*(e[i+1][j]+e[i-1][j]-4*e[i][j]+e[i][j+1]+e[i][j-1])/h-0.5*dt*(vx[i+1][j]*e[i+1][j]-vx[i-1][j]*e[i-1][j])/h-0.5*dt*(vy[i][j+1]*e[i][j+1]-vy[i][j-1]*e[i][j-1])/h-dt*gamma*e[i][j]*(vx[i+1][j]-vx[i-1][j]+vy[i][j+1]-vy[i][j-1])/h+dt*mu*(pow(vx[i+1][j]-vx[i][j],2)+pow(vx[i][j+1]-vx[i][j],2)+pow(vy[i+1][j]-vy[i][j],2)+pow(vy[i][j+1]-vy[i][j],2))/h;
+}
+}
+  for (var i=60;i<N-1;i++){
+  for (var j=1;j<N-1;j++){
+
+vx[i][j]=mx[i][j]/rho[i][j];
+vy[i][j]=my[i][j]/rho[i][j];
+p[i][j]=gamma*e[i][j];
+
+sxx[i][j]=nu*(vx[i][j]-vx[i-1][j])/h;
+sxy[i][j]=nu*0.5*(vx[i][j]-vx[i][j-1]+vy[i][j]-vy[i-1][j])/h;
+syy[i][j]=nu*(vy[i][j]-vy[i][j-1])/h;
+
+mx[i][j]=mx[i][j]+mu*dt*(vx[i+1][j]+vx[i-1][j]-4*vx[i][j]+vx[i][j+1]+vx[i][j-1])/h-0.5*dt*(vx[i+1][j]*mx[i+1][j]-vx[i-1][j]*mx[i-1][j])/h-0.5*dt*(vy[i][j+1]*mx[i][j+1]-vy[i][j-1]*mx[i][j-1])/h-dt*gamma*(e[i+1][j]-e[i-1][j])/h+dt*(sxx[i+1][j]-sxx[i][j]+sxy[i][j+1]-sxy[i][j])/h+dt*fx[i][j];
+
+my[i][j]=my[i][j]+mu*dt*(vy[i+1][j]+vy[i-1][j]-4*vy[i][j]+vy[i][j+1]+vy[i][j-1])/h-0.5*dt*(vx[i+1][j]*my[i+1][j]-vx[i-1][j]*my[i-1][j])/h-0.5*dt*(vy[i][j+1]*my[i][j+1]-vy[i][j-1]*my[i][j-1])/h-dt*gamma*(e[i][j+1]-e[i][j-1])/h+dt*(sxy[i+1][j]-sxy[i][j]+syy[i][j+1]-syy[i][j])/h;
+
+rho[i][j]=rho[i][j]-0.5*dt*(mx[i+1][j]-mx[i-1][j])/h
+-0.5*dt*(my[i][j+1]-my[i][j-1])/h+mu*dt*(rho[i+1][j]+rho[i-1][j]-4*rho[i][j]+rho[i][j+1]+rho[i][j-1])/h;
+
+e[i][j]=e[i][j]+mu*dt*(e[i+1][j]+e[i-1][j]-4*e[i][j]+e[i][j+1]+e[i][j-1])/h-0.5*dt*(vx[i+1][j]*e[i+1][j]-vx[i-1][j]*e[i-1][j])/h-0.5*dt*(vy[i][j+1]*e[i][j+1]-vy[i][j-1]*e[i][j-1])/h-dt*gamma*e[i][j]*(vx[i+1][j]-vx[i-1][j]+vy[i][j+1]-vy[i][j-1])/h+dt*mu*(pow(vx[i+1][j]-vx[i][j],2)+pow(vx[i][j+1]-vx[i][j],2)+pow(vy[i+1][j]-vy[i][j],2)+pow(vy[i][j+1]-vy[i][j],2))/h;
+}
+}
+  for (var i=40;i<60;i++){
+  for (var j=90;j<N-1;j++){
+
+vx[i][j]=mx[i][j]/rho[i][j];
+vy[i][j]=my[i][j]/rho[i][j];
+p[i][j]=gamma*e[i][j];
+
+sxx[i][j]=nu*(vx[i][j]-vx[i-1][j])/h;
+sxy[i][j]=nu*0.5*(vx[i][j]-vx[i][j-1]+vy[i][j]-vy[i-1][j])/h;
+syy[i][j]=nu*(vy[i][j]-vy[i][j-1])/h;
+
+mx[i][j]=mx[i][j]+mu*dt*(vx[i+1][j]+vx[i-1][j]-4*vx[i][j]+vx[i][j+1]+vx[i][j-1])/h-0.5*dt*(vx[i+1][j]*mx[i+1][j]-vx[i-1][j]*mx[i-1][j])/h-0.5*dt*(vy[i][j+1]*mx[i][j+1]-vy[i][j-1]*mx[i][j-1])/h-dt*gamma*(e[i+1][j]-e[i-1][j])/h+dt*(sxx[i+1][j]-sxx[i][j]+sxy[i][j+1]-sxy[i][j])/h+dt*fx[i][j];
+
+my[i][j]=my[i][j]+mu*dt*(vy[i+1][j]+vy[i-1][j]-4*vy[i][j]+vy[i][j+1]+vy[i][j-1])/h-0.5*dt*(vx[i+1][j]*my[i+1][j]-vx[i-1][j]*my[i-1][j])/h-0.5*dt*(vy[i][j+1]*my[i][j+1]-vy[i][j-1]*my[i][j-1])/h-dt*gamma*(e[i][j+1]-e[i][j-1])/h+dt*(sxy[i+1][j]-sxy[i][j]+syy[i][j+1]-syy[i][j])/h;
+
+rho[i][j]=rho[i][j]-0.5*dt*(mx[i+1][j]-mx[i-1][j])/h
+-0.5*dt*(my[i][j+1]-my[i][j-1])/h+mu*dt*(rho[i+1][j]+rho[i-1][j]-4*rho[i][j]+rho[i][j+1]+rho[i][j-1])/h;
+
+e[i][j]=e[i][j]+mu*dt*(e[i+1][j]+e[i-1][j]-4*e[i][j]+e[i][j+1]+e[i][j-1])/h-0.5*dt*(vx[i+1][j]*e[i+1][j]-vx[i-1][j]*e[i-1][j])/h-0.5*dt*(vy[i][j+1]*e[i][j+1]-vy[i][j-1]*e[i][j-1])/h-dt*gamma*e[i][j]*(vx[i+1][j]-vx[i-1][j]+vy[i][j+1]-vy[i][j-1])/h+dt*mu*(pow(vx[i+1][j]-vx[i][j],2)+pow(vx[i][j+1]-vx[i][j],2)+pow(vy[i+1][j]-vy[i][j],2)+pow(vy[i][j+1]-vy[i][j],2))/h;
+}
+}
+for (var i=0;i<N;i++){
+//e[0][i]=e[1][i];
+e[N-1][i]=e[N-2][i];
+e[0][i]=e[1][i];
+e[i][0]=e[i][1];
+e[i][N-1]=e[i][N-2];
+mx[i][0]=mx[i][1];
+mx[i][N-1]=mx[i][N-2];
+//my[N-1][i]=my[N-2][i];
+my[0][i]=my[1][i];
+my[N-1][i]=my[N-2][i];
+//rho[0][i]=rho[1][i];
+rho[N-1][i]=rho[N-2][i];
+rho[0][i]=rho[1][i];
+rho[i][0]=rho[i][1];
+rho[i][N-1]=rho[i][N-2];
+}
+for (var j=0;j<90;j++){
+e[40][j]=e[39][j];
+e[59][j]=e[60][j];
+rho[40][j]=rho[39][j];
+rho[59][j]=rho[60][j];
+}
+for (var i=41;i<59;i++){
+e[i][89]=e[i][90];
+rho[i][89]=rho[i][90];
+mx[i][89]=mx[i][90];
+}
+}
+fill(0);
+if (t>0.005){
+totalenergy=0;
+for (var i=0;i<N;i++){
+for (var j=0;j<N;j++){
+    totalenergy = totalenergy + pow(h,2)*e[i][j];
+    x[i][j]=4*i;
+    y[i][j]=4*j;
+}
+}
+t=0;
+background(255,255,255,255);
+}
+for (var i=40;i<60;i++){
+for (var j=0;j<90;j++){
+fill(0,0,255,100);
+ellipse(4*i,4*j,4);
+}
+}
+for (var i=0;i<N;i++){
+for (var j=0;j<N;j++){
+  x[i][j]=x[i][j]+10000*vx[i][j]*dt;
+  y[i][j]=y[i][j]+10000*vy[i][j]*dt;
+  fill(0,0,255,255);
+  ellipse(x[i][j],y[i][j],1)
+//  fill(255,0,255,100*rho[i][j]);
+//  ellipse(2*i,2*j,2)
+  }
+  }
+for (var i=0;i<N;i++){
+  fill(0,255,255,255);
+  ellipse(4*i,200-10*rho[i][95],3);
+  fill(255,0,0,255);
+  ellipse(4*i,200-100*p[i][95],3);
+  fill(255,255,0,255);
+  ellipse(4*i,200-100*vx[i][95],3);
+  fill(0,255,0,255);
+  ellipse(4*i,200-1000*(e[i][95]/rho[i][95]-1),3);
+   ellipse(4*i,200-1000*(e[i][50]/rho[i][50]-1),3);
+}
+
+  fill(0);
+  text("Compressible Flow: Joule's Experiment: Two Chambers + Channel",30,10);
+  text("Expansion into double volume: Follow temperature",30,30);
+  text("momentum (mx,my), density rho, internal energy e",30,50);
+  text("viscous stresses sxx, sxy, syy",30,70);
+  text("sxx=nu*dvx/dx; sxy=nu*(dvx/dy+dvy/dx)/2, syy=nu*dvy/dy, nu viscosity",30,90);
+  text("drho/dt + d(mx)/dx + d(my)/dy=0",30,110);
+  text("dmx/dt + d(mx*vx)/dx + d(mx*vy)/dy +dp/dx = dsxx/dx+dsxy/dy",30,130);
+  text("dmy/dt + d(my*vx)/dx + d(my*vy)/dy + dp/dy = dsxy/dx+dsyy/dy",30,150);
+  text("de/dt + d(e*vx)/dx + d(e*vy)/dy + p*(dvx/dx + dvy/dy) =0",30,170);
+  text("vx = mx/rho, vy = my/rho, p =gamma*e, gamma = 0.1.",30,190);
+//  text("Conservation of mass, momentum, internal energy:" ,50,30);
+  text("Initial data: High density left chamber, same temperature in both chambers",5,270);
+  text("Light-Blue: Density (channel crosscut factor 1/10)",10,350);
+  text("Yellow: Horisontal velocity (channel crosscut)",10,370);
+  text("Green:Temperature (mid/channel crosscut)).",10,290);
+  text("Red: Pressure (channel crosscut ).",10,310);
+  text("Blue: Trace of fluid particles (updated).", 10,330);
+  text(floor(totalenergy*100)/100,150,390);
+  text("Total Internal Energy =",10,390);
+stroke(0);
+line(0,200,400,200);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Joule's Experiment — CPU (vanilla JS, no p5)</title>
+<style>
+  body { margin: 0; background: #fff; font-family: sans-serif; color: #000; }
+  #wrap { display: flex; flex-direction: column; align-items: center; padding: 8px; }
+  canvas { display: block; border: 1px solid #888; }
+  #controls { display: flex; gap: 8px; align-items: center; margin: 8px 0; font-size: 12px; }
+  #controls button { padding: 4px 10px; cursor: pointer; }
+  #info { width: 520px; font-size: 11px; line-height: 1.35; }
+  code { background: #eee; padding: 1px 3px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv" width="400" height="400"></canvas>
+  <div id="controls">
+    <button id="btnPause">Pause</button>
+    <button id="btnReset">Reset</button>
+    <span id="lblTime">t = 0.000</span>
+  </div>
+  <pre id="diag" style="font-size:11px; line-height:1.35; margin:0 0 8px; min-height:8em; width:520px;"></pre>
+  <div id="info">
+    <b>Joule's experiment, compressible Navier–Stokes — direct CPU port.</b>
+    A faithful vanilla-JS/Canvas translation of the original p5.js sketch:
+    identical in-place (Gauss–Seidel) sweeps, the same per-cell update of
+    momentum / density / internal energy (including the viscous-heating term),
+    the same two-chamber + channel geometry and parameters
+    (<code>N=100, γ=0.1, ν=0.01h, dt=0.05h, μ=0.2</code>), 10 substeps/frame.
+    No external library. Blue dots trace fluid particles; the curves at the
+    bottom are channel/mid cross-cuts of density, pressure, velocity, temperature.
+  </div>
+</div>
+
+<script>
+"use strict";
+
+// ---- parameters (identical to the p5 reference) -------------------------
+const N     = 100;
+const PXC   = 4;            // canvas pixels per cell (p5 used 4 -> 400x400)
+const W     = N * PXC;
+const gamma = 0.1;
+const h     = 1 / N;
+const nu    = 0.01 * h;
+const dt    = 0.05 * h;
+const mu    = 0.2;
+const T0    = 1;           // initial uniform temperature = refrigeration "ambient"
+
+const canvas = document.getElementById('cv');
+const ctx    = canvas.getContext('2d');
+const btnPause = document.getElementById('btnPause');
+const btnReset = document.getElementById('btnReset');
+const lblTime  = document.getElementById('lblTime');
+const diagEl   = document.getElementById('diag');
+
+// ---- fields (2D arrays, mirroring the p5 sketch one-to-one) -------------
+let vx, vy, mx, my, rho, e, p, sxx, syy, sxy, x, y, fx, fy;
+let t = 0, totalenergy = 0, paused = false, simTime = 0;
+let E0 = 1, S0 = 0, Kpeak = 0;     // initial internal energy, initial entropy, peak kinetic
+let A0 = 1;                        // reversible work to restore the initial state (per cycle)
+
+function isWall(i, j) { return i >= 40 && i < 60 && j < 90; }
+
+function alloc() {
+  const a = new Array(N);
+  for (let i = 0; i < N; i++) a[i] = new Float64Array(N);
+  return a;
+}
+
+function setup() {
+  vx = alloc(); vy = alloc(); mx = alloc(); my = alloc();
+  rho = alloc(); e = alloc(); p = alloc();
+  sxx = alloc(); syy = alloc(); sxy = alloc();
+  x = alloc(); y = alloc(); fx = alloc(); fy = alloc();
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) {
+      x[i][j] = PXC * i;
+      y[i][j] = PXC * j;
+      rho[i][j] = 1; e[i][j] = 1;
+      if (i < 40) { rho[i][j] = 10; e[i][j] = 10; }   // dense left chamber
+    }
+  }
+  t = 0; simTime = 0; totalenergy = 0;
+  Kpeak = 0;
+  E0 = totalInternal();
+  S0 = entropyTotal();
+
+  // A0 = minimum (reversible, isothermal) work to UN-mix the gas back to its
+  // initial density imbalance from the fully relaxed state = the exergy of the
+  // initial state = the compressor work a cyclic fridge must spend each cycle
+  // to restore initial conditions.  A0 = gamma * sum rho*ln(rho/rhobar) * dx^2.
+  let Mf = 0, nf = 0;
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) if (!isWall(i, j)) { Mf += rho[i][j]; nf++; }
+  const rhobar = Mf / nf;
+  let a = 0;
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) if (!isWall(i, j))
+    a += gamma * rho[i][j] * Math.log(rho[i][j] / rhobar);
+  A0 = a * h * h;
+
+  ctx.fillStyle = 'rgb(255,255,255)';
+  ctx.fillRect(0, 0, W, W);
+}
+
+// ---- one in-place cell update (verbatim port of the p5 inner body) ------
+function updateCell(i, j) {
+  vx[i][j] = mx[i][j] / rho[i][j];
+  vy[i][j] = my[i][j] / rho[i][j];
+  p[i][j]  = gamma * e[i][j];
+
+  sxx[i][j] = nu * (vx[i][j] - vx[i - 1][j]) / h;
+  sxy[i][j] = nu * 0.5 * (vx[i][j] - vx[i][j - 1] + vy[i][j] - vy[i - 1][j]) / h;
+  syy[i][j] = nu * (vy[i][j] - vy[i][j - 1]) / h;
+
+  mx[i][j] = mx[i][j]
+    + mu * dt * (vx[i + 1][j] + vx[i - 1][j] - 4 * vx[i][j] + vx[i][j + 1] + vx[i][j - 1]) / h
+    - 0.5 * dt * (vx[i + 1][j] * mx[i + 1][j] - vx[i - 1][j] * mx[i - 1][j]) / h
+    - 0.5 * dt * (vy[i][j + 1] * mx[i][j + 1] - vy[i][j - 1] * mx[i][j - 1]) / h
+    - dt * gamma * (e[i + 1][j] - e[i - 1][j]) / h
+    + dt * (sxx[i + 1][j] - sxx[i][j] + sxy[i][j + 1] - sxy[i][j]) / h
+    + dt * fx[i][j];
+
+  my[i][j] = my[i][j]
+    + mu * dt * (vy[i + 1][j] + vy[i - 1][j] - 4 * vy[i][j] + vy[i][j + 1] + vy[i][j - 1]) / h
+    - 0.5 * dt * (vx[i + 1][j] * my[i + 1][j] - vx[i - 1][j] * my[i - 1][j]) / h
+    - 0.5 * dt * (vy[i][j + 1] * my[i][j + 1] - vy[i][j - 1] * my[i][j - 1]) / h
+    - dt * gamma * (e[i][j + 1] - e[i][j - 1]) / h
+    + dt * (sxy[i + 1][j] - sxy[i][j] + syy[i][j + 1] - syy[i][j]) / h;
+
+  rho[i][j] = rho[i][j]
+    - 0.5 * dt * (mx[i + 1][j] - mx[i - 1][j]) / h
+    - 0.5 * dt * (my[i][j + 1] - my[i][j - 1]) / h
+    + mu * dt * (rho[i + 1][j] + rho[i - 1][j] - 4 * rho[i][j] + rho[i][j + 1] + rho[i][j - 1]) / h;
+
+  e[i][j] = e[i][j]
+    + mu * dt * (e[i + 1][j] + e[i - 1][j] - 4 * e[i][j] + e[i][j + 1] + e[i][j - 1]) / h
+    - 0.5 * dt * (vx[i + 1][j] * e[i + 1][j] - vx[i - 1][j] * e[i - 1][j]) / h
+    - 0.5 * dt * (vy[i][j + 1] * e[i][j + 1] - vy[i][j - 1] * e[i][j - 1]) / h
+    - dt * gamma * e[i][j] * (vx[i + 1][j] - vx[i - 1][j] + vy[i][j + 1] - vy[i][j - 1]) / h
+    + dt * mu * (Math.pow(vx[i + 1][j] - vx[i][j], 2) + Math.pow(vx[i][j + 1] - vx[i][j], 2)
+               + Math.pow(vy[i + 1][j] - vy[i][j], 2) + Math.pow(vy[i][j + 1] - vy[i][j], 2)) / h;
+}
+
+// ---- 10 in-place substeps (same region order + boundary copies as p5) ---
+function physics() {
+  for (let q = 0; q < 10; q++) {
+    for (let i = 1; i < 40; i++)     for (let j = 1; j < N - 1; j++)  updateCell(i, j);  // left
+    for (let i = 60; i < N - 1; i++) for (let j = 1; j < N - 1; j++)  updateCell(i, j);  // right
+    for (let i = 40; i < 60; i++)    for (let j = 90; j < N - 1; j++) updateCell(i, j);  // channel
+
+    for (let i = 0; i < N; i++) {
+      e[N - 1][i] = e[N - 2][i]; e[0][i] = e[1][i];
+      e[i][0] = e[i][1];         e[i][N - 1] = e[i][N - 2];
+      mx[i][0] = mx[i][1];       mx[i][N - 1] = mx[i][N - 2];
+      my[0][i] = my[1][i];       my[N - 1][i] = my[N - 2][i];
+      rho[N - 1][i] = rho[N - 2][i]; rho[0][i] = rho[1][i];
+      rho[i][0] = rho[i][1];         rho[i][N - 1] = rho[i][N - 2];
+    }
+    for (let j = 0; j < 90; j++) {
+      e[40][j] = e[39][j];   e[59][j] = e[60][j];
+      rho[40][j] = rho[39][j]; rho[59][j] = rho[60][j];
+    }
+    for (let i = 41; i < 59; i++) {
+      e[i][89] = e[i][90]; rho[i][89] = rho[i][90]; mx[i][89] = mx[i][90];
+    }
+  }
+}
+
+// ---- drawing helpers ----------------------------------------------------
+function bgFade(a) { ctx.fillStyle = `rgba(255,255,255,${a / 255})`; ctx.fillRect(0, 0, W, W); }
+function pt(px, py, d) { ctx.fillRect(px - d / 2, py - d / 2, d, d); }
+
+function render() {
+  if (t > 0.005) {                       // periodic particle reset + full clear
+    totalenergy = 0;
+    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+      totalenergy += h * h * e[i][j];
+      x[i][j] = PXC * i; y[i][j] = PXC * j;
+    }
+    t = 0;
+    ctx.fillStyle = 'rgb(255,255,255)';
+    ctx.fillRect(0, 0, W, W);
+  }
+
+  // wall column: i = 40..59, j = 0..89, drawn as a solid block
+  ctx.fillStyle = 'rgba(0,0,255,0.4)';
+  ctx.fillRect(40 * PXC, 0, 20 * PXC, 90 * PXC);
+
+  // advect + draw tracer particles
+  ctx.fillStyle = 'rgba(0,0,255,1)';
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    x[i][j] += 10000 * vx[i][j] * dt;
+    y[i][j] += 10000 * vy[i][j] * dt;
+    pt(x[i][j], y[i][j], 1);
+  }
+
+  // cross-cut curves at j = 95 (channel) and j = 50 (mid)
+  for (let i = 0; i < N; i++) {
+    ctx.fillStyle = 'rgba(0,200,200,1)'; pt(PXC * i, 200 - 10  * rho[i][95], 3);
+    ctx.fillStyle = 'rgba(255,0,0,1)';   pt(PXC * i, 200 - 100 * p[i][95], 3);
+    ctx.fillStyle = 'rgba(220,220,0,1)'; pt(PXC * i, 200 - 100 * vx[i][95], 3);
+    ctx.fillStyle = 'rgba(0,180,0,1)';   pt(PXC * i, 200 - 1000 * (e[i][95] / rho[i][95] - 1), 3);
+                                         pt(PXC * i, 200 - 1000 * (e[i][50] / rho[i][50] - 1), 3);
+  }
+
+  // labels
+  ctx.fillStyle = 'rgb(0,0,0)';
+  ctx.font = '9px sans-serif';
+  ctx.fillText("Joule's Experiment: two chambers + channel, p = γe, γ = 0.1", 6, 10);
+  ctx.fillText("Cyan: density ρ (×1/10)   Red: pressure p   Yellow: vx   Green: T = e/ρ", 6, 360);
+  ctx.fillText("Cross-cuts at channel (j=95) and mid (j=50). Blue: fluid-particle trace.", 6, 374);
+  ctx.fillText("Total internal energy = " + (Math.floor(totalenergy * 100) / 100), 6, 390);
+  ctx.strokeStyle = 'rgb(0,0,0)';
+  ctx.beginPath(); ctx.moveTo(0, 200); ctx.lineTo(W, 200); ctx.stroke();
+}
+
+// ---- diagnostics / efficiency measures ----------------------------------
+// Internal energy E = sum e, kinetic K = sum 1/2 |m|^2/rho, both times cell area.
+function totalInternal() {
+  let s = 0;
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) s += e[i][j];
+  return s * h * h;
+}
+function totalKinetic() {
+  let s = 0;
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    const r = rho[i][j];
+    s += 0.5 * (mx[i][j] * mx[i][j] + my[i][j] * my[i][j]) / r;
+  }
+  return s * h * h;
+}
+// Ideal-gas entropy S = sum rho*(ln T - gamma*ln rho)*area, with T=e/rho, R=gamma.
+function entropyTotal() {
+  let s = 0;
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    const r = Math.max(rho[i][j], 1e-9);
+    const T = Math.max(e[i][j] / r, 1e-9);
+    s += r * (Math.log(T) - gamma * Math.log(r));
+  }
+  return s * h * h;
+}
+function meanT(i0, i1) {
+  let s = 0, n = 0;
+  for (let i = i0; i < i1; i++) for (let j = 1; j < N - 1; j++) { s += e[i][j] / rho[i][j]; n++; }
+  return s / n;
+}
+function diagnostics() {
+  const K = totalKinetic(), E = totalInternal();
+  if (K > Kpeak) Kpeak = K;
+  const dS = entropyTotal() - S0;
+  const Tl = meanT(1, 40), Tr = meanT(60, N - 1);
+
+  // Refrigeration: cooling delivered = heat removed from cells below ambient T0;
+  // COP = cooling / restore-work (A0), the buyer's "cooling per unit work in".
+  let Qc = 0, Qh = 0;
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) if (!isWall(i, j)) {
+    const T = e[i][j] / rho[i][j];
+    if (T < T0) Qc += rho[i][j] * (T0 - T); else Qh += rho[i][j] * (T - T0);
+  }
+  Qc *= h * h; Qh *= h * h;
+  const COP = Qc / Math.max(A0, 1e-12);
+
+  // Carnot ceiling for the achieved temperature lift, and the 2nd-law
+  // efficiency (fraction of the ideal refrigerator that this process attains).
+  const dT = Tr - Tl;
+  const copCarnot = dT > 1e-6 ? Tl / dT : Infinity;
+  const cStr   = isFinite(copCarnot) ? copCarnot.toFixed(1) : '∞';
+  const etaStr = isFinite(copCarnot) ? (100 * COP / copCarnot).toFixed(2) : '0.00';
+
+  diagEl.textContent =
+    `internal E = ${E.toFixed(4)}     kinetic K = ${K.toExponential(2)}     total K+E = ${(K + E).toFixed(4)}\n` +
+    `peak K = ${Kpeak.toExponential(2)}     mobilized  K_peak/E0 = ${(100 * Kpeak / E0).toFixed(2)} %\n` +
+    `entropy production  ΔS = ${dS.toExponential(3)}   (2nd law: rises, irreversibility)\n` +
+    `T_left = ${Tl.toFixed(4)}    T_right = ${Tr.toFixed(4)}    ΔT = ${(Tr - Tl).toFixed(4)}   (refrigeration split)\n` +
+    `cooling Q_cold = ${Qc.toExponential(2)}     heating Q_hot = ${Qh.toExponential(2)}     (vs ambient T0=1)\n` +
+    `restore work / cycle A0 = ${A0.toExponential(2)}     COP_refrig = Q_cold/A0 = ${COP.toFixed(3)}     COP_heatpump = COP_R+1 = ${(COP + 1).toFixed(3)}\n` +
+    `Carnot ceiling COP_Carnot = T_cold/ΔT = ${cStr}     2nd-law η = COP_R/COP_Carnot = ${etaStr} %  (fraction of ideal)`;
+}
+
+// ---- frame loop ---------------------------------------------------------
+function frame() {
+  if (!paused) {
+    bgFade(50);          // fading trail (p5 background(255,255,255,50))
+    t += dt;
+    simTime += dt;
+    physics();
+    render();
+    diagnostics();
+    lblTime.textContent = 't = ' + simTime.toFixed(3);
+  }
+  requestAnimationFrame(frame);
+}
+
+btnPause.addEventListener('click', () => {
+  paused = !paused;
+  btnPause.textContent = paused ? 'Resume' : 'Pause';
+});
+btnReset.addEventListener('click', setup);
+
+setup();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

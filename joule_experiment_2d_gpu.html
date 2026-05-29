@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Joule's Experiment 2D — Compressible Navier-Stokes on GPU</title>
+<style>
+  body { margin: 0; background: #fff; font-family: sans-serif; color: #000; }
+  #wrap { display: flex; flex-direction: column; align-items: center; padding: 8px; }
+  canvas { display: block; image-rendering: pixelated; border: 1px solid #888; }
+  #info { width: 720px; font-size: 11px; line-height: 1.35; margin-top: 8px; }
+  code { font-size: 11px; background: #eee; padding: 1px 3px; }
+  #status { font-weight: bold; }
+  #controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 12px; flex-wrap: wrap; }
+  #controls button { padding: 4px 10px; font-size: 12px; cursor: pointer; }
+  #controls label { display: flex; gap: 4px; align-items: center; }
+  #controls input[type="range"] { width: 120px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv" width="720" height="720"></canvas>
+  <div id="controls">
+    <button id="btnPause">Pause</button>
+    <button id="btnReset">Reset</button>
+    <label>Substeps/frame:
+      <input id="rngSubsteps" type="range" min="0" max="20" step="1" value="10" />
+      <span id="lblSubsteps">10</span>
+    </label>
+    <span id="lblTime">t = 0.000</span>
+  </div>
+  <div id="info">
+    <div id="status">Initializing WebGPU…</div>
+    <p>
+      <b>Joule's experiment in 2D, compressible Navier–Stokes, WebGPU.</b>
+      Two chambers connected by a channel opening at the top. Left chamber has
+      ten times the density of the right; both start at the same temperature
+      (e/ρ = 1). The gas expands through the channel; the density relaxes
+      toward the mean and the temperature stays close to uniform.
+    </p>
+    <p>
+      <b>Display:</b> blue tracer particles advected by the velocity field
+      v = m/ρ, with fading trails and periodic reset (the original p5 sketch's
+      display). Wall column in grey, channel opening at the bottom.
+      Two line cuts overlay the profiles of density (cyan), pressure p=γe (red)
+      and temperature T=e/ρ (green): one at mid height, one across the channel.
+    </p>
+    <p>
+      <b>Grid:</b> 100² = 10 000 cells. State packed as <code>vec4&lt;f32&gt;(ρ, e, mₓ, m_y)</code>
+      per cell. Walls use free-slip ghost cells (reflected normal momentum,
+      tangential kept) at the fluid faces.
+    </p>
+  </div>
+</div>
+
+<script>
+const N = 100;
+let substepsPerFrame = 10;
+let paused = false;
+const GAMMA = 0.1;
+const H = 1.0 / N;
+const NU = 0.01 * H;
+const DT = 0.05 * H;      // match the p5 reference (0.05*h)
+const MU = 0.2;           // match the p5 reference artificial viscosity
+const RHO_FLOOR = 0.05;   // keep density positive (prevents v = m/rho blow-up)
+const E_FLOOR   = 0.05;
+
+const status = document.getElementById('status');
+const canvas = document.getElementById('cv');
+const btnPause = document.getElementById('btnPause');
+const btnReset = document.getElementById('btnReset');
+const rngSubsteps = document.getElementById('rngSubsteps');
+const lblSubsteps = document.getElementById('lblSubsteps');
+const lblTime = document.getElementById('lblTime');
+
+btnPause.addEventListener('click', () => {
+  paused = !paused;
+  btnPause.textContent = paused ? 'Resume' : 'Pause';
+});
+rngSubsteps.addEventListener('input', () => {
+  substepsPerFrame = parseInt(rngSubsteps.value, 10);
+  lblSubsteps.textContent = String(substepsPerFrame);
+});
+
+async function main() {
+  if (!navigator.gpu) {
+    status.textContent = 'WebGPU not supported in this browser. Try Chrome 113+, Edge 113+, or Safari 17+.';
+    return;
+  }
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) { status.textContent = 'No WebGPU adapter.'; return; }
+  const device = await adapter.requestDevice();
+  device.addEventListener('uncapturederror', (e) => {
+    console.error('WebGPU error:', e.error.message);
+    status.textContent = 'WebGPU error (see console): ' + e.error.message;
+  });
+
+  // 2D display canvas (p5-style particle trace). WebGPU still runs the compute
+  // step on the device; only the rendering is host-side on this 2D context.
+  const ctx2d = canvas.getContext('2d');
+  const CW = canvas.width, CH = canvas.height;
+  const scale = CW / N;                       // canvas pixels per grid cell
+  ctx2d.fillStyle = '#fff';
+  ctx2d.fillRect(0, 0, CW, CH);
+
+  // ---------------------------------------------------------------------------
+  // Geometry: left chamber, wall column, channel opening at top, right chamber
+  // ---------------------------------------------------------------------------
+  const WALL_I0 = Math.round(N * 0.40);
+  const WALL_I1 = Math.round(N * 0.60) - 1;
+  const CHAN_J0 = Math.round(N * 0.90);
+
+  function inWall(i, j) {
+    if (i < WALL_I0 || i > WALL_I1) return false;
+    if (j >= CHAN_J0) return false;
+    return true;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Buffers
+  // ---------------------------------------------------------------------------
+  const NCELL = N * N;
+  const STATE_BYTES = NCELL * 4 * 4;
+
+  const stateA = device.createBuffer({
+    size: STATE_BYTES,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+  });
+  const stateB = device.createBuffer({
+    size: STATE_BYTES,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+  });
+  const maskBuf = device.createBuffer({
+    size: NCELL * 4,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+  const paramsBuf = device.createBuffer({
+    size: 8 * 4,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+
+  device.queue.writeBuffer(paramsBuf, 0, new Float32Array([
+    N, H, DT, GAMMA, NU, MU, 0, 0,
+  ]));
+
+  // Initial state and mask
+  const init = new Float32Array(NCELL * 4);
+  const mask = new Uint32Array(NCELL);
+  for (let j = 0; j < N; j++) {
+    for (let i = 0; i < N; i++) {
+      const idx = i + N * j;
+      const off = idx * 4;
+      let rho0 = 1.0, e0 = 1.0;
+      if (inWall(i, j)) {
+        mask[idx] = 1;
+        rho0 = 1.0; e0 = 1.0;
+      } else if (i < WALL_I0) {
+        rho0 = 10.0; e0 = 10.0;     // left chamber, same temperature
+      }
+      init[off + 0] = rho0;
+      init[off + 1] = e0;
+      init[off + 2] = 0;
+      init[off + 3] = 0;
+    }
+  }
+  device.queue.writeBuffer(stateA, 0, init);
+  device.queue.writeBuffer(stateB, 0, init);
+  device.queue.writeBuffer(maskBuf, 0, mask);
+
+  // Readback staging buffer: the current state is copied here each frame so the
+  // host can advect tracer particles by the velocity field v = m/rho.
+  const readBuf = device.createBuffer({
+    size: STATE_BYTES,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+
+  // ---------------------------------------------------------------------------
+  // WGSL shaders
+  // ---------------------------------------------------------------------------
+  const paramsBlock = `
+    struct Params {
+      N: f32, h: f32, dt: f32, gamma: f32, nu: f32, mu: f32, _p0: f32, _p1: f32,
+    };
+  `;
+
+  // The step shader reads each face neighbour with a mask check; if the
+  // neighbour is a wall, a FREE-SLIP ghost cell is substituted (same rho/e,
+  // wall-normal momentum reflected, tangential momentum kept). This enforces
+  // zero normal velocity (impermeable) with no tangential drag at the walls.
+  const stepShader = paramsBlock + /* wgsl */ `
+    @group(0) @binding(0) var<uniform> P: Params;
+    @group(0) @binding(1) var<storage, read>       state_in:  array<vec4<f32>>;
+    @group(0) @binding(2) var<storage, read>       mask:      array<u32>;
+    @group(0) @binding(3) var<storage, read_write> state_out: array<vec4<f32>>;
+
+    fn idx(i: u32, j: u32) -> u32 {
+      let n = u32(P.N);
+      return i + n * j;
+    }
+    // Read a neighbour cell. If it is a wall, return a FREE-SLIP ghost: same
+    // rho/e, the wall-normal momentum reflected (zero normal velocity at the
+    // face) and the tangential momentum kept (zero tangential gradient). (di,dj)
+    // is the offset from the centre cell so we know which axis is wall-normal.
+    fn read_n(i: u32, j: u32, di: i32, dj: i32, cc: vec4<f32>) -> vec4<f32> {
+      let id = idx(i, j);
+      if (mask[id] != 0u) {
+        var mz = cc.z;
+        var mw = cc.w;
+        if (di != 0) { mz = -cc.z; }   // x-normal face: reflect mx
+        if (dj != 0) { mw = -cc.w; }   // y-normal face: reflect my
+        return vec4<f32>(cc.x, cc.y, mz, mw);
+      }
+      return state_in[id];
+    }
+
+    @compute @workgroup_size(8, 8)
+    fn step(@builtin(global_invocation_id) gid: vec3<u32>) {
+      let n = u32(P.N);
+      let i = gid.x; let j = gid.y;
+      if (i >= n || j >= n) { return; }
+
+      let id = idx(i, j);
+      let cell = state_in[id];
+
+      // Wall cells: freeze rho/e, zero momentum.
+      if (mask[id] != 0u) {
+        state_out[id] = vec4<f32>(cell.x, cell.y, 0.0, 0.0);
+        return;
+      }
+      // Outer-box boundary: copy through (no update); ghost-handling at the
+      // outer box is mild because the dynamics are nowhere near the outer wall
+      // in this configuration.
+      if (i == 0u || j == 0u || i == n - 1u || j == n - 1u) {
+        state_out[id] = cell;
+        return;
+      }
+
+      // Local primitives
+      let rho_c = max(cell.x, 1e-6);
+      let e_c   = cell.y;
+      let mx_c  = cell.z;
+      let my_c  = cell.w;
+      let vx_c  = mx_c / rho_c;
+      let vy_c  = my_c / rho_c;
+
+      // Read 4 face neighbours with mask-aware substitution
+      let c_xp = read_n(i+1u, j, 1, 0, cell);
+      let c_xm = read_n(i-1u, j, -1, 0, cell);
+      let c_yp = read_n(i, j+1u, 0, 1, cell);
+      let c_ym = read_n(i, j-1u, 0, -1, cell);
+
+      // Neighbour velocities
+      let vx_xp = c_xp.z / max(c_xp.x, 1e-6);
+      let vx_xm = c_xm.z / max(c_xm.x, 1e-6);
+      let vx_yp = c_yp.z / max(c_yp.x, 1e-6);
+      let vx_ym = c_ym.z / max(c_ym.x, 1e-6);
+      let vy_xp = c_xp.w / max(c_xp.x, 1e-6);
+      let vy_xm = c_xm.w / max(c_xm.x, 1e-6);
+      let vy_yp = c_yp.w / max(c_yp.x, 1e-6);
+      let vy_ym = c_ym.w / max(c_ym.x, 1e-6);
+
+      // Viscous stresses, one-sided (parallel to the 2D CPU version)
+      let sxx_c  = P.nu * (vx_c - vx_xm) / P.h;
+      let syy_c  = P.nu * (vy_c - vy_ym) / P.h;
+      let sxy_c  = P.nu * 0.5 * ((vx_c - vx_ym) + (vy_c - vy_xm)) / P.h;
+      let sxx_xp = P.nu * (vx_xp - vx_c) / P.h;
+      let syy_yp = P.nu * (vy_yp - vy_c) / P.h;
+      // For cross-derivatives we approximate the off-diagonal stress at +1
+      // using the same simple stencil shifted by one cell; corner reads are
+      // mask-aware via the same read_n helper to keep the boundary clean.
+      let c_xp_yp = read_n(i+1u, j+1u, 1, 1, cell);
+      let c_xp_ym = read_n(i+1u, j-1u, 1, -1, cell);
+      let vy_xp_yp_x = c_xp_yp.w / max(c_xp_yp.x, 1e-6);
+      let vx_xp_ym_y = c_xp_ym.z / max(c_xp_ym.x, 1e-6);
+      let sxy_yp = P.nu * 0.5 * ((vx_yp - vx_c) + (vy_xp_yp_x - vy_yp)) / P.h;
+      let sxy_xp = P.nu * 0.5 * ((vx_xp - vx_xp_ym_y) + (vy_xp - vy_c)) / P.h;
+
+      let lap_vx  = (vx_xp + vx_xm - 4.0*vx_c + vx_yp + vx_ym) / P.h;
+      let lap_vy  = (vy_xp + vy_xm - 4.0*vy_c + vy_yp + vy_ym) / P.h;
+      let lap_rho = (c_xp.x + c_xm.x - 4.0*rho_c + c_yp.x + c_ym.x) / P.h;
+      let lap_e   = (c_xp.y + c_xm.y - 4.0*e_c   + c_yp.y + c_ym.y) / P.h;
+
+      let mx_new = mx_c
+        + P.mu * P.dt * lap_vx
+        - 0.5 * P.dt * (vx_xp * c_xp.z - vx_xm * c_xm.z) / P.h
+        - 0.5 * P.dt * (vy_yp * c_yp.z - vy_ym * c_ym.z) / P.h
+        - P.dt * P.gamma * (c_xp.y - c_xm.y) / P.h
+        + P.dt * ((sxx_xp - sxx_c) + (sxy_yp - sxy_c)) / P.h;
+
+      let my_new = my_c
+        + P.mu * P.dt * lap_vy
+        - 0.5 * P.dt * (vx_xp * c_xp.w - vx_xm * c_xm.w) / P.h
+        - 0.5 * P.dt * (vy_yp * c_yp.w - vy_ym * c_ym.w) / P.h
+        - P.dt * P.gamma * (c_yp.y - c_ym.y) / P.h
+        + P.dt * ((sxy_xp - sxy_c) + (syy_yp - syy_c)) / P.h;
+
+      let rho_raw = rho_c
+        - 0.5 * P.dt * ((c_xp.z - c_xm.z) + (c_yp.w - c_ym.w)) / P.h
+        + P.mu * P.dt * lap_rho;
+
+      // Viscous-heating (dissipation) term — irreversible kinetic -> internal
+      // energy conversion, the heart of the Joule experiment. Matches the p5
+      // reference term dt*mu*((dvx)^2 + (dvy)^2)/h.
+      let heat = P.mu * P.dt * (
+            (vx_xp - vx_c) * (vx_xp - vx_c) + (vx_yp - vx_c) * (vx_yp - vx_c)
+          + (vy_xp - vy_c) * (vy_xp - vy_c) + (vy_yp - vy_c) * (vy_yp - vy_c)) / P.h;
+
+      let e_raw = e_c
+        - 0.5 * P.dt * (vx_xp * c_xp.y - vx_xm * c_xm.y) / P.h
+        - 0.5 * P.dt * (vy_yp * c_yp.y - vy_ym * c_ym.y) / P.h
+        - P.dt * P.gamma * e_c * ((vx_xp - vx_xm) + (vy_yp - vy_ym)) / P.h
+        + P.mu * P.dt * lap_e
+        + heat;
+
+      // Positivity floors to keep v = m/rho finite and the simulation stable.
+      let rho_new = max(0.05, rho_raw);
+      let e_new   = max(0.05, e_raw);
+
+      state_out[id] = vec4<f32>(rho_new, e_new, mx_new, my_new);
+    }
+  `;
+
+  // ---------------------------------------------------------------------------
+  // Pipelines and bind groups  (compute step only; display is host-side 2D)
+  // ---------------------------------------------------------------------------
+  const stepModule = device.createShaderModule({ code: stepShader });
+  {
+    const info = await stepModule.getCompilationInfo();
+    for (const msg of info.messages) {
+      console.log(`[step] ${msg.type}: line ${msg.lineNum}:${msg.linePos} — ${msg.message}`);
+    }
+  }
+  const stepPipeline = device.createComputePipeline({
+    layout: 'auto',
+    compute: { module: stepModule, entryPoint: 'step' },
+  });
+
+  function makeStepBindGroup(sin, sout) {
+    return device.createBindGroup({
+      layout: stepPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: sin } },
+        { binding: 2, resource: { buffer: maskBuf } },
+        { binding: 3, resource: { buffer: sout } },
+      ],
+    });
+  }
+  const bgAtoB = makeStepBindGroup(stateA, stateB);
+  const bgBtoA = makeStepBindGroup(stateB, stateA);
+
+  // ---------------------------------------------------------------------------
+  // Host-side tracer particles (p5-style trace with fading trails)
+  // ---------------------------------------------------------------------------
+  const NP_SIDE = 130;
+  const NP = NP_SIDE * NP_SIDE;
+  const px = new Float32Array(NP);
+  const py = new Float32Array(NP);
+  const ADVECT = 4000;                 // velocity -> pixel gain (visible motion)
+  let lastState = null;                // most recent state read back from GPU
+  let mapPending = false;
+  let resetAccum = 0;
+
+  function seedParticles() {
+    let p = 0;
+    for (let b = 0; b < NP_SIDE; b++) {
+      for (let a = 0; a < NP_SIDE; a++) {
+        px[p] = (a + 0.5) * (N / NP_SIDE) * scale;
+        py[p] = (b + 0.5) * (N / NP_SIDE) * scale;
+        p++;
+      }
+    }
+    ctx2d.fillStyle = '#fff';
+    ctx2d.fillRect(0, 0, CW, CH);
+  }
+  seedParticles();
+
+  function drawWalls() {
+    ctx2d.fillStyle = 'rgba(120,120,140,0.95)';
+    ctx2d.fillRect(WALL_I0 * scale, 0,
+                   (WALL_I1 - WALL_I0 + 1) * scale, CHAN_J0 * scale);
+  }
+
+  // Line cuts: profiles of density / pressure / temperature along a grid row,
+  // drawn as colored curves rising above the cut line at screen height baseY.
+  const J_MID  = Math.floor(N / 2);                 // mid height
+  const J_CHAN = Math.floor((CHAN_J0 + N) / 2);     // across the channel opening
+  const CUT_BAND = 90;                              // px amplitude of the curves
+  function drawCut(jrow, baseY, title) {
+    if (!lastState) return;
+    ctx2d.strokeStyle = 'rgba(0,0,0,0.45)';         // cut location guide line
+    ctx2d.lineWidth = 1;
+    ctx2d.beginPath(); ctx2d.moveTo(0, baseY); ctx2d.lineTo(CW, baseY); ctx2d.stroke();
+    const curve = (color, valfn) => {
+      ctx2d.strokeStyle = color; ctx2d.lineWidth = 2; ctx2d.beginPath();
+      for (let i = 0; i < N; i++) {
+        const o = (i + N * jrow) * 4;
+        const rho = lastState[o] > 1e-6 ? lastState[o] : 1e-6;
+        const v = Math.max(0, Math.min(1, valfn(rho, lastState[o + 1])));
+        const x = i * scale, y = baseY - CUT_BAND * v;
+        if (i === 0) ctx2d.moveTo(x, y); else ctx2d.lineTo(x, y);
+      }
+      ctx2d.stroke();
+    };
+    curve('rgba(0,170,230,0.95)', (rho, e) => rho / 10.0);          // density  /10
+    curve('rgba(220,0,0,0.95)',   (rho, e) => (GAMMA * e) / 1.0);   // pressure p=γe
+    curve('rgba(0,160,0,0.95)',   (rho, e) => ((e / rho) - 0.5));   // temperature
+    ctx2d.fillStyle = '#000'; ctx2d.font = '11px sans-serif';
+    ctx2d.fillText(title, 4, baseY - CUT_BAND - 3);
+  }
+
+  function drawTrace(advDt) {
+    ctx2d.fillStyle = 'rgba(255,255,255,0.06)';   // fading trail
+    ctx2d.fillRect(0, 0, CW, CH);
+    drawWalls();
+    if (!lastState) return;
+    const adv = ADVECT * advDt * scale;
+    ctx2d.fillStyle = 'rgba(0,0,255,0.9)';
+    for (let p = 0; p < NP; p++) {
+      let ci = px[p] / scale | 0, cj = py[p] / scale | 0;
+      if (ci < 0) ci = 0; else if (ci >= N) ci = N - 1;
+      if (cj < 0) cj = 0; else if (cj >= N) cj = N - 1;
+      const o = (ci + N * cj) * 4;
+      const rho = lastState[o] > 1e-3 ? lastState[o] : 1e-3;
+      px[p] += adv * lastState[o + 2] / rho;
+      py[p] += adv * lastState[o + 3] / rho;
+      ctx2d.fillRect(px[p], py[p], 1.5, 1.5);
+    }
+    // overlay the two line cuts
+    drawCut(J_MID,  J_MID  * scale, 'mid-height cut:  ρ/10 (cyan)  p (red)  T (green)');
+    drawCut(J_CHAN, J_CHAN * scale, 'channel cut');
+  }
+
+  btnReset.addEventListener('click', () => {
+    device.queue.writeBuffer(stateA, 0, init);
+    device.queue.writeBuffer(stateB, 0, init);
+    pingState = 'A';
+    simTime = 0;
+    frameCount = 0;
+    resetAccum = 0;
+    seedParticles();
+    lblTime.textContent = 't = 0.000';
+  });
+
+  // ---------------------------------------------------------------------------
+  // Frame loop
+  // ---------------------------------------------------------------------------
+  let pingState = 'A';
+  let frameCount = 0;
+  let simTime = 0;
+
+  function frame() {
+    frameCount++;
+    const encoder = device.createCommandEncoder();
+
+    const stepsThisFrame = paused ? 0 : substepsPerFrame;
+    for (let s = 0; s < stepsThisFrame; s++) {
+      const pass = encoder.beginComputePass();
+      pass.setPipeline(stepPipeline);
+      pass.setBindGroup(0, pingState === 'A' ? bgAtoB : bgBtoA);
+      pass.dispatchWorkgroups(Math.ceil(N/8), Math.ceil(N/8));
+      pass.end();
+      pingState = (pingState === 'A') ? 'B' : 'A';
+      simTime += DT;
+    }
+
+    // copy the current state out for host-side advection (skip if a map is busy)
+    const curState = pingState === 'A' ? stateA : stateB;
+    if (!mapPending) {
+      encoder.copyBufferToBuffer(curState, 0, readBuf, 0, STATE_BYTES);
+    }
+    device.queue.submit([encoder.finish()]);
+    if (!mapPending) {
+      mapPending = true;
+      readBuf.mapAsync(GPUMapMode.READ).then(() => {
+        lastState = new Float32Array(readBuf.getMappedRange().slice(0));
+        readBuf.unmap();
+        mapPending = false;
+      }).catch(() => { mapPending = false; });
+    }
+
+    const advDt = DT * stepsThisFrame;
+    drawTrace(advDt);
+    resetAccum += advDt;
+    if (resetAccum > 0.06) { resetAccum = 0; seedParticles(); }
+
+    if (frameCount % 10 === 0) {
+      lblTime.textContent = `t = ${simTime.toFixed(3)}`;
+      status.textContent =
+        `${paused ? 'paused' : 'running'} — frame ${frameCount} — N = ${N}² = ${NCELL.toLocaleString()} cells, ` +
+        `${substepsPerFrame} substeps/frame`;
+    }
+    requestAnimationFrame(frame);
+  }
+
+  status.textContent = `WebGPU ready — N = ${N}², ${substepsPerFrame} substeps/frame. Starting…`;
+  requestAnimationFrame(frame);
+}
+
+main().catch(err => {
+  console.error(err);
+  status.textContent = 'Error: ' + err.message;
+});
+</script>
+</body>
+</html>
