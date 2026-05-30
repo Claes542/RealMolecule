@@ -1,0 +1,173 @@
+\chapter{Supersonic Flow around a sphere}
+
+Experimental data for compressible flow around a sphere for different Mach
+numbers and Reynolds numbers are available over the number of publications
+starting from the 18th century. A review article by Miller \&
+Bailey \cite{Miller:1979} studies the experiments of the 18th and 19th
+centuries for different Mach numbers $0.2
+\leq M \leq 2.0$ at $Re \approx 10^7$. The analyses in the mentioned article
+show that the experimental data obtained three centuries ago are in good
+agreement to the modern data. 
+
+Sphere measurements obtained by \cite{Miller:1979} and \cite{Bailey:1971}
+show that regardless of the diameter size of the sphere, the drag coefficient
+increases rapidly in the transonic region and for $M\geq1.6$ and $Re\geq 10^5$
+it stays to be constant with further increases in Reynolds number. 
+Experimental analyses in \cite{Bailey:1971} and earlier in \cite{Charters:1945}
+show that the drag coefficient 
+slowly decreases when the Mach number increases above $M\geq 2$ for the
+flow with $Re \gtrapprox 10^6$. 
+We leave a
+complete discussion for different Mach numbers for future research, but in this
+paper we present results for only one Mach number, in order
+to see if the RNS solution gives a correct result according to the experiment.
+
+We use Algorithm \ref{adapt:alg} for the supersonic flow
+around a sphere  with diameter $d = 0.074$ at Mach number $M=2$. For this
+Mach number the flow characterized by a detached three
+dimensional bow shock wave in front of the sphere and is in a mixed
+subsonic and supersonic flow behind the sonic line $M=1$. Here the pressure drag
+at the stagnation point is high compared to the
+subsonic
+case. An attached shock
+wave develops in the rear of the sphere, which is also counted as a
+substantial source of the pressure drag. Therefore, the area for the
+pressure stagnation point and attached shock waves should be resolved by
+computation for the correct drag coefficient.
+We observe from the results that the adaptive RNS method tries to resolve these
+regions.
+
+We present the results from the simulation in Table \ref{table:sphere}.
+$10\%$ of the largest cells are refined during the adaptive algorithm.
+We start with an initial coarse mesh, which has 9 720 vertices and 53 312 cells,
+which reaches 168 820 vertices and 918 605 cells after 9th adaptive
+iteration. The error bound of the drag coefficient
+$\displaystyle\sum_{n,K}\eta_n^K$ converge by the
+mesh refinement, as the drag coefficient approximately
+stays around the experimental data $C_{dp} \approx 1$. In Figure
+\ref{fig:sphere_cd} the drag coefficients are plotted after each adaptive
+iterations.  
+
+We plot the solution of the adaptive algorithm in Figure \ref{fig:sphere_sol}
+after
+eight refinements. The right column of the figure shows the primal solutions and
+the left column presents the corresponding dual solutions. The magnitude of the
+dual solution is high in the areas with the significant contribution to the
+pressure drag force. The plot of the primal pressure shows that already in
+eight adaptive step the pressure structures are close to be resolved.
+
+In Figure \ref{fig:mesh_3D} we present the initial coarse mesh and the mesh
+after nine adaptive refinements. After each refinement the boundary nodes,
+which appear from the Rivara algorithm are projected to the surface
+of the sphere. Also, we notice that similar to the 2D result, the algorithm
+focuses
+to resolve the pressure stagnation point, area of the sonic line and
+attached shock wave, which is expected since they are the main source of
+pressure drag. With ad hoc refinement, for instance residual
+based or gradient based adaptation, the region with strong shocks are well
+resolved. However, we notice that the duality based adaptive algorithm does not
+resolve a propagating bow shock and other strong discontinuities, it only
+refines the areas with the largest error contribution. Consequently,	 it
+significantly decreases the computational cost of the drag force computation.
+
+\begin{table}[ht]
+\caption{The convergence history of the drag coefficient. 
+Here $\bar C_{dp}$ is a mean value of $C_{dp}$ over the time interval
+$[t-\epsilon_t, t]$, where $\epsilon_t$ is a small number, and
+$\displaystyle\sum_{n, K}\eta_n^K$ denotes a sum of error indicators.}
+\centering
+\begin{tabular}{ c | c | c | c | c | c  }
+\hline
+\#iter & \#vertices & \#cells & $S$ &   $\bar C_{dp}$ &
+$\displaystyle\sum_{n,K}\eta_n^K$ \\
+  \hline 
+0 &9720&  53312 &0.8218        &0.8115          &1.5018 \\
+1&17405&  94572 &0.9571        &0.8360          &1.3096 \\
+2&22915&  124884 &1.1586         &0.8502         &1.0234 \\
+3&29686&  160313 &1.4233         &0.9085         &0.8651 \\
+4&39328&  212637 &1.6683         &0.9474         &0.7352 \\
+5&51746&  280031 &1.8440         &0.9705         &0.6236 \\
+6&69418&  376144 &2.0050         &0.9873         &0.5429 \\
+7&93696&  508209 &2.0538         &0.9982         &0.4532 \\
+8&  126012&  685079 &2.1038      &1.0046         &0.3844 \\
+9& 168820 & 918605 & 2.0541      &1.0081         & 0.3199 \\
+\hline 
+ \end{tabular}\label{table:sphere}
+\end{table}
+ 
+ 
+ \begin{figure}[bhpt]
+           \centerline{
+           \includegraphics[width=0.45\textwidth]{jpg/sphere/dual_rho.eps}
+           \includegraphics[width=0.45\textwidth]{jpg/sphere/density.eps}
+           }
+	   \vspace{0.1in}
+           \centerline{
+           \includegraphics[width=0.45\textwidth]{jpg/sphere/dual_pre.eps}
+           \includegraphics[width=0.45\textwidth]{jpg/sphere/pressure.eps}
+           }
+	   \vspace{0.1in}
+           \centerline{
+           \includegraphics[width=0.45\textwidth]{jpg/sphere/dual_u.eps}
+           \includegraphics[width=0.45\textwidth]{jpg/sphere/velocity.eps}
+           }
+	   \vspace{0.1in}
+  \caption{Supersonic flow around a sphere: the dual solution at time $t=0$
+of density \textit{(top-left)}, pressure \textit{(middle-left)} and 
+magnitude of velocity
+\textit{(bottom-left)}; the primal solution at time $t=0.5$ of density
+\textit{(top-right)}, pressure \textit{(middle-right)} and 
+magnitude of velocity
+\textit{(bottom-right)}. The contours are plotted in the collormap. The sonic
+line in red is plotted together with the dual solution.
+}
+  \label{fig:sphere_sol}
+\end{figure}
+
+ 
+ \begin{figure}[bhpt]
+           \centerline{
+           \includegraphics[width=0.45\textwidth]{jpg/sphere/mesh_it_0.eps}
+           \includegraphics[width=0.45\textwidth]{jpg/sphere/mesh_it_4.eps}
+           }
+	   \vspace{0.1in}
+           \centerline{
+           \includegraphics[width=0.45\textwidth]{jpg/sphere/mesh_it_9.eps}
+           \includegraphics[width=0.45\textwidth]{jpg/sphere/mesh_it_0_yz.eps}
+           }
+	   \vspace{0.1in}
+           \centerline{
+           \includegraphics[width=0.45\textwidth]{jpg/sphere/mesh_it_9_yz.eps} 
+      \includegraphics[width=0.45\textwidth]{jpg/sphere/mesh_it_9_yz_back.eps}
+           }
+	   \vspace{0.1in}
+  \caption{Supersonic flow around a sphere: the  $(x,y)$ -
+view of the mesh for the initial mesh \textit{(top-left)}, four times
+\textit{(top-right)}
+and nine times \textit{(middle-left)} adaptive refinement according to the
+drag
+force together, the sonic line is plotted in red, $(y,z)$ - view
+of the mesh for $x=x_s$ of the initial mesh \textit{(middle-right)}, where
+$x_s$ - is
+$x$ coordinate of the center of sphere,  
+the finest mesh close to the stagnation point of pressure $x =
+x_s - d/2$ \textit{(below-left)}, and the finest mesh at $x =
+x_s + 0.02$  from back \textit{(below-right)}
+}
+  \label{fig:mesh_3D}
+\end{figure}
+
+\begin{figure}[bhpt]
+           \centerline{          
+\includegraphics[width=0.7\textwidth]{jpg/sphere/drag_sphere_M_2_0.eps}
+           }
+ 	\centerline{       
+\includegraphics[width=0.7\textwidth]{jpg/sphere/drag_zoom.eps} 
+           }
+  \caption{
+  Supersonic flow around a sphere: the drag coefficient $C_{dp}$ in different
+adaptive iterations.}
+  \label{fig:sphere_cd}
+\end{figure}
+
+

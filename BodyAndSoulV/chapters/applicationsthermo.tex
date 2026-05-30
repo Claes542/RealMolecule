@@ -1,0 +1,1502 @@
+\part{Applications}
+
+
+\chapter{Carnot Heat Engine}
+
+\small
+\begin{quote}
+No heat engine can be more efficient than a 
+Carnot engine with efficiency
+$1-\frac{\tau_c}{\tau_h}$, when operating between two temperatures 
+$\tau_h$ and $\tau_c<\tau_h$.
+(Carnot 1824)
+\end{quote}
+\normalsize
+
+
+\section{Introduction}
+
+We now pass on to basic applications including \emph{heat engines}, \emph{heat pumps} and \emph{refrigerators}, which are cyclic thermodynamics processes 
+sharing essential aspects.  A main issue is the 
+\emph{losses} caused by turbulence/shocks, which determine
+the \emph{efficiency} of the device. We show that RNS
+allows simulatation of real processes including
+accurate computation of losses and efficiency.
+
+
+We start recalling the theoretical analysis the ideal \emph{Carnot heat engine}
+and the \emph{Carnot heat pump} offered by classical 
+thermodynamics, and then pass on to RNS simulation and analysis
+of real engines, pumps and refrigerators. 
+
+
+\section{Heat Engines}
+
+
+A \emph{heat engine} is a cyclic thermodynamic process converting
+heat energy to useful mechanical work. The \emph{efficiency}
+of a heat engine is the quotient between the useful mechanical work
+and the heat energy supplied. 
+Carnot claimed that no heat engine operating between
+two temperatures $\tau_h=\tau_{hot}$ and $\tau_c=\tau_{cold}<\tau_h$, can have an efficiency
+exceeding $1-\frac{\tau_c}{\tau_h}$. A heat engine
+with small temperature difference with $\frac{\tau_c}{\tau_h}\approx 1$, thus would be very inefficient.
+
+To show this Carnot assumed that 
+a \emph{heat engine} is a cyclic thermodynamic process
+of a perfect gas connecting four states 1-4 
+through the following consecutive sub-processess:
+\begin{itemize}
+\item[(12)] isothermal expansion absorbing heat
+at $\tau_h$ from a recervoir,
+\item[(23)] adiabatic expansion to temperature $\tau_c <\tau_h$,
+\item[(34)] isothermal compression delivering heat at $\tau_c$
+to a recervoir,
+\item[(41)] adiabatic compression to temperature $\tau_h$,
+\end{itemize}
+where (ij) is the process leading from state i to state j. 
+We recall that \emph{adiabatic} means that there is no
+exchange of heat with the surrounding reservoirs, 
+and \emph{isothermal} that the temperature stays constant.
+Carnot defined a \emph{Carnot heat engine} to be an \emph{ideal reversible} 
+heat engine operating without losses. Any real heat engine would be 
+subject to losses and thus, by definition,  would be less efficient than a 
+Carnot heat engine.
+
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=5cm]{ambsthermopict/carnotengine.eps} 
+} 
+\caption{Carnot heat engine cycle.}
+\label{carnotheatengine} 
+\end{figure}  
+
+
+\section{Classical Efficiency of a Carnot Heat Engine}
+
+We now recall the classical analyis showing that 
+the efficiency of a Carnot heat engine is
+$1-\frac{\tau_c}{\tau_h}$. It is based on energy balance
+in the form $dQ=d\tau +pdV=dE+dW$, where $dQ$ is supplied heat energy,
+$d\tau$ change of internal energy, $dV$ change of volume $V$
+and $dW$ change of work $W$.
+We note that in process 12 and 23 work is done \emph{by} the process 
+($dV>0$) and in step 34 and 41 \emph{on} the process ($dV<0$). 
+Noting that $dQ=0$ in process 23 and 41, we obtain integrating
+$d\tau +pdV=0$, 
+\[
+W_{23}=\int_2^3pdV=\tau_h-\tau_c=-\int_4^1pdV=-W_{41},
+\]
+where $W_{ij}$ is the work in process ij.
+Further, recalling the state equation of a perfect gas
+ $pV=(\gamma -1)\tau$, we get
+integrating $0=\frac{d\tau}{\tau}+(\gamma -1)\frac{dV}{V}$ over
+the processes 23 and 41,
+\begin{equation}\label{logV}
+(\gamma -1)\log(\frac{V_3}{V_2})=-\log(\frac{\tau_c}{\tau_h})
+=-(\gamma -1)\log(\frac{V_1}{V_4}),
+\end{equation}
+where $V_i$ is the volume of state $i$.
+Further, since $d\tau =0$ in process 12 and 34 
+\[
+W_{12}=Q_{12}, \quad W_{34}=Q_{34},
+\]
+where $Q_{ij}$ is the heat energy absorbed/released in process $ij$.
+Using that $p=(\gamma -1)\tau_h/V$ in process 12, we have
+\[
+W_{12}=\int_1^2 pdv=(\gamma -1)\tau_h\int_1^2 \frac{dV}{V}=
+(\gamma -1)\tau_h\log(\frac{V_2}{V_1}),
+\]
+and similarly
+\[
+W_{34}=(\gamma -1)\tau_c\log(\frac{V_4}{V_3}).
+\]
+We conclude since by (\ref{logV}), $\log(\frac{V_2}{V_1})=\log(\frac{V_3}{V_4})$\[
+\frac{-W_{34}}{W_{12}}=\frac{\tau_c}{\tau_h}.
+\]
+Thus the efficiency $\eta_e$ of a Carnot heat engine, 
+the quotient of performed work and used energy,
+is given by
+\[
+\eta_e =\frac{W_{12}+W_{23}+W_{34}+W_{41}}{Q_{12}}=\frac{W_{12}+W_{34}}{W_{12}}=1-\frac{\tau_c}{\tau_h},
+\]
+as announced. The argument is based on an energy balance 
+in the form $0=d\tau +pdV=d\tau +dW$ in the adiabatic
+processes 23 and 34, and in the form $dQ=dW$
+in the isothermal processes 12 and 34. Apparently we
+have assumed that there is no loss in any these processes:
+A Carnot engine is a heat engine without losses.   
+
+In a realization of the above cyclic process 1-4 the flow
+will be partly turbulent, in which case 
+both $W_{12}>0$ and $W_{34}<0$
+can only decrease. It follows that no heat engine
+based on the cyclic process 1-4 can be more efficient than
+a Carnot engine. A Carnot engine is really the best heat engine of the
+form 1-4. But of course, the real issue is the efficiency of a real
+heat engine, to which we return below. 
+
+
+
+ 
+\chapter{Carnot Heat Pump}
+
+\small
+\begin{quote}
+No heat pump can be more efficient than a 
+Carnot heat pump with efficiency
+$\tau_h/(\tau_h-\tau_c)$ operating between two temperatures 
+$\tau_h$ and $\tau_c<\tau_h$.
+(Carnot)
+\end{quote}
+\normalsize
+
+
+
+\section{Classical Efficiency of a Carnot Heat Pump}
+
+Running a Carnot heat engine in reverse, we get a \emph{Carnot
+heat pump} absorbing energy
+from a heat recervoir at low temperature and delivering 
+heat energy to a recervoir at higher temperature $\tau_h>\tau_c$ at the expense of mechanical work, consisting of the following 
+processes:
+\begin{itemize}
+
+\item[(21)] isothermal compression delivering heat energy at $\tau_h$
+to a recervoir,
+\item[(14)] adiabatic expansion to temperature $\tau_c$,
+\item[(43)] isothermal expansion absorbing heat energy  
+at $\tau_c$ from a recervoir,
+\item[(32)] adiabatic compression to temperature $\tau_h$,
+\end{itemize}
+where now in step 21 and 32 work is done on the process and the work
+in step 32 and 14 as above sums to zero.
+The efficiency $\eta_p$ of Carnot heat pump is commonly measured by
+the quotient of delivered heat energy $-Q_{21}$ divided by the 
+total work $W$ supplied 
+\begin{equation}\label{efficiencypump}
+\eta_{p} =\frac{-Q_{21}}{W}=\frac{Q_{12}}{W}=\frac{1}{\eta_{e}}.
+\end{equation}
+A Carnot heat pump is an ideal heat pump without losses, 
+while in a real heat pump 
+the inevitable turbulence/shocks in the expansion steps 14 and 43 
+would increase the temperature and thus reduce the heat absorption 
+in step 43, thus reducing $Q_{43}$ and then also $-Q_{21}$ and 
+the efficiency. 
+
+Carnot's analysis captured in (\ref{efficiencypump}) suggests that
+a lousy heat engine would be an excellent heat pump (and vice versa).
+Of course, reality does not work this way, because of the inevitable
+losses from turbulence.
+Thus, Carnot's analysis at best only gives a very rough idea
+of the efficiency of a heat engine or heat pump. 
+We observe the obvious fact 
+that even if the efficiency of a Carnot heat pump working with a
+small temperature drop would seem to be formidable according
+to classical analysis, it would 
+tend to give a small output $-Q_{12}$ in absolute terms.
+
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=5cm]{ambsthermopict/carnotpump.eps} 
+} 
+\caption{Carnot heat pump.}
+\label{carnotheatpump} 
+\end{figure}  
+
+   
+\chapter{Real Heat Engines}
+
+
+\section{RNS Model of Real Heat Engine}
+
+We simulate by RNS a real heat engine operating
+through the same cycle of steps as the Carnot heat engine. 
+We find that each step involves a certain loss due 
+to turbulence/shocks and the total loss determines the
+efficiency as compared to a Carnot engine.
+
+
+
+
+
+
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=12cm]{ambsthermopict/heatengine.eps} 
+} 
+\caption{A heat engine prototype}
+\label{heatengineprototype} 
+\end{figure}
+  
+\chapter{Real Heat Pumps}
+
+\section{Increasing Efficiency by Phase Transition}
+
+To increase the efficiency of a heat pump, the cycle
+may be formed to contain a \emph{changes of phase} from fluid
+to gas phase (\emph{evaporation}) in the expansion step  43 
+and from ghas phase  
+to fluid phase (\emph{condensation}) in step 21. The 
+\emph{latent heat} being released during condensation and absorbed 
+during the vaporization increase
+both $Q_{43}$ and $-Q_{21}$ without increasing $W$, and thus
+increases efficiency.
+
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=8cm]{ambsthermopict/heat_pump.eps} 
+} 
+\caption{Principle of a  heat pump.}
+\label{heatpump} 
+\end{figure} 
+
+
+\section{RNS Model of Real Heat Pump}
+
+We simulate a simple heat pump consisting of two chambers 1  and 2
+connected with a channel as in Joule's experiment. We assume the fluid 
+moves back and forth between the two chambers being
+in liquid phase in chamber 1 at pressure $p>p_c$ and in
+gas phase in chamber 2 at pressure $p<p_c$, with $p_c$ the 
+condensation/vaporization pressure, in the following cyclic process:
+
+
+\begin{enumerate}
+\item Open the valve in the channel and let the fluid at 
+temperature $T_h$ and pressure $p>p_c$ in chamber 1 expand into
+chamber 2 while evaporating into the gas phase at pressure
+$p<p_c$ under temperture drop 
+below $T_c$ in chamber 2. Close the valve.
+\item Let chamber 2 absorb heat from a surrounding reservoir
+at temperature $T_c$.
+\item Open the valve and start a compressor in the channel
+forcing the gas to move from chamber 2 into chamber 1, while
+changing to fluid phase under release of heat, to reach 
+a temperture above $T_h$ in chamber 1. Close the valve and stop the compressor.
+\item Let the chamber 2 supply heat to a surrounding reservoir
+at temperture $T_h$, and go back to 1.
+\end{enumerate}
+The heat consumed for evaporation and heat released by condensation
+is modeled by defining the internal energy $e$ to be 
+\begin{equation}\label{heatofformation}
+e=\rho (T\pm \Delta H)
+\end{equation}
+where $\Delta H$ is a constant heat of formation, 
+or change of enthalpy $H$, the plus-sign is
+used if $p>p_c$, the minus-sign if $p<p_c$, and $p_c$ is the
+pressure at which condensation and evaporation takes place.
+For simplicity we assume that $p_c$ does not depend on temperature. 
+
+We model the cyclic process by the one-fluid compressible Euler equations
+with internal energy given by (\ref{heatofformation}), the heat
+release in chamber 2 and the heat absorbtion in chamber 2 by 
+suitable source terms in the energy equation, and the compression
+in the channel by a volume force in the momentum equation.
+We compute the efficiency $\eta_p$ as defined above.
+
+\chapter{Refrigerators}
+
+\small
+\begin{quote} The final aim of all science is to resolve itself
+into mechanics. (Helmholtz)
+\end{quote}
+\begin{quote} The orbit of the electron obeys no law....All is caprice,
+the calculable world has become incalculable....superstitions have
+risen from the dead and cast down the mighty from their seats and put
+paper crowns on presumptious fools. (Bernard Shaw in 
+\emph{Too True to be Good})
+\end{quote}
+\normalsize
+
+\section{Importance of Cooling}
+
+Without refrigerators, modern society and urban life, would be
+very complicated, if not impossible. The traditional method 
+for storing food by cooling in countries with a Winter season, used
+well into the middle of the 19th century,
+was to store ice harvested in the Winter, typically
+under thick layers of saw dust, to use it over the Summer season.
+To cool a multi-million city this way would require enormous
+installations. 
+
+\section{The Compressor Refrigerator}
+
+A refrigerator is a form of heat pump, absorbing heat energy from
+a reservoir at low temperature (the inside of the refrigerator)
+and delivering heat energy to a reservoir at higher 
+temperature (to the surrounding
+room). The above analysis directly applies and the maximal Carnot efficiency 
+is given by
+\begin{equation}\label{efficiencyref}
+\eta_{r} =\frac{Q_{43}}{W}=\frac{1}{\eta_{e}}.
+\end{equation}
+A refrigerator would suffer losses in the expansion steps 14 and 43 
+increasing the temperature and reducing the heat absorption 
+in process  43, thus reducing $Q_{43}$ and the efficiency. 
+
+A regular refrigerator uses a compressor for the condensation
+from gas to fluid phase. A compressor is a mechanical device with
+a rotating fan powered by electricity, which causes a certain noise.
+
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=8cm]{ambsthermopict/refrigeratorprin.eps} 
+} 
+\caption{Principle of a compressor refrigerator}
+\label{refrigerator} 
+\end{figure} 
+
+\section{Absorption Refrigerator of Platen/Munters}
+
+An absorption refrigerator uses a different 
+method that requires no moving parts (thus reducing noise)
+and is powered only by heat. By supplying heat you thus generate
+cold, which is apparent contradiction with the 2nd Law in
+Clausius form stating that heat can only ``spontaneously''go from hot
+to cold.   
+Typically, it uses three substances: ammonia, hydrogen 
+gas, and water. Normally, ammonia is a gas at room temperature 
+(with a boiling point of -33�C), but the system is pressurized to the 
+point that the ammonia is a liquid at room temperature.
+
+We cite from Wikipedia: \emph{The cooling cycle starts at the evaporator, where liquefied anhydrous 
+ammonia enters. (Anhydrous means there is no water in the ammonia, which 
+is critical for exploiting its sub-zero boiling point.) The "evaporator" 
+contains another gas (in this case, hydrogen), whose presence lowers the 
+partial pressure of the ammonia in that part of the system. The total 
+pressure in the system is still the same, but now not all of the pressure 
+is being exerted by ammonia, as much of it is due to the pressure of the 
+hydrogen. Ammonia doesn't react with hydrogen - the hydrogen is there 
+solely to take up space - creating a void that still has the same pressure 
+as the rest of the system, but not in the form of ammonia. 
+Per Dalton's law, the ammonia behaves only in response to the proportion 
+of the pressure represented by the ammonia, as if there was a vacuum and 
+the hydrogen wasn't there. Because a substance's boiling point changes with pressure, the lowered partial pressure of ammonia changes the ammonia's boiling point, bringing it low enough that it can now boil below room temperature, as though it wasn't under the pressure of the system in the first place. When it boils, it takes some heat away with it from the evaporator - which produces the "cold" desired in the refrigerator.}
+
+
+\emph{The next step is getting the liquid ammonia back, as now it's a gas and mixed with hydrogen. Getting the hydrogen away is simple, and this is where the "absorber" comes in. Ammonia readily mixes with water, and hydrogen does not. The absorber is simply a downhill flow of tubes in which the mixture of gases flows in contact with water being dripped from above. Once the water reaches the bottom, it's thoroughly mixed with the ammonia, and the hydrogen stays still (though it can flow freely back to the evaporator).}
+
+
+\emph{At this point, the ammonia is a liquid mixed with water and still not usable for refrigeration, as the mixture won't boil at a low enough temperature to be a worthwhile refrigerant. It's now necessary to separate the ammonia from the water. This is where the heat from the flame comes in. When the right amount of heat is applied to the mixture, the ammonia bubbles out. This phase is called the "generator". The ammonia isn't quite dry yet - the bubbles contain gas but they're made of water, so the pipe twists and turns and contains a few minor obstacles that pop the bubbles so the gas can move on. The water that results from the bubbles isn't bad - it takes care of another need, and that is the circulation of water through the previous absorption step. Because that water has risen a bit while it was bubbling upwards, the flow of that water falling back down due to gravity can be used for this purpose. The maze that makes the ammonia gas go one way and the bubble water go the other is called the "separator".}
+
+\emph{The next step is the condenser. The condenser is a sort of heat sink or heat exchanger that cools the hot ammonia gas back down to room temperature. Because of the pressure and the purity of the gas (there is no hydrogen here), the ammonia condenses back into a liquid, and at that point, it's suitable as a refrigerant and the cycle starts over again.}
+
+
+\emph{The absorption refrigerator was invented by Baltzar von Platen and Carl Munters in 1922, while they were still students at the Royal Institute of Technology in Stockholm, Sweden. Commercial production began in 1923 by the newly formed company AB Arctic, which was bought by Electrolux in 1925.}
+
+
+
+\section{Simulation of Compressor Refrigerator}
+
+
+%\chapter{Reactive Thermodynamics}
+
+%\chapter{Combustion Engines}
+
+%We study the efficiency of a simple combustion engine = reactive
+%flow plus a moving piston.
+
+\chapter{Cosmology}   
+
+\small
+\begin{quote} According to the \emph{Perfect Cosmological Principle}, 
+the Universe on a large scale looks the same everywhere and at all times.
+(Fred Hoyle)
+\end{quote}
+\begin{quote} The thermodynamic properties of self-gravitating
+systems are still unclear...The tendency of increasing granularity with time
+(in a self-gravitating system), so important to the structure and development 
+of the Universe, seems to represent a fundamental principle. 
+(Paul Davies \cite{davies})
+\end{quote}
+\begin{quote} 
+GRAVITATION: The universal property of all material objects
+to attract each other.\\
+GRAVITON: A hypothetical particle which, when passing
+to and fro in virtual form bewteen two masses, in large numbers,
+is thought to mediate the gravitational attraction between them.
+(Guillemin \cite{guillemin})
+\end{quote}
+\normalsize
+
+\normalsize
+
+\section{Euler's Equations with Gravitation}
+
+The Euler equations including gravitational forces from the mass distribution
+can be viewed as a basic (non-relativistic) \emph{cosmological model}.  
+We thus consider an inviscid perfect gas 
+enclosed in a volume $\Omega$ in $\bbR^3$ with boundary $\Gamma$
+(or the whole of $\bbR^3$), over a time interval $I=(0,1]$, assuming 
+that the gas is subject to a gravitational force $\nabla\varphi$, where
+$\varphi$ is a \emph{gravitational potential} 
+coupled (at each time instant) to the mass distribution $\rho$  
+through Poisson's equation $\Delta\varphi =\rho$
+with (for simplicity) $\varphi =0$ on $\Gamma$. This is a 
+\emph{self-gravitating system} since the gravitational force depends
+on the mass-distribution  
+
+Replacing $\rho$ by $\Delta\varphi$, we are led to the following version
+of Euler's equations with gravitation:  
+Find $\hat u=(\varphi ,m,e)$ 
+depending on $(x,t)\in Q\equiv \Omega\times I$ such that
+\begin{equation}\label{eulergrav}
+\begin{array}{rcl}
+\Delta\dot\varphi +\nabla\cdot m &=&  0 \quad \mbox{in } Q, \\
+\dot m +\nabla\cdot (mu) +\nabla p-\rho\nabla\varphi&=&  0 \quad \mbox{in } Q, \\
+\dot e +\nabla\cdot (eu)+p\nabla\cdot u &=& 0  \quad \mbox{in } Q,\\ 
+u\cdot n&=&0\quad \mbox{on } \Gamma\times I\\
+\varphi &=&0\quad \mbox{on } \Gamma\times I\\
+\hat u(\cdot ,0)&=&\hat u^0\quad \mbox{in } \Omega , 
+\end{array} 
+\end{equation}
+where $u=\frac{m}{\Delta\varphi}$, 
+$p=(\gamma -1)e$ with $\gamma >1$, and we normalize the gravitational
+constant to unity.
+
+\section{The Hen and the Egg}
+
+An interesting aspect of this model with the gravitational
+potential $\varphi$ as a primary variable and the mass distribution
+$\rho$ as a derived quantity, is that it does not include
+\emph{action at distance} in the same way as the conventional model
+with $\varphi$ derived from $\rho$ through Poisson's equation 
+$\Delta\varphi =\rho$. Instead we have to deal
+with the new equation $\Delta\dot\varphi +\nabla\cdot m =0$,
+still containing the Laplacian.
+
+Considering the equation $\Delta\varphi =\rho$ as defining
+$\varphi$ in terms of $\rho$ or vice versa, of course connects
+to which comes first: the egg or the hen. 
+
+Choosing (in an exam for example) 
+to explain either how a hen can lay an egg
+or how an egg can develop into a hen, you may go for the first
+option as appearing to be (somewhat) simpler to deal with.
+The idea would be that it would be advantageous to
+choose the more complex object of the 
+potential/hen rather than the simpler mass/egg, as 
+the primary unknown which will come out by solving the equations,
+(by some form of computation).
+Thus the more complex object, the potential/hen will 
+be ``created by computation'' in front of our eyes, thus relieving us
+from \emph{explaining} how a mass/egg can create a potential/hen. 
+But doing so we have to deal with 
+the equation $\Delta\dot\varphi +\nabla\cdot m=0$
+expressing ``mass conservation'' in a non-standard form,
+which  admittedly seems to involve action at distance if we rewrite it in the form.
+$\dot\varphi +(\Delta )^{-1}\nabla\cdot m=0$ for the purpose
+of explicitly updating $\varphi$ by time-stepping. What can we do 
+to allow time-stepping without inverting the Laplacian?
+
+\section{Perturbed Mass Conservation} 
+
+Well, we may consider
+to perturb the equation for mass conservation
+$\Delta\dot\varphi +\nabla\cdot m=0$ into: 
+\[
+\kappa\ddot\varphi -  \Delta\dot\varphi -\nabla\cdot m=0
+\]
+with $\kappa$ a small positive constant, now allowing time stepping
+without inverting the Laplacian. Of course, you could regularize the
+equation $\Delta\varphi =\rho$ similarly into  
+$\kappa\dot\varphi -\Delta\varphi =\rho$ keeping mass conservation in the
+standard form $\dot\rho +\nabla\cdot (\rho u)=0$. In any case,
+(\ref{eulergrav}) with $\varphi$ instead of $\rho$ and a perturbed
+equation for mass conservation, is a model without action at distance.
+
+
+\section{Gravitons?}
+
+Solving Poisson's equation $\Delta\varphi =\rho$
+equation for the gravitational
+potential $\varphi$ in terms of the density $\rho$, reflect that
+(somehow) a mass distribution ``creates'' its own gravitational field
+(seemingly infinitely fast). The physics of this creation of a hen out
+of an egg in the form of
+a gravitational potential/force from a mass distribution, is unknown: A
+conjecture is that the gravitational field is 
+established through an \emph{exchange} of certain hypothetical particles 
+called \emph{``gravitons''}. But no gravitons have been detected despite
+intense search.
+
+
+
+The reverse question is how a hen can lay an egg 
+or how a gravitational potential can ``create'' a mass.
+A potential with a sharp peak of the form 
+$\frac{1}{4\pi\vert x-\bar x\vert}$, would then represent a
+unit mass at position $\bar x$.  
+In this perspective a tendency of ``mass lumping'' from 
+very small initial density
+variations, is to be expected from the fact that application of the Laplacian
+may enhances variations and thus create positive and negative peaks/masses
+out of nothing, with masses of different equal signs attracting each other
+and masses with different signs repelleing each other. Our Universe
+with positive masses would thus have a twin Universe with negative masses.
+
+In this model, it is thus the gravitational 
+potential $\phi$, which is given initially
+and which evolves in time (together with momentum and energy)
+and from which the mass density $\rho$ is generated by $\Delta\phi =\rho$
+in a local ``creation process''.
+We here avoid action at distance and we also get a hint
+to the possible nature of all the ``dark mass'' seemingly required to account 
+for the observed gravitational forces on cosmic scales, as 
+mollified potential peaks not strong enough to 
+``create visible mass'', but yet having gradients and exerting
+gravitational forces.
+
+%The alternative model (\ref{cosmology2}) with $\delta >0$ is a wave equation 
+%with finite speed of propagation depending on $\delta$. The proper choice
+%of $\delta$ from physical point of view is unclear, while 
+%we expect certain outputs to be insensitive to the choice of $\delta$.
+
+\section{The 2nd Law with Gravitation}
+
+The 2nd Law with gravitation takes the form
+\begin{equation}
+\dot K=W-D+ P,\quad \dot E=-W+D,\quad D>0,
+\end{equation}
+where 
+\[
+\begin{split}
+P&=-\int_\Omega \rho\nabla\varphi\cdot u\, dx =+\int_\Omega \varphi\nabla\cdot m\, dx=-\int_\Omega\varphi\dot\rho\, dx= \dot\Phi,\\
+\Phi &=-\frac{1}{2}\int_\Omega \varphi\Delta\varphi\,dx =\frac{1}{2}\int_\Omega\vert\nabla\varphi\vert^2\, dx.
+\end{split}
+\] 
+By summation, we have
+\[
+\frac{d}{dt}(K+E -\Phi)=0
+\]
+stating that the total energy, the sum of
+kinetic, heat and gravitational energy $K+E -\Phi$, is conserved.
+
+\section{Irreversibility and Heat Death}
+
+A natural scenario is to start with a hot compressed gas at rest, which is
+let free to expand in a \emph{Big Bang} with $W-D-P>0$ setting the
+gas in motion until $W-D-P<0$ and $K=0$, whereupon the gas
+contracts by gravitation back to a hot compressed state in a \emph{Big Crunch}
+allowing the process to start all over with a new Big Bang.
+
+In each cycle of this process some kinetic energy would irreversibly
+be transformed into heat energy, which ultimately could lead to 
+a stationary state with $W=D$ and $P=0$, a \emph{heat death}. But the 
+whole process may have many cycles....and so there may have been Worlds
+and intelligent cultures including thermodynamics  
+even before the Big Bang of the World we happen to live in...   
+
+\section{A Self-Gravitating Gas in a Box}
+
+To probe the thermodynamics of (\ref{eulergrav}) concretely we solve a
+discrete form on a cubic grid filling a box $\Omega =[0,1]^3$, in conservation
+form for the density $\rho$, the momentum $m=\rho u$ and the internal energy
+density $e$, with the ideal-gas closure
+\begin{equation}\label{closure}
+p=(\gamma -1)e=\rho T,\qquad \gamma >1,
+\end{equation}
+so that $T=p/\rho$ is the temperature and $\gamma$ the adiabatic index. The
+self-gravitation is supplied through the \emph{mean-subtracted} Poisson coupling
+\begin{equation}\label{jeansswindle}
+\Delta\varphi = G\,(\rho -\bar\rho ),\qquad
+\bar\rho =\frac{1}{\vert\Omega\vert}\int_\Omega\rho\, dx,
+\end{equation}
+with $\varphi =0$ on $\Gamma$, where $G>0$ is the \emph{gravitational coupling}
+(playing the role of $4\pi G_{\mathrm{Newton}}$) and $\bar\rho$ the mean density.
+
+The subtraction of $\bar\rho$ is essential and is the classical
+\emph{Jeans swindle}. A strictly uniform gas in a \emph{finite} box is not
+force-free if $\rho$ itself sources $\varphi$: with $\varphi =0$ on $\Gamma$ the
+solution of $\Delta\varphi =G\rho$ bulges in the interior, so a net inward force
+develops everywhere and the whole box \emph{breathes} in and out --- an artifact
+of the boundary rather than of any structure in the gas. Sourcing $\varphi$ from
+the density \emph{contrast} $\rho -\bar\rho$ makes the uniform background exactly
+force-free, so that only departures from uniformity gravitate. This is precisely
+what one wants of a cosmological model: it is the \emph{granularity}, not the
+mean, that drives the dynamics.
+
+The model so written has exactly \emph{two} control parameters: the
+gravitational coupling $G$ and the adiabatic index $\gamma$. Everything in the
+competition between collapse and dispersal is decided by these two, as we now
+show.
+
+\section{Pressure versus Gravitation: the Jeans Criterion}
+
+Linearize (\ref{eulergrav}), (\ref{closure}), (\ref{jeansswindle}) about a
+uniform state $\rho =\bar\rho$, $u=0$, $T=\bar T$ at rest. Writing the density
+perturbation as $\delta\rho$ and eliminating $m$ and $\varphi$ one obtains the
+wave equation
+\begin{equation}\label{waveeq}
+\ddot{\delta\rho}=c_s^2\,\Delta(\delta\rho)+G\bar\rho\,\delta\rho,
+\qquad c_s^2=\gamma\,\frac{\bar p}{\bar\rho}=\gamma\bar T,
+\end{equation}
+where $c_s$ is the adiabatic sound speed. For a plane wave
+$\delta\rho\propto\exp(i(k\cdot x-\omega t))$ this gives the
+\emph{Jeans dispersion relation}
+\begin{equation}\label{dispersion}
+\omega^2=c_s^2k^2-G\bar\rho=\gamma\bar T\,k^2-G\bar\rho .
+\end{equation}
+The first term, from pressure, is \emph{stabilizing} (it grows with $\gamma$);
+the second, from gravitation, is \emph{destabilizing} (it grows with $G$). A
+perturbation grows --- the gas \emph{collapses} --- precisely when
+$\omega^2<0$, i.e.\ when
+\begin{equation}\label{jeanscrit}
+G\bar\rho>\gamma\bar T\,k^2
+\qquad\Longleftrightarrow\qquad
+\lambda>\lambda_J=2\pi\sqrt{\frac{\gamma\bar T}{G\bar\rho}}\, ,
+\end{equation}
+$\lambda_J$ being the \emph{Jeans length}. Below the Jeans length pressure wins
+and the perturbation merely oscillates as a sound wave ($\omega^2>0$); above it
+gravity wins and the perturbation grows.
+
+The decisive observation is that the onset of collapse depends on $G$ and
+$\gamma$ \emph{only through the ratio} $G/\gamma$: at a fixed scale $k$ and
+fixed background $(\bar\rho ,\bar T)$, doubling the coupling $G$ has exactly the
+same effect as halving the stiffness $\gamma$. The dimensionless number that
+decides everything is
+\begin{equation}\label{jeansnumber}
+J=\frac{G\bar\rho}{\gamma\bar T\,k^2},
+\qquad\text{collapse}\iff J>1 .
+\end{equation}
+
+In a box of side $L$ the longest available wavelength is $\lambda\approx L$, so
+structure forms \emph{at all} only if $\lambda_J\lesssim L$, that is
+\begin{equation}\label{boxthreshold}
+G\gtrsim (2\pi)^2\,\frac{\gamma\bar T}{\bar\rho\,L^2}.
+\end{equation}
+For $\gamma =2$ and $\bar T=\bar\rho =L=1$ this requires $G\gtrsim 79$; for a
+seed of size $\sim L/3$ the threshold is about nine times larger. Below it the
+box is Jeans-stable at \emph{every} scale and any initial lump simply pulsates.
+This is why a modest coupling produces only an oscillation and never a collapse:
+$G$ has not been pushed past the Jeans threshold set by $\gamma$.
+
+\section{Collapse to a Stable Configuration: the Role of $\gamma$}
+
+The Jeans criterion (\ref{jeanscrit}) decides whether collapse \emph{begins}.
+Whether the collapse \emph{ends} in a stable, finite lump --- rather than
+running away to a singular spike --- is a separate question, and it is decided
+by $\gamma$ \emph{alone}, independently of $G$.
+
+Consider a self-gravitating polytropic cloud of fixed mass $M$ and radius $R$.
+Under adiabatic compression $p\propto\rho^\gamma$, so the internal energy
+density scales as $e\propto\rho^\gamma\propto R^{-3\gamma}$ and the total
+internal (thermal) energy as
+\[
+U=\int_\Omega e\,dx \;\propto\; R^{-3\gamma}\cdot R^3 \;=\; R^{-3(\gamma -1)},
+\]
+while the gravitational self-energy scales as
+\[
+W \;\propto\; -\frac{GM^2}{R}\;\propto\; -R^{-1}.
+\]
+The total energy is therefore $E(R)=A\,R^{-3(\gamma -1)}-B\,R^{-1}$ with
+$A,B>0$. As $R\to 0$ the thermal term dominates --- and hence $E$ possesses a
+\emph{minimum} at a finite radius, a stable hydrostatic equilibrium --- if and
+only if it stiffens faster than gravity, $3(\gamma -1)>1$, that is
+\begin{equation}\label{fourthirds}
+\boxed{\;\gamma>\tfrac43\;}
+\end{equation}
+the classical \emph{Chandrasekhar index}. The three regimes are:
+\begin{itemize}
+\item $\gamma>\tfrac43$: pressure wins under compression; collapse is
+\emph{arrested} at a finite quiescent lump, possibly after damped oscillations.
+\item $\gamma<\tfrac43$: gravity wins at every compression; collapse
+\emph{runs away}, no equilibrium exists.
+\item $\gamma=\tfrac43$: the marginal case (governing, e.g., white-dwarf
+stability).
+\end{itemize}
+Thus the two parameters play complementary roles: $G$ (through (\ref{jeanscrit}))
+selects \emph{which scales collapse and how fast}, while $\gamma$ (through
+(\ref{fourthirds})) decides \emph{whether the collapse can be stopped}. To reach
+a stable bound configuration one needs \emph{both} a coupling $G$ large enough
+to cross the Jeans threshold \emph{and} a stiffness $\gamma>\tfrac43$ so that the
+endpoint is an equilibrium rather than a singularity.
+
+\section{Breathing, Sloshing and Virialization}
+
+These two criteria account for the phenomenology seen in the simulations.
+
+\emph{Breathing.} A uniform gas in which $\rho$ (rather than $\rho-\bar\rho$)
+sources $\varphi$ is not in equilibrium in a finite box: it contracts toward the
+centre, pressure builds, it rebounds, and the box breathes globally while its
+density stays nearly uniform. The Jeans swindle (\ref{jeansswindle}) removes
+this boundary artifact, leaving only the genuine gravitational response to
+density contrast.
+
+\emph{Sloshing.} A pair of overdensities below the Jeans threshold
+($J<1$ at their separation) does not collapse but exchanges mass back and forth
+quasi-periodically between the two centres. This is a \emph{virial oscillation}
+in the double-well gravitational potential: gas falling toward one centre
+overshoots on its pressure and inertia, sloshes to the other, and returns. With
+$\gamma>\tfrac43$ and no dissipation the oscillation is undamped, kinetic and
+gravitational energy being traded reversibly, $\dot K=P=\dot\Phi$, exactly as in
+the energy balance of \S\,\textit{The 2nd Law with Gravitation}.
+
+\emph{Virialization.} To settle into a quiescent lump the gas must \emph{shed}
+its infall energy: a stable bound configuration requires dissipation $D>0$ to
+convert the ordered kinetic energy of collapse into heat. The entropy so
+produced is the irreversible price of structure formation --- the mechanism
+behind Davies' ``increasing granularity'' (\S\,\textit{Cosmology}) and behind
+the heat death of \S\,\textit{Irreversibility and Heat Death}. Gravitational
+structure forms by the conversion, through $D$, of gravitational potential
+energy first into bulk motion and then, irreversibly, into heat.
+
+\begin{remark}
+In the numerical model the closure is written as $p=\gamma_s\,e$, so that the
+adiabatic index is $\gamma=1+\gamma_s$; the stability boundary (\ref{fourthirds})
+then reads $\gamma_s>\tfrac13$, and the coupling $G$ is exactly the
+$4\pi G_{\mathrm{Newton}}$ of (\ref{jeansswindle}). The two sliders $(G,\gamma_s)$
+of the interactive model are precisely the two parameters $(G,\gamma)$ of the
+analysis above.
+\end{remark}
+
+\section{RNS Simulations of a Self-Gravitating Gas}
+
+We give below some results from RNS solutions of (\ref{eulergrav})
+showing the development mass granularity from
+uniform mass distributions under expansion.
+
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=8cm]{ambsthermopict/cosmology.eps} 
+} 
+\caption{Cosmology theories}
+\label{cosmologytheory} 
+\end{figure}
+
+
+
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=8cm]{ambsthermopict/cosmology2.eps} 
+} 
+\caption{Big Bang expansion}
+\label{bigbang2} 
+\end{figure}
+
+
+
+\chapter{Information}
+
+
+
+\small
+\begin{quote} The fundamental problem of communication is that of reproducing
+at one point either exactly or approximately a message selected
+at another point. (Shannon in \cite{shannon}, 1948)
+\end{quote}
+
+\begin{quote} You should call it entropy for two reasons; in the first
+place your uncertainty function has been used in statistical mechanics
+under that name, so it already has a name. In the second place, and more
+important, no one knows what entropy really is, so in a debate you
+will always have an advantage. (von Neumann to Shannon)
+\end{quote}
+\normalsize
+
+\section{Introduction}
+
+\emph{Information theory} was created by Shannon \cite{shannon} in 
+the 1940s borrowing the concept of 
+entropy from thermodynamics. 
+%In \cite{ambsflow}
+%we presented a new foundation of thermodynamics based the \emph{1st Law of 
+%thermodynamics} stating conservation of mass. momentum and energy,
+%combined with a certain form of \emph{finite precision 
+%computation}. In the new foundation the \emph{2nd Law of thermodynamics} is
+%expressed without using the concept of entropy and 
+%is a consequence of the 1st Law combined with finite precision computation.
+We now explore if the new foundation 
+of thermodynamics presented may open to a new approach 
+to information theory.  
+We thus consider a model of \emph{information flow} in the form
+of the Euler equations for a variable density incompressible fluid 
+flow with the distribution in space of \emph{mass density}  
+representing information like a message, image or movie, 
+which is being transported 
+or \emph{communicated} from one location to another by the fluid flow.
+The key question is what aspects of the 
+information which can be communicated to what precision. 
+We expect to see fine details of an image being 
+distorted or destroyed by the communication, while
+gross features may remain unaltered. We introduce a measure of 
+\emph{irrecoverable loss of information}, which couples to
+increase of entropy in the classical setting,
+which corresponds to information which cannot be retrieved. 
+We thus distinguish between 
+\emph{recoverable information}, which can be recovered from a 
+distorted image by some form of image processing, and
+\emph{irrecoverable information} which cannot be recovered 
+by image processing. 
+
+\section{Entropy vs Loss of Information}
+
+In Shannon's information theory the notion of entropy
+is used to measure the randomness or complexity
+of the information to be communicated, with random
+complex information requiring more work to communicate than
+organized simple information. Shannon's entropy thus is
+a measure of the work to communicate certain information,
+assuming that the communication itself does not distort
+the information. In this setting information is
+coded into a digital representation, which is communicated without loss
+of any digits and then is decoded after reception. 
+The main question then concerns the number
+of digits required to represent the information, which directly couples
+to the work of accurate communication of the digits.
+In Shannon's theory the digital coding in general introduces a certain 
+loss of information, with more loss for complex information,
+while the communication of the digital
+representation is assumed to be without loss. Shannon's entropy
+thus may be viewed as a measure of loss of information arising
+from the digital representation but not from the communication. 
+
+Our notion of entropy is a bit different
+and measures the \emph{total loss of information}
+taking into account not only the loss from digital representation, but
+also from the communication process itself. 
+In our setting, the digital representation of the information
+as a mass density, is a finite element approximation on a mesh
+of certain mesh size $h$, which can
+be viewed as generalized Fourier or wavelet representation,
+and the communication is realized through a finite element
+solution of the Euler equations. The mesh size $h$ directly
+couples to the work required for the communication.
+
+The main aspects influencing the
+total loss of information, and thus the error in the communication,
+relate to (a) the complexity of the information and (b) the
+complexity of the communication process, where (b) can be viewed as
+a measure of the distortion from the communication process. We 
+identify the following basic cases:
+\begin{itemize}
+\item[(i)] simple information and simple communication,
+\item[(ii)] complex information and simple communication,
+\item[(iii)] simple information and complex communication,
+\item[(iv)] complex information and complex communication.
+\end{itemize}
+We will see that in (i) the loss of information typically is small,
+in case (ii) and (iii) it is of medium size, and in case (iv) it is large.
+We will see that (i) requires little work ($h$ is not small), 
+(ii) and (iii) require medium work
+and (iv) large work ($h$ small), for the same accuracy. 
+We shall see that if the communication is partly \emph{turbulent}, 
+which is the generic case, then the loss
+of information cannot be made arbitrarily small 
+by decreasing $h$, relecting that the 
+turbulent dissipation has a non-zero limit as $h$ tends to zero.  
+ 
+
+
+
+ 
+
+\section{A Model Problem}
+
+ 
+As a simple model of communication, we consider the following
+1d transport equation:
+\begin{equation}\label{convection}
+\begin{split}
+\dot\rho + \rho '=&0\quad \mbox{for } 0<x<1\, ,0<t\le 2,\\
+\rho (x,0)=&0 \quad \mbox{for } 0<x<1\,
+\end{split} 
+\end{equation}
+where $\dot\rho =\frac{\partial \rho}{\partial t}$, 
+$\rho '=\frac{\partial \rho}{\partial x}$, and
+$\rho (0,t)=\rho^-(t)$ with $0\le t\le 1$  
+represents an input signal and $\rho^+(t)=\rho (1,t)$
+with $1\le t\le 2$ the corresponding output signal. Since the solution to the 
+convection equation is given by $\rho (x,t)=\rho (0,t-x)$ for
+$t\ge x$, we simply have $\rho^+(t)=\rho (1,t)=\rho (0,t-1)=\rho^-(t-1)$ for $1\le t\le 2$, that is, 
+the output signal is equal to the input signal with a unit time delay.
+
+Let now $\rho_h$ be a finite element computational solution of the convection
+problem representing a realization of the communication from input to
+output with a certain imprecision due to the numerics. 
+More precisely, let $\rho_h\in V_h$ be
+a cG(1)-solution determined by
+\begin{equation}\label{g2}
+((\dot\rho_h+\rho_h',v))+(\rho (0,\cdot )-\rho^-,v(0,\cdot ))+((h\rho_h',v'))=0,
+\quad\mbox{for all } v\in V_h,
+\end{equation}
+where $V_h$ is the set of continuous piecewise linear functions
+on a space-time mesh of $Q=[0,1]\times [0,2]$ with mesh size $h$, $((v,w))=\int_Qvw\, dxdt$
+and $(v,w)=\int_0^1vw\, dx$.  Here, the first two terms come out of
+Galerkin's cG(1)-method and boil down to a centered difference
+scheme on a regular mesh and the the third term is a stabilizing
+artifical viscosity
+term. More generally, we may apply the RNS method
+with a residual-based artificial viscosity. 
+
+We observe observe the reverse  
+communication process taking $\rho^+$ to $\rho^-$, would
+read: Find $\rho\in V_h$ such that
+\[
+((v,-\dot\rho_h-\rho_h'))+(\rho (1,\cdot )-\rho^+,v(1,\cdot ))
++((h\rho_h',v'))=0,
+\quad\mbox{for all } v\in V_h,
+\]
+where $(v,w)=\int_1^2vw\, dx$. This means that neglecting the 
+viscous terms, we could retrieve $\rho_h^-$ exactly from $\rho^+_h$ by
+time stepping backwards in time. In contrast, we cannot ``undo''  the
+effect of the viscous term in a process from $\rho_h^-$ to $\rho_h^+$,
+since time stepping backwards with the artificial viscosity
+present would just add more diffusion to the
+process.
+
+To study the resulting output error in the communication from
+$\rho^-$ to $\rho^+$,  
+let $\psi (t)$ with $1\le t\le 2$ be a given weight function,
+and let $\varphi (x,t)$ solve the dual problem
+\begin{equation}
+\begin{split}
+-\dot\varphi - \varphi '=&0\quad \mbox{for } 0<x<1\, ,0<t\le 2,\\
+\varphi (x,2)=&0 \quad \mbox{for } 0<x<1,\\
+\varphi (1,t)=&\psi (t) \quad \mbox{for } 1<t<2.
+\end{split} 
+\end{equation}
+Multiplying the dual equation by $e=\rho -\rho_h$, integrating by parts
+and using (\ref{g2}) assuming $\rho_h(0,\cdot )=\rho^-$, we obtain 
+the following error representation:
+\[
+E_h\equiv \int_1^2(\rho^+-\rho_h(1,\cdot ))\psi dt=\int_1^2e(1,t)\psi (t)\, dt=((R(\rho_h),\varphi -\varphi_h))
++((h\rho_h' ,\varphi_h')),
+\]
+where $R(v)=\dot v+v'$, and $\varphi_h\in V_h$ is a finite element 
+approximation $\varphi$. 
+
+It is now natural to define $I=(R(\rho_h),\varphi -\varphi_h))$ 
+to represent a \emph{recoverable} error, and 
+$II=((h\rho_h' ,\varphi_h'))$ an \emph{irrecoverable} error.
+In particular, 
+choosing $\varphi_h$ to be a cG(1)-approximation,
+we can make the I vanish, which may be viewed as 
+retrieving $\rho^-$ by backwards time stepping. With this motivation
+we now focus on the irrecoverable part $II$ of the error, neglecting
+here the recoverable part $I$, and thus consider the error representation
+\begin{equation}\label{error}
+E_h\approx ((h\rho_h' ,\varphi_h')).
+\end{equation}
+
+
+We can now rephraze the above basic cases as follows: 
+(i) $\rho_h$ and $\varphi_h$ smooth,
+(ii) $\rho_h$ smooth and $\varphi_h$ non-smooth , (iii) 
+$\rho_h$ non-smooth and $\varphi_h$ smooth, and (iv)
+$\rho_h$ non-smooth and $\varphi_h$ non-smooth. We will then typically have
+in case (i): $E_h\approx h$, in cases (ii) and (iii): $E_h\approx\sqrt{h}$
+and in case (iv): $E_h\approx 1$. 
+We may refer to (i) and (ii) as laminar cases and (iii) and (iv)
+as turbulent cases. With a smooth $\varphi$, we measure 
+the output error in a weak mean value sense, and with a non-smooth
+$\varphi_h$ we measure the error in a more pointwise sense. 
+We see that in the case of non-smooth $\rho_h$, 
+only mean-value outputs can be meaningful.
+
+Viewing entropy as a measure of loss of information, we may say
+that (i) has small entropy production or little loss of information, 
+(ii) and (iii) has medium entropy production and loss of information
+while (iv) has massive entropy production and loss of information.
+
+   
+\section{Simulations in Model Problem}
+ 
+
+
+ 
+
+
+
+
+\section{Euler's Equations}
+
+We now generalize to the Euler equations for a variable density 
+incompressible fluid
+over a time interval $I=(0,T)$,
+in a cylinder $\Omega =\{x=(x_1,x_2,x_3)=(x_1,\bar x): 0\le x_1\le L,\, \vert\bar x\vert\le R\}$
+of length $L$ and radius $R$, with boundary $\Gamma$ with outward unit
+normal $n$,  take the form: 
+Find the \emph{density} $\rho (x,t)$, the 
+\emph{flow velocity} $u(x,t)$ and \emph{pressure} $p(x,t)$, such that
+\begin{equation}\label{euler}
+\begin{split}
+\dot\rho + \nabla\cdot (\rho u)&=0\quad \mbox{in } \Omega\times I,\\
+\dot u+u\cdot\nabla u +\frac{\nabla p}{\rho}&=0\quad \mbox{in } \Omega\times I,\\
+\nabla\cdot u&=0\quad \mbox{in } \Omega\times I,\\
+u\cdot n&=u^-\quad \mbox{on } \Gamma^-\times I,\\ 
+\rho &=\rho^-\quad \mbox{on } \Gamma^-\times I,\\ 
+\rho (\cdot ,0)&=\rho^0, \, u(\cdot ,0)=u^0\quad \mbox{in } \Omega,\\ 
+\end{split}
+\end{equation}
+where the fluid enters $\Omega$ through 
+$\Gamma^- =\{x\in\Gamma :x_1=0\}$ with a given
+inflow velocity $u\cdot n=g<0$ and
+leaves through $\Gamma^+ =\{x\in\Gamma :x_1=L\}$ with
+$u\cdot n>0$, and
+$u\cdot n=0$ on the remaining (inpenetrable) part of the boundary.
+Here $\rho (0,\cdot, \cdot )=\rho^-$ represents a given
+input signal, or rather movie, consisting of 
+a sequence of time dependent 2d images $\rho^-(\cdot ,t)$
+with $t\in I$, defined on the cylinder cross section 
+$\omega =\{\bar x:\vert\bar x\vert\le R\}$,  which is transported 
+by the flow through the channel
+to an output movie $\rho^+(\cdot ,t)=\rho (L,\cdot ,t)$ for $t$ in
+a relevant interval.
+The communication thus concerns the transformation of $\rho^-$ to
+$\rho^+$. The basic problem concerns the \emph{distortion}
+$d=\rho^+-\rho^-$, which measures the \emph{accuracy} of the
+communication.
+
+
+It is natural to assume that $\rho =\bar\rho +\tilde\rho$ 
+where $\bar\rho$ is a constant given ``background'' and $\tilde\rho$
+contains the information of interest. 
+Replacing $\rho$ by $\bar\rho$ the second equation (momentum equation)
+takes the form 
+$\dot u+u\cdot\nabla u +\nabla\bar p=0$ with the modified pressure
+$\bar p=p/\bar\rho$. This decouples $\rho$ from the last two equations,
+which determine $(u,\bar p)$ as a solution to the (unit density)
+incompressible Euler equations. In this case, $\rho $ thus can be 
+determined from the first equation alone, which with $(u,\bar p)$ given 
+is a linear convection equation.
+For simplicity we consider this decoupled situation below, in which
+the image itself is not influencing the flow, and thus is 
+transported ``passively''.
+
+The solution $(u,\bar p)$ to the (unit density) incompressible Euler 
+equations in general is (partly) \emph{turbulent} with a complex 
+flow velocity $u$, and thus the image 
+$\rho (\cdot ,t)$ in general is convected in a (partly) complex 
+convection field with a corresponding distortion. 
+For short time also a \emph{laminar}
+smooth flow velocity $u$ is possible. Thus the image can be
+convected by a laminar or turbulent flow velocity, with vastly different
+distortion effects. 
+
+\section{Finite Precision Euler Solution: RNS}
+
+We solve the Euler equations (\ref{euler}) using 
+as above a stabilized cG(1)-method
+on a finite element mesh in space-time
+with mesh size $h(x,t)$, and denote the finite element solution  
+by $\hat u_h=(\rho_h,u_h,p_h)$ with output $\rho_h^+$.
+We will compare with a non-distorted output $\rho^+=\rho^-$
+convected by a constant velocity field $\bar u(x,t)=(\bar u_1,0,0)$, 
+where $\bar u_1$ is a representative inflow velocity. We will 
+thus as a measure of the distortion, use the mean value 
+\begin{equation}\label{E}
+E_h=\int_\omega (\rho^--\rho_h^+)\psi \, d\bar x\, dt.
+\end{equation}
+where $\psi (\bar x,t)$ is a weight function. 
+
+
+
+    
+
+
+\section{Error Estimation by Duality}
+
+As in the model problem, we may assume that
+(see \cite{ambsflow} for details)
+\[
+E_h\approx ((h\nabla \rho_h,\nabla \varphi_h )),
+\]
+where $((v,w))=\int_0^T\int_\Omega vw\, dx\, dt$, and
+$\varphi_h$ is an approximate solution of the dual problem
+\[
+\begin{split}
+-\dot\varphi -u_h\cdot\nabla \varphi &=0\quad \mbox{in } \Omega\times I,\\\\
+\varphi (L,\cdot ,\cdot)&=\psi \quad \mbox{in } \omega\times I,\\ ,\\
+\varphi (\cdot ,T)&=0 \quad \mbox{in } \Omega,\\,
+\end{split}
+\]
+
+
+\section{Laminar and Turbulent Communication}
+As in the model problem, $E_h$ depends both on 
+$\nabla\rho_h$ and $\nabla\varphi_h $.
+If $u$ is turbulent, then $E_h$ may be small if $\psi$ is smooth with
+large support, corresponding to a gross feature of interest.
+If $u$ is laminar, then $E_h$ may be small also 
+for a small feature of interest.
+
+\section{The 2nd Law}
+
+The basic energy balance for $\rho_h$ reflecting the structure
+of the stabilized cG(1) method, reads:
+\[
+\int_{I^+}\int_\omega\rho_h (L,\bar x,t)^2\, dx\, dt+
+D(\rho_h)=
+\int_{I^-}\int_\omega\rho_h (0,\bar x,t)^2\, dx\, dt 
+\]
+where
+\[
+D(u_h;\rho_h) =\int_0^T\int_\Omega h\vert\nabla\rho_h\vert^2\, dx\, dt,
+\]
+and  $I^-$ and $I^+$ are relevant time intervals for input and output,
+respectively.
+As above, $D(u_h;\rho_h)$ represents 
+an \emph{irrecoverable loss of information}. Reversing the
+process letting $\rho_h$ convect backwards in time starting from
+$\rho_h(\cdot ,T)$, we have an analogous energy balance
+with a new dissipation term of positive sign, showing that
+the initial data $\rho (\cdot ,0)$ cannot be fully recovered.
+ 
+
+\section{Dissipation of Information}
+As a rough measure of the amount of irrecoverable information  
+we may use the \emph{total dissipation of information}:
+\[
+D_h=\int_0^T\int_\Omega h\vert\nabla\rho_h\vert^2\, dx\, dt.
+\]
+ 
+
+
+\section{Simulations}
+
+
+We consider communication in cylindrical
+channels of different length.
+If the channel is short 
+enough, then the flow may stay laminar all along the channel and the
+image suffer little distortion, while if the flow gets turbulent, then
+the image may get more distorted. Because of boundary layer effects
+the distortion will usually be bigger close to the boundary.
+
+We also study the effects of different obstructions in the channel
+perturbing the flow, modeling a communication system with bottle-necks.
+
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=4cm]{ambsthermopict/me-NYSE.eps} 
+} 
+\caption{Flow of information at New York Stock Exchange}
+\label{stockexchange} 
+\end{figure}
+
+\chapter{Traffic Flow}
+
+\small
+\begin{quote}
+I think the idea of getting out of a traffic jam and getting 
+out of work each week and going and doing all this stuff would 
+be really exhausting.(Paul McCarthy)
+\end{quote}
+\normalsize
+
+
+\section{A Model of Traffic Flow}
+
+We return to the simple traffic model which we considered above as
+a variant of Burgers equation: Find the density $\rho (x,t)$ and 
+the velocity $u(x,t)$ such that
+\begin{equation}\label{traffic}
+\begin{split}
+\dot\rho+(u\rho )'&=0\quad\mbox{for } x\in\bbR ,\, t>0,\\
+\rho (x,0)&=\rho^0(x)\quad\mbox{for } x\in\bbR ,
+\end{split}
+\end{equation}
+combined with the constitutive law $u=(1-\rho )$, assuming
+$0\le\rho^(x)\le 1$ for $x\in\bbR$.
+
+\section{Shocks and Congestions}
+
+We have seen that a shock corresponds to
+the abrupt changes of density and velocity encountered
+when the end of que of packed cars at rest 
+is propagating in the opposite direction to the
+direction of the traffic.
+ 
+
+\section{Rarefactions and Traffic Lights}
+
+A rarefaction solution corresponds to the situation when
+at a traffic light turning green, the cars gradually 
+accelerate one after the other. A nonphysical shock solution
+corresponds to the familiar situation when the driver
+in the first car at the traffic light, does not notice the light turning
+green, with the instability of this situation being illustrated 
+by the fact that a slight ``honk'' usually will alert the driver
+to get going and allowing the rarefaction to develop. Instead of a honk
+a little bit of viscosity will get the car going.
+
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=8cm]{ambsthermopict/tfcflow-west.eps} 
+} 
+\caption{Traffic flow in the Bay Area}
+\label{traffic} 
+\end{figure} 
+
+
+\chapter{Economy}
+
+\small
+\begin{quote}
+    As every individual, therefore, endeavours as much as he can both to employ his capital in the support of domestic industry, and so to direct that industry that its produce may be of the greatest value; every individual necessarily labours to render the annual value of society as great as he can. He generally, indeed, neither intends to promote the public interest, nor knows how much he is promoting it. By preferring the support of domestic to that of foreign industry, he intends only his own security; and by directing that industry in such a manner as its produce may be of the greatest value, he intends only his own gain, and he is in this, as in many other cases, led by an invisible hand to promote an end which was no part of his intention. Nor is it always the worse for the society that it was no part of it. By pursuing his own interest he frequently promotes that of society more effectually than when he really intends to promote it. I have never known much good done by those who affected to trade for the public good. It is an affectation, indeed, not very common among merchants, and very few words need be employed in dissuading them from it. (Adam Smith)
+\end{quote}
+\normalsize
+\section{A Flow Model}
+We model an economy as a form of of reactive flow in a network.
+
+
+
+\begin{thebibliography}{9}
+
+\bibitem{bergmann} P.~Bergmann, \emph{Basic Theories of Physics}, 
+Prentice-Hall, 1950.
+
+\bibitem{bodysoul} http://www.bodysoulmath.org.
+
+\bibitem{burman} E.~Burman, Adaptive finite element methods
+for compressible two-phase flow, Ph D Thesis, Chalmers University of Technology,
+1998.
+
+\bibitem{boltzmann}L.~Boltzmann, \emph{Lectures on Gas Theory}, Dover, 1964.
+
+\bibitem{brush1} Stephen Brush, \emph{The Kind of Motion We Call Heat: Physics
+and the Atomists}, Elsevier Science, 1986.
+
+\bibitem{brush2} S. Brush, \emph{The Kind of Motion we call Heat. 
+A History of the Kinetic Theories of Gases in the 19th century}, 
+Volumes I and II, Studies in Statistical Mechanics, Vol. VI, 
+E.W. Montroll and J.L. Lebowitz (eds.), North-Holland 
+Publishing Company, Oxford, 1976.
+
+\bibitem{carnot} Sadi Carnot, in Reflections of the motive power of fire and 
+on machines fitted to develop that power, 1824.
+
+\bibitem{clausius1} Rudolph Clausius, \emph{Abhandlungen \"uber die
+Mechanische W\"aremtheorie}, Band 1-2, 1864.
+
+\bibitem{clausius2} R. Clausius, 
+\"Uber die W\"armeleitung gasf\"ormiger K\"orper, 
+Annalen der Physik 125: 353-400, 1865.
+
+
+\bibitem{davies} Paul Davies, \emph{The Cosmic Blueprint,
+New Discoveries in Nature's Creative Ability to Order the Universe},
+Templeton Foundation Press.
+
+\bibitem{cde} K.~Eriksson, D.~Estep and C.~Johnson, \emph{Computational
+Differential Equations}, Cambridge University Press, 1996. 
+
+
+\bibitem{euler} L.~Euler, Principes g\'en\'eraux du mouvement des fluides 
+(General laws of the motion of fluids), Archives of the French Academy 
+of Sciences, 1755.
+
+\bibitem{feynman} Richard Feynman, \emph{The Feynman Lectures on Physics},
+Caltech, 1963.
+
+\bibitem{fenics} The FEniCS Project, http://www.fenics.org.
+
+\bibitem{foucault} Michel Foucault, Discipline and Punishment, The Birth
+of the Prison, Vintage books, 1991.
+
+\bibitem{guillemin} V.~Guillemin, \emph{The Story of Quantum Mechanics}, 
+Scribner, 1968.
+
+
+\bibitem{hoffman}J.~Hoffman, A general Galerkin finite element
+method for turbulent compressible flow, Finite Element Center
+Preprint 2006-13.
+
+\bibitem{dreams}J.~Hoffman, C.~Johnson and A.~Logg, 
+\emph{Dreams of Calculus: Perspectives on Mathematics Education}, Springer, 2006. 
+
+\bibitem{jfm}J.~Hoffman and C.~Johnson, 
+Finally, Resolution of d'Alembert's Paradox, to appear in  
+Journal of Mathematical Fluid Mechanics, 2008.
+
+
+\bibitem{ambsflow}J.~Hoffman and C.~Johnson, 
+\emph{Computational Turbulent Incompressible Flow}, Applied Mathematics
+Body and Soul Vol 4, Springer, 2007.
+
+
+\bibitem{compquantum} J.~Hoffman and C.~Johnson
+\emph{Computational Quantum Mechanics}, to appear.
+
+\bibitem{cime} C.~Johnson, Adaptive finite element methods for conservation
+laws, Advanced Numerical Approximation of Nonlinear Hyperbolic Equations,
+Springer Lecture Notes in Mathematics 1697 (1998), 269-323.
+
+\bibitem{arrow} C. Johnson, \emph{The Clock 
+and the Arrow: A Brief Theory of Time}, Computational Technology
+Laboratory Preprint, 2008.
+
+
+\bibitem{blackbody} C. Johnson, \emph{Computational Black-Body
+Radiation},  Computational Technology
+Laboratory Preprint, 2008.
+
+\bibitem{kelvin}
+W.~Thomson (Lord Kelvin), On the dynamical theory of heat; with numerical 
+results deduced from Mr. Joule's equivalent of a thermal unit and M. 
+Regnault's observations on steam, Math. and Phys. Papers vol.1, p 179, 1851.
+
+\bibitem{laughlin} Robert Laughlin, \emph{A Different Universe}, 2005.
+
+\bibitem{lieb} Elliot Lieb and Jakob Yngvason, The Physics and Mathematics
+of the Second Law of Thermodynamics, Physics Reports 310, 1-96 (1999).
+
+
+
+\bibitem{leff} Leff, H.S. and Rex, A.F. (eds),
+Maxwell's Demon: Entropy, Information, Computing. 
+Bristol: Adam-Hilger, 1990. 
+
+\bibitem{foundphysics} Lindsay and Margenau, \emph{Foundations of Physics},
+1936.
+
+\bibitem{kuhn1} Thomas Kuhn, \emph{Black-Body Theory and the 
+Quantum Discontinuity},
+1894-1912, Oxford Univ Press 1978.
+
+\bibitem{laurendau} M.~Laurendau, \emph{Statistical Thermodynamics, Fundamentals
+and Applications}, Cambridge University Press, 2005.
+
+\bibitem{feireisl} Measure-vaued solutions to the complete Euler system revisited, Zeitschrift f\"ur angewandte Mathematik und Physik, June 2018. 69:57.
+\bibitem{chenwang} The Cauchy Problem for the Euler Equations Compressible Fluids, Handbook of Mathematical Fluid Dynamics (eds S.J Friedlander and D. Serre), Volume I, Chapter 5, Elsevier 2012.
+
+\bibitem{serre} Handbook of Mathematical Fluid Dynamics Vol I and II, S.J. Friedlander and D. Serre (eds), Elsevier 2002.
+
+\bibitem{dafermos} C.M Dafermos, Maximal dissipation in equations of evolution, J. Differential Equations 252, 2012, 567-587.
+
+
+
+
+
+
+%\bibitem{tegmark} Max Tegmark,
+%The Interpretation of Quantum Mechanics: Many Worlds or Many Words?,
+%in Fundamental Problems in Quantum Theory, eds. Rubin and Shih.
+
+\bibitem{lieb} E. Lieb and J. Yngavason, The Physics and Mathematics of the Second Law of Thermodynamics, 1997.
+
+
+
+\bibitem{loschmidt} J. Loschmidt, Sitzungsber. Kais. Akad. Wiss. Wien, Math. 
+Naturwiss. Classe 73, 128-142, (1876).
+
+
+\bibitem{ockham} William Ockham (1285-1349):
+``Entia non sunt multiplicanda praeter necessitatem''
+(Entities should not be multiplied unnecessarily). 
+
+\bibitem{planck1} Max Planck, \"Uber den zweiten Hauptsatz der mechanischen 
+W\"armetheorie, Dissertation, Berlin, 1879.
+
+\bibitem{planck2} Max Planck, \emph{Vorlesungen \"uber Thermodynamik}, 1897.
+
+\bibitem{planck3}
+Max Planck,  Acht Vorlesungen \"uber Theoretische Physik, F\"unfte Vorlesung:
+W\"armestrahlung und Elektrodynamische Theorie, Leipzig, 1910.
+
+
+
+%\bibitem{planck4} ...Mechanically, the task seems impossible, and we will just
+%have to get used to it (quanta) (Planck 1909).
+
+
+
+ 
+
+
+
+
+
+
+\bibitem{popper} Karl Popper, The Logic of Scientific Discovery, 1949.
+ 
+\bibitem{schrodinger2} E.~Schr\"odinger, 
+\emph{The Interpretation of Quantum Physics}, 
+Ox Bow Press, Woodbridge, CN, 1995.
+
+\bibitem{shannon} C. E. Shannon, A mathematical theory of communication,
+The Bell System Technical Journal, Vol. 27, pp 379-423, 623-656, July, Oct,
+1948.
+
+\bibitem{truesdell} C.~Truesdell, \emph{The Tragicomial History of 
+Thermodynamics
+1822-54}, Springer, 1980.
+
+\bibitem{tegmark} Max Tegmark,
+The Interpretation of Quantum Mechanics: Many Worlds or Many Words?,
+in Fundamental Problems in Quantum Theory, eds. Rubin and Shih.
+
+\bibitem{uffink} J.~Uffink, Bluff your way in the Second Law of Thermodynamics,
+Department of History and Foundation of Science, University of Utrecht, 2001.
+
+\bibitem{zeh} H.D. Zeh, in The problem
+of conscious observation in quantum mechanical description,
+ArXiv Quant-Phy June 2000.  
+
+%\bibitem{planck3}
+%Either the quantum of action was a fictional quantity,
+%then the whole deduction of the radiation law was essentially an
+%illusion representing only an empty play on formulas of no significance,
+%or the derivation of the radiation law was based on sound physical conception.
+%(Planck)
+
+%\bibitem{planck4} ...Mechanically, the task seems impossible, and we will just
+%have to get used to it (quanta) (Planck 1909).
+
+
+
+
+
+
+
+ 
+
+
+
+%\bibitem{born2} Schr\"odinger was, to say the least, as stubborn as Einstein
+%in his conservative attitude towards quantum mechanics; indeed, he not only
+%rejected the statitical interpretation but insisted that his wave mechanics
+%meant a return to a classical way of thinking. He would not accept
+%any objection to it, not even the most weighty one, which is that
+%a wave in $3n$-dimensional space, such as needed to describe the 
+%$n$, is not a classical concept and cannot be visualized. 
+%(Born in the Born-Einstein Letters)
+
+
+
+%\bibitem{born3} ``De Broglie, the creator of wave mechanics, accepted
+%the results of quantum mechanics just as Schr\"odinger did, but not
+%the statistical interpretation.'' (Born in the Born-Einstein Letters)
+
+%\bibitem{born4} ``I cannot understand how you can combine an entirely
+%mechanistic universe with the freedom of the ethical will''. (Born in the
+%Born-Einstein Letters)  
+
+
+
+
+
+
+
+
+
+
+
+\end{thebibliography}
+
+    
+
+
+
+ 
+
+
+
+
+
+
+
+
+
