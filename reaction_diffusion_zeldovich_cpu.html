@@ -21,7 +21,7 @@
     <label>α (threshold): <input id="rngAlpha" type="range" min="0.01" max="0.99" step="0.01" value="0.50" /><span id="lblAlpha">0.50</span></label>
     <label>diffusion D: <input id="rngD" type="range" min="0" max="0.020" step="0.0002" value="0.0020" /><span id="lblD">0.0020</span></label>
     <label>reaction k: <input id="rngK" type="range" min="0" max="500" step="10" value="100" /><span id="lblK">100</span></label>
-    <label>dt (×h): <input id="rngDt" type="range" min="0.01" max="2.0" step="0.01" value="1.0" /><span id="lblDt">1.00</span></label>
+    <label>dt (×h): <input id="rngDt" type="range" min="0.01" max="2.0" step="0.01" value="0.30" /><span id="lblDt">0.30</span></label>
     <label>substeps/frame: <input id="rngSubsteps" type="range" min="1" max="40" step="1" value="4" /><span id="lblSubsteps">4</span></label>
     <button id="btnPause">Pause</button>
     <button id="btnReset">Reset</button>
@@ -58,7 +58,8 @@
 // Stable: u=0, u=1.  Unstable threshold: u=α.
 // ============================================================================
 
-const N = 200;
+const N = 200;          // bumped back to 200 now that dt default is 0.30·h
+                        // (stable: 0.30·h = 1.5e-3 < bound 3.1e-3 at default D = 0.002)
 const NC = N * N;
 const idx = (i, j) => i + N * j;
 
@@ -74,7 +75,9 @@ const h = 1 / N;
 let alphaThr = 0.50;     // threshold α (live via slider)
 let D = 0.0020;          // diffusion coefficient
 let kReact = 100;        // reaction-rate coefficient
-let dt = 1.0 * h;        // time step (default matches the p5 original)
+let dt = 0.30 * h;       // dt default reduced from 1.0·h (the p5 original's value)
+                         // to 0.30·h for comfortable margin on the diffusion
+                         // stability bound dt < h²/(4D) = 1.25·h at default D=0.002.
 let substeps = 4;
 let paused = false;
 let simTime = 0;
