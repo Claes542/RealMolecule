@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Reaction-Diffusion: Bistable Equation — CPU translation</title>
+<style>
+  body { margin: 0; padding: 8px; background: #fff; font-family: sans-serif; }
+  #wrap { display: flex; flex-direction: column; align-items: center; }
+  canvas { display: block; border: 1px solid #888; background: #fff; }
+  #controls { display: flex; gap: 10px; align-items: center; margin-top: 8px; font-size: 12px; flex-wrap: wrap; max-width: 760px; justify-content: center; }
+  label { display: flex; gap: 4px; align-items: center; }
+  input[type="range"] { width: 130px; }
+  #info { width: 760px; font-size: 11px; line-height: 1.35; margin-top: 8px; }
+  code { background: #f0f0f0; padding: 0 3px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv" width="600" height="600"></canvas>
+  <div id="controls">
+    <label>diffusion D: <input id="rngD" type="range" min="0" max="0.10" step="0.001" value="0.010" /><span id="lblD">0.010</span></label>
+    <label>reaction α: <input id="rngA" type="range" min="0" max="500" step="10" value="100" /><span id="lblA">100</span></label>
+    <label>seed amp: <input id="rngSeed" type="range" min="0" max="1.0" step="0.05" value="0.20" /><span id="lblSeed">0.20</span></label>
+    <label>dt (×h): <input id="rngDt" type="range" min="0.01" max="1.0" step="0.01" value="0.10" /><span id="lblDt">0.10</span></label>
+    <label>substeps/frame: <input id="rngSubsteps" type="range" min="1" max="40" step="1" value="4" /><span id="lblSubsteps">4</span></label>
+    <button id="btnPause">Pause</button>
+    <button id="btnReset">Reset</button>
+  </div>
+  <div id="info">
+    Bistable reaction-diffusion equation on a 2D periodic domain:
+    <br><code>&nbsp; ∂u/∂t &minus; D·Δu = α·u·(1&minus;u²)</code>.
+    <br>Stationary points: <code>u = 0</code> (unstable), <code>u = ±1</code>
+    (stable). Random initial perturbation grows into bistable
+    domains separated by sharp fronts; the diffusion smooths the
+    fronts, the reaction sharpens them.
+    <br><br>
+    Slow / fast separation: the reaction term dominates inside each
+    domain (locks u to ±1 fast); the diffusion term dominates at the
+    fronts (slow front motion governed by the curvature of the
+    domain boundary). The phase-separation pattern that emerges is
+    the Allen-Cahn / Cahn-Hilliard kinetics that underlies many
+    physical pattern-formation processes (alloy spinodal
+    decomposition, magnetic domain coarsening, etc.).
+    <br><br>
+    <b>Red</b>: u &gt; 0 domains. <b>Blue</b>: u &lt; 0 domains.
+    <b>Black polyline</b>: cross-cut of u along j = N/2.
+  </div>
+</div>
+
+<script>
+// ============================================================================
+// Reaction-Diffusion Bistable -- CPU translation in RealThermo style.
+// Single scalar field u(x, y, t) on a square N×N grid with Dirichlet zero
+// boundary (the source uses Neumann-by-default via boundary copy; here we
+// keep that behaviour by leaving boundary cells untouched).
+// ============================================================================
+
+const N = 200;
+const NC = N * N;
+const idx = (i, j) => i + N * j;
+
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+const W = canvas.width;
+const PX = W / N;       // 3 px per cell at N = 200
+
+const u = new Float32Array(NC);
+const uNext = new Float32Array(NC);
+
+const h = 1 / N;
+let D = 0.010;       // diffusion coefficient (live via slider)
+let alpha = 100;     // reaction-rate coefficient (live via slider)
+let seedAmp = 0.20;  // amplitude of initial random perturbation
+let dt = 0.10 * h;   // time step (default reduced for N=200 explicit-diffusion stability)
+let substeps = 4;
+let paused = false;
+let simTime = 0;
+
+const rngD = document.getElementById('rngD'), lblD = document.getElementById('lblD');
+const rngA = document.getElementById('rngA'), lblA = document.getElementById('lblA');
+const rngSeed = document.getElementById('rngSeed'), lblSeed = document.getElementById('lblSeed');
+const rngDt = document.getElementById('rngDt'), lblDt = document.getElementById('lblDt');
+const rngSubsteps = document.getElementById('rngSubsteps'), lblSubsteps = document.getElementById('lblSubsteps');
+const btnPause = document.getElementById('btnPause');
+const btnReset = document.getElementById('btnReset');
+
+rngD.addEventListener('input', () => { D = parseFloat(rngD.value); lblD.textContent = D.toFixed(3); });
+rngA.addEventListener('input', () => { alpha = parseFloat(rngA.value); lblA.textContent = alpha.toFixed(0); });
+rngSeed.addEventListener('input', () => { seedAmp = parseFloat(rngSeed.value); lblSeed.textContent = seedAmp.toFixed(2); });
+rngDt.addEventListener('input', () => { const m = parseFloat(rngDt.value); dt = m * h; lblDt.textContent = m.toFixed(2); });
+rngSubsteps.addEventListener('input', () => { substeps = parseInt(rngSubsteps.value); lblSubsteps.textContent = substeps; });
+btnPause.addEventListener('click', () => { paused = !paused; btnPause.textContent = paused ? 'Resume' : 'Pause'; });
+btnReset.addEventListener('click', initState);
+
+function initState() {
+  for (let q = 0; q < NC; q++) u[q] = seedAmp * (2 * Math.random() - 1);
+  simTime = 0;
+}
+
+function step() {
+  const invH2 = 1 / (h * h);
+  // Interior: u_new = u + dt*(D*Lap(u)/h^2 + alpha*u*(1-u^2))
+  for (let j = 1; j < N - 1; j++) {
+    for (let i = 1; i < N - 1; i++) {
+      const q  = idx(i, j);
+      const qE = idx(i + 1, j), qW = idx(i - 1, j);
+      const qN = idx(i, j + 1), qS = idx(i, j - 1);
+      const uc = u[q];
+      const lap = (u[qE] + u[qW] + u[qN] + u[qS] - 4 * uc) * invH2;
+      const react = alpha * uc * (1 - uc * uc);
+      uNext[q] = uc + dt * (D * lap + react);
+    }
+  }
+  // Copy back interior; Neumann (zero-flux) boundary by copy from interior
+  for (let j = 1; j < N - 1; j++) {
+    for (let i = 1; i < N - 1; i++) {
+      const q = idx(i, j);
+      u[q] = uNext[q];
+    }
+  }
+  for (let i = 0; i < N; i++) {
+    u[idx(i, 0)]     = u[idx(i, 1)];
+    u[idx(i, N - 1)] = u[idx(i, N - 2)];
+    u[idx(0, i)]     = u[idx(1, i)];
+    u[idx(N - 1, i)] = u[idx(N - 2, i)];
+  }
+  simTime += dt;
+}
+
+function render() {
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, W);
+
+  // Cell-shaded field: red for u>0, blue for u<0, intensity proportional to |u|
+  // (saturating at |u|=1).
+  for (let j = 0; j < N; j++) {
+    for (let i = 0; i < N; i++) {
+      const uc = u[idx(i, j)];
+      const a = Math.min(1, Math.abs(uc));
+      if (uc > 0) ctx.fillStyle = `rgba(220, 0, 0, ${a.toFixed(3)})`;
+      else        ctx.fillStyle = `rgba(0, 0, 220, ${a.toFixed(3)})`;
+      ctx.fillRect(PX * i, PX * j, PX + 0.5, PX + 0.5);
+    }
+  }
+
+  // Mid-line cross-cut polyline (black) plotted around y = N*PX/2
+  const JMID = Math.floor(N / 2);
+  const BASE = W * 0.5, AMP = W * 0.40;
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  for (let i = 0; i < N; i++) {
+    const y = BASE - AMP * Math.max(-1, Math.min(1, u[idx(i, JMID)]));
+    if (i === 0) ctx.moveTo(PX * i, y); else ctx.lineTo(PX * i, y);
+  }
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(120,120,120,0.5)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, BASE); ctx.lineTo(W, BASE); ctx.stroke();
+
+  // Labels
+  ctx.fillStyle = '#000'; ctx.font = '12px sans-serif'; ctx.textBaseline = 'top';
+  ctx.fillText('Reaction-Diffusion: Bistable Equation', 12, 10);
+  ctx.fillText('∂u/∂t − D·Δu = α·u·(1−u²)', 12, 28);
+  ctx.fillText(`D = ${D.toFixed(3)}, α = ${alpha.toFixed(0)}, dt/h = ${(dt/h).toFixed(2)}, t = ${simTime.toFixed(3)}`, 12, 46);
+  ctx.fillText('red: u > 0 domains   blue: u < 0 domains', 12, W - 36);
+  ctx.fillText('black polyline: cross-cut u(i, N/2)', 12, W - 20);
+}
+
+initState();
+
+function frame() {
+  if (!paused) {
+    for (let s = 0; s < substeps; s++) step();
+  }
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

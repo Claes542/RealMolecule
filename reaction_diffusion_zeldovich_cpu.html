@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Reaction-Diffusion: Zeldovich Equation — CPU translation</title>
+<style>
+  body { margin: 0; padding: 8px; background: #fff; font-family: sans-serif; }
+  #wrap { display: flex; flex-direction: column; align-items: center; }
+  canvas { display: block; border: 1px solid #888; background: #fff; }
+  #controls { display: flex; gap: 10px; align-items: center; margin-top: 8px; font-size: 12px; flex-wrap: wrap; max-width: 760px; justify-content: center; }
+  label { display: flex; gap: 4px; align-items: center; }
+  input[type="range"] { width: 130px; }
+  #info { width: 760px; font-size: 11px; line-height: 1.35; margin-top: 8px; }
+  code { background: #f0f0f0; padding: 0 3px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv" width="600" height="600"></canvas>
+  <div id="controls">
+    <label>α (threshold): <input id="rngAlpha" type="range" min="0.01" max="0.99" step="0.01" value="0.50" /><span id="lblAlpha">0.50</span></label>
+    <label>diffusion D: <input id="rngD" type="range" min="0" max="0.020" step="0.0002" value="0.0020" /><span id="lblD">0.0020</span></label>
+    <label>reaction k: <input id="rngK" type="range" min="0" max="500" step="10" value="100" /><span id="lblK">100</span></label>
+    <label>dt (×h): <input id="rngDt" type="range" min="0.01" max="2.0" step="0.01" value="1.0" /><span id="lblDt">1.00</span></label>
+    <label>substeps/frame: <input id="rngSubsteps" type="range" min="1" max="40" step="1" value="4" /><span id="lblSubsteps">4</span></label>
+    <button id="btnPause">Pause</button>
+    <button id="btnReset">Reset</button>
+    <button id="btnICRandom">IC: random</button>
+    <button id="btnICBlob">IC: central blob</button>
+  </div>
+  <div id="info">
+    Zeldovich bistable reaction-diffusion equation (combustion front model):
+    <br><code>&nbsp; ∂u/∂t &minus; D·Δu = k·u·(1&minus;u)·(u&minus;α)</code>,
+    <code>0 &lt; α &lt; 1</code>.
+    <br>Stationary points: <code>u = 0</code> (stable), <code>u = 1</code>
+    (stable), <code>u = α</code> (unstable). The asymmetric reaction term
+    makes the <em>α</em> parameter the threshold separating which initial
+    condition leads to which stable state.
+    <br><br>
+    Vary <em>α</em> to see the threshold behaviour: for <em>α</em> &lt; 0.5
+    the u=1 well wins (mostly red); for <em>α</em> &gt; 0.5 the u=0 well
+    wins (mostly blue). At <em>α</em> = 0.5 the equation is symmetric, but
+    the asymmetric reaction term still produces sharper, faster-moving
+    fronts than the bistable form &mdash; this is the canonical model of
+    a propagating combustion front (Zeldovich, 1938).
+    <br><br>
+    <b>Red intensity</b>: u (1 ⟶ saturated red). <b>Blue intensity</b>:
+    1−u (1 ⟶ saturated blue at u = 0). <b>Black polyline</b>: cross-cut
+    of u along j = N/2.
+  </div>
+</div>
+
+<script>
+// ============================================================================
+// Reaction-Diffusion Zeldovich -- CPU translation in RealThermo style.
+// Single scalar field u(x, y, t) on a square N×N grid.
+// ∂u/∂t = D Δu + k u (1-u)(u-α),  0 < α < 1
+// Stable: u=0, u=1.  Unstable threshold: u=α.
+// ============================================================================
+
+const N = 200;
+const NC = N * N;
+const idx = (i, j) => i + N * j;
+
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+const W = canvas.width;
+const PX = W / N;        // 3 px per cell at N = 200
+
+const u = new Float32Array(NC);
+const uNext = new Float32Array(NC);
+
+const h = 1 / N;
+let alphaThr = 0.50;     // threshold α (live via slider)
+let D = 0.0020;          // diffusion coefficient
+let kReact = 100;        // reaction-rate coefficient
+let dt = 1.0 * h;        // time step (default matches the p5 original)
+let substeps = 4;
+let paused = false;
+let simTime = 0;
+let icMode = 'random';   // 'random' | 'blob'
+
+const rngAlpha = document.getElementById('rngAlpha'), lblAlpha = document.getElementById('lblAlpha');
+const rngD = document.getElementById('rngD'),         lblD = document.getElementById('lblD');
+const rngK = document.getElementById('rngK'),         lblK = document.getElementById('lblK');
+const rngDt = document.getElementById('rngDt'),       lblDt = document.getElementById('lblDt');
+const rngSubsteps = document.getElementById('rngSubsteps'), lblSubsteps = document.getElementById('lblSubsteps');
+const btnPause = document.getElementById('btnPause');
+const btnReset = document.getElementById('btnReset');
+const btnICRandom = document.getElementById('btnICRandom');
+const btnICBlob = document.getElementById('btnICBlob');
+
+rngAlpha.addEventListener('input', () => { alphaThr = parseFloat(rngAlpha.value); lblAlpha.textContent = alphaThr.toFixed(2); });
+rngD.addEventListener('input',     () => { D = parseFloat(rngD.value); lblD.textContent = D.toFixed(4); });
+rngK.addEventListener('input',     () => { kReact = parseFloat(rngK.value); lblK.textContent = kReact.toFixed(0); });
+rngDt.addEventListener('input',    () => { const m = parseFloat(rngDt.value); dt = m * h; lblDt.textContent = m.toFixed(2); });
+rngSubsteps.addEventListener('input', () => { substeps = parseInt(rngSubsteps.value); lblSubsteps.textContent = substeps; });
+btnPause.addEventListener('click', () => { paused = !paused; btnPause.textContent = paused ? 'Resume' : 'Pause'; });
+btnReset.addEventListener('click', initState);
+btnICRandom.addEventListener('click', () => { icMode = 'random'; initState(); });
+btnICBlob.addEventListener('click',   () => { icMode = 'blob';   initState(); });
+
+function initState() {
+  if (icMode === 'random') {
+    for (let q = 0; q < NC; q++) u[q] = Math.random();
+  } else {
+    // Central seeded blob: u = 1 outside, u = 0 inside disk of radius ~ N/5
+    const cx = N / 2, cy = N / 2, R2 = (N * 0.20) * (N * 0.20);
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const dx = i - cx, dy = j - cy;
+      u[idx(i, j)] = (dx * dx + dy * dy < R2) ? 0 : 1;
+    }
+  }
+  simTime = 0;
+}
+
+function step() {
+  const invH2 = 1 / (h * h);
+  for (let j = 1; j < N - 1; j++) {
+    for (let i = 1; i < N - 1; i++) {
+      const q  = idx(i, j);
+      const uc = u[q];
+      const lap = (u[idx(i+1,j)] + u[idx(i-1,j)] + u[idx(i,j+1)] + u[idx(i,j-1)] - 4 * uc) * invH2;
+      const react = kReact * uc * (1 - uc) * (uc - alphaThr);
+      uNext[q] = uc + dt * (D * lap + react);
+    }
+  }
+  for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) u[idx(i, j)] = uNext[idx(i, j)];
+  // Neumann (zero-flux) boundary
+  for (let i = 0; i < N; i++) {
+    u[idx(i, 0)]     = u[idx(i, 1)];
+    u[idx(i, N - 1)] = u[idx(i, N - 2)];
+    u[idx(0, i)]     = u[idx(1, i)];
+    u[idx(N - 1, i)] = u[idx(N - 2, i)];
+  }
+  simTime += dt;
+}
+
+function render() {
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, W);
+  // Field: red intensity for u, blue intensity for 1-u (overlay so u ∈ [0,1] maps
+  // continuously from blue (u=0) through purple (u=0.5) to red (u=1))
+  for (let j = 0; j < N; j++) {
+    for (let i = 0; i < N; i++) {
+      const uc = u[idx(i, j)];
+      const uClamped = Math.max(0, Math.min(1, uc));
+      ctx.fillStyle = `rgba(220, 0, 0, ${uClamped.toFixed(3)})`;
+      ctx.fillRect(PX * i, PX * j, PX + 0.5, PX + 0.5);
+      ctx.fillStyle = `rgba(0, 0, 220, ${(1 - uClamped).toFixed(3)})`;
+      ctx.fillRect(PX * i, PX * j, PX + 0.5, PX + 0.5);
+    }
+  }
+  // Mid-line polyline plotted around y = W * 0.5
+  const JMID = Math.floor(N / 2);
+  const BASE = W * 0.5, AMP = W * 0.40;
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  for (let i = 0; i < N; i++) {
+    const uc = u[idx(i, JMID)];
+    const y = BASE - AMP * (uc - 0.5) * 2;       // [0,1] → BASE±AMP
+    if (i === 0) ctx.moveTo(PX * i, y); else ctx.lineTo(PX * i, y);
+  }
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(120,120,120,0.5)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, BASE); ctx.lineTo(W, BASE); ctx.stroke();
+
+  ctx.fillStyle = '#000'; ctx.font = '12px sans-serif'; ctx.textBaseline = 'top';
+  ctx.fillText('Reaction-Diffusion: Zeldovich Equation', 12, 10);
+  ctx.fillText('∂u/∂t − D·Δu = k·u·(1−u)·(u−α)', 12, 28);
+  ctx.fillText(`α = ${alphaThr.toFixed(2)}, D = ${D.toFixed(4)}, k = ${kReact.toFixed(0)}, dt/h = ${(dt/h).toFixed(2)}, t = ${simTime.toFixed(3)}`, 12, 46);
+  ctx.fillText('red: u = 1 (burnt)   blue: u = 0 (unburnt)   threshold u = α (unstable)', 12, W - 36);
+  ctx.fillText('black polyline: cross-cut u(i, N/2)', 12, W - 20);
+}
+
+initState();
+
+function frame() {
+  if (!paused) {
+    for (let s = 0; s < substeps; s++) step();
+  }
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
