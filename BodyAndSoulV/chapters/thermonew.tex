@@ -1,9 +1,8 @@
-\part{Short Story}
+\part{From Classical to Real Thermodynamics}
 
+\input{chapters/essence}
 
-
-
-\chapter{Prelude: Entropy and Turbulence}
+\chapter{Entropy and Turbulence}\label{ch:entropy_turbulence}
 
 \small
 \begin{quote} I am an old man now, and when I die and go to heaven there are two matters on which I hope
@@ -42,6 +41,132 @@ prepared the statistical interpretation of the wave function of quantum mechanic
 \end{figure}
 
 
+\section{The Mystery of the 2nd Law}
+
+The depth of confusion the 2nd Law has caused in the physics community
+was recorded by Arnold Sommerfeld (1868--1951):
+
+\begin{quote}\itshape
+Thermodynamics is a funny subject. The first time you go through it,
+you don't understand it at all. The second time you go through it, you
+think you understand it, except for one or two small points. The third
+time you go through it, you know you don't understand it, but by that
+time you are so used to it, it doesn't bother you any more.
+\end{quote}
+
+The 2nd Law states that entropy cannot decrease with time, and when
+strictly increasing characterises an \emph{irreversible} process,
+defining an \emph{Arrow of Time}. Max Planck (1858--1947) located the
+entire weight of the law in this irreversibility:
+
+\begin{quote}\itshape
+Were it not for the existence of irreversible processes, the entire
+edifice of the 2nd Law would crumble.
+\end{quote}
+
+The mystery is that Newtonian deterministic mechanics \emph{without}
+viscosity, like quantum mechanics, is formally time-reversible: the basic
+equations are invariant under $t \to -t$. Mechanics \emph{with} viscosity
+is obviously irreversible --- viscosity smooths gradients, an irreversible
+operation. The question that haunted Maxwell, Boltzmann, Planck, Mach,
+Ostwald and Prigogine was: how can a macroscopic system, whose
+microscopic mechanics is reversible, exhibit macroscopic irreversibility?
+
+Boltzmann took on the challenge and proposed \emph{statistical
+mechanics}: an assumption of \emph{molecular chaos}, a microscopic game
+of roulette that introduces an irreversible smoothing \emph{by
+assumption}. The objection raised already by Loschmidt and re-stated by
+Eisenschitz in 1958 was that this only shifts the question rather than
+answering it:
+
+\begin{quote}\itshape
+The irreversible nature of the approach to equilibrium is apparently
+incompatible with the reversibility of molecular dynamics. In resolving
+this paradox the theory faces difficulties that have not yet been fully
+overcome.
+\end{quote}
+
+This volume takes a different route. The 2nd Law, read in the
+deterministic continuum framework, expresses the \emph{necessary
+presence of turbulence arising from instabilities in slightly viscous
+flow}. The adjective \textbf{slightly viscous} is central. In purely
+inviscid flow there is no small-scale dissipation mechanism at all,
+and no 2nd Law in the dissipative sense. In strongly viscous flow the
+viscosity smooths the velocity field before instabilities can grow,
+the flow stays laminar, and again no turbulence and no irreversible
+dissipation. It is only in the \emph{slightly viscous} regime ---
+viscosity small enough that the flow is unstable to the perturbations
+inevitably present, but non-zero so that the resulting turbulent
+cascades terminate by dissipation at the small scales --- that
+instabilities grow into turbulence and turbulence necessarily generates
+positive dissipation. The 2nd Law is the inevitability of this chain:
+\begin{center}
+\textbf{slightly viscous flow $\longrightarrow$ instabilities
+$\longrightarrow$ turbulence $\longrightarrow$ dissipation $D > 0$.}
+\end{center}
+The chain is realised computationally by RNS as a finite-precision
+solver for the deterministic continuum equations of compressible flow,
+which automatically introduces the slight viscosity at the resolved
+scale through its least-squares stabilisation. The next sections show
+how, and the chapters that follow develop the consequences.
+
+\section{Expansion Cools, Compression Warms}\label{sec:expansion_cools}
+
+A second physical primitive of compressible flow, on which every
+thermodynamic device in this volume rests, comes directly from the
+internal-energy equation of a compressible gas. That equation contains
+the \emph{pressure-work} term
+\begin{equation}
+  -\,p\,\nabla\!\cdot u,
+  \label{eq:pdivu}
+\end{equation}
+whose sign tells the whole story:
+
+\begin{itemize}
+\item \textbf{Expanding flow} ($\nabla\!\cdot u > 0$, gas spreading
+out): pressure work is negative, internal energy decreases, and the
+gas \emph{cools}.
+\item \textbf{Compressing flow} ($\nabla\!\cdot u < 0$, gas being
+squeezed): pressure work is positive, internal energy increases, and
+the gas \emph{warms}.
+\end{itemize}
+
+Cooling appears only in expanding flow; warming appears only in
+compressing flow. The reverse never happens. This is the
+thermodynamic primitive that, played out in different geometries,
+produces every device of classical thermodynamics: Joule's free
+expansion (Chapter~\ref{ch:joule}) realises the expansion-cools half
+in one chamber and the compression-warms half in the other; the
+refrigeration cycle (Chapter~\ref{ch:refrig}) exploits the same
+asymmetry sustained by external work; the heat engine
+(Chapter~\ref{ch:piston}) extracts useful work from the
+compression-warms half of the cycle. The viscous dissipation
+$\mu_{\mathrm{mom}}|\nabla u|^2 \geq 0$ that appears alongside the
+pressure work in the energy equation is the irreversible floor of the
+previous section --- the piece no real flow can avoid.
+
+Packaged as global rates, writing $K$ for total kinetic energy, $E$
+for total internal (heat) energy, $W = \int p\,\nabla\!\cdot u\,dx$
+for the rate of pressure work, and $D = \int
+\mu_{\mathrm{mom}}|\nabla u|^2\,dx \geq 0$ for the cumulative
+dissipation rate, the two budgets read
+\begin{equation}\label{eq:2nd_law_compact}
+  \dot K \;=\; W - D, \qquad \dot E \;=\; -W + D,
+\end{equation}
+with total energy conservation $\dot K + \dot E = 0$ in the absence
+of external heating. The pressure work $W$ runs in both directions
+(expansion converts $E$ into $K$; compression converts $K$ into $E$);
+the dissipation $D \geq 0$ runs only one way (always $K \to E$, never
+the reverse). When you rub your hands they get warm, but heating your
+hands does not produce the rubbing --- motion generates heat by
+friction, heat does not generate motion by an inverse friction. The
+classical 2nd Law is this asymmetry of $D$; the computational
+restatement, developed in the chapters that follow, is that no
+finite-precision solver of the deterministic continuum equations can
+make $D$ vanish, because no pointwise solution of the Euler equations
+exists in the turbulent/shock regime to which the deterministic
+dynamics inevitably leads.
+
  \section{Turbulence}
 
 There is another fundamental problem in science, namely the problem of \emph{turbulence} in a gas or fluid seen as a large collection of gas/fluid particles or atoms/molecules interacting by pressure and friction forces. Turbulent flow is not deterministic as concerns pointwise values in space and time, and thus has been approached by statistical methods, however with meager concrete results.
@@ -56,7 +181,7 @@ which have not been found a resolution within a deterministic framework, and to 
 \indent
 But there is midway between full determinism and full indeterminism or statistics, which we explored in 
 our previous book \emph{Computational Turbulent Incompressible Flow} \cite{ambsflow}. We showed that mean-value quantities such as drag and lift in turbulent bluff body flow, can be computed deterministically without resort to statistics by \emph{Real Navier--Stokes} (RNS) from first principles of conservation of mass, momentum and
-internal energy as expressed by \emph{Euler's equations}. RNS is a least squares residual stabilised finite element method, which produces "best possible" computational solutions of Euler's equations in cases where pointwise exact solutions with zero residuals do not exist because of the unavoidable presence of turbulence and shocks.   
+internal energy. RNS is the computational realisation of slightly viscous compressible flow by a least squares stabilised finite element method, which can be seen as a viscosity solution of the Navier--Stokes equations.
 %solving the Euler/Navier-Stokes equations by a certain computational method named \emph{RNS} as an acronym for
 \newline
 \indent
@@ -72,100 +197,47 @@ RNS essentially replaces entropy by turbulent dissipation and the 2nd Law comes 
 RNS thus opens to a resolution of the two main open problems of mathematical modeling of turbulence and the 2nd Law,
 by showing that the problems are essentially the same and can approached by deterministic computation. 
 
-\section{RNS as Model of Thermodynanics}
+\section{ThermoDynamics}
 
-In this book we extend the scope of \cite{ambsflow} to compressible flow described by the Euler equations solved by RNS into \emph{Computational Thermodynamics}.  We thus use RNS in an exploration of basic processes of thermodynamics in heat engines, heat pumps and refrigerators with turbulent dissipation setting limits of efficiency. 
+\emph{Real Navier--Stokes} (RNS) is the \textbf{computational realisation of
+slightly viscous compressible flow by a least squares stabilised finite
+element method, which can be seen as a viscosity solution of the
+Navier--Stokes equations}. In this book we use RNS in this sense as
+\emph{Real Thermodynamics}: an exploration of basic processes of
+thermodynamics --- heat engines, heat pumps and refrigerators --- in which
+turbulent dissipation, generated automatically by the least-squares
+stabilisation at the resolved scale, sets the \emph{limits of process
+efficiency}.
 
-\section{Icarus Education}
+In the spirit of Dijkstra~\cite{dijkstra}, RNS is taken here as the
+physical model of thermodynamics --- the Euler equations
+\emph{together with} a computational solution procedure, not the Euler
+equations on their own without a constructive way of solving them.
+The shift this enforces is methodological: turbulent and shock
+solutions are no longer objects to be reasoned about a priori but
+objects to be computed and inspected a posteriori. Mean-value outputs
+of those computed solutions --- drag, lift, total dissipation $D$ ---
+turn out to be stable under perturbations of the discretisation;
+point-values do not. Chapter~\ref{ch:new_foundation} develops the
+duality argument by which this wellposedness can be checked case by
+case from the computed RNS solution itself.
 
-This book is part of \emph{Icarus Education} originating in the 
-\emph{Body$\&$Soul} educational project \cite{bodysoul} and including:
-\begin{itemize}
-\item Computational Calculus.
-\item Computational Turbulent Incompressible Flow \cite{ambsflow}.
-%\item Computational Thermodynamics or Computational Turbulent Compressible Flow Vol 5.
-\item Mathematical Theory of Flight.
-\item Mathematical Theory of Sailing.
-%\item Computational Solid Mechanics.
-\item Mathematical Physics of Blackbody Radiation.
-\item Many-Minds Relativity
-\item Many-Minds Quantum Mechanics
-\item Dr Faustus of Modern Physics.
-\item The Clock and the Arrow: A Brief Theory of Time.
-\end{itemize}
-
-
-%The companion Icarus Ebook
-%Vol 2 \emph{The Clock and the Arrow: A Brief Theory of Time} \cite{arrow},
-%develops a variety of aspects of thermodynamics
-%in a synthesis of philosophy, science and literature 
-%directed to a wider audience.
-%Vol 6 and Vol 5 can be read independently or together. 
-
-%To really digest this book it is natural to first go through 
-%Computational Turbulent Compressible Flow presenting fundamental aspects of 
-%computational turbulence, together with relevant parts of Computational Calculus
-%or the predecessor \cite{cde}. 
-%To make it possible to directly plunge into this book,
-%we make an overlap with the last Part VI of Vol 4.
-\section{RNS Software: FEniCS: Unicorn}
-Open source software implementing RNS is available as 
-the \emph{FEniCS} application \emph{Unicorn} \cite{fenics}.
-
-\section{Outline}
-
-Part I Short Story recapitulates the questions and answers of classical thermodynamics 
-and briefly presents the new answers offered by computational thermodynamics. 
-Joule's experiment from 1845 with a gas expanding to double volume is used to illustrate a 
-basic problem of thermodynamics and its resolution by RNS.
-
-Part II World of Thermodynamics briefly covers some of the very many applications of thermodynamics from small
-to large scales.
-
-Part III Mathematics presents a basic mathematical analysis of solutions the Euler/Navier-Stokes equations, which we follow up in Part IV Computation with an analysis of RNS. The 2nd Law is proved and the limits of mean-value determinism are given 
-by a posteriori error estimation based on solving a dual lineraized problem.
-
-Part V Model Analysis is a study of some model problems by analytical mathematics.
-
-Part VI Applications reaches the main goal of computing the efficiency of heat engines, heat pumps and refrigerators 
-in prototype form. 
+RNS is realised in simple geometry in short \emph{Claude Codes} hosted on the
+GitHub repository \texttt{github.com/Claes542/RealMolecule}, intended to be
+run in parallel with the text: each conceptual chapter has a companion
+browser-runnable simulation (\texttt{joule\_experiment\_cpu.html},
+\texttt{piston\_cylinder\_cpu.html}, \texttt{cosmology\_2d\_cpu.html}, \ldots)
+in which the reader can vary parameters, watch the dissipation $D$ accumulate
+in real time, and verify the argument of the text directly. Each code is
+short --- a few hundred lines of self-contained HTML/JavaScript including the
+canvas drawing, sliders and diagnostics --- so the reader can \textbf{scan
+the whole simulation code in fifteen minutes} and see exactly how the
+deterministic continuum equations and the least-squares stabilisation are
+implemented, with no library, build step or installation in between.
 
 
-%We then continue with a survey of 
-%classical thermodynamics and the role of thermodynamics in a variety
-%of applications from small to large scale. We then derive 
-%basic energy estiamtes for viscosity solutions of the Euler equations
-%%as a perparation for the following presentation of computational 
-%thermodynamics as the main theme of the book. We conclude with 
-%a variety of applications showing the potential of computational
-%thermodynamics.
-
-
-%We show that the 2nd Law (\ref{secondlaw0}) is a consequence of the 1st Law 
-%in the form of the Euler equations combined with RNS
-%RNS introduces effects of viscosity as a consequence of the non-existence 
-%of pointwise solutions to the Euler equations with zero residuals 
-%reflecting instablities leading to the development shocks and turbulence 
-%in which large scale kinetic energy is transferred to small scale
-%kinetic energy in the form of heat energy. The viscous dissipation
-%can be interpreted as a penalty on pointwise
-%large Euler residuals arising in shocks/turbulence,
-%with the penalty being directly coupled to the violation
-%following a principle of criminal law exposed in \cite{foucault}.  
-%RNS thus explains the 2nd Law as a consequence of 
-%the non-existence of pointwise solutions with small Euler residuals.
-%This offers an understanding to the emergence of irreversible
-%solutions of the formally reversible Euler equations. 
-%If pointwise solutions had existed, they would have been 
-%reversible without dissipation, but they don't exist, and the
-%existing computational solutions have dissipation and thus are
-%irreversible.
-
-
-
-
-
-\chapter{Objective}
+\iffalse  % --- essentials merged into Ch. 1 "The Mystery of the 2nd Law" section ---
+\chapter{The Mystery of the 2nd Law}
 
 \small
 
@@ -368,6 +440,8 @@ the quality of RNS solutions as solutions of the Euler equations.
 
 
    
+\fi  % --- end merged-into-Ch.1 block ---
+
 \chapter{Classical Thermodynamics}
 \small
 \begin{quote} Heat, a quantity which functions to animate, derives
@@ -617,7 +691,7 @@ is that it is understood by very few, if any, as indicated by the above quotes.
 %\end{itemize}
 %\normalsize
 
-\chapter{Telling the Truth}
+\chapter{What Scientists Confess About Thermodynamics}
 
 To motivate the that thermodynamics needs a new foundation, we here collect some of the many 
 expresssions in the literature giving evidence that classical thermodynamics is a mess:
@@ -735,7 +809,7 @@ In no other discipline have the same equations been published over and over agai
 \end{itemize}
 
 
-\chapter{Old Questions}
+\chapter{The Statistical Programme: Boltzmann to Planck}
 \small
 \begin{quote}
 Those who have talked of ``chance'' are the
@@ -903,6 +977,7 @@ theoretical foundation.
 
 
  
+\iffalse  % --- essentials merged into Ch. 1 (\S Expansion Cools / \S ThermoDynamics) ---
 \chapter{New Answers}
 \small
 %\begin{quote}
@@ -1099,7 +1174,24 @@ irreversible.
 
 
 
+\fi  % --- end merged-into-Ch.1 block (was: New Answers chapter) ---
+
+\input{chapters/thermo_with_without_dynamics}
+
+% bonding_bridge and blackbody_bridge moved to Part III
+
 \chapter{Joule's 1845 Key Experiment Explained}\label{ch:joule}
+
+\begin{quote}\itshape
+Reading this chapter should be accompanied by running the interactive
+simulation \texttt{joule\_experiment\_cpu.html} (and the higher-resolution
+companion \texttt{joule\_experiment\_cpu\_200.html}) from the RealMolecule
+GitHub repository at \texttt{github.com/Claes542/RealMolecule}. The text
+develops the physics; the code shows it happening in real time, with sliders
+that let the reader sweep the channel width, watch the temperature-coloured
+particle trace, and read $D$, $\Delta T$, $Q_{\mathrm{cold}}$ and the rest
+of the diagnostics directly.
+\end{quote}
 
 \small
 \begin{quote}
@@ -1156,13 +1248,10 @@ Joule measured the total heat energy of the initial and final equilibrium states
 Joule did not seek to measure the dynamics of the process, nor the remaining temperature/density gap. 
 
 
-\begin{figure}[bhpt] 
-\centerline{ 
-\includegraphics[height=6cm]{fig358} 
-} 
-\caption{Joule's 1845 experiment}
-\label{joule} 
-\end{figure} 
+% \begin{figure}[bhpt]
+% \centerline{\includegraphics[height=6cm]{fig358}}
+% \caption{Joule's 1845 experiment (historical apparatus).}\label{joule}
+% \end{figure}  % --- removed: fig358 not in repo ---
 
 %\begin{figure}[bhpt] 
 %\centerline{ 
@@ -1209,55 +1298,8 @@ predict transition from one equlibrium state to another, and thus has little pra
 %\label{joule_tem} 
 %\end{figure}
 
-\begin{figure}[bhpt] 
-\centerline{ 
-%\includegraphics[height=3.0cm]
-%{imagethermofenics/K_1.eps}
-\includegraphics[height=4.5cm]
-{Rho_1}
-\includegraphics[height=4.5cm]
-{T_1}
-%\includegraphics[height=3.0cm]
-%{imagethermofenics/Rho_left.eps}
-%\includegraphics[height=3.0cm]
-%{imagethermofenics/Rho_right.eps}
-} 
-\caption{Mean density and temperature in left and right chambers as functions of time.}
-\label{densitytemp} 
-\end{figure}
-\begin{figure}[bhpt] 
-\centerline{ 
-%\includegraphics[height=3.0cm]
-%{imagethermofenics/K_1.eps}
-\includegraphics[height=4.5cm]
-{K_1}
-\includegraphics[height=4.50cm]
-{P_1}
-%\includegraphics[height=3.0cm]
-%{imagethermofenics/K_left.eps}
-%\includegraphics[height=3.0cm]
-%{imagethermofenics/K_right.eps}
-} 
-\caption{Mean kinetic energy and pressure in left and right chambers as functions of time.}
-\label{kinenergypress} 
-\end{figure}
-
-\begin{figure}[bhpt] 
-\centerline{ 
-%\includegraphics[height=3.0cm]
-%{imagethermofenics/K_1.eps}
-\includegraphics[height=4.5cm]
-{tur_disp_l}
-\includegraphics[height=4.50cm]
-{tur_disp_r}
-%\includegraphics[height=3.0cm]
-%{imagethermofenics/K_left.eps}
-%\includegraphics[height=3.0cm]
-%{imagethermofenics/K_right.eps}
-} 
-\caption{Mean turbulent dissipation in left and right chambers as functions of time.}
-\label{turbdiss} 
-\end{figure}
+%[figures removed -- reading should be accompanied by running the interactive
+% sketches on GitHub, see \texttt{joule\_experiment\_cpu.html}]
 %\begin{figure}[bhpt] 
 %\centerline{ 
 %\includegraphics[height=3.0cm]
@@ -1284,51 +1326,9 @@ predict transition from one equlibrium state to another, and thus has little pra
 %\label{joule_den2} 
 %\end{figure}
 
-\begin{figure}[bhpt] 
-\centerline{ 
-\includegraphics[height=7.0cm]
-{Tem_T_3}
-%\includegraphics[height=4.0cm]
-%{joul_paraview/Tem_T_6.eps}
-%\includegraphics[height=3.0cm]
-%{joul_paraview/Tem_T_12.eps}
-%\includegraphics[height=2.0cm]
-%{ambsthermopict/joule-pics/joule-tem-rc.eps} 
-} 
-\caption{Distribution of gas temperature at $T=3$}
-\label{temp3} 
-\end{figure}
-
-
-\begin{figure}[bhpt] 
-\centerline{ 
-\includegraphics[height=7.0cm]
-{vel_T_3}
-%\includegraphics[height=4.0cm]
-%{joul_paraview/vel_T_6.eps}
-%\includegraphics[height=3.0cm]
-%{joul_paraview/vel_T_12.eps}
-%\includegraphics[height=2.0cm]
-%{ambsthermopict/joule-pics/joule-tem-rc.eps} 
-} 
-\caption{Distribution of gas speed at $T=3$}
-\label{vel3} 
-\end{figure}
-
-\begin{figure}[bhpt] 
-\centerline{ 
-\includegraphics[height=7.0cm]
-{tur_disp}
-%\includegraphics[height=4.0cm]
-%{joul_paraview/vel_T_6.eps}
-%\includegraphics[height=3.0cm]
-%{joul_paraview/vel_T_12.eps}
-%\includegraphics[height=2.0cm]
-%{ambsthermopict/joule-pics/joule-tem-rc.eps} 
-} 
-\caption{Distribution of turbulent dissipation at $T=3$}
-\label{vel3} 
-\end{figure}
+%[computational snapshot figures removed -- run the interactive sketch
+% \texttt{joule\_experiment\_cpu.html} on GitHub to view the temperature,
+% speed, and turbulent-dissipation fields in real time]
 
 
 %\begin{figure}[bhpt] 
@@ -1588,6 +1588,143 @@ We have found no need of any concept of entropy: The concepts of kinetic energy,
 %but also particle velocities serve as independent variables.
 %Finally, the focus is on \emph{equilibrium states} leaving
 %out, as we will see, essential dynamics. 
+\section{The Temperature Gap as Macroscopic Dissipation}
+
+The persistent chamber-to-chamber temperature split $\Delta T = T_{\mathrm{right}}-T_{\mathrm{left}}$
+that the simulation displays is not just a visual curiosity --- it is the
+\emph{macroscopic, experimentally observable projection of the cumulative
+viscous dissipation} $D=\iint \mu_{\mathrm{mom}}\,|\nabla u|^2\,dx\,dt$. The
+relation is energy-conservation accounting in disguise. The closed box conserves
+$K+E$ and ends with $K=0$, so $E_{\mathrm{final}}=E_0$ exactly --- the textbook
+Joule null result for the whole box. But the dissipation $D$ is geometrically
+localised: $|\nabla u|^2$ is overwhelming in the channel jet and the
+recompression against the far wall, so essentially all of $D$ is deposited in
+the right chamber as heat. After mass has redistributed but before slow heat
+conduction equilibrates the chambers, the per-chamber energy balance reads
+\[
+E_{\mathrm{right}} \approx m_{\mathrm{right}}\,T_0 + D, \qquad
+E_{\mathrm{left}}  \approx m_{\mathrm{left}}\,T_0,
+\]
+and dividing by the chamber masses gives the macroscopic identity
+\begin{equation}\label{deltaTD}
+D \;\approx\; \Delta T \cdot m_{\mathrm{right}} .
+\end{equation}
+The temperature gap is the \emph{experimentalist's window into $D$}: the
+quantity Joule would have measured with a sensitive enough calorimeter, and the
+quantity our simulation displays directly alongside the local-integral $D$
+itself. Classical Joule observed no $\Delta T$ only because heat conduction in
+his apparatus equalised any transient gap faster than his thermometer could
+register; the deterministic-continuum simulation isolates the gap before
+equilibration and so makes it visible.
+
+\section{The Role of the Channel Width: Throttling Principle}
+
+The dependence of $D$ on the channel geometry follows from a simple scaling
+argument and explains why a real refrigerator uses a deliberately small
+expansion valve.
+
+For a channel of width $W$ connecting the two chambers under a pressure
+differential $\Delta p$, Bernoulli gives a jet velocity
+$v\sim\sqrt{\Delta p/\rho}$, the wall-bounded shear in the channel is
+$|\nabla v|\sim v/W$, and the dissipation rate per unit channel length is
+$\mu\,|\nabla v|^2 \cdot W \sim \mu v^2 / W$. The mass flow rate
+$\dot m\sim \rho v W$ sets the timescale $t \sim M/(\rho v W)$ for transferring
+a fixed mass $M$. The cumulative dissipation over the expansion is then
+\begin{equation}\label{Dscaling}
+D \;\sim\; \frac{\mu v^2}{W}\cdot \frac{M}{\rho v W}
+       \;=\; \frac{\mu v M}{\rho\,W^2}
+       \;\propto\; \frac{1}{W^2} .
+\end{equation}
+\emph{Narrow channels are dissipation-heavy.} Halving $W$ quadruples $D$ for the
+same initial state, and via (\ref{deltaTD}) quadruples the temperature gap as
+well. The simulation confirms the scaling empirically when the channel-opening
+height is varied.
+
+This is the \emph{throttling principle} that underlies practical refrigeration:
+the expansion valve in a vapour-compression cycle, and the orifice in a
+Joule--Thomson cryocooler, are deliberately tiny apertures whose function is to
+\emph{concentrate} the dissipation into a controlled location, producing a sharp
+spatial temperature split that the cold side can be tapped from. The price is
+throughput: $\dot m\sim W$, so cooling power per cycle is low and the cycle
+runs slowly. The same geometry running as an engine would be ruinous --- $D$
+scales as $1/W^2$, so a narrow channel destroys any extractable work in the
+high-shear bottleneck. The single design choice $W$ thus partitions the
+initial available work $A_0$ between two destinations: large $W$ sends it
+toward recoverable mechanical work (engine), small $W$ sends it toward a
+spatial temperature gap (refrigerator).
+
+\subsection{Three Classical Devices from One Joule Expansion}
+
+The same setup --- Joule's two chambers connected by a channel --- realises all
+three textbook thermodynamic devices, distinguished only by $W$ and by which
+external connection harvests the useful output:
+\begin{center}
+\small
+\begin{tabular}{@{}l p{2.2cm} p{2.6cm} p{6.0cm}@{}}
+\hline
+device & channel $W$ & useful output & where $A_0$ goes \\
+\hline
+\textbf{refrigerator} & small & $Q_{\mathrm{cold}}$ (cold side) &
+$D$ deposited as heat in right chamber; left side left cool \\
+\textbf{heat pump}    & small & $Q_{\mathrm{hot}}$ (hot side)  &
+same dissipation, harvested as warmth instead of cold \\
+\textbf{heat engine}  & wide (turbine in channel) & shaft work $W_{\mathrm{ch}}$ &
+kinetic energy of the channel jet, captured before it dissipates \\
+\hline
+\end{tabular}
+\end{center}
+The efficiencies all share the same dissipation-only form:
+$\mathrm{COP}_{\mathrm R}=Q_{\mathrm{cold}}/A_0$,
+$\mathrm{COP}_{\mathrm{HP}}=\mathrm{COP}_{\mathrm R}+1$, and
+$\eta_{\mathrm{engine}}=W_{\mathrm{ch}}/(W_{\mathrm{ch}}+D)$, with $D \propto 1/W^2$
+governing the partition between recovered work and dissipated heat. The
+quantitative elaboration --- COP curves, cycle analysis, the moving-piston
+engine, Carnot ceilings --- is the content of the chapters that follow.
+
+\subsection{Why the Three Efficiencies Do Not Sum to One}
+
+It is tempting to ask whether $\mathrm{COP}_{\mathrm R}+\mathrm{COP}_{\mathrm{HP}}+
+\eta_{\mathrm{engine}}=1$ as a conservation statement, but it does not, and the
+reason illuminates the relation among the three devices. The three figures of
+merit are for \emph{mutually exclusive} operating modes of the same hardware
+(small $W$ + tap cold side $=$ refrigerator; small $W$ + tap hot side $=$ heat
+pump; wide $W$ $+$ turbine $=$ engine), and they are not commensurable
+quantities to begin with: $\mathrm{COP}_{\mathrm R}$ and $\mathrm{COP}_{\mathrm{HP}}$
+are \emph{amplification factors} (heat pumped per unit work, typically $\gg 1$),
+while $\eta_{\mathrm{engine}}\in[0,1]$ is a fraction. Summing them mixes
+incomparable units.
+
+The actually-true conservation identity is the \emph{single-process exergy
+partition},
+\begin{equation}\label{exergy-partition}
+A_0 \;=\; W_{\mathrm{ch}}\;+\;D \qquad\Longrightarrow\qquad
+\eta_{\mathrm{engine}}\;+\;\frac{D}{A_0}\;=\;1 ,
+\end{equation}
+which says that whatever portion of the initial available work is not extracted
+as channel work must be dissipated. The cold and hot ``outputs''
+$Q_{\mathrm{cold}}$, $Q_{\mathrm{hot}}$ are subfractions of $D$ in this closed
+adiabatic setting (the dissipation is what spatially redistributes into the
+chamber temperature gap, with $Q_{\mathrm{cold}}\approx Q_{\mathrm{hot}}$ by
+overall energy conservation), not independent additive terms.
+
+Two cleaner identities do hold and tie the three devices together:
+\begin{itemize}
+\item $\mathrm{COP}_{\mathrm{HP}}=\mathrm{COP}_{\mathrm R}+1$, always: the
+heat pump scores exactly one higher than the refrigerator running on the same
+hardware, because the work spent on the cycle is itself rejected as additional
+heat on the hot side ($Q_{\mathrm{hot}}=Q_{\mathrm{cold}}+W_{\mathrm{in}}$).
+\item $\eta_{\mathrm{engine}}\cdot\mathrm{COP}_{\mathrm{HP}}=1$ in the
+reversible (Carnot) limit: $(1-T_c/T_h)\cdot T_h/(T_h-T_c)=1$. Engine and heat
+pump are reciprocals at the reversible bound --- two views of the same Carnot
+ratio.
+\end{itemize}
+
+So rather than a sum, the picture is a \emph{partition} of the single exergy
+budget $A_0$: each cycle of operation, the same $A_0$ is either harvested as
+work (engine) or dissipated and re-emerges as a spatial temperature split
+(refrigerator/heat pump), with $W$ choosing the partition.
+
+\iffalse  % --- moved to Part III (chapters/move_refrig_heatpump.tex + move_piston_cylinder.tex) ---
 \chapter{Refrigerator and Heat Pump}\label{ch:refrig}
 
 The Joule expansion of the previous chapter is the working stroke of both a
@@ -1604,28 +1741,37 @@ dependency-free vanilla-JS port of the original sketch) solves the 2D
 compressible Navier--Stokes/RNS system
 \[
 \dot\rho+\nabla\cdot m=0,\qquad
-\dot m+\nabla\cdot(mu)+\gamma\nabla e=\nabla\cdot\sigma,\qquad
-\dot e+\nabla\cdot(eu)+\gamma e\,\nabla\cdot u=\sigma\!:\!\nabla u,
+\dot m+\nabla\cdot(mu)+\gamma\nabla e=\mu_{\mathrm{mom}}\,\Delta u,\qquad
+\dot e+\nabla\cdot(eu)+\gamma e\,\nabla\cdot u=\mu_{\mathrm{mom}}\,|\nabla u|^2,
 \]
 with $p=\gamma e=\gamma\rho T$, $T=e/\rho$, $u=m/\rho$, on two chambers joined by a
 channel: a dense, equally-warm left chamber ($\rho=e=10$, hence $T=1$) expanding
 into a dilute right chamber ($\rho=e=1$). The last term in the energy equation is
-the \emph{viscous heating} $\sigma\!:\!\nabla u\ge 0$ --- the irreversible
-return of the jet's kinetic energy to heat on which the chapter's narrative
-turns.
+the \emph{turbulent dissipation} $\mu_{\mathrm{mom}}|\nabla u|^2\ge 0$ --- the
+irreversible return of the jet's kinetic energy to heat --- and crucially it uses
+the \emph{same} coefficient $\mu_{\mathrm{mom}}$ as the momentum diffusion, so the
+kinetic energy removed by viscosity reappears exactly as heat in the energy
+equation and $K+E$ is conserved. A separate, much smaller coefficient
+$\mu\ll\mu_{\mathrm{mom}}$ provides numerical stabilisation of $\rho$ and $e$
+through Laplacian smoothing; it is not a physical dissipation and contributes
+negligibly to the energy budget.
 
-\section{Energy and Entropy Bookkeeping}
+\section{Energy and Dissipation Bookkeeping}
 
 The simulation tracks, at each instant, the kinetic energy
 $K=\int\tfrac12\rho|u|^2\,dx$ and the internal energy $E=\int e\,dx$, with the
 total $K+E$ conserved (Joule's null result for the \emph{whole} box), together
-with the gas entropy
-\[
-S=\int \rho\,(\ln T-\gamma\ln\rho)\,dx ,
-\]
-whose increase $\Delta S=S(t)-S(0)>0$ is the quantitative 2nd Law. The entropy
-production measures the irreversibility, concentrated in the channel jet and in
-the recompression against the far wall.
+with the \emph{cumulative turbulent dissipation}
+\begin{equation}\label{D_def}
+D(t)=\int_0^t\!\!\int \mu_{\mathrm{mom}}\,|\nabla u|^2\,dx\,d\tau \;\;>\;0 ,
+\end{equation}
+which quantifies the irreversibility directly: it is positive by construction of
+the discrete scheme and is \emph{the} 2nd Law for this model. There is no need
+to introduce a statistical entropy $S$ or a relation $dS\ge 0$ --- the inequality
+$D>0$ is the 2nd Law in its native, deterministic form, deriving from finite-
+precision computation rather than postulated from probabilistic foundations.
+$D$ accumulates wherever the velocity gradient is large: in the channel jet and
+in the recompression against the far wall.
 
 \section{Refrigerator and Heat Pump: Efficiency and the Cost of the Cycle}
 
@@ -1635,11 +1781,11 @@ work to restore the initial conditions. Its reversible (minimal) value is the
 \emph{exergy} of the initial state; for the isothermal initial imbalance (both
 chambers start at $T=T_0=1$) this is
 \begin{equation}\label{exergyA0}
-A_0=\gamma\int \rho\,\ln(\rho/\bar\rho)\,dx \;=\; T_0\,\Delta S_\infty ,
+A_0=\gamma\int \rho\,\ln(\rho/\bar\rho)\,dx \;=\; D_\infty ,
 \end{equation}
-with $\bar\rho$ the mean density; the second equality is Gouy--Stodola, since the
-spontaneous free expansion eventually destroys exactly this $A_0$ as
-$T_0\,S_{\mathrm{gen}}$. The cooling delivered is the heat removed from the cells
+with $\bar\rho$ the mean density; the second equality states that the spontaneous
+free expansion eventually destroys exactly this $A_0$ as accumulated turbulent
+dissipation $D_\infty$ (\ref{D_def}). The cooling delivered is the heat removed from the cells
 that drop below ambient,
 \[
 Q_{\mathrm{cold}}=\int_{T<T_0}\rho\,(T_0-T)\,dx ,
@@ -1667,13 +1813,13 @@ Against the Carnot ceiling for the achieved lift,
 $\mathrm{COP}_{\mathrm{Carnot}}=T_{\mathrm{cold}}/(T_{\mathrm{hot}}-T_{\mathrm{cold}})$,
 the second-law efficiency $\eta=\mathrm{COP}_{\mathrm R}/\mathrm{COP}_{\mathrm{Carnot}}$ comes
 out at only a few percent: the free expansion is a \emph{very poor} refrigerator,
-destroying almost all of the available work $A_0$ in irreversibility while
-delivering only a sliver of cold. This is exactly why a practical refrigerator
-does not free-expand but runs the recompression cycle of the next chapter,
-recovering work and driving $S_{\mathrm{gen}}$ toward the Carnot limit. The same
-bookkeeping --- $A_0$, $Q_{\mathrm{cold}}$, $\Delta S$ --- will let us assign an
-efficiency to any continuum-thermodynamic process, including the thermodynamics
-of the living cell.
+destroying almost all of the available work $A_0$ as cumulative turbulent
+dissipation $D$ while delivering only a sliver of cold. This is exactly why a
+practical refrigerator does not free-expand but runs the recompression cycle of
+the next chapter, recovering work and driving the lost-work $D$ down toward zero
+(the Carnot limit). The same bookkeeping --- $A_0$, $Q_{\mathrm{cold}}$, $D$ ---
+will let us assign an efficiency to any continuum-thermodynamic process,
+including the thermodynamics of the living cell.
 
 \chapter{The Piston-Cylinder: the Heat-Engine Problem}\label{ch:piston}
 
@@ -1898,7 +2044,9 @@ heat engines run it as the work-output cycle with heat input. The
 same simulation infrastructure produces both.
 \end{enumerate}
 
-\chapter{New Foundation}
+\fi  % --- end moved block (Refrigerator+HeatPump and Piston-Cylinder relocated to Part III) ---
+
+\chapter{New Foundation}\label{ch:new_foundation}
 \small
 \begin{quote} Heat, a quantity which functions to animate, derives
 from an internal fire located in the left ventricle. (Hippocrates, 460 B.C.)
@@ -2467,9 +2615,10 @@ model.
 
 
 
-\part{World of Thermodynamics}
+\part{Mathematical Foundations}
 
 
+\iffalse  % --- moved to Part III (chapters/move_transformations.tex) as opening panorama ---
 \chapter{Transformations of Energy}
 
 
@@ -3049,6 +3198,9 @@ separation and dissolution of our substance. (Galieo in \emph{The Assayer},
 
 
 
+\fi  % --- end moved Transformations of Energy block ---
+
+\iffalse  % --- removed in shortened layout: duplicate of earlier "Classical Thermodynamics" chapter + redundant 2nd-Law revisit ---
 \chapter{Classical Thermodynamics}
 \label{chapter:dice}
 
@@ -3854,6 +4006,8 @@ mystics of statistics.
 %RNS satisfies the 2nd Law, not only formally, but in 
 %finite precision computational reality.
 
+
+\fi  % --- end removed block (duplicate Classical Thermodynamics + Classical vs Basic 2nd Law) ---
 
 \chapter{The Euler Equations}
 \label{Euler}
@@ -5274,6 +5428,7 @@ maintained without conscious attention.
 
 
 
+\iffalse  % --- removed in shortened layout: redundant 2nd-Law revisit + redundant RNS chapter (kept single canonical RNS chapter below) ---
 \chapter{Classical vs New 2nd Law}
 
 \small
@@ -5413,7 +5568,7 @@ Now, the 2nd Law is a consequence of the viscous regularization
 in the pointwise equations (\ref{euler3dreg}), which thus
 can be viewed to contain in pointwise form the origin of the 2nd Law.
 In particular, the internal energy equation
-$R_e(\hat u)=\nu (\Delta u)^2$ expresses in pointwise form
+$R_e(\hat u)=\nu \vert\nabla u\vert^2$ expresses in pointwise form
 an irreversible transfer of kinetic energy into heat energy.
 
 Whatever form of the 2nd Law we choose, global or poinwise,
@@ -5934,6 +6089,8 @@ numerical magnitude.
 
 
 
+
+\fi  % --- end removed block (Classical vs New 2nd Law + RNS as Turbulence Model) ---
 
 \chapter{RNS}
 \small
@@ -6532,7 +6689,8 @@ $S\Vert hR(\hat u)\Vert_{L_2(Q)}$.
    
 
 
-\chapter{RNS as a Model of Physics} 
+\iffalse  % --- removed in shortened layout: redundant with main RNS chapter ---
+\chapter{RNS as a Model of Physics}
 
 \small
 \begin{quote}
@@ -6742,7 +6900,13 @@ non-computational.
 
 
 
-\chapter{Thermodynamics of Reactive Flow}
+\fi  % --- end removed block (RNS as a Model of Physics) ---
+
+\input{chapters/move_cosmology}
+
+\input{chapters/bigbang_bridge}
+
+\chapter{RNS with Chemical Reactions}\label{ch:reactive}
 
 \small
 \begin{quote}
@@ -7121,6 +7285,7 @@ therefore is questionable.
 \end{figure}
 
 
+\iffalse  % --- moved to Appendix (chapters/move_appendix_burgers.tex) at end of book ---
 \part{Model Analysis}
  
 \chapter{Burgers Equation}
@@ -8164,6 +8329,7 @@ $L_2(Q_N)$ with work comparable to interpolation.
 
 
 
+\iffalse  % --- removed: placeholder section with missing figures (sphere/cylinder eps files not in repo) ---
 \section{Turbulent Bluff Body Flow}
 We show RNS flow with shocks around a sphere and cylinder in
 Figs. \ref{sphere} and \ref{cyl}. This section will be
@@ -8198,13 +8364,16 @@ extended with turbulent/shock flow around a cube and sphere.
 \end{figure}
 
 \section{Turbulent Flow in Heat Engines and Refrigerators}
-This section will contain RNS simulations of diffuser flow with 
+This section will contain RNS simulations of diffuser flow with
 gas expanding under cooling while getting heated by turbulence,
-with the objective of computing losses and efficiency. 
+with the objective of computing losses and efficiency.
+\fi  % --- end removed placeholder block (Bluff Body + Heat Engines stubs) ---
 
 %\section{Transonic Flight}
 
 %\section{Supersonic Flight}
+
+\fi  % --- end moved Model Analysis block (Burgers + BurgersRNS moved to Appendix) ---
 
 
 

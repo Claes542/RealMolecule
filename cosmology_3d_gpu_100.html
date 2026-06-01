@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Cosmology 3D on GPU — Gravitation vs Fluid Pressure</title>
+<style>
+  body { margin: 0; background: #fff; font-family: sans-serif; color: #000; }
+  #wrap { display: flex; flex-direction: column; align-items: center; padding: 8px; }
+  canvas { display: block; border: 1px solid #888; background: #fff; }
+  #info { width: 720px; font-size: 11px; line-height: 1.35; margin-top: 8px; }
+  code { font-size: 11px; background: #eee; padding: 1px 3px; }
+  #status { font-weight: bold; }
+  #controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 12px; flex-wrap: wrap; }
+  button { padding: 4px 10px; font-size: 12px; cursor: pointer; }
+  label { display: flex; gap: 4px; align-items: center; }
+  input[type="range"] { width: 130px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv" width="400" height="400"></canvas>
+  <div id="controls">
+    <label>γ (p = γe = ρT): <input id="rngGamma" type="range" min="0" max="2" step="0.05" value="1" /><span id="lblGamma">1.00</span></label>
+    <label>gravity G: <input id="rngGrav" type="range" min="0" max="800" step="10" value="500" /><span id="lblGrav">500</span></label>
+    <label>seed amp (Reset to apply): <input id="rngSeed" type="range" min="0" max="1.0" step="0.01" value="0.50" /><span id="lblSeed">0.50</span></label>
+    <label>shock visc C (ν += C·h·|∇·u|): <input id="rngCvisc" type="range" min="0" max="20" step="0.5" value="3" /><span id="lblCvisc">3.0</span></label>
+    <label>art visc ν (×h): <input id="rngNu" type="range" min="0" max="5" step="0.1" value="1.0" /><span id="lblNu">1.00</span></label>
+    <label>seed every (sim-t): <input id="rngSeedFreq" type="range" min="0.02" max="2.0" step="0.02" value="0.10" /><span id="lblSeedFreq">0.10</span></label>
+    <label>trace speed (×): <input id="rngAdvect" type="range" min="0" max="200000" step="2000" value="40000" /><span id="lblAdvect">40000</span></label>
+    <button id="btnPause">Pause</button>
+    <button id="btnReset">Reset</button>
+    <label>fluid substeps/frame: <input id="rngSubsteps" type="range" min="1" max="20" step="1" value="8" /><span id="lblSubsteps">8</span></label>
+    <label>Poisson iters/fluid step: <input id="rngPoisson" type="range" min="1" max="100" step="1" value="1" /><span id="lblPoisson">1</span></label>
+    <span id="lblTime">t = 0.000</span>
+  </div>
+  <div id="info">
+    <div id="status">Initializing WebGPU…</div>
+    <p>
+      <b>Cosmology 3D on GPU.</b> N = 100 cubic grid (1 000 000 cells). Compressible
+      Navier–Stokes with self-gravity Poisson <code>Δφ + G·(ρ−ρ̄) = 0</code> (G = 10,
+      red-black Gauss-Seidel, 1000 sweeps in the initial settle then 1 sweep per
+      fluid step by default), body force <code>ρ∇φ</code> on momentum. Ideal-gas
+      pressure <code>p = γe = ρT</code> (e = ρT), γ adjustable by the slider
+      (default 1, giving effective adiabatic index 1+γ = 2). Artificial
+      viscosity <code>ν = h</code> in proper form <code>dt·ν·Δh/h²</code>.
+      Initial state: <b>one central Gaussian mass concentration at rest</b>
+      (ρ = e bump, peak +4, σ = 0.04N, so T = 1), all velocities/momenta/φ = 0.
+      Base artificial viscosity ν = 0.3h, plus a <b>shock-capturing term</b>
+      <code>ν += C·h·|∇·u|</code> that activates in compression: as the lump
+      starts to collapse, the rising velocity gradient ramps the viscosity up,
+      dissipating the inflow and (via the heating term <code>+C·h·|∇·u|·(∇·u)²</code>
+      added to e) converting kinetic energy irreversibly into heat. That heating
+      raises the pressure and halts the collapse even for a soft (small-γ) gas —
+      the 2nd-law / entropy-production mechanism. Outer-box BC frozen; φ Dirichlet-zero.
+    </p>
+    <p>
+      <b>Display</b>: red particle traces on the mid-plane (reset every t > 0.1);
+      cross-cut profiles along the central line:
+      <span style="color:blue">blue</span> ρ,
+      <span style="color:green">green</span> T = e/ρ,
+      <span style="color:#0a8">cyan</span> φ (auto-scaled to its peak each frame).
+    </p>
+    <p>
+      The GPU shader matches the canvas (<code>cosmology_3d.html</code>) physics
+      with the p5-source bugs fixed: full 3D 7-point Laplacians on all three
+      momentum components, and the e and ρ advection / pressure-work /
+      energy-transfer terms all reconnected.
+    </p>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+const N        = 100;
+const H        = 1 / N;
+const DT       = 0.005 * H;
+const PX       = 400 / N;       // canvas pixels per cell
+let   NU       = 1.0 * H;       // artificial viscosity (live via slider, in units of h)
+// Poisson relaxation step, clamped for forward-Euler stability of the 3D
+// 7-point Laplacian (coeff·12 ≤ 2 ⇒ coeff ≤ h²/6). 0.05·dt is fine at N≤50
+// but unstable at N=100, so we cap at 0.4·h²/6.
+const POISSON_DT = Math.min(0.05 * DT, 0.4 * H * H / 6);
+let   gammaVal = 1;             // ideal gas p = γe = ρT; γ_ad = 1+γ; live via slider
+// Gravitational coupling: Δφ = −G·ρ (G plays the role of 4πG_Newton).
+let   G_GRAV   = 500;           // gravitational coupling; live via slider (one BB→one BC→stable)
+const NCELL    = N * N * N;
+const KCUT     = (N / 2) | 0;   // mid-z slice for particle trace and cross-cut
+const JCUT     = (N / 2) | 0;
+
+let substepsPerFrame    = 8;
+let poissonItersPerStep = 1;
+let paused              = false;
+
+const cv        = document.getElementById('cv');
+const ctx2d     = cv.getContext('2d');
+const status_el = document.getElementById('status');
+const btnPause  = document.getElementById('btnPause');
+const btnReset  = document.getElementById('btnReset');
+const rngSubsteps = document.getElementById('rngSubsteps');
+const lblSubsteps = document.getElementById('lblSubsteps');
+const rngPoisson  = document.getElementById('rngPoisson');
+const lblPoisson  = document.getElementById('lblPoisson');
+const rngGamma  = document.getElementById('rngGamma');
+const lblGamma  = document.getElementById('lblGamma');
+const rngCvisc  = document.getElementById('rngCvisc');
+const lblCvisc  = document.getElementById('lblCvisc');
+const rngNu     = document.getElementById('rngNu');
+const lblNu     = document.getElementById('lblNu');
+const rngSeedFreq = document.getElementById('rngSeedFreq');
+const lblSeedFreq = document.getElementById('lblSeedFreq');
+const rngAdvect   = document.getElementById('rngAdvect');
+const lblAdvect   = document.getElementById('lblAdvect');
+const rngGrav   = document.getElementById('rngGrav');
+const lblGrav   = document.getElementById('lblGrav');
+const rngSeed   = document.getElementById('rngSeed');
+const lblSeed   = document.getElementById('lblSeed');
+const lblTime   = document.getElementById('lblTime');
+
+let cviscVal = 3;        // shock-viscosity coefficient C in ν += C·h·|∇·u|
+let seedAmp  = 0.50;     // initial density perturbation amplitude; applied on Reset (one BB→one BC→stable)
+let seedFreq = 0.10;     // particle-trace reset interval in sim-time units (live via slider)
+let advectMag = 40000;   // trace speed: velocity magnification for particle advection (live via slider)
+let gammaDirty = true;   // re-upload params when γ, G or C changes
+rngGamma.addEventListener('input', () => {
+  gammaVal = parseFloat(rngGamma.value);
+  lblGamma.textContent = gammaVal.toFixed(2);
+  gammaDirty = true;
+});
+rngGrav.addEventListener('input', () => {
+  G_GRAV = parseFloat(rngGrav.value);
+  lblGrav.textContent = G_GRAV.toFixed(0);
+  gammaDirty = true;
+});
+rngSeed.addEventListener('input', () => {
+  seedAmp = parseFloat(rngSeed.value);
+  lblSeed.textContent = seedAmp.toFixed(2);
+});
+rngCvisc.addEventListener('input', () => {
+  cviscVal = parseFloat(rngCvisc.value);
+  lblCvisc.textContent = cviscVal.toFixed(1);
+  gammaDirty = true;
+});
+rngNu.addEventListener('input', () => {
+  NU = parseFloat(rngNu.value) * H;
+  lblNu.textContent = parseFloat(rngNu.value).toFixed(2);
+  gammaDirty = true;
+});
+rngSeedFreq.addEventListener('input', () => {
+  seedFreq = parseFloat(rngSeedFreq.value);
+  lblSeedFreq.textContent = seedFreq.toFixed(2);
+});
+rngAdvect.addEventListener('input', () => {
+  advectMag = parseFloat(rngAdvect.value);
+  lblAdvect.textContent = advectMag.toFixed(0);
+});
+
+btnPause.addEventListener('click', () => {
+  paused = !paused;
+  btnPause.textContent = paused ? 'Resume' : 'Pause';
+});
+rngSubsteps.addEventListener('input', () => {
+  substepsPerFrame = parseInt(rngSubsteps.value, 10);
+  lblSubsteps.textContent = String(substepsPerFrame);
+});
+rngPoisson.addEventListener('input', () => {
+  poissonItersPerStep = parseInt(rngPoisson.value, 10);
+  lblPoisson.textContent = String(poissonItersPerStep);
+});
+
+// Host-side particle tracers on the k = 20 mid-plane
+const px = new Float32Array(N * N);
+const py = new Float32Array(N * N);
+function resetParticles() {
+  for (let j = 0; j < N; j++)
+    for (let i = 0; i < N; i++) {
+      const k = i + N * j;
+      px[k] = PX * i;
+      py[k] = PX * j;
+    }
+}
+resetParticles();
+
+let simTime = 0;
+let particleResetTimer = 0;
+
+// Stability detector for particle-trace gating: once the central density peak
+// stops changing for STABILITY_WINDOW frames within STABILITY_TOL relative
+// range, the BB→BC cycle is judged complete and the particle trace is
+// suppressed so the static equilibrium reads as static.
+const STABILITY_WINDOW = 90;     // frames (~1.5 s at 60 fps)
+const STABILITY_TOL    = 0.01;   // relative range threshold
+let rhoMaxHist = [];
+let stableMode = false;
+
+async function main() {
+  if (!navigator.gpu) {
+    status_el.textContent = 'WebGPU not supported. Try Chrome 113+, Edge 113+, or Safari 17+.';
+    return;
+  }
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) { status_el.textContent = 'No WebGPU adapter.'; return; }
+  const device = await adapter.requestDevice();
+  device.addEventListener('uncapturederror', (e) => {
+    console.error('WebGPU error:', e.error.message);
+    window.__gpuError = e.error.message;
+  });
+
+  // State packing:
+  //   stateAB (ping-pong): vec4 = (rho, e, mx, my)
+  //   mzAB    (ping-pong): scalar mz
+  //   phi             (single): scalar, red-black GS in place
+  const STATE_BYTES = NCELL * 4 * 4;
+  const SCALAR_BYTES = NCELL * 4;
+
+  const stateA = device.createBuffer({ size: STATE_BYTES,  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
+  const stateB = device.createBuffer({ size: STATE_BYTES,  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
+  const mzA    = device.createBuffer({ size: SCALAR_BYTES, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
+  const mzB    = device.createBuffer({ size: SCALAR_BYTES, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
+  const phiBuf = device.createBuffer({ size: SCALAR_BYTES, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
+  const paramsBuf = device.createBuffer({ size: 8 * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  // Three small readback staging buffers (only the data we actually plot)
+  const rbState = device.createBuffer({ size: STATE_BYTES,  usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+  const rbPhi   = device.createBuffer({ size: SCALAR_BYTES, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+
+  function writeParams() {
+    device.queue.writeBuffer(paramsBuf, 0, new Float32Array([
+      N, H, DT, gammaVal, G_GRAV, NU, POISSON_DT, cviscVal,
+    ]));
+  }
+  writeParams();
+
+  // Initial state: Big Bang IC --- one concentrated hot dense central blob in
+  // an otherwise cool low-density box. Momentum and φ zero at t = 0; ρ carries
+  // a deterministic single-Gaussian seed (built below). Gravity uses the Jeans
+  // swindle (source ρ − ρ̄, ρ̄ = 1) so the uniform background is force-free and
+  // only the density contrast pulls.
+  const initState = new Float32Array(NCELL * 4);
+  const initMz    = new Float32Array(NCELL);
+  const initPhi   = new Float32Array(NCELL);
+  // Deterministic single-blob Big Bang seed: one Gaussian overdensity at the
+  // box centre, width SIGMA. Fully reproducible — no RNG — so every
+  // reload/Reset is identical. The blob field is made zero-mean (overdense
+  // blob in a faintly underdense background) so the Jeans-swindle source
+  // (ρ − ρ̄, ρ̄ = 1) stays balanced and no global breathing returns. seedAmp
+  // scales the peak overdensity; the blob is also hotter than the bath so
+  // T_blob > T_background = 1 — driving the expansion-cools dynamics.
+  const SIGMA = N / 15;           // Gaussian blob width (cells) — concentrated, but not so small that the BC stage fails
+  const cx = N / 2, cy = N / 2, cz = N / 2;
+  const inv2s2 = 1 / (2 * SIGMA * SIGMA);
+  const T_BOOST = 2.0;            // peak temperature multiplier — moderate, so thermal pressure doesn't overshoot gravity
+  function buildInitState() {
+    let sum = 0;
+    for (let k = 0; k < N; k++)
+    for (let j = 0; j < N; j++)
+    for (let i = 0; i < N; i++) {
+      const dx = i - cx, dy = j - cy, dz = k - cz;
+      const r2 = dx * dx + dy * dy + dz * dz;
+      const blob = Math.exp(-r2 * inv2s2);
+      initState[(i + N * (j + N * k)) * 4 + 0] = blob;   // stash, mean-subtract below
+      sum += blob;
+    }
+    const mean = sum / NCELL;
+    for (let q = 0; q < NCELL; q++) {
+      const profile = initState[q * 4 + 0] - mean;     // zero-mean Gaussian
+      const rho = 1.0 + seedAmp * profile;             // overdense at centre
+      const T   = 1.0 + (T_BOOST - 1.0) * Math.max(0, initState[q * 4 + 0]); // hot at centre
+      initState[q * 4 + 0] = rho;       // rho
+      initState[q * 4 + 1] = rho * T;   // e = rho * T
+      initState[q * 4 + 2] = 0.0;       // mx
+      initState[q * 4 + 3] = 0.0;       // my
+    }
+  }
+  buildInitState();
+  device.queue.writeBuffer(stateA, 0, initState);
+  device.queue.writeBuffer(stateB, 0, initState);
+  device.queue.writeBuffer(mzA, 0, initMz);
+  device.queue.writeBuffer(mzB, 0, initMz);
+  device.queue.writeBuffer(phiBuf, 0, initPhi);
+
+  const paramsBlock = `
+    struct Params {
+      N: f32, h: f32, dt: f32, gamma: f32, G: f32, nu: f32, pdt: f32, cvisc: f32,
+    };
+  `;
+  // 3D index helpers: i + N·(j + N·k)
+  const helpers = /* wgsl */ `
+    fn idx3(i: u32, j: u32, k: u32) -> u32 {
+      let n = u32(P.N);
+      return i + n * (j + n * k);
+    }
+  `;
+
+  // Poisson: red-black Gauss-Seidel, in place, Dirichlet-zero outside the box
+  const poissonShader = paramsBlock + /* wgsl */ `
+    @group(0) @binding(0) var<uniform> P: Params;
+    @group(0) @binding(1) var<storage, read>       state: array<vec4<f32>>;
+    @group(0) @binding(2) var<storage, read_write> phi:   array<f32>;
+    ${helpers}
+    fn read_phi(i: i32, j: i32, k: i32) -> f32 {
+      let n = i32(P.N);
+      if (i < 0 || i >= n || j < 0 || j >= n || k < 0 || k >= n) { return 0.0; }
+      return phi[idx3(u32(i), u32(j), u32(k))];
+    }
+    fn poisson_update(i: u32, j: u32, k: u32) {
+      let id = idx3(i, j, k);
+      let phi_c = phi[id];
+      let phi_xp = read_phi(i32(i)+1, i32(j),   i32(k));
+      let phi_xm = read_phi(i32(i)-1, i32(j),   i32(k));
+      let phi_yp = read_phi(i32(i),   i32(j)+1, i32(k));
+      let phi_ym = read_phi(i32(i),   i32(j)-1, i32(k));
+      let phi_zp = read_phi(i32(i),   i32(j),   i32(k)+1);
+      let phi_zm = read_phi(i32(i),   i32(j),   i32(k)-1);
+      let rho_c = state[id].x;
+      let lap_phi = phi_xp + phi_xm + phi_yp + phi_ym + phi_zp + phi_zm - 6.0*phi_c;
+      // Jeans swindle: source from the overdensity (ρ − ρ̄), ρ̄ = 1. The uniform
+      // background then exerts no force, so the box no longer breathes against
+      // the Dirichlet φ=0 boundary — only density fluctuations pull.
+      phi[id] = phi_c + P.pdt * (lap_phi / (P.h * P.h) + P.G * (rho_c - 1.0));
+    }
+    @compute @workgroup_size(4, 4, 4)
+    fn poisson_red(@builtin(global_invocation_id) gid: vec3<u32>) {
+      let n = u32(P.N);
+      let i = gid.x; let j = gid.y; let k = gid.z;
+      if (i >= n || j >= n || k >= n) { return; }
+      if (((i + j + k) & 1u) != 0u) { return; }
+      poisson_update(i, j, k);
+    }
+    @compute @workgroup_size(4, 4, 4)
+    fn poisson_black(@builtin(global_invocation_id) gid: vec3<u32>) {
+      let n = u32(P.N);
+      let i = gid.x; let j = gid.y; let k = gid.z;
+      if (i >= n || j >= n || k >= n) { return; }
+      if (((i + j + k) & 1u) != 1u) { return; }
+      poisson_update(i, j, k);
+    }
+  `;
+
+  // Fluid step (one substep). Faithful to the p5 source, including its quirks.
+  const fluidShader = paramsBlock + /* wgsl */ `
+    @group(0) @binding(0) var<uniform> P: Params;
+    @group(0) @binding(1) var<storage, read>       state_in:  array<vec4<f32>>;
+    @group(0) @binding(2) var<storage, read>       mz_in:     array<f32>;
+    @group(0) @binding(3) var<storage, read>       phi_in:    array<f32>;
+    @group(0) @binding(4) var<storage, read_write> state_out: array<vec4<f32>>;
+    @group(0) @binding(5) var<storage, read_write> mz_out:    array<f32>;
+    ${helpers}
+    fn vxof(c: vec4<f32>) -> f32 { return c.z / (c.x + 0.01); }
+    fn vyof(c: vec4<f32>) -> f32 { return c.w / (c.x + 0.01); }
+    fn vzof(c: vec4<f32>, mz: f32) -> f32 { return mz / (c.x + 0.01); }
+    @compute @workgroup_size(4, 4, 4)
+    fn fluid(@builtin(global_invocation_id) gid: vec3<u32>) {
+      let n = u32(P.N);
+      let i = gid.x; let j = gid.y; let k = gid.z;
+      if (i >= n || j >= n || k >= n) { return; }
+      let id = idx3(i, j, k);
+      // Frozen boundary cells: output = input, mirroring the p5 loops that
+      // run i=1..N-1 only.
+      if (i == 0u || i == n - 1u || j == 0u || j == n - 1u || k == 0u || k == n - 1u) {
+        state_out[id] = state_in[id];
+        mz_out[id]    = mz_in[id];
+        return;
+      }
+
+      let c = state_in[id];
+      let mzc = mz_in[id];
+      let phc = phi_in[id];
+
+      let cxp = state_in[idx3(i+1u, j,    k   )];
+      let cxm = state_in[idx3(i-1u, j,    k   )];
+      let cyp = state_in[idx3(i,    j+1u, k   )];
+      let cym = state_in[idx3(i,    j-1u, k   )];
+      let czp = state_in[idx3(i,    j,    k+1u)];
+      let czm = state_in[idx3(i,    j,    k-1u)];
+
+      let mzxp = mz_in[idx3(i+1u, j,    k   )];
+      let mzxm = mz_in[idx3(i-1u, j,    k   )];
+      let mzyp = mz_in[idx3(i,    j+1u, k   )];
+      let mzym = mz_in[idx3(i,    j-1u, k   )];
+      let mzzp = mz_in[idx3(i,    j,    k+1u)];
+      let mzzm = mz_in[idx3(i,    j,    k-1u)];
+
+      let phxp = phi_in[idx3(i+1u, j,    k   )];
+      let phxm = phi_in[idx3(i-1u, j,    k   )];
+      let phyp = phi_in[idx3(i,    j+1u, k   )];
+      let phym = phi_in[idx3(i,    j-1u, k   )];
+      let phzp = phi_in[idx3(i,    j,    k+1u)];
+      let phzm = phi_in[idx3(i,    j,    k-1u)];
+
+      let rho_c = c.x; let e_c = c.y;
+      let mx_c = c.z;  let my_c = c.w;
+      let vx_c = vxof(c);
+      let vy_c = vyof(c);
+      let vz_c = vzof(c, mzc);
+
+      let vx_xp = vxof(cxp); let vx_xm = vxof(cxm);
+      let vx_yp = vxof(cyp); let vx_ym = vxof(cym);
+      let vx_zp = vxof(czp); let vx_zm = vxof(czm);
+      let vy_xp = vyof(cxp); let vy_xm = vyof(cxm);
+      let vy_yp = vyof(cyp); let vy_ym = vyof(cym);
+      let vy_zp = vyof(czp); let vy_zm = vyof(czm);
+      let vz_xp = vzof(cxp, mzxp); let vz_xm = vzof(cxm, mzxm);
+      let vz_yp = vzof(cyp, mzyp); let vz_ym = vzof(cym, mzym);
+      let vz_zp = vzof(czp, mzzp); let vz_zm = vzof(czm, mzzm);
+
+      // Shock-capturing (residual) artificial viscosity: where the flow
+      // compresses (∇·u < 0, incipient collapse) the viscosity ramps up,
+      // ν_local = ν + C·h·|∇·u|, dissipating the collapse and (via the heating
+      // term added to e below) converting the kinetic energy irreversibly into
+      // heat. This is the 2nd-law / entropy-production content — it lets even a
+      // soft (small-γ) gas resist gravitational collapse by shock-heating.
+      let divu = ((vx_xp - vx_xm) + (vy_yp - vy_ym) + (vz_zp - vz_zm)) / (2.0 * P.h);
+      let cmp = max(0.0, -divu);                 // compression rate (|∇·u| when collapsing)
+      // ν + C·h·|∇·u|, clamped to the explicit-diffusion stability cap
+      // (dt·ν·12/h² ≤ 2 ⇒ ν ≤ h²/(6 dt)); we use a 0.5 safety factor.
+      let nu_max = 0.5 * P.h * P.h / (6.0 * P.dt);
+      let nu_local = min(P.nu + P.cvisc * P.h * cmp, nu_max);
+      let nu_shock = nu_local - P.nu;            // capped shock part (for heating)
+
+      // ---- mx ----
+      let lap_vx = vx_xp + vx_xm + vx_yp + vx_ym + vx_zp + vx_zm - 6.0*vx_c;
+      let mx_new = mx_c
+        + P.dt * nu_local * lap_vx / (P.h*P.h)
+        - 0.5 * P.dt * (vx_xp * cxp.z - vx_xm * cxm.z) / P.h
+        - 0.5 * P.dt * (vy_yp * cyp.z - vy_ym * cym.z) / P.h
+        - 0.5 * P.dt * (vz_zp * czp.z - vz_zm * czm.z) / P.h
+        - P.dt * P.gamma * (cxp.y - cxm.y) / P.h
+        + P.dt * rho_c * (phxp - phxm) / P.h;
+
+      // ---- my (BUG FIX: full 3D 7-point Laplacian) ----
+      let lap_vy = vy_xp + vy_xm + vy_yp + vy_ym + vy_zp + vy_zm - 6.0*vy_c;
+      let my_new = my_c
+        + P.dt * nu_local * lap_vy / (P.h*P.h)
+        - 0.5 * P.dt * (vx_xp * cxp.w - vx_xm * cxm.w) / P.h
+        - 0.5 * P.dt * (vy_yp * cyp.w - vy_ym * cym.w) / P.h
+        - 0.5 * P.dt * (vz_zp * czp.w - vz_zm * czm.w) / P.h
+        - P.dt * P.gamma * (cyp.y - cym.y) / P.h
+        + P.dt * rho_c * (phyp - phym) / P.h;
+
+      // ---- mz (BUG FIX: 7-point) ----
+      let lap_vz = vz_xp + vz_xm + vz_yp + vz_ym + vz_zp + vz_zm - 6.0*vz_c;
+      let mz_new = mzc
+        + P.dt * nu_local * lap_vz / (P.h*P.h)
+        - 0.5 * P.dt * (vx_xp * mzxp - vx_xm * mzxm) / P.h
+        - 0.5 * P.dt * (vy_yp * mzyp - vy_ym * mzym) / P.h
+        - 0.5 * P.dt * (vz_zp * mzzp - vz_zm * mzzm) / P.h
+        - P.dt * P.gamma * (czp.y - czm.y) / P.h
+        + P.dt * rho_c * (phzp - phzm) / P.h;
+
+      // ---- e (BUG FIX: reattach advection, pressure-work, energy-transfer) ----
+      let lap_e = cxp.y + cxm.y + cyp.y + cym.y + czp.y + czm.y - 6.0*e_c;
+      let div_v = (vx_xp - vx_xm) + (vy_yp - vy_ym) + (vz_zp - vz_zm);
+      let div_m = (cxp.z - cxm.z) + (cyp.w - cym.w) + (mzzp - mzzm);
+      let e_new = e_c
+        + P.dt * nu_local * lap_e / (P.h*P.h)
+        - 0.5 * P.dt * (vx_xp * cxp.y - vx_xm * cxm.y) / P.h
+        - 0.5 * P.dt * (vy_yp * cyp.y - vy_ym * cym.y) / P.h
+        - 0.5 * P.dt * (vz_zp * czp.y - vz_zm * czm.y) / P.h
+        - P.dt * P.gamma * e_c * div_v / P.h
+        + P.dt * phc * div_m / P.h
+        + P.dt * nu_shock * divu * divu;  // viscous (shock) heating: KE -> internal energy (bounded)
+
+      // ---- rho (BUG FIX: reattach d(my)/dy, d(mz)/dz; 0.5·dt centered) ----
+      let lap_rho = cxp.x + cxm.x + cyp.x + cym.x + czp.x + czm.x - 6.0*rho_c;
+      let rho_new = rho_c
+        + P.dt * nu_local * lap_rho / (P.h*P.h)
+        - 0.5 * P.dt * (cxp.z - cxm.z) / P.h
+        - 0.5 * P.dt * (cyp.w - cym.w) / P.h
+        - 0.5 * P.dt * (mzzp - mzzm) / P.h;
+
+      state_out[id] = vec4<f32>(max(rho_new, 0.05), max(e_new, 0.0), mx_new, my_new);
+      mz_out[id]    = mz_new;
+    }
+  `;
+
+  const poissonModule = device.createShaderModule({ code: poissonShader });
+  const fluidModule   = device.createShaderModule({ code: fluidShader });
+  for (const [name, mod] of [['poisson', poissonModule], ['fluid', fluidModule]]) {
+    const info = await mod.getCompilationInfo();
+    for (const m of info.messages) {
+      console.log(`[${name}] ${m.type}: line ${m.lineNum}:${m.linePos} — ${m.message}`);
+    }
+  }
+  // Explicit shared bind-group layout for the Poisson red/black pipelines, so a
+  // single bind group is valid for BOTH pipelines. (With layout:'auto', a bind
+  // group from the red pipeline's inferred layout is NOT guaranteed compatible
+  // with the black pipeline, and WebGPU silently rejects the dispatch — which
+  // left φ = 0 and killed all gravity.)
+  const poissonBGL = device.createBindGroupLayout({
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+    ],
+  });
+  const poissonPL = device.createPipelineLayout({ bindGroupLayouts: [poissonBGL] });
+  const poissonRedPipeline   = device.createComputePipeline({ layout: poissonPL, compute: { module: poissonModule, entryPoint: 'poisson_red'   } });
+  const poissonBlackPipeline = device.createComputePipeline({ layout: poissonPL, compute: { module: poissonModule, entryPoint: 'poisson_black' } });
+  const fluidPipeline        = device.createComputePipeline({ layout: 'auto', compute: { module: fluidModule,   entryPoint: 'fluid'         } });
+
+  function mkPoissonBG(state) {
+    return device.createBindGroup({
+      layout: poissonBGL,
+      entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: state } },
+        { binding: 2, resource: { buffer: phiBuf } },
+      ],
+    });
+  }
+  function mkFluidBG(state_in, mz_in, state_out, mz_out) {
+    return device.createBindGroup({
+      layout: fluidPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: state_in } },
+        { binding: 2, resource: { buffer: mz_in } },
+        { binding: 3, resource: { buffer: phiBuf } },
+        { binding: 4, resource: { buffer: state_out } },
+        { binding: 5, resource: { buffer: mz_out } },
+      ],
+    });
+  }
+  const bgPoissonA = mkPoissonBG(stateA);
+  const bgPoissonB = mkPoissonBG(stateB);
+  const bgFluidAB  = mkFluidBG(stateA, mzA, stateB, mzB);
+  const bgFluidBA  = mkFluidBG(stateB, mzB, stateA, mzA);
+
+  btnReset.addEventListener('click', () => {
+    buildInitState();
+    device.queue.writeBuffer(stateA, 0, initState);
+    device.queue.writeBuffer(stateB, 0, initState);
+    device.queue.writeBuffer(mzA, 0, initMz);
+    device.queue.writeBuffer(mzB, 0, initMz);
+    device.queue.writeBuffer(phiBuf, 0, initPhi);
+    statePing = 'A';
+    simTime = 0;
+    rhoMaxHist = [];
+    stableMode = false;
+    particleResetTimer = 0;
+    resetParticles();
+    ctx2d.fillStyle = 'rgb(255,255,255)';
+    ctx2d.fillRect(0, 0, 400, 400);
+    queueInitialPoissonSettle();
+  });
+
+  let statePing = 'A';
+  let frameCount = 0;
+  let lastState = null;
+  let lastPhi   = null;
+
+  ctx2d.fillStyle = 'rgb(255,255,255)';
+  ctx2d.fillRect(0, 0, 400, 400);
+
+  // 1000 Poisson sweeps from rest to settle φ before the dynamics begin
+  // (matches the p5 setup()). On GPU this is ~milliseconds.
+  function queueInitialPoissonSettle() {
+    const encoder = device.createCommandEncoder();
+    const bg = bgPoissonA;  // statePing === 'A' at start
+    // Relaxation iterations to converge scale ~N²; the 200³ grid needs more
+    // sweeps than the 100³ version (1000) for φ to settle across the box.
+    for (let s = 0; s < 1000; s++) {
+      {
+        const pass = encoder.beginComputePass();
+        pass.setPipeline(poissonRedPipeline);
+        pass.setBindGroup(0, bg);
+        pass.dispatchWorkgroups(Math.ceil(N/4), Math.ceil(N/4), Math.ceil(N/4));
+        pass.end();
+      }
+      {
+        const pass = encoder.beginComputePass();
+        pass.setPipeline(poissonBlackPipeline);
+        pass.setBindGroup(0, bg);
+        pass.dispatchWorkgroups(Math.ceil(N/4), Math.ceil(N/4), Math.ceil(N/4));
+        pass.end();
+      }
+    }
+    device.queue.submit([encoder.finish()]);
+  }
+  queueInitialPoissonSettle();
+
+  async function frame() {
+    frameCount++;
+    if (gammaDirty) { writeParams(); gammaDirty = false; }
+    const stepsThisFrame = paused ? 0 : substepsPerFrame;
+
+    if (stepsThisFrame > 0) {
+      const encoder = device.createCommandEncoder();
+      for (let s = 0; s < stepsThisFrame; s++) {
+        // Per-substep: poissonItersPerStep red-black GS sweeps, then fluid step.
+        const bgPoisson = statePing === 'A' ? bgPoissonA : bgPoissonB;
+        for (let q = 0; q < poissonItersPerStep; q++) {
+          {
+            const pass = encoder.beginComputePass();
+            pass.setPipeline(poissonRedPipeline);
+            pass.setBindGroup(0, bgPoisson);
+            pass.dispatchWorkgroups(Math.ceil(N/4), Math.ceil(N/4), Math.ceil(N/4));
+            pass.end();
+          }
+          {
+            const pass = encoder.beginComputePass();
+            pass.setPipeline(poissonBlackPipeline);
+            pass.setBindGroup(0, bgPoisson);
+            pass.dispatchWorkgroups(Math.ceil(N/4), Math.ceil(N/4), Math.ceil(N/4));
+            pass.end();
+          }
+        }
+        {
+          const pass = encoder.beginComputePass();
+          pass.setPipeline(fluidPipeline);
+          pass.setBindGroup(0, statePing === 'A' ? bgFluidAB : bgFluidBA);
+          pass.dispatchWorkgroups(Math.ceil(N/4), Math.ceil(N/4), Math.ceil(N/4));
+          pass.end();
+          statePing = (statePing === 'A') ? 'B' : 'A';
+        }
+        simTime += DT;
+      }
+      // Read back the current state + phi for host-side drawing
+      const curState = statePing === 'A' ? stateA : stateB;
+      if (rbState.mapState === 'unmapped') encoder.copyBufferToBuffer(curState, 0, rbState, 0, STATE_BYTES);
+      if (rbPhi.mapState   === 'unmapped') encoder.copyBufferToBuffer(phiBuf,   0, rbPhi,   0, SCALAR_BYTES);
+      device.queue.submit([encoder.finish()]);
+
+      if (rbState.mapState === 'unmapped') {
+        await rbState.mapAsync(GPUMapMode.READ);
+        lastState = new Float32Array(rbState.getMappedRange().slice(0));
+        rbState.unmap();
+      }
+      if (rbPhi.mapState === 'unmapped') {
+        await rbPhi.mapAsync(GPUMapMode.READ);
+        lastPhi = new Float32Array(rbPhi.getMappedRange().slice(0));
+        rbPhi.unmap();
+      }
+    }
+
+    // Particle reset cadence controlled by the "seed every (sim-t)" slider.
+    particleResetTimer += DT * stepsThisFrame;
+    if (particleResetTimer > seedFreq) {
+      resetParticles();
+      particleResetTimer = 0;
+      ctx2d.fillStyle = 'rgb(255,255,255)';
+      ctx2d.fillRect(0, 0, 400, 400);
+    } else {
+      ctx2d.fillStyle = 'rgba(255,255,255,0.04)';
+      ctx2d.fillRect(0, 0, 400, 400);
+    }
+
+    if (lastState) {
+      // Read vx, vy on the k = 20 plane for advection. Index into the flat
+      // state array using (i + N·(j + N·k))·4 = ... + N²·KCUT·4.
+      const ADVECT = advectMag;  // amplified velocity magnitude for traces (live via slider)
+                             // much weaker than the sphere collapse, so the
+                             // particle displacement needs more gain to be seen.
+      const advDt = DT * stepsThisFrame;
+      const kOff = N * N * KCUT;
+      for (let j = 0; j < N; j++) {
+        for (let i = 0; i < N; i++) {
+          const idx = i + N * j + kOff;
+          const off = idx * 4;
+          const rho_c = lastState[off + 0];
+          const vx = lastState[off + 2] / (rho_c + 0.01);
+          const vy = lastState[off + 3] / (rho_c + 0.01);
+          const pk = i + N * j;
+          px[pk] += ADVECT * vx * advDt;
+          py[pk] += ADVECT * vy * advDt;
+        }
+      }
+
+      // Particle trace shown at all times. A persistent trace AFTER ρ and T
+      // have stabilised reflects the virial-equilibrium residual circulation:
+      // a divergence-free flow that leaves the field stationary but is itself
+      // nonzero. Stable ρ, T does not mean fluid at rest.
+      ctx2d.fillStyle = 'rgba(255,0,0,0.4)';
+      for (let pk = 0; pk < N * N; pk++) {
+        ctx2d.fillRect(px[pk], py[pk], 1, 1);
+      }
+
+      // Auto-scale each trace to its own deviation so even a small-amplitude
+      // response is visible. ρ and T are plotted as deviations from 1; φ from 0.
+      // Also track global peaks for the diagnostic readout.
+      let phiMax = 1e-9, rhoMax = 1e-9, TMax = 1e-9, vMaxGlobal = 0, phiMaxGlobal = 0, rhoMaxGlobal = 0;
+      // Subsample the global-peak scan: at 200³ a full 8M-cell scan every frame
+      // is the dominant CPU cost. ~200k samples still catch the broad bump.
+      const peakStride = Math.max(1, (NCELL / 200000) | 0);
+      for (let q = 0; q < NCELL; q += peakStride) {
+        const off = q * 4;
+        const r = lastState[off + 0];
+        rhoMaxGlobal = Math.max(rhoMaxGlobal, Math.abs(r - 1));
+        const vv = Math.hypot(lastState[off+2], lastState[off+3]) / (r + 0.01);
+        vMaxGlobal = Math.max(vMaxGlobal, vv);
+        if (lastPhi) phiMaxGlobal = Math.max(phiMaxGlobal, Math.abs(lastPhi[q]));
+      }
+      for (let i = 0; i < N; i++) {
+        const idx = i + N * JCUT + N * N * KCUT;
+        const off = idx * 4;
+        const rho_c = lastState[off + 0];
+        rhoMax = Math.max(rhoMax, Math.abs(rho_c - 1));
+        TMax   = Math.max(TMax,   Math.abs(lastState[off + 1] / (rho_c + 1e-9) - 1));
+        if (lastPhi) phiMax = Math.max(phiMax, Math.abs(lastPhi[idx]));
+      }
+      const phiScale = 110 / phiMax, rhoScale = 110 / rhoMax, TScale = 110 / TMax;
+
+      // Cross-cut profiles along (i, JCUT, KCUT) as continuous polylines,
+      // deviations auto-scaled to ±110 px around the y=200 baseline.
+      // Gather first, then stroke as one path per quantity.
+      const rhoPts = new Float32Array(N), TPts = new Float32Array(N), phiPts = new Float32Array(N);
+      for (let i = 0; i < N; i++) {
+        const idx = i + N * JCUT + N * N * KCUT;
+        const off = idx * 4;
+        const rho_c = lastState[off + 0];
+        rhoPts[i] = 200 - rhoScale * (rho_c - 1);
+        TPts[i]   = 200 - TScale   * (lastState[off + 1] / (rho_c + 1e-9) - 1);
+        phiPts[i] = 200 - phiScale * (lastPhi ? lastPhi[idx] : 0);
+      }
+      // baseline
+      ctx2d.strokeStyle = 'rgba(120,120,120,0.4)';
+      ctx2d.lineWidth = 1;
+      ctx2d.beginPath(); ctx2d.moveTo(0, 200); ctx2d.lineTo(400, 200); ctx2d.stroke();
+      // density polyline (blue, bold)
+      ctx2d.strokeStyle = 'rgba(0,0,255,0.9)';
+      ctx2d.lineWidth = 1.6;
+      ctx2d.beginPath();
+      for (let i = 0; i < N; i++) { (i === 0 ? ctx2d.moveTo : ctx2d.lineTo).call(ctx2d, PX*i, rhoPts[i]); }
+      ctx2d.stroke();
+      // temperature polyline (green)
+      ctx2d.strokeStyle = 'rgba(0,160,0,0.8)';
+      ctx2d.lineWidth = 1.2;
+      ctx2d.beginPath();
+      for (let i = 0; i < N; i++) { (i === 0 ? ctx2d.moveTo : ctx2d.lineTo).call(ctx2d, PX*i, TPts[i]); }
+      ctx2d.stroke();
+      // potential polyline (cyan)
+      ctx2d.strokeStyle = 'rgba(0,160,200,0.7)';
+      ctx2d.lineWidth = 1.2;
+      ctx2d.beginPath();
+      for (let i = 0; i < N; i++) { (i === 0 ? ctx2d.moveTo : ctx2d.lineTo).call(ctx2d, PX*i, phiPts[i]); }
+      ctx2d.stroke();
+
+      ctx2d.fillStyle = '#000';
+      ctx2d.font = '11px sans-serif';
+      ctx2d.textBaseline = 'top';
+      ctx2d.fillText("Cosmology 3D: Gravitation vs Fluid Pressure — GPU",            10, 14);
+      ctx2d.fillText(`N = ${N}³ = ${(N*N*N).toLocaleString()} cells,  p = γe = ρT,  γ = ${gammaVal.toFixed(2)},  G = ${G_GRAV.toFixed(0)},  ν = h`, 10, 34);
+      ctx2d.fillText(`Initial: two Gaussian blobs (peak +${(seedAmp*100).toFixed(0)}%), T = 1;  shock visc C = ${cviscVal.toFixed(1)}`, 10, 54);
+      ctx2d.fillText("Blue: ρ−1   Green: T−1   Cyan: φ  (each auto-scaled to ±110px)", 10, 310);
+      ctx2d.fillText(`Red: particle trace on the k = ${KCUT} mid-plane (persistent trace after ρ,T stabilise = virial circulation)`, 10, 330);
+      ctx2d.fillText(`peak |φ| = ${phiMaxGlobal.toExponential(2)}   peak |ρ−1| = ${rhoMaxGlobal.toExponential(2)}   peak |v| = ${vMaxGlobal.toExponential(2)}`, 10, 388);
+      window.__diag = { phi: phiMaxGlobal, drho: rhoMaxGlobal, v: vMaxGlobal, t: simTime };
+
+      // ----- Stability detector -----
+      rhoMaxHist.push(rhoMaxGlobal);
+      if (rhoMaxHist.length > STABILITY_WINDOW) rhoMaxHist.shift();
+      if (rhoMaxHist.length >= STABILITY_WINDOW) {
+        let mn = Infinity, mx = -Infinity;
+        for (const v of rhoMaxHist) { if (v < mn) mn = v; if (v > mx) mx = v; }
+        const peak = Math.max(mx, 1e-9);
+        stableMode = (mx - mn) / peak < STABILITY_TOL;
+      }
+    }
+
+    lblTime.textContent = `t = ${simTime.toFixed(3)}`;
+    if (frameCount % 30 === 0) {
+      status_el.textContent =
+        `${paused ? 'paused' : 'running'} — N = ${N}³, ${substepsPerFrame} fluid substeps/frame, ` +
+        `${poissonItersPerStep} Poisson/substep, t = ${simTime.toFixed(3)}`;
+    }
+    requestAnimationFrame(frame);
+  }
+
+  status_el.textContent = `WebGPU ready — N = ${N}³, initial Poisson settle complete.`;
+  requestAnimationFrame(frame);
+}
+
+main().catch(err => {
+  console.error(err);
+  status_el.textContent = 'Error: ' + err.message;
+});
+</script>
+</body>
+</html>

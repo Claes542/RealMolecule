@@ -1,0 +1,223 @@
+\chapter{The Piston-Cylinder: the Heat-Engine Problem}\label{ch:piston}
+
+\small
+\begin{quote}
+The steam engine having furnished us with a means for converting heat
+into motive power\ldots\ the idea of establishing theoretically some
+fixed relation between a quantity of heat and the quantity of work
+which it can possibly produce, from which relation conclusions
+regarding the nature of heat itself may be deduced, naturally
+presents itself.
+\normalfont\hfill --- R.~Clausius, 1851.
+\end{quote}
+\normalsize
+
+\section{The piston-cylinder as the heat-engine analogue of Joule}
+
+The Joule experiment of Chapter~\ref{ch:joule} ran a pressure differential
+between two fixed-wall chambers to mechanical equilibrium and observed
+the residual temperature/density gap: a one-shot dissipation pattern with
+no net work extracted. The companion foundational problem of
+thermodynamics replaces the right-hand fixed wall of the Joule chamber
+with a \emph{movable piston} and connects the piston to an external
+mechanical load. Gas now does work on the load as it expands, and the
+question becomes how much of the internal-energy decrease in the
+gas reservoir reaches the load as work versus how much is irreversibly
+dissipated as heat in the receiving region.
+
+We treat two cases. The \emph{smooth} case is a single chamber filled
+with hot dense gas, closed on three sides and with a piston as the
+fourth wall. The gas expands quasi-statically against the load; in the
+ideal limit of slow piston motion this approaches reversible expansion
+with $\eta = W/\Delta U \to 1$. The \emph{Joule-coupled} case inserts a
+constricted wall (a thin barrier with a small channel opening) between
+the gas reservoir and the piston. The gas now jets through the
+constriction, decelerates against the gas already in the receiving
+region, and the recompression-and-turbulent-dissipation pattern of
+Joule's experiment plays out --- but now with a piston on the far side
+that captures whatever pressure survives. The efficiency drops below
+the smooth limit by the amount of kinetic energy that turbulent
+recompression converts back to heat rather than to useful pressure on
+the piston. The two cases together display the fundamental engine
+trade-off in the cleanest possible computational form.
+
+\section{The smooth piston-cylinder}\label{sec:piston-smooth}
+
+\paragraph{Configuration.}
+A square domain $[0, 1]^2$ holds gas of initial density $\rho = 10$ and
+internal energy $e = 10$ (so $p = \gamma e = 1.0$ with $\gamma = 0.1$)
+to the left of a movable piston initially positioned at $x = 0.5$. To
+the right of the piston lies an external region held at a fixed load
+pressure $P_{\rm ext} = 0.5$. The top and bottom walls of the chamber
+are zero-flux/free-slip, the left wall is closed, the right boundary
+beyond the piston is the load.
+
+\paragraph{Dynamics.}
+Newton's second law for the piston, with $M$ the piston mass per unit
+$y$-length and a friction coefficient $c$ for piston-rail damping, reads
+\begin{equation}\label{eq:piston-newton}
+M\,\frac{\rd v_p}{\rd t} = \int_{0}^{1}\!\bigl[\,p_{\rm gas}(x_p^-, y) - P_{\rm ext}\,\bigr]\,\rd y \;-\; c\,v_p,
+\quad \frac{\rd x_p}{\rd t} = v_p,
+\end{equation}
+where $p_{\rm gas}(x_p^-, y) = \gamma\,e(x_p^-, y)$ is the local
+gas pressure on the piston's gas-side face. The gas occupies the
+domain $x \in [0, x_p)$ and evolves by the compressible
+Navier--Stokes equations of Chapter~\ref{ch:joule}, with a no-slip
+ghost at the piston face. Work delivered to the load per unit time is
+\begin{equation}\label{eq:piston-power}
+\dot W = P_{\rm ext} \cdot v_p \cdot \mathrm{Area},
+\end{equation}
+and the heat-engine efficiency is
+\begin{equation}\label{eq:piston-eta}
+\eta = \frac{W}{\Delta U} = \frac{\int_0^t \dot W\,\rd s}{U(0) - U(t)}.
+\end{equation}
+
+\paragraph{Behaviour and expected result.}
+The smooth piston-cylinder is the cleanest computational instance of
+quasi-static isobaric expansion. With slow piston motion (small $v_p$
+compared with the acoustic speed $c_s = \sqrt{\gamma e/\rho}$ in the
+gas), the gas expands without significant kinetic-energy generation;
+the work-delivered counter and the heat-lost counter grow together;
+and $\eta$ approaches the reversible limit. Faster piston motion
+generates acoustic waves in the gas region that bounce between the
+left wall and the piston face, with each acoustic round-trip a small
+turbulent-dissipation loss; $\eta$ falls below 1 by an amount
+proportional to the piston Mach number. The smooth case therefore
+isolates the fundamental work-extraction mechanism, with irreversibility
+present only as a small correction proportional to the piston speed.
+
+The accompanying simulator \texttt{heat\_engine.html} (Appendix~A
+Gallery) implements~\eqref{eq:piston-newton}--\eqref{eq:piston-eta} for
+$N = 200$, $\gamma = 0.1$, $P_{\rm ext} = 0.5$, $M = 0.05$,
+$c = 1.5$. The piston moves from $x_p = 0.5$ outward over $\sim 10\,$s
+of wall-clock time, with $\eta$ reaching $\sim 0.7$--$0.9$ depending on
+the piston-Mach-number regime.
+
+\section{The Joule-coupled piston-cylinder}\label{sec:piston-joule}
+
+\paragraph{Configuration.}
+The same square domain holds a high-pressure gas reservoir on the left
+($i < I_w$ in grid units, $\rho = 10$, $e = 10$), a thin barrier wall at
+$i \in [I_w, I_w + w_{\rm wall}]$ with a small channel opening at
+$j \in [J_0, J_1]$, a receiving region between the barrier and the
+piston ($I_w + w_{\rm wall} < i < x_p$, initially $\rho = 1$, $e = 1$),
+and the movable piston at $i = x_p$. The external load is held at
+$P_{\rm ext} = 0.1$, matching the initial pressure in the receiving
+region so the piston starts in mechanical equilibrium and is pushed
+outward only after the channel inflow has compressed the receiving
+gas.
+
+\paragraph{Dynamics.}
+The piston obeys the same Newton's-law update~\eqref{eq:piston-newton}
+with $p_{\rm gas}$ now the local pressure in the receiving region
+just to the left of the piston face. The gas equations are unchanged;
+the barrier is a frozen no-slip wall except in the channel opening,
+where gas can flow freely. The barrier presents the classical
+Joule constriction to the gas: the high reservoir pressure drives a
+jet through the channel, the jet decelerates in the receiving region,
+and the kinetic-energy-to-heat conversion of turbulent
+recompression dissipates a fraction of the released internal energy
+into heat in the receiving region rather than into useful pressure
+against the piston.
+
+\paragraph{Two energy accounts.}
+The 1st Law of thermodynamics for this system says
+\begin{equation}\label{eq:piston-1st-law}
+\underbrace{\Delta U_{\rm reservoir}}_{\text{heat lost from hot side}}
+\;=\;
+\underbrace{W}_{\text{useful work}}
+\;+\;
+\underbrace{\Delta U_{\rm receiving}}_{\text{heat dumped in cold side}}
+\;+\;
+\underbrace{K_{\rm channel}}_{\text{kinetic energy in flight}}.
+\end{equation}
+The transient $K_{\rm channel}$ goes to zero at long times as the gas
+equilibrates; in the steady state, all of the released $\Delta U_{\rm reservoir}$
+ends up either as work $W$ or as $\Delta U_{\rm receiving}$ (waste heat).
+The 2nd Law tells us which split is realised: the size of
+$\Delta U_{\rm receiving}$ is set by the dynamic
+turbulent-dissipation pattern in the recompression process, exactly
+as in the Joule experiment of Chapter~\ref{ch:joule}. The engine
+efficiency follows as
+\begin{equation}\label{eq:piston-eta-joule}
+\eta \;=\; \frac{W}{\Delta U_{\rm reservoir}} \;=\; 1 - \frac{\Delta U_{\rm receiving}}{\Delta U_{\rm reservoir}}\;-\;\frac{K_{\rm channel}}{\Delta U_{\rm reservoir}},
+\end{equation}
+and in the steady state $\eta < 1$ by exactly the fraction of energy
+that the Joule turbulent-recompression channel dissipates as heat.
+
+\paragraph{One-shot versus sustained operation.}
+With the left wall closed (finite reservoir), the simulation runs as a
+\emph{one-shot} cycle: the reservoir depletes, the piston receives a
+brief impulsive load from the channel-driven shock and a slower
+follow-on pressure as the gas equilibrates, and the engine extracts a
+single power stroke of work. This is the elementary unit of a
+reciprocating closed-cycle heat engine (Otto, Diesel, Stirling).
+With the left wall replaced by a Dirichlet inflow boundary maintaining
+the reservoir state at $\rho = 10$, $e = 10$ indefinitely, the
+simulation runs as a \emph{sustained} cycle: gas keeps jetting through
+the channel, the piston reaches a quasi-steady velocity, and power is
+delivered continuously. This is the elementary unit of an open-cycle
+flow engine (gas turbine, jet engine). The two operating modes are
+selected in the simulator \texttt{heat\_engine\_with\_channel.html}
+(Appendix~A) by the choice of left-wall boundary condition: zero-gradient
+mirror for one-shot, Dirichlet inflow for sustained.
+
+\section{Joule and the piston as duals}\label{sec:joule-piston-duals}
+
+The two central problems are duals of each other:
+\begin{itemize}
+\item \textbf{Joule's experiment} (Chapter~\ref{ch:joule}) lets the
+expansion-and-recompression dynamics run to mechanical equilibrium
+with no work extracted, leaving a residual temperature/density gap
+between the chambers that is the dynamic-dissipation signature. With
+external work added cyclically by a compressor, this becomes a
+\textbf{refrigerator}: the residual asymmetry is held against
+diffusive relaxation by continuously re-energising the gas, and the
+asymmetric temperature gradient is exploited to draw heat from cold
+side and dump it to hot side.
+
+\item \textbf{The piston-cylinder} (this chapter) lets the same
+expansion-and-recompression dynamics run with a movable wall as the
+right boundary, extracting useful work to an external load. With
+external heat added cyclically by a hot reservoir at the inflow, this
+becomes a \textbf{heat engine}: the released internal energy is split
+between work delivered to the load and waste heat dumped to a cold
+side, with the efficiency $\eta$ set by the same turbulent-dissipation
+fraction.
+\end{itemize}
+Both problems are governed by the same compressible
+Navier--Stokes equations, the same RNS finite-element discretisation,
+and the same 2nd-Law-as-finite-precision reading of irreversibility.
+The framework of this book treats them as the two foundational
+single-shot configurations of which all cyclic engines, pumps,
+refrigerators, and heat-recovery devices of Vol VI Applications are
+built; everything else in thermodynamics is either a cyclic repetition
+of these or a multi-stage combination of them.
+
+\section{What this chapter establishes}
+
+For the rest of the book the reader should hold three observations
+from this chapter and the previous one together:
+\begin{enumerate}
+\item Pressure-driven flow through a constriction converts internal
+energy into kinetic energy; recompression on the receiving side
+converts a fraction of that kinetic energy back into heat
+irreversibly; the size of that fraction is the dynamic content of the
+2nd Law and is what classical equilibrium thermodynamics cannot
+predict.
+
+\item A piston in the receiving region intercepts a fraction of the
+arriving pressure as useful work; the larger that fraction, the
+smaller the recompression dissipation, the higher the engine
+efficiency. The efficiency is bounded above by the reversible smooth-
+expansion limit, and the irreversibility cost is the dynamical content
+of the heat-engine inequality $\eta \le 1$.
+
+\item Both the refrigerator and the heat engine are cyclic devices
+built from a single foundational dynamic process: the
+expansion-through-a-channel-followed-by-turbulent-recompression cycle.
+Refrigerators run it as the heat-pumping cycle with work input;
+heat engines run it as the work-output cycle with heat input. The
+same simulation infrastructure produces both.
+\end{enumerate}
+

@@ -1,0 +1,96 @@
+\chapter{Refrigerator and Heat Pump}\label{ch:refrig}
+
+The Joule expansion of the previous chapter is the working stroke of both a
+\emph{refrigerator} (harvesting the cooled left chamber) and a \emph{heat pump}
+(harvesting the warmed right chamber): one and the same device, distinguished
+only by which reservoir's heat exchange is counted as useful. Because RNS
+resolves the dynamics, we can read their efficiency directly off the computed
+fields rather than postulate it.
+
+\section{A Computable Model}
+
+An interactive realisation (\texttt{joule\_experiment\_cpu.html}, a
+dependency-free vanilla-JS port of the original sketch) solves the 2D
+compressible Navier--Stokes/RNS system
+\[
+\dot\rho+\nabla\cdot m=0,\qquad
+\dot m+\nabla\cdot(mu)+\gamma\nabla e=\mu_{\mathrm{mom}}\,\Delta u,\qquad
+\dot e+\nabla\cdot(eu)+\gamma e\,\nabla\cdot u=\mu_{\mathrm{mom}}\,|\nabla u|^2,
+\]
+with $p=\gamma e=\gamma\rho T$, $T=e/\rho$, $u=m/\rho$, on two chambers joined by a
+channel: a dense, equally-warm left chamber ($\rho=e=10$, hence $T=1$) expanding
+into a dilute right chamber ($\rho=e=1$). The last term in the energy equation is
+the \emph{turbulent dissipation} $\mu_{\mathrm{mom}}|\nabla u|^2\ge 0$ --- the
+irreversible return of the jet's kinetic energy to heat --- and crucially it uses
+the \emph{same} coefficient $\mu_{\mathrm{mom}}$ as the momentum diffusion, so the
+kinetic energy removed by viscosity reappears exactly as heat in the energy
+equation and $K+E$ is conserved. A separate, much smaller coefficient
+$\mu\ll\mu_{\mathrm{mom}}$ provides numerical stabilisation of $\rho$ and $e$
+through Laplacian smoothing; it is not a physical dissipation and contributes
+negligibly to the energy budget.
+
+\section{Energy and Dissipation Bookkeeping}
+
+The simulation tracks, at each instant, the kinetic energy
+$K=\int\tfrac12\rho|u|^2\,dx$ and the internal energy $E=\int e\,dx$, with the
+total $K+E$ conserved (Joule's null result for the \emph{whole} box), together
+with the \emph{cumulative turbulent dissipation}
+\begin{equation}\label{D_def}
+D(t)=\int_0^t\!\!\int \mu_{\mathrm{mom}}\,|\nabla u|^2\,dx\,d\tau \;\;>\;0 ,
+\end{equation}
+which quantifies the irreversibility directly: it is positive by construction of
+the discrete scheme and is \emph{the} 2nd Law for this model. There is no need
+to introduce a statistical entropy $S$ or a relation $dS\ge 0$ --- the inequality
+$D>0$ is the 2nd Law in its native, deterministic form, deriving from finite-
+precision computation rather than postulated from probabilistic foundations.
+$D$ accumulates wherever the velocity gradient is large: in the channel jet and
+in the recompression against the far wall.
+
+\section{Refrigerator and Heat Pump: Efficiency and the Cost of the Cycle}
+
+A refrigerator runs \emph{cyclically}: each cycle the working gas must be
+restored to its initial compressed state, so the relevant energy cost is the
+work to restore the initial conditions. Its reversible (minimal) value is the
+\emph{exergy} of the initial state; for the isothermal initial imbalance (both
+chambers start at $T=T_0=1$) this is
+\begin{equation}\label{exergyA0}
+A_0=\gamma\int \rho\,\ln(\rho/\bar\rho)\,dx \;=\; D_\infty ,
+\end{equation}
+with $\bar\rho$ the mean density; the second equality states that the spontaneous
+free expansion eventually destroys exactly this $A_0$ as accumulated turbulent
+dissipation $D_\infty$ (\ref{D_def}). The cooling delivered is the heat removed from the cells
+that drop below ambient,
+\[
+Q_{\mathrm{cold}}=\int_{T<T_0}\rho\,(T_0-T)\,dx ,
+\]
+and the coefficient of performance --- the buyer's figure of merit, cooling per
+unit of work spent restoring the cycle --- is
+\begin{equation}\label{copjoule}
+\mathrm{COP}_{\mathrm R}=\frac{Q_{\mathrm{cold}}}{A_0}.
+\end{equation}
+The \emph{same} expansion is a \emph{heat pump} if instead we harvest the warmed
+right chamber. Its useful output is the heat delivered to the hot side, which
+over the full cycle is $Q_{\mathrm{hot}}=Q_{\mathrm{cold}}+A_0$ --- the cooling
+moved up, plus the restore work $A_0$ rejected as heat during recompression ---
+so
+\[
+\mathrm{COP}_{\mathrm{HP}}=\frac{Q_{\mathrm{cold}}+A_0}{A_0}=\mathrm{COP}_{\mathrm R}+1 .
+\]
+Refrigerator and heat pump are thus one device, the single Joule expansion,
+distinguished only by which reservoir's heat exchange is counted as useful; in
+the expansion phase alone the simulation shows $Q_{\mathrm{hot}}\approx
+Q_{\mathrm{cold}}$ (pure redistribution at conserved total energy), the extra
+$A_0$ entering on the hot side only during recompression.
+
+Against the Carnot ceiling for the achieved lift,
+$\mathrm{COP}_{\mathrm{Carnot}}=T_{\mathrm{cold}}/(T_{\mathrm{hot}}-T_{\mathrm{cold}})$,
+the second-law efficiency $\eta=\mathrm{COP}_{\mathrm R}/\mathrm{COP}_{\mathrm{Carnot}}$ comes
+out at only a few percent: the free expansion is a \emph{very poor} refrigerator,
+destroying almost all of the available work $A_0$ as cumulative turbulent
+dissipation $D$ while delivering only a sliver of cold. This is exactly why a
+practical refrigerator does not free-expand but runs the recompression cycle of
+the next chapter, recovering work and driving the lost-work $D$ down toward zero
+(the Carnot limit). The same bookkeeping --- $A_0$, $Q_{\mathrm{cold}}$, $D$ ---
+will let us assign an efficiency to any continuum-thermodynamic process,
+including the thermodynamics of the living cell.
+
