@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Compressible Navier-Stokes: Bluff Body Mach 2</title>
+<style>
+  body { margin: 0; background: #fff; font-family: sans-serif; }
+  canvas { display: block; margin: 0 auto; background: #fff; }
+</style>
+</head>
+<body>
+<canvas id="cv" width="400" height="400"></canvas>
+<script>
+// Compressible Navier-Stokes: Bluff Body Mach 2
+// Conservation of mass, momentum and internal energy.
+// Uniform horizontal inflow + bluff-body region represented by a penalty force.
+
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+
+const N = 1000;
+
+// Body geometry as fractions of N (originally tuned at N=400: body 195..205, 150..250)
+const BODY_I0 = Math.round(N * 0.4875);
+const BODY_I1 = Math.round(N * 0.5125);
+const BODY_J0 = Math.round(N * 0.375);
+const BODY_J1 = Math.round(N * 0.625);
+const CROSSCUT_J = Math.floor(N / 2);
+
+// Resize canvas to match N for 1:1 cell-to-pixel rendering
+canvas.width = N;
+canvas.height = N;
+// velocity
+const vx = [], vy = [];
+// momentum
+const mx = [], my = [];
+// density
+const rho = [];
+// internal energy
+const e = [];
+// pressure
+const p = [];
+// viscous stresses
+const sxx = [], syy = [], sxy = [];
+// particle trace
+const x = [], y = [];
+// external force
+const fx = [], fy = [];
+
+// gas constant: p = gamma * e
+const gamma = 0.2;
+
+const h = 1 / N;
+const nu = 0.3 * h;
+const dt = 0.1 * h;
+
+let t = 0;
+
+function setup() {
+  for (let i = 0; i < N; i++) {
+    x[i] = [];   y[i] = [];
+    vx[i] = [];  vy[i] = [];
+    mx[i] = [];  my[i] = [];
+    rho[i] = []; e[i] = [];
+    p[i] = [];
+    fx[i] = [];  fy[i] = [];
+    sxx[i] = []; syy[i] = []; sxy[i] = [];
+    for (let j = 0; j < N; j++) {
+      x[i][j] = i;
+      y[i][j] = j;
+      // Uniform horizontal inflow as initial condition
+      vx[i][j] = 1;
+      vy[i][j] = 0;
+      mx[i][j] = 1;
+      my[i][j] = 0;
+      rho[i][j] = 1;
+      e[i][j]   = 1;
+      p[i][j]   = 0;
+      fx[i][j]  = 0;
+      fy[i][j]  = 0;
+      sxx[i][j] = 0;
+      syy[i][j] = 0;
+      sxy[i][j] = 0;
+    }
+  }
+}
+
+function frame() {
+  // opaque white background (every frame; large N makes overdraw cheap visually)
+  ctx.fillStyle = 'rgb(255,255,255)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  t = t + dt;
+
+  for (let q = 0; q < 10; q++) {
+    for (let i = 1; i < N - 1; i++) {
+      for (let j = 1; j < N - 1; j++) {
+
+        vx[i][j] = mx[i][j] / rho[i][j];
+        vy[i][j] = my[i][j] / rho[i][j];
+        p[i][j]  = gamma * e[i][j];
+
+        // Bluff body: penalty force in the N-relative rectangle
+        if (i > BODY_I0 && i < BODY_I1 && j > BODY_J0 && j < BODY_J1) {
+          fx[i][j] = -500 * vx[i][j];
+        }
+
+        sxx[i][j] = nu * (vx[i][j] - vx[i-1][j]) / h;
+        sxy[i][j] = nu * 0.5 * (vx[i][j] - vx[i][j-1] + vy[i][j] - vy[i-1][j]) / h;
+        syy[i][j] = nu * (vy[i][j] - vy[i][j-1]) / h;
+
+        mx[i][j] = mx[i][j]
+          + 0.01 * dt * (vx[i+1][j] + vx[i-1][j] - 4*vx[i][j] + vx[i][j+1] + vx[i][j-1]) / h
+          - 0.5  * dt * (vx[i+1][j]*mx[i+1][j] - vx[i-1][j]*mx[i-1][j]) / h
+          - 0.5  * dt * (vy[i][j+1]*mx[i][j+1] - vy[i][j-1]*mx[i][j-1]) / h
+          - dt * gamma * (e[i+1][j] - e[i-1][j]) / h
+          + dt * (sxx[i+1][j] - sxx[i][j] + sxy[i][j+1] - sxy[i][j]) / h
+          + dt * fx[i][j];
+
+        my[i][j] = my[i][j]
+          + 0.01 * dt * (vy[i+1][j] + vy[i-1][j] - 4*vy[i][j] + vy[i][j+1] + vy[i][j-1]) / h
+          - 0.5  * dt * (vx[i+1][j]*my[i+1][j] - vx[i-1][j]*my[i-1][j]) / h
+          - 0.5  * dt * (vy[i][j+1]*my[i][j+1] - vy[i][j-1]*my[i][j-1]) / h
+          - dt * gamma * (e[i][j+1] - e[i][j-1]) / h
+          + dt * (sxy[i+1][j] - sxy[i][j] + syy[i][j+1] - syy[i][j]) / h;
+
+        rho[i][j] = rho[i][j]
+          - 0.5 * dt * (mx[i+1][j] - mx[i-1][j]) / h
+          - 0.5 * dt * (my[i][j+1] - my[i][j-1]) / h
+          + 0.2 * dt * (rho[i+1][j] + rho[i-1][j] - 4*rho[i][j] + rho[i][j+1] + rho[i][j-1]) / h;
+
+        e[i][j] = e[i][j]
+          + 0.2 * dt * (e[i+1][j] + e[i-1][j] - 4*e[i][j] + e[i][j+1] + e[i][j-1]) / h
+          - 0.5 * dt * (vx[i+1][j]*e[i+1][j] - vx[i-1][j]*e[i-1][j]) / h
+          - 0.5 * dt * (vy[i][j+1]*e[i][j+1] - vy[i][j-1]*e[i][j-1]) / h
+          - dt * gamma * e[i][j] * (vx[i+1][j] - vx[i-1][j] + vy[i][j+1] - vy[i][j-1]) / h;
+      }
+    }
+
+    // Boundary conditions on outer box
+    for (let i = 0; i < N; i++) {
+      e[N-1][i] = e[N-2][i];
+      e[i][0]   = e[i][1];
+      e[i][N-1] = e[i][N-2];
+      mx[N-1][i] = mx[N-2][i];
+      mx[i][0]   = mx[i][1];
+      mx[i][N-1] = mx[i][N-2];
+      my[N-1][i] = my[N-2][i];
+      my[i][0]   = my[i][1];
+      my[i][N-1] = my[i][N-2];
+      rho[N-1][i] = rho[N-2][i];
+      rho[i][0]   = rho[i][1];
+      rho[i][N-1] = rho[i][N-2];
+    }
+  }
+
+  // Reset particle trace periodically (background already reset opaque above)
+  if (t > 0.0001) {
+    for (let i = 0; i < N; i++)
+      for (let j = 0; j < N; j++) {
+        x[i][j] = i;
+        y[i][j] = j;
+      }
+    t = 0;
+  }
+
+  // Particle trace (advected dots; display factor 5000 for visibility)
+  ctx.fillStyle = 'rgba(255,0,0,1)';
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) {
+      x[i][j] += 5000 * vx[i][j] * dt;
+      y[i][j] += 5000 * vy[i][j] * dt;
+      ctx.beginPath();
+      ctx.arc(x[i][j], y[i][j], 0.5, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+  }
+
+  // Cross-cut profiles along j = 200, plotted around y = 300
+  for (let i = 0; i < N; i++) {
+    ctx.fillStyle = 'rgba(0,0,255,1)';
+    ctx.beginPath();
+    ctx.arc(i, 300 - 100 * rho[i][CROSSCUT_J], 1, 0, 2 * Math.PI);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(0,255,0,1)';
+    ctx.beginPath();
+    ctx.arc(i, 300 - 100 * vx[i][CROSSCUT_J], 1, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+
+  // Bluff body region (yellow overlay)
+  ctx.fillStyle = 'rgba(255,255,0,1)';
+  for (let i = BODY_I0; i < BODY_I1; i++) {
+    for (let j = BODY_J0; j < BODY_J1; j++) {
+      ctx.beginPath();
+      ctx.arc(i, j, 1, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+  }
+
+  // Text annotations
+  ctx.fillStyle = 'rgb(0,0,0)';
+  ctx.font = '10px sans-serif';
+  ctx.textBaseline = 'top';
+
+  ctx.fillText("Compressible Navier-Stokes: Bluff Body Mach 2",        50, 10);
+  ctx.fillText("Conservation of mass, momentum, internal energy:",     50, 30);
+  ctx.fillText("momentum (mx,my), density rho, internal energy e",     50, 50);
+  ctx.fillText("viscous stresses sxx, sxy, syy",                       50, 70);
+  ctx.fillText("sxx=nu*dvx/dx; sxy=nu*(dvx/dy+dvy/dx)/2, syy=nu*dvy/dy, nu viscosity", 30, 90);
+  ctx.fillText("drho/dt + d(mx)/dx + d(my)/dy = 0",                    30, 110);
+  ctx.fillText("dmx/dt + d(mx*vx)/dx + d(mx*vy)/dy + dp/dx = dsxx/dx + dsxy/dy", 30, 130);
+  ctx.fillText("dmy/dt + d(my*vx)/dx + d(my*vy)/dy + dp/dy = dsxy/dx + dsyy/dy", 30, 150);
+  ctx.fillText("de/dt + d(e*vx)/dx + d(e*vy)/dy + p*(dvx/dx + dvy/dy) = 0",      30, 170);
+  ctx.fillText("vx = mx/rho, vy = my/rho, p = gamma*e, 0 < gamma < 1.",          30, 190);
+
+  ctx.fillText("Initial data: Uniform flow + bluff body (yellow) represented by force", 50, 270);
+  ctx.fillText("Blue: Density (mid crosscut).",                       50, 290);
+  ctx.fillText("Green: Horizontal velocity (crosscut).",              50, 310);
+  ctx.fillText("Red: Trace of fluid particles (updated).",            50, 330);
+
+  requestAnimationFrame(frame);
+}
+
+setup();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

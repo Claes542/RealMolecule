@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Compressible Bluff Body Slip — p5.js (N=200, γ ∈ {0.1, 1, 10})</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+<style>
+  body { margin: 0; background: #fff; font-family: sans-serif; }
+</style>
+</head>
+<body>
+<script>
+//Compressible Bluff Body Slip — N=200 refinement
+//Free-slip BC on a square body at the centre, j-centered cross-cut profiles.
+//Below-body band uses upwind advection in x for stability.
+let vx = [];
+let vy = [];
+let mx = [];
+let my = [];
+let rho = [];
+let e = [];
+let p = [];
+let sxx = [];
+let syy = [];
+let sxy = [];
+let x = [];
+let y = [];
+let fx = [];
+let fy = [];
+
+let N = 200;
+let PX, BX0, BX1, BW, JMID;
+let dt;
+let t = 0;
+let h;
+let nu;
+let gamma;
+let mu;
+let advect;
+let internalenergy = 0;
+let kineticenergy  = 0;
+let drag = 0;
+let lift = 0;
+let gammaRadio;
+
+function setup() {
+  createCanvas(400, 400);
+  PX   = 400 / N;
+  BX0  = floor(N * 0.4);
+  BX1  = floor(N * 0.6);
+  BW   = BX1 - BX0;
+  JMID = floor(N * 0.5);
+  h    = 1 / N;
+  nu   = 0.1 * h;
+  dt   = 0.05 * h;
+  gamma = 0.1;
+  mu   = 0.2;
+  advect = 2.5 / dt;
+
+  // Radio for the three regimes:
+  //   gamma = 0.1  → Mach 10  (strongly supersonic)
+  //   gamma = 1    → Mach  1  (transonic)
+  //   gamma = 10   → Mach 0.1 (subsonic, nearly incompressible)
+  gammaRadio = createRadio();
+  gammaRadio.option('0.1', 'γ = 0.1  (supersonic, Mach 10)');
+  gammaRadio.option('1',   'γ = 1     (transonic, Mach 1)');
+  gammaRadio.option('10',  'γ = 10   (subsonic, Mach 0.1)');
+  gammaRadio.selected('0.1');
+  gammaRadio.style('font-family', 'sans-serif');
+  gammaRadio.style('font-size', '12px');
+
+  for (let i = 0; i < N; i++) {
+    x[i] = []; y[i] = [];
+    vx[i] = []; vy[i] = [];
+    mx[i] = []; my[i] = [];
+    rho[i] = []; e[i] = [];
+    p[i] = [];
+    fx[i] = []; fy[i] = [];
+    sxx[i] = []; syy[i] = []; sxy[i] = [];
+    for (let j = 0; j < N; j++) {
+      x[i][j] = PX * i;
+      y[i][j] = PX * j;
+      vx[i][j] = 1;
+      vy[i][j] = 0;
+      rho[i][j] = 1;
+      e[i][j] = 1;
+      p[i][j] = 0;
+      mx[i][j] = 1;
+      my[i][j] = 0;
+      fx[i][j] = 0;
+      fy[i][j] = 0;
+      sxx[i][j] = 0; syy[i][j] = 0; sxy[i][j] = 0;
+    }
+  }
+}
+
+function centred(i, j) {
+  sxx[i][j] = nu * (vx[i][j] - vx[i-1][j]) / h;
+  sxy[i][j] = nu * 0.5 * (vx[i][j] - vx[i][j-1] + vy[i][j] - vy[i-1][j]) / h;
+  syy[i][j] = nu * (vy[i][j] - vy[i][j-1]) / h;
+
+  mx[i][j] = mx[i][j]
+    + mu * dt * (vx[i+1][j] + vx[i-1][j] - 4*vx[i][j] + vx[i][j+1] + vx[i][j-1]) / h
+    - 0.5 * dt * (vx[i+1][j]*mx[i+1][j] - vx[i-1][j]*mx[i-1][j]) / h
+    - 0.5 * dt * (vy[i][j+1]*mx[i][j+1] - vy[i][j-1]*mx[i][j-1]) / h
+    - dt * gamma * (e[i+1][j] - e[i-1][j]) / h
+    + dt * (sxx[i+1][j] - sxx[i][j] + sxy[i][j+1] - sxy[i][j]) / h
+    + dt * fx[i][j];
+
+  my[i][j] = my[i][j]
+    + mu * dt * (vy[i+1][j] + vy[i-1][j] - 4*vy[i][j] + vy[i][j+1] + vy[i][j-1]) / h
+    - 0.5 * dt * (vx[i+1][j]*my[i+1][j] - vx[i-1][j]*my[i-1][j]) / h
+    - 0.5 * dt * (vy[i][j+1]*my[i][j+1] - vy[i][j-1]*my[i][j-1]) / h
+    - dt * gamma * (e[i][j+1] - e[i][j-1]) / h
+    + dt * (sxy[i+1][j] - sxy[i][j] + syy[i][j+1] - syy[i][j]) / h;
+
+  rho[i][j] = rho[i][j]
+    - 0.5 * dt * (mx[i+1][j] - mx[i-1][j]) / h
+    - 0.5 * dt * (my[i][j+1] - my[i][j-1]) / h
+    + mu * dt * (rho[i+1][j] + rho[i-1][j] - 4*rho[i][j] + rho[i][j+1] + rho[i][j-1]) / h;
+
+  e[i][j] = e[i][j]
+    + mu * dt * (e[i+1][j] + e[i-1][j] - 4*e[i][j] + e[i][j+1] + e[i][j-1]) / h
+    - 0.5 * dt * (vx[i+1][j]*e[i+1][j] - vx[i-1][j]*e[i-1][j]) / h
+    - 0.5 * dt * (vy[i][j+1]*e[i][j+1] - vy[i][j-1]*e[i][j-1]) / h
+    - dt * gamma * e[i][j] * (vx[i+1][j] - vx[i-1][j] + vy[i][j+1] - vy[i][j-1]) / h
+    + dt * mu * (
+        pow(vx[i+1][j] - vx[i][j], 2) +
+        pow(vx[i][j+1] - vx[i][j], 2) +
+        pow(vy[i+1][j] - vy[i][j], 2) +
+        pow(vy[i][j+1] - vy[i][j], 2)
+      ) / h;
+
+  internalenergy += h * h * e[i][j];
+  kineticenergy  += 0.5 * h * h * rho[i][j] * (vx[i][j]*vx[i][j] + vy[i][j]*vy[i][j]);
+}
+
+function upwindX(i, j) {
+  sxx[i][j] = nu * (vx[i][j] - vx[i-1][j]) / h;
+  sxy[i][j] = nu * 0.5 * (vx[i][j] - vx[i][j-1] + vy[i][j] - vy[i-1][j]) / h;
+  syy[i][j] = nu * (vy[i][j] - vy[i][j-1]) / h;
+
+  mx[i][j] = mx[i][j]
+    + mu * dt * (vx[i+1][j] + vx[i-1][j] - 4*vx[i][j] + vx[i][j+1] + vx[i][j-1]) / h
+    - dt * (vx[i][j]*mx[i][j] - vx[i-1][j]*mx[i-1][j]) / h
+    - 0.5 * dt * (vy[i][j+1]*mx[i][j+1] - vy[i][j-1]*mx[i][j-1]) / h
+    - dt * gamma * (e[i][j] - e[i-1][j]) / h
+    + dt * (sxx[i+1][j] - sxx[i][j] + sxy[i][j+1] - sxy[i][j]) / h
+    + dt * fx[i][j];
+
+  my[i][j] = my[i][j]
+    + mu * dt * (vy[i+1][j] + vy[i-1][j] - 4*vy[i][j] + vy[i][j+1] + vy[i][j-1]) / h
+    - dt * (vx[i][j]*my[i][j] - vx[i-1][j]*my[i-1][j]) / h
+    - 0.5 * dt * (vy[i][j+1]*my[i][j+1] - vy[i][j-1]*my[i][j-1]) / h
+    - dt * gamma * (e[i][j+1] - e[i][j-1]) / h
+    + dt * (sxy[i+1][j] - sxy[i][j] + syy[i][j+1] - syy[i][j]) / h;
+
+  rho[i][j] = rho[i][j]
+    - dt * (mx[i][j] - mx[i-1][j]) / h
+    - 0.5 * dt * (my[i][j+1] - my[i][j-1]) / h
+    + mu * dt * (rho[i+1][j] + rho[i-1][j] - 4*rho[i][j] + rho[i][j+1] + rho[i][j-1]) / h;
+
+  e[i][j] = e[i][j]
+    + mu * dt * (e[i+1][j] + e[i-1][j] - 4*e[i][j] + e[i][j+1] + e[i][j-1]) / h
+    - dt * (vx[i][j]*e[i][j] - vx[i-1][j]*e[i-1][j]) / h
+    - 0.5 * dt * (vy[i][j+1]*e[i][j+1] - vy[i][j-1]*e[i][j-1]) / h
+    - dt * gamma * e[i][j] * (vx[i+1][j] - vx[i-1][j] + vy[i][j+1] - vy[i][j-1]) / h
+    + dt * mu * (
+        pow(vx[i+1][j] - vx[i][j], 2) +
+        pow(vx[i][j+1] - vx[i][j], 2) +
+        pow(vy[i+1][j] - vy[i][j], 2) +
+        pow(vy[i][j+1] - vy[i][j], 2)
+      ) / h;
+
+  internalenergy += h * h * e[i][j];
+  kineticenergy  += 0.5 * h * h * rho[i][j] * (vx[i][j]*vx[i][j] + vy[i][j]*vy[i][j]);
+}
+
+function draw() {
+  background(255, 255, 255, 50);
+  noStroke();
+  t += dt;
+  gamma = parseFloat(gammaRadio.value());
+
+  for (let q = 0; q < 10; q++) {
+    internalenergy = 0;
+    kineticenergy = 0;
+
+    for (let i = 0; i < N; i++) {
+      for (let j = 0; j < N; j++) {
+        vx[i][j] = mx[i][j] / rho[i][j];
+        vy[i][j] = my[i][j] / rho[i][j];
+        p[i][j]  = gamma * e[i][j];
+      }
+    }
+
+    // Region 1: left of body
+    for (let i = 1; i < BX0; i++)
+      for (let j = 1; j < N - 1; j++)
+        centred(i, j);
+
+    // Region 2: right of body
+    for (let i = BX1; i < N - 1; i++)
+      for (let j = 1; j < N - 1; j++)
+        centred(i, j);
+
+    // Region 3: below body (upwind in x)
+    for (let i = BX0; i < BX1; i++)
+      for (let j = 1; j < BX0; j++)
+        upwindX(i, j);
+
+    // Region 4: above body (centred)
+    for (let i = BX0; i < BX1; i++)
+      for (let j = BX1; j < N - 1; j++)
+        centred(i, j);
+
+    // Outer-box boundaries (zero-gradient)
+    for (let i = 0; i < N; i++) {
+      e[N-1][i]   = e[N-2][i];
+      e[i][0]     = e[i][1];
+      e[i][N-1]   = e[i][N-2];
+      mx[N-1][i]  = mx[N-2][i];
+      mx[i][0]    = mx[i][1];
+      mx[i][N-1]  = mx[i][N-2];
+      my[N-1][i]  = my[N-2][i];
+      my[i][0]    = my[i][1];
+      my[i][N-1]  = my[i][N-2];
+      rho[N-1][i] = rho[N-2][i];
+      rho[i][0]   = rho[i][1];
+      rho[i][N-1] = rho[i][N-2];
+    }
+
+    // Body slip BC + drag/lift
+    drag = 0;
+    lift = 0;
+    for (let j = BX0; j < BX1; j++) {
+      e[BX0][j]     = e[BX0-1][j];
+      e[BX1-1][j]   = e[BX1][j];
+      mx[BX0][j]    = 0;
+      mx[BX1-1][j]  = 0;
+      rho[BX0][j]   = rho[BX0-1][j];
+      rho[BX1-1][j] = rho[BX1][j];
+      my[BX0][j]    = my[BX0-1][j];
+      my[BX1-1][j]  = my[BX1][j];
+      drag += 2 * (p[BX0][j] - p[BX1][j]) / BW;
+    }
+    for (let i = BX0; i < BX1; i++) {
+      lift += 2 * (p[i][BX1] - p[i][BX0]) / BW;
+      e[i][BX0]    = e[i][BX0-1];
+      rho[i][BX0]  = rho[i][BX0-1];
+      mx[i][BX0]   = mx[i][BX0-1];
+      e[i][BX1-1]  = e[i][BX1];
+      rho[i][BX1-1] = rho[i][BX1];
+      mx[i][BX1-1] = mx[i][BX1];
+    }
+  }
+
+  // Periodic particle-trace reset
+  if (t > 0.00125) {
+    for (let i = 0; i < N; i++)
+      for (let j = 0; j < N; j++) {
+        x[i][j] = PX * i;
+        y[i][j] = PX * j;
+      }
+    t = 0;
+    background(255, 255, 255, 255);
+  }
+
+  // Body region overlay
+  fill(0, 0, 255, 100);
+  for (let i = BX0; i < BX1; i++)
+    for (let j = BX0; j < BX1; j++)
+      ellipse(PX*i, PX*j, PX);
+
+  // Particle trace
+  fill(0, 0, 255, 255);
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) {
+      x[i][j] += advect * vx[i][j] * dt;
+      y[i][j] += advect * vy[i][j] * dt;
+      ellipse(x[i][j], y[i][j], 1);
+    }
+  }
+
+  // Cross-cut profiles at j = JMID
+  for (let i = 0; i < N; i++) {
+    fill(0, 255, 255, 255);
+    ellipse(PX*i, 200 - 50  * rho[i][JMID], 1);
+    fill(255, 0, 0, 255);
+    ellipse(PX*i, 200 - 100 * p[i][JMID], 1);
+    fill(255, 255, 0, 255);
+    ellipse(PX*i, 200 - 100 * vx[i][JMID], 1);
+    fill(0, 255, 0, 255);
+    ellipse(PX*i, 200 - 1000 * (e[i][JMID]/rho[i][JMID] - 1), 1);
+  }
+
+  stroke(0);
+  line(0, 200, 400, 200);
+  line(0, 100, 400, 100);
+  noStroke();
+
+  fill(0);
+  text("Compressible Bluff Body Slip  (N=" + N + ")", 30, 10);
+  text("momentum (mx,my), density rho, internal energy e", 30, 50);
+  text("viscous stresses sxx, sxy, syy", 30, 70);
+  text("sxx=nu*dvx/dx; sxy=nu*(dvx/dy+dvy/dx)/2, syy=nu*dvy/dy, nu viscosity", 30, 90);
+  text("drho/dt + d(mx)/dx + d(my)/dy = 0", 30, 110);
+  text("dmx/dt + d(mx*vx)/dx + d(mx*vy)/dy + dp/dx = dsxx/dx + dsxy/dy", 30, 130);
+  text("dmy/dt + d(my*vx)/dx + d(my*vy)/dy + dp/dy = dsxy/dx + dsyy/dy", 30, 150);
+  text("de/dt + d(e*vx)/dx + d(e*vy)/dy + p*(dvx/dx + dvy/dy) = 0", 30, 170);
+  text("vx = mx/rho, vy = my/rho, p = gamma*e, gamma = " + gamma, 30, 190);
+
+  text("Green: Temperature (mid crosscut).", 10, 270);
+  text("Red: Pressure (mid crosscut).", 10, 290);
+  text("Blue: Trace of fluid particles (updated).", 10, 310);
+  text("Light-Blue: Density (mid crosscut factor 1/2)", 10, 330);
+  text("Yellow: Horisontal velocity (mid crosscut)", 10, 350);
+
+  text("C_D =", 10, 370);
+  text(floor(drag * 100) / 100, 100, 370);
+  text("C_L =", 200, 370);
+  text(floor(lift * 100) / 100, 300, 370);
+  text("Internal Energy =", 10, 390);
+  text(floor(internalenergy * 100) / 100, 120, 390);
+  text("Kinetic Energy =", 160, 390);
+  text(floor(kineticenergy * 100) / 100, 250, 390);
+  text("Total Energy =", 290, 390);
+  text(floor((internalenergy + kineticenergy) * 100) / 100, 370, 390);
+}
+</script>
+</body>
+</html>
