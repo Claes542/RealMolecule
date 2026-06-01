@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Bluff Body Mach 2 — CPU translation (RealThermo)</title>
+<style>
+  body { margin: 0; padding: 8px; background: #fff; font-family: sans-serif; }
+  #wrap { display: flex; flex-direction: column; align-items: center; }
+  canvas { display: block; border: 1px solid #888; background: #fff; }
+  #controls { display: flex; gap: 10px; align-items: center; margin-top: 8px; font-size: 12px; flex-wrap: wrap; max-width: 760px; justify-content: center; }
+  label { display: flex; gap: 4px; align-items: center; }
+  input[type="range"] { width: 130px; }
+  #info { width: 760px; font-size: 11px; line-height: 1.35; margin-top: 8px; }
+  code { background: #f0f0f0; padding: 0 3px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv" width="600" height="600"></canvas>
+  <div id="controls">
+    <label>inflow u<sub>0</sub>: <input id="rngU0" type="range" min="0.5" max="3.0" step="0.1" value="1.5" /><span id="lblU0">1.50</span></label>
+    <label>γ (p = γe): <input id="rngGamma" type="range" min="0.1" max="1.0" step="0.05" value="0.2" /><span id="lblGamma">0.20</span></label>
+    <label>art visc ν (×h): <input id="rngNu" type="range" min="0.1" max="5.0" step="0.1" value="0.5" /><span id="lblNu">0.50</span></label>
+    <label>body force K: <input id="rngK" type="range" min="0" max="2000" step="50" value="500" /><span id="lblK">500</span></label>
+    <label>fluid substeps/frame: <input id="rngSubsteps" type="range" min="1" max="40" step="1" value="10" /><span id="lblSubsteps">10</span></label>
+    <label>seed every (frames): <input id="rngSeedFreq" type="range" min="5" max="200" step="5" value="30" /><span id="lblSeedFreq">30</span></label>
+    <button id="btnPause">Pause</button>
+    <button id="btnReset">Reset</button>
+  </div>
+  <div id="info">
+    Compressible Navier–Stokes bluff-body flow as a RealThermo CPU companion to
+    <code>bluff_body_mach2.html</code>. Same physics, 1D-indexed
+    <code>Float32Array</code>s, ~280 lines.
+    <br><br>
+    <b>Equations</b>: <code>∂ρ/∂t + ∇·m = 0</code>,
+    <code>∂m/∂t + ∇·(m u) + ∇p = ∇·(ν∇u) + f</code>,
+    <code>∂e/∂t + ∇·(e u) + p∇·u = ν|∇u|²</code> with
+    <code>p = γe</code> and <code>u = m/ρ</code>. Bluff body = penalty force
+    <code>f = −K u</code> on the yellow rectangle. Dirichlet inflow at left
+    (constant u<sub>0</sub>, ρ = 1, e = 1), Neumann elsewhere.
+    <br><br>
+    <b>Blue line</b>: ρ−1 cross-cut. <b>Green line</b>: u<sub>x</sub> cross-cut.
+    <b>Red dots</b>: particle traces (reset cadence via slider).
+    <b>Yellow</b>: bluff-body region.
+    <br><br>
+    <b>D<sub>cum</sub></b> = ∫∫ ν|∇u|² dx dt — cumulative viscous dissipation,
+    the 2nd-Law witness for this flow.
+  </div>
+</div>
+
+<script>
+// ============================================================================
+// Bluff Body Mach 2 — CPU translation in the RealThermo style.
+// Physics matches bluff_body_mach2.html; data structures are flat Float32Array
+// for ~10× speedup over the nested-array original, so N=200 runs smoothly on CPU.
+// ============================================================================
+
+const N = 200;
+const NC = N * N;
+const idx = (i, j) => i + N * j;
+
+// Body geometry (fractions of N, matches source)
+const BODY_I0 = Math.round(N * 0.4875);  // 97
+const BODY_I1 = Math.round(N * 0.5125);  // 103
+const BODY_J0 = Math.round(N * 0.375);   // 75
+const BODY_J1 = Math.round(N * 0.625);   // 125
+const JMID    = Math.floor(N / 2);
+
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+const W = canvas.width;   // 600
+const PX = W / N;         // pixels per cell (3 at N=200)
+
+const rho = new Float32Array(NC);
+const e   = new Float32Array(NC);
+const mx  = new Float32Array(NC);
+const my  = new Float32Array(NC);
+const vx  = new Float32Array(NC);
+const vy  = new Float32Array(NC);
+const px = new Float32Array(NC), py = new Float32Array(NC);  // particle positions
+
+const h = 1 / N;
+let dt = 0.1 * h;
+
+// Live params
+let u0       = 1.5;
+let gammaVal = 0.2;
+let nuMul    = 0.5;       // ν in units of h
+let bodyK    = 500;
+let substeps = 10;
+let seedFreq = 30;        // frames between particle resets
+let D_cum    = 0;
+let simTime  = 0;
+let paused   = false;
+let frameCnt = 0;
+
+function initState() {
+  for (let q = 0; q < NC; q++) {
+    rho[q] = 1; e[q] = 1; mx[q] = u0; my[q] = 0; vx[q] = u0; vy[q] = 0;
+  }
+  D_cum = 0; simTime = 0; frameCnt = 0;
+  resetParticles();
+}
+
+function resetParticles() {
+  for (let j = 0; j < N; j++)
+    for (let i = 0; i < N; i++) {
+      const q = idx(i, j);
+      px[q] = i; py[q] = j;
+    }
+}
+
+// Hook up controls
+const rngU0 = document.getElementById('rngU0');
+const lblU0 = document.getElementById('lblU0');
+const rngGamma = document.getElementById('rngGamma');
+const lblGamma = document.getElementById('lblGamma');
+const rngNu = document.getElementById('rngNu');
+const lblNu = document.getElementById('lblNu');
+const rngK = document.getElementById('rngK');
+const lblK = document.getElementById('lblK');
+const rngSubsteps = document.getElementById('rngSubsteps');
+const lblSubsteps = document.getElementById('lblSubsteps');
+const rngSeedFreq = document.getElementById('rngSeedFreq');
+const lblSeedFreq = document.getElementById('lblSeedFreq');
+const btnPause = document.getElementById('btnPause');
+const btnReset = document.getElementById('btnReset');
+
+rngU0.addEventListener('input', () => { u0 = parseFloat(rngU0.value); lblU0.textContent = u0.toFixed(2); });
+rngGamma.addEventListener('input', () => { gammaVal = parseFloat(rngGamma.value); lblGamma.textContent = gammaVal.toFixed(2); });
+rngNu.addEventListener('input', () => { nuMul = parseFloat(rngNu.value); lblNu.textContent = nuMul.toFixed(2); });
+rngK.addEventListener('input', () => { bodyK = parseFloat(rngK.value); lblK.textContent = bodyK.toFixed(0); });
+rngSubsteps.addEventListener('input', () => { substeps = parseInt(rngSubsteps.value); lblSubsteps.textContent = substeps; });
+rngSeedFreq.addEventListener('input', () => { seedFreq = parseInt(rngSeedFreq.value); lblSeedFreq.textContent = seedFreq; });
+btnPause.addEventListener('click', () => { paused = !paused; btnPause.textContent = paused ? 'Play' : 'Pause'; });
+btnReset.addEventListener('click', () => { initState(); });
+
+function isBody(i, j) {
+  return i > BODY_I0 && i < BODY_I1 && j > BODY_J0 && j < BODY_J1;
+}
+
+function step() {
+  const nu = nuMul * h;
+  let D_inc = 0;
+
+  for (let j = 1; j < N - 1; j++) {
+    for (let i = 1; i < N - 1; i++) {
+      const q = idx(i, j);
+      const r = Math.max(rho[q], 0.05);
+      vx[q] = mx[q] / r;
+      vy[q] = my[q] / r;
+    }
+  }
+
+  for (let j = 1; j < N - 1; j++) {
+    for (let i = 1; i < N - 1; i++) {
+      const q  = idx(i, j);
+      const qE = idx(i+1, j), qW = idx(i-1, j);
+      const qN = idx(i, j+1), qS = idx(i, j-1);
+
+      const vxE = vx[qE], vxW = vx[qW], vxN = vx[qN], vxS = vx[qS], vxC = vx[q];
+      const vyE = vy[qE], vyW = vy[qW], vyN = vy[qN], vyS = vy[qS], vyC = vy[q];
+      const eE = e[qE], eW = e[qW], eN = e[qN], eS = e[qS], eC = e[q];
+
+      // viscous stresses at cell-centre (uses backward diff like source)
+      const sxx = nu * (vxC - vxW) / h;
+      const syy = nu * (vyC - vyS) / h;
+      const sxy = nu * 0.5 * (vxC - vxS + vyC - vyW) / h;
+      const sxxE = nu * (vxE - vxC) / h;
+      const sxyN = nu * 0.5 * (vxN - vxC + vyN - vy[idx(i-1, j+1)]) / h;
+      const syyN = nu * (vyN - vyC) / h;
+      const sxyE = nu * 0.5 * (vx[idx(i+1, j)] - vx[idx(i+1, j-1)] + vy[qE] - vy[q]) / h;
+
+      const dvx_dx = (vxE - vxW) / (2 * h);
+      const dvy_dy = (vyN - vyS) / (2 * h);
+      const dvx_dy = (vxN - vxS) / (2 * h);
+      const dvy_dx = (vyE - vyW) / (2 * h);
+
+      // dissipation rate at this cell (used for D_cum and for energy heating)
+      const Dlocal = nu * (dvx_dx * dvx_dx + dvy_dy * dvy_dy
+                          + 0.5 * (dvx_dy + dvy_dx) * (dvx_dy + dvy_dx));
+      D_inc += Dlocal;
+
+      // body penalty force
+      const fxLoc = isBody(i, j) ? -bodyK * vxC : 0;
+
+      // momentum updates
+      mx[q] = mx[q]
+        + 0.01 * dt * (vxE + vxW - 4 * vxC + vxN + vxS) / h
+        - 0.5  * dt * (vxE * mx[qE] - vxW * mx[qW]) / h
+        - 0.5  * dt * (vyN * mx[qN] - vyS * mx[qS]) / h
+        - dt   * gammaVal * (eE - eW) / h
+        + dt   * (sxxE - sxx + sxyN - sxy) / h
+        + dt   * fxLoc;
+
+      my[q] = my[q]
+        + 0.01 * dt * (vyE + vyW - 4 * vyC + vyN + vyS) / h
+        - 0.5  * dt * (vxE * my[qE] - vxW * my[qW]) / h
+        - 0.5  * dt * (vyN * my[qN] - vyS * my[qS]) / h
+        - dt   * gammaVal * (eN - eS) / h
+        + dt   * (sxyE - sxy + syyN - syy) / h;
+
+      // density update
+      rho[q] = rho[q]
+        - 0.5 * dt * (mx[qE] - mx[qW]) / h
+        - 0.5 * dt * (my[qN] - my[qS]) / h
+        + 0.2 * dt * (rho[qE] + rho[qW] - 4 * rho[q] + rho[qN] + rho[qS]) / h;
+
+      // energy update — adds heating from local dissipation (Dlocal*dt)
+      e[q] = e[q]
+        + 0.2 * dt * (eE + eW - 4 * eC + eN + eS) / h
+        - 0.5 * dt * (vxE * eE - vxW * eW) / h
+        - 0.5 * dt * (vyN * eN - vyS * eS) / h
+        - dt * gammaVal * eC * (dvx_dx * 2 * h + dvy_dy * 2 * h) / h
+        + dt * Dlocal;
+    }
+  }
+
+  D_cum += D_inc * h * h * dt;
+  simTime += dt;
+
+  // Dirichlet inflow at left, Neumann at right/top/bottom
+  for (let j = 0; j < N; j++) {
+    const qL = idx(0, j);
+    rho[qL] = 1; e[qL] = 1; mx[qL] = u0; my[qL] = 0; vx[qL] = u0; vy[qL] = 0;
+    const qR = idx(N-1, j), qR1 = idx(N-2, j);
+    rho[qR] = rho[qR1]; e[qR] = e[qR1]; mx[qR] = mx[qR1]; my[qR] = my[qR1];
+  }
+  for (let i = 0; i < N; i++) {
+    const qB = idx(i, 0), qB1 = idx(i, 1);
+    const qT = idx(i, N-1), qT1 = idx(i, N-2);
+    rho[qB] = rho[qB1]; e[qB] = e[qB1]; mx[qB] = mx[qB1]; my[qB] = my[qB1];
+    rho[qT] = rho[qT1]; e[qT] = e[qT1]; mx[qT] = mx[qT1]; my[qT] = my[qT1];
+  }
+}
+
+function render() {
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, W);
+
+  // Bluff-body region (yellow)
+  ctx.fillStyle = 'rgba(255,210,0,0.55)';
+  ctx.fillRect(PX*BODY_I0, PX*BODY_J0, PX*(BODY_I1-BODY_I0), PX*(BODY_J1-BODY_J0));
+
+  // Particle traces (red dots)
+  ctx.fillStyle = 'rgba(220,0,0,0.55)';
+  for (let q = 0; q < NC; q++) {
+    if (px[q] > 0 && px[q] < N && py[q] > 0 && py[q] < N) {
+      ctx.fillRect(PX*px[q], PX*py[q], 1.2, 1.2);
+    }
+  }
+
+  // Cross-cut polylines along j = JMID, plotted around y = W*0.55
+  const BASELINE = W * 0.55;
+  const SCALE = 100;
+  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = 'rgba(0,0,255,0.85)';
+  ctx.beginPath();
+  for (let i = 0; i < N; i++) {
+    const r = rho[idx(i, JMID)] - 1;
+    const xPx = PX * i, yPx = BASELINE - SCALE * r;
+    if (i === 0) ctx.moveTo(xPx, yPx); else ctx.lineTo(xPx, yPx);
+  }
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,160,0,0.85)';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  for (let i = 0; i < N; i++) {
+    const v = vx[idx(i, JMID)];
+    const xPx = PX * i, yPx = BASELINE - SCALE * (v - 1);
+    if (i === 0) ctx.moveTo(xPx, yPx); else ctx.lineTo(xPx, yPx);
+  }
+  ctx.stroke();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(120,120,120,0.35)';
+  ctx.beginPath(); ctx.moveTo(0, BASELINE); ctx.lineTo(W, BASELINE); ctx.stroke();
+
+  // Text annotations
+  ctx.fillStyle = '#000';
+  ctx.font = '11px sans-serif';
+  ctx.textBaseline = 'top';
+  ctx.fillText('Compressible Bluff-Body Flow (CPU, N=200) — RealThermo translation', 10, 8);
+  ctx.fillText(`p = γe, γ = ${gammaVal.toFixed(2)}, ν = ${nuMul.toFixed(2)}·h, inflow u₀ = ${u0.toFixed(2)}, body K = ${bodyK.toFixed(0)}`, 10, 24);
+  ctx.fillText('Blue: ρ−1   Green: uₓ−1   Yellow: bluff body   Red: particle trace', 10, W - 60);
+  ctx.fillText(`t = ${simTime.toFixed(3)}    D_cum = ${D_cum.toExponential(2)}`, 10, W - 44);
+  ctx.fillText('Equations: ∂ρ/∂t+∇·m=0,  ∂m/∂t+∇·(m u)+∇p=∇·(ν∇u)+f,  ∂e/∂t+∇·(e u)+p∇·u = ν|∇u|².', 10, W - 28);
+}
+
+function advectParticles() {
+  const ADV = 8000;
+  const dtSub = dt * substeps;
+  for (let q = 0; q < NC; q++) {
+    // bilinear interp would be nicer; nearest-cell is fast and good enough at 200²
+    const i = Math.max(0, Math.min(N-1, Math.floor(px[q])));
+    const j = Math.max(0, Math.min(N-1, Math.floor(py[q])));
+    const qi = idx(i, j);
+    px[q] += ADV * vx[qi] * dtSub;
+    py[q] += ADV * vy[qi] * dtSub;
+  }
+}
+
+initState();
+
+function frame() {
+  if (!paused) {
+    for (let s = 0; s < substeps; s++) step();
+    advectParticles();
+    frameCnt++;
+    if (frameCnt >= seedFreq) { resetParticles(); frameCnt = 0; }
+  }
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

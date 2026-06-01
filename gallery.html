@@ -75,6 +75,12 @@ footer a { color: #4fc3f7; text-decoration: none; }
     <b style="color:#ffca28">Material</b> ·
     <a href="#mat" style="color:#80cbc4">Materials (NaCl, ice, dispersion, melting)</a><br>
 
+    <b style="color:#ff9e80">Real Thermodynamics (Vol&nbsp;V)</b> ·
+    <a href="#rt-joule" style="color:#80cbc4">Joule expansion</a> ·
+    <a href="#rt-piston" style="color:#80cbc4">Piston-cylinder &amp; heat engine</a> ·
+    <a href="#rt-cosmology" style="color:#80cbc4">Cosmology / Big Bang &amp; Crunch</a> ·
+    <a href="#rt-bluff" style="color:#80cbc4">Bluff body</a><br>
+
     <b style="color:#aaa">Foundation</b> ·
     <a href="#hierarchy" style="color:#80cbc4">Hierarchical model</a> ·
     <a href="#thermodynamics" style="color:#80cbc4">RealQM with thermodynamics</a> ·
@@ -210,6 +216,108 @@ footer a { color: #4fc3f7; text-decoration: none; }
 </div>
 
 <!-- FOUNDATION -->
+<!-- ====================================================================== -->
+<!-- REAL THERMODYNAMICS (Vol V) -- browser-runnable RNS simulations         -->
+<!-- ====================================================================== -->
+<div class="section" style="background:#1a1008;border:1px solid #4a2618;padding:12px 16px;margin-top:12px">
+  <h2 id="rt-sims" style="color:#ff9e80">Real Thermodynamics Simulations (Vol&nbsp;V)</h2>
+  <p class="desc">Browser-runnable companion simulators for <em>Real ThermoDynamics</em>
+  (Body and Soul Vol&nbsp;V). All implement the compressible Navier–Stokes / RNS
+  equations on CPU or WebGPU; each is a few hundred lines of self-contained
+  HTML/JavaScript with no dependencies. Cumulative dissipation
+  <code>D = ∫∫ μ|∇u|² dx dt</code> is reported as the 2nd-Law witness in each.</p>
+
+  <h3 id="rt-joule" style="color:#ff9e80;margin-top:14px;font-size:15px">Joule's 1845 expansion</h3>
+  <div class="grid">
+    <a class="card" href="joule_experiment_cpu.html" style="border-color:#ff9e80;background:#180c08;padding:14px">
+      <h3 style="color:#ff9e80">joule_experiment_cpu.html  (N = 100)</h3>
+      <div class="desc">Two-chamber Joule free expansion with channel throttling.
+      Live sliders for channel width, viscosity, EOS. Reads off the dynamic
+      temperature gap ΔT, the dissipation D, and the macroscopic identity
+      ΔT ≈ D/m_R that classical thermodynamics missed.</div>
+    </a>
+    <a class="card" href="joule_experiment_cpu_200.html" style="border-color:#ff9e80;background:#180c08;padding:14px">
+      <h3 style="color:#ff9e80">joule_experiment_cpu_200.html  (N = 200)</h3>
+      <div class="desc">Higher-resolution version of the Joule simulator — sharper
+      jet profile through the channel, cleaner ΔT and D readouts at the cost
+      of more CPU per frame.</div>
+    </a>
+  </div>
+
+  <h3 id="rt-piston" style="color:#ff9e80;margin-top:14px;font-size:15px">Piston-cylinder &amp; heat engine</h3>
+  <div class="grid">
+    <a class="card" href="piston_cylinder_cpu.html" style="border-color:#ff9e80;background:#180c08;padding:14px">
+      <h3 style="color:#ff9e80">piston_cylinder_cpu.html  (1D Lagrangian)</h3>
+      <div class="desc">1D Lagrangian piston-cylinder with vN–R artificial
+      viscosity. Cycle button drives a 4-phase Carnot-like cycle (compress →
+      hold-hot → expand → hold-cold). Reports η_engine = W_net/Q_hot
+      against the Carnot bound 1 − T_c/T_h, plus a live P–V diagram.</div>
+    </a>
+    <a class="card" href="piston_cylinder_2d_cpu.html" style="border-color:#ff9e80;background:#180c08;padding:14px">
+      <h3 style="color:#ff9e80">piston_cylinder_2d_cpu.html  (2D, dual bath)</h3>
+      <div class="desc">Two-chamber + channel + movable piston heat engine. Left
+      chamber thermally coupled to T_hot, right chamber to T_cold. The channel
+      jet is where D lives; η_engine vs Carnot bound shows the dissipation
+      deficit directly.</div>
+    </a>
+    <a class="card" href="half_engine_cpu.html" style="border-color:#ff9e80;background:#180c08;padding:14px">
+      <h3 style="color:#ff9e80">half_engine_cpu.html  (expansion stroke only)</h3>
+      <div class="desc">Hot dense gas in the left chamber, valve closed, piston
+      flush against the valve. Click <em>Open Valve</em>: gas expands through
+      the channel, does work on the wall, piston travels to the right end.
+      Reports W_wall = ∫p·dV, Q_lost = U_L0 − U_L, and η = W_wall/Q_lost.</div>
+    </a>
+  </div>
+
+  <h3 id="rt-cosmology" style="color:#ff9e80;margin-top:14px;font-size:15px">Cosmology / Big Bang &amp; Big Crunch</h3>
+  <div class="grid">
+    <a class="card" href="cosmology_2d_cpu.html" style="border-color:#ff9e80;background:#180c08;padding:14px">
+      <h3 style="color:#ff9e80">cosmology_2d_cpu.html  (2D)</h3>
+      <div class="desc">2D self-gravitating RNS with a Big Bang initial condition
+      (central hot dense patch). Demonstrates expansion-cools and
+      compression-warms at cosmic scale; qualitative companion to the 3D
+      simulators below.</div>
+    </a>
+    <a class="card" href="cosmology_3d_gpu_100.html" style="border-color:#ff9e80;background:#180c08;padding:14px">
+      <h3 style="color:#ff9e80">cosmology_3d_gpu_100.html  (3D WebGPU, 100³ ≈ 1M cells)</h3>
+      <div class="desc">WebGPU 3D self-gravitating RNS — Big Bang/Crunch on a
+      100³ grid. Live sliders for G, γ, seed amplitude, viscosity, particle
+      seed-frequency and trace speed. Density/temperature/φ cross-cut polylines
+      and 3D mid-plane particle traces. Default parameters tuned for one
+      BB→BC→stable virial trajectory.</div>
+    </a>
+    <a class="card" href="cosmology_3d_gpu_200.html" style="border-color:#ff9e80;background:#180c08;padding:14px">
+      <h3 style="color:#ff9e80">cosmology_3d_gpu_200.html  (3D WebGPU, 200³ ≈ 8M cells)</h3>
+      <div class="desc">High-resolution version of the 3D cosmology simulator.
+      For high-end GPUs.</div>
+    </a>
+  </div>
+
+  <h3 id="rt-bluff" style="color:#ff9e80;margin-top:14px;font-size:15px">Bluff-body flow</h3>
+  <div class="grid">
+    <a class="card" href="bluff_body_cpu.html" style="border-color:#ff9e80;background:#180c08;padding:14px">
+      <h3 style="color:#ff9e80">bluff_body_cpu.html  (Mach 2, penalty body)</h3>
+      <div class="desc">Compressible Navier–Stokes bluff-body flow at supersonic
+      inflow with a penalty-force bluff body. Live sliders for inflow speed,
+      γ, ν, body force strength. Continuous polyline cross-cuts of ρ and uₓ,
+      cumulative D readout.</div>
+    </a>
+    <a class="card" href="bluff_body_slip_cpu.html" style="border-color:#ff9e80;background:#180c08;padding:14px">
+      <h3 style="color:#ff9e80">bluff_body_slip_cpu.html  (slip-wall body)</h3>
+      <div class="desc">Same compressible flow with a slip-wall bluff body
+      (square excluded from the domain). Drag and lift integrated by pressure
+      across the body faces; clean Karman vortex shedding at high enough
+      inflow.</div>
+    </a>
+  </div>
+
+  <p class="desc" style="margin-top:12px">All RealThermo codes are open-source on
+  <a href="https://github.com/Claes542/RealMolecule" style="color:#ff9e80">github.com/Claes542/RealMolecule</a>
+  and developed in tandem with the Vol&nbsp;V book
+  (<a href="BodyAndSoulV/ambsthermo.pdf" style="color:#ff9e80">ambsthermo.pdf</a>).
+  Each chapter of the book points to the companion simulator it discusses.</p>
+</div>
+
 <div class="section">
   <h2 id="foundation">Foundation</h2>
   <div class="grid">

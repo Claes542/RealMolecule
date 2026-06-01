@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Compressible Bluff Body Slip — CPU translation (RealThermo)</title>
+<style>
+  body { margin: 0; padding: 8px; background: #fff; font-family: sans-serif; }
+  #wrap { display: flex; flex-direction: column; align-items: center; }
+  canvas { display: block; border: 1px solid #888; background: #fff; }
+  #controls { display: flex; gap: 10px; align-items: center; margin-top: 8px; font-size: 12px; flex-wrap: wrap; max-width: 760px; justify-content: center; }
+  label { display: flex; gap: 4px; align-items: center; }
+  input[type="range"] { width: 130px; }
+  #info { width: 760px; font-size: 11px; line-height: 1.35; margin-top: 8px; }
+  code { background: #f0f0f0; padding: 0 3px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv" width="600" height="600"></canvas>
+  <div id="controls">
+    <label>inflow u<sub>0</sub>: <input id="rngU0" type="range" min="0.2" max="3.0" step="0.05" value="1.0" /><span id="lblU0">1.00</span></label>
+    <label>γ (p = γe): <input id="rngGamma" type="range" min="0.05" max="1.0" step="0.05" value="0.1" /><span id="lblGamma">0.10</span></label>
+    <label>art visc ν (×h): <input id="rngNu" type="range" min="0.05" max="2.0" step="0.05" value="0.1" /><span id="lblNu">0.10</span></label>
+    <label>diff μ: <input id="rngMu" type="range" min="0.05" max="0.5" step="0.01" value="0.20" /><span id="lblMu">0.20</span></label>
+    <label>fluid substeps/frame: <input id="rngSubsteps" type="range" min="1" max="30" step="1" value="10" /><span id="lblSubsteps">10</span></label>
+    <label>seed every (frames): <input id="rngSeedFreq" type="range" min="5" max="200" step="5" value="40" /><span id="lblSeedFreq">40</span></label>
+    <button id="btnPause">Pause</button>
+    <button id="btnReset">Reset</button>
+  </div>
+  <div id="info">
+    Compressible Navier–Stokes flow around a slip-wall bluff body — CPU translation
+    of the p5.js <em>Bluff Body Slip</em> sketch (N = 100, ~340 lines).
+    The body is a 20×20 square excluded from the domain with slip
+    walls on all four faces. Drag/lift are computed by integrating the
+    pressure difference across the body.
+    <br><br>
+    <b>Equations</b>: <code>∂ρ/∂t + ∇·m = 0</code>,
+    <code>∂m/∂t + ∇·(m u) + ∇p = ∇·(ν∇u)</code>,
+    <code>∂e/∂t + ∇·(e u) + p∇·u = ν|∇u|²</code> with
+    <code>p = γe</code>, <code>u = m/ρ</code>.
+    <br><br>
+    <b>Cross-cuts</b> at j = N/2 — Cyan: ρ. Yellow-orange: u<sub>x</sub>. Red: p. Green: T = e/ρ − 1.
+    <b>Blue dots</b>: particle traces.
+    <b>Blue square</b>: bluff body.
+    <b>D<sub>cum</sub></b> = ∫∫ν|∇u|² dx dt — cumulative dissipation.
+  </div>
+</div>
+
+<script>
+// ============================================================================
+// Compressible bluff-body Slip flow — CPU translation in RealThermo style.
+// p5.js original used 4 sub-region loops to skip the bluff-body interior;
+// here we do the same with a single mask, on flat Float32Arrays.
+// ============================================================================
+
+const N = 100;
+const NC = N * N;
+const idx = (i, j) => i + N * j;
+
+// Body geometry — 20×20 square in the centre, slip walls on all four faces
+const BODY_I0 = 40, BODY_I1 = 60;     // i ∈ [I0..I1)  body cells
+const BODY_J0 = 40, BODY_J1 = 60;     // j ∈ [J0..J1)
+const JMID = 50;                       // cross-cut row
+
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+const W = canvas.width;                // 600
+const PX = W / N;                      // 6 px per cell
+
+const rho = new Float32Array(NC);
+const e   = new Float32Array(NC);
+const mx  = new Float32Array(NC);
+const my  = new Float32Array(NC);
+const vx  = new Float32Array(NC);
+const vy  = new Float32Array(NC);
+const p   = new Float32Array(NC);
+const sxx = new Float32Array(NC);
+const syy = new Float32Array(NC);
+const sxy = new Float32Array(NC);
+const px = new Float32Array(NC);
+const py = new Float32Array(NC);
+
+const h = 1 / N;
+const dt = 0.05 * h;
+
+let u0 = 1.0, gammaVal = 0.1, nuMul = 0.1, muVal = 0.2;
+let substeps = 10, seedFreq = 40;
+let paused = false, frameCnt = 0;
+
+let internalEnergy = 0, kineticEnergy = 0, D_cum = 0, drag = 0, lift = 0, simTime = 0;
+
+function inBody(i, j) {
+  return i >= BODY_I0 && i < BODY_I1 && j >= BODY_J0 && j < BODY_J1;
+}
+
+function initState() {
+  for (let j = 0; j < N; j++)
+    for (let i = 0; i < N; i++) {
+      const q = idx(i, j);
+      vx[q] = u0; vy[q] = 0;
+      mx[q] = u0; my[q] = 0;     // m = ρ·u with ρ = 1
+      rho[q] = 1; e[q] = 1; p[q] = gammaVal;
+      sxx[q] = 0; syy[q] = 0; sxy[q] = 0;
+    }
+  D_cum = 0; simTime = 0; frameCnt = 0;
+  resetParticles();
+}
+
+function resetParticles() {
+  for (let j = 0; j < N; j++)
+    for (let i = 0; i < N; i++) {
+      const q = idx(i, j);
+      px[q] = i; py[q] = j;
+    }
+}
+
+// Controls
+const rngU0 = document.getElementById('rngU0');
+const lblU0 = document.getElementById('lblU0');
+const rngGamma = document.getElementById('rngGamma');
+const lblGamma = document.getElementById('lblGamma');
+const rngNu = document.getElementById('rngNu');
+const lblNu = document.getElementById('lblNu');
+const rngMu = document.getElementById('rngMu');
+const lblMu = document.getElementById('lblMu');
+const rngSubsteps = document.getElementById('rngSubsteps');
+const lblSubsteps = document.getElementById('lblSubsteps');
+const rngSeedFreq = document.getElementById('rngSeedFreq');
+const lblSeedFreq = document.getElementById('lblSeedFreq');
+const btnPause = document.getElementById('btnPause');
+const btnReset = document.getElementById('btnReset');
+
+rngU0.addEventListener('input', () => { u0 = parseFloat(rngU0.value); lblU0.textContent = u0.toFixed(2); });
+rngGamma.addEventListener('input', () => { gammaVal = parseFloat(rngGamma.value); lblGamma.textContent = gammaVal.toFixed(2); });
+rngNu.addEventListener('input', () => { nuMul = parseFloat(rngNu.value); lblNu.textContent = nuMul.toFixed(2); });
+rngMu.addEventListener('input', () => { muVal = parseFloat(rngMu.value); lblMu.textContent = muVal.toFixed(2); });
+rngSubsteps.addEventListener('input', () => { substeps = parseInt(rngSubsteps.value); lblSubsteps.textContent = substeps; });
+rngSeedFreq.addEventListener('input', () => { seedFreq = parseInt(rngSeedFreq.value); lblSeedFreq.textContent = seedFreq; });
+btnPause.addEventListener('click', () => { paused = !paused; btnPause.textContent = paused ? 'Play' : 'Pause'; });
+btnReset.addEventListener('click', () => { initState(); });
+
+function step() {
+  const nu = nuMul * h;
+  let D_inc = 0, IE = 0, KE = 0;
+
+  // Velocities and pressure everywhere
+  for (let q = 0; q < NC; q++) {
+    const r = Math.max(rho[q], 0.05);
+    vx[q] = mx[q] / r;
+    vy[q] = my[q] / r;
+    p[q] = gammaVal * e[q];
+  }
+
+  // Conservation loop — skip interior body cells (slip walls applied below)
+  for (let j = 1; j < N - 1; j++) {
+    for (let i = 1; i < N - 1; i++) {
+      if (inBody(i, j)) continue;
+
+      const q  = idx(i, j);
+      const qE = idx(i+1, j), qW = idx(i-1, j);
+      const qN = idx(i, j+1), qS = idx(i, j-1);
+
+      sxx[q] = nu * (vx[q] - vx[qW]) / h;
+      sxy[q] = nu * 0.5 * (vx[q] - vx[qS] + vy[q] - vy[qW]) / h;
+      syy[q] = nu * (vy[q] - vy[qS]) / h;
+    }
+  }
+
+  for (let j = 1; j < N - 1; j++) {
+    for (let i = 1; i < N - 1; i++) {
+      if (inBody(i, j)) continue;
+
+      const q  = idx(i, j);
+      const qE = idx(i+1, j), qW = idx(i-1, j);
+      const qN = idx(i, j+1), qS = idx(i, j-1);
+
+      const vxC = vx[q], vyC = vy[q];
+      const vxE = vx[qE], vxW = vx[qW], vxN = vx[qN], vxS = vx[qS];
+      const vyE = vy[qE], vyW = vy[qW], vyN = vy[qN], vyS = vy[qS];
+      const eC = e[q], eE = e[qE], eW = e[qW], eN = e[qN], eS = e[qS];
+
+      // local dissipation (forward diffs for compatibility with the source)
+      const dvx_dx = vx[qE] - vxC;
+      const dvx_dy = vx[qN] - vxC;
+      const dvy_dx = vy[qE] - vyC;
+      const dvy_dy = vy[qN] - vyC;
+      const Dlocal = (dvx_dx * dvx_dx + dvx_dy * dvx_dy
+                    + dvy_dx * dvy_dx + dvy_dy * dvy_dy) / h;
+      D_inc += muVal * Dlocal;
+
+      mx[q] = mx[q]
+        + muVal * dt * (vxE + vxW - 4 * vxC + vxN + vxS) / h
+        - 0.5 * dt * (vxE * mx[qE] - vxW * mx[qW]) / h
+        - 0.5 * dt * (vyN * mx[qN] - vyS * mx[qS]) / h
+        - dt * gammaVal * (eE - eW) / h
+        + dt * (sxx[qE] - sxx[q] + sxy[qN] - sxy[q]) / h;
+
+      my[q] = my[q]
+        + muVal * dt * (vyE + vyW - 4 * vyC + vyN + vyS) / h
+        - 0.5 * dt * (vxE * my[qE] - vxW * my[qW]) / h
+        - 0.5 * dt * (vyN * my[qN] - vyS * my[qS]) / h
+        - dt * gammaVal * (eN - eS) / h
+        + dt * (sxy[qE] - sxy[q] + syy[qN] - syy[q]) / h;
+
+      rho[q] = rho[q]
+        - 0.5 * dt * (mx[qE] - mx[qW]) / h
+        - 0.5 * dt * (my[qN] - my[qS]) / h
+        + muVal * dt * (rho[qE] + rho[qW] - 4 * rho[q] + rho[qN] + rho[qS]) / h;
+
+      e[q] = eC
+        + muVal * dt * (eE + eW - 4 * eC + eN + eS) / h
+        - 0.5 * dt * (vxE * eE - vxW * eW) / h
+        - 0.5 * dt * (vyN * eN - vyS * eS) / h
+        - dt * gammaVal * eC * (vxE - vxW + vyN - vyS) / h
+        + dt * muVal * Dlocal;
+
+      IE += h * h * e[q];
+      KE += 0.5 * h * h * rho[q] * (vxC * vxC + vyC * vyC);
+    }
+  }
+
+  // Outer boundaries: Neumann everywhere except inflow on i=0 (Dirichlet)
+  for (let i = 0; i < N; i++) {
+    const qB = idx(i, 0), qB1 = idx(i, 1);
+    const qT = idx(i, N-1), qT1 = idx(i, N-2);
+    e[qB] = e[qB1]; rho[qB] = rho[qB1]; mx[qB] = mx[qB1]; my[qB] = my[qB1];
+    e[qT] = e[qT1]; rho[qT] = rho[qT1]; mx[qT] = mx[qT1]; my[qT] = my[qT1];
+  }
+  for (let j = 0; j < N; j++) {
+    const qL = idx(0, j);
+    rho[qL] = 1; e[qL] = 1; mx[qL] = u0; my[qL] = 0;
+    const qR = idx(N-1, j), qR1 = idx(N-2, j);
+    e[qR] = e[qR1]; rho[qR] = rho[qR1]; mx[qR] = mx[qR1]; my[qR] = my[qR1];
+  }
+
+  // Slip walls on the body faces + drag/lift integration
+  let drag_inc = 0, lift_inc = 0;
+  // Vertical body faces: i = BODY_I0 (front) and i = BODY_I1-1 (back)
+  for (let j = BODY_J0; j < BODY_J1; j++) {
+    const qFront = idx(BODY_I0, j),      qFrontU = idx(BODY_I0 - 1, j);
+    const qBack  = idx(BODY_I1 - 1, j),  qBackD  = idx(BODY_I1, j);
+    e[qFront] = e[qFrontU]; rho[qFront] = rho[qFrontU];
+    mx[qFront] = 0; my[qFront] = my[qFrontU];
+    e[qBack] = e[qBackD]; rho[qBack] = rho[qBackD];
+    mx[qBack] = 0; my[qBack] = my[qBackD];
+    drag_inc += 2 * (p[qFront] - p[qBack]) / (BODY_I1 - BODY_I0);
+  }
+  // Horizontal body faces: j = BODY_J0 (bottom) and j = BODY_J1-1 (top)
+  for (let i = BODY_I0; i < BODY_I1; i++) {
+    const qBot = idx(i, BODY_J0),      qBotD = idx(i, BODY_J0 - 1);
+    const qTop = idx(i, BODY_J1 - 1),  qTopU = idx(i, BODY_J1);
+    e[qBot] = e[qBotD]; rho[qBot] = rho[qBotD]; mx[qBot] = mx[qBotD]; my[qBot] = 0;
+    e[qTop] = e[qTopU]; rho[qTop] = rho[qTopU]; mx[qTop] = mx[qTopU]; my[qTop] = 0;
+    lift_inc += 2 * (p[qTop] - p[qBot]) / (BODY_J1 - BODY_J0);
+  }
+
+  D_cum += D_inc * h * h * dt;
+  simTime += dt;
+  internalEnergy = IE; kineticEnergy = KE;
+  drag = drag_inc; lift = lift_inc;
+}
+
+function render() {
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';   // semi-transparent overdraw — matches the trailing trace look of the p5 original
+  ctx.fillRect(0, 0, W, W);
+
+  // Bluff body (blue square)
+  ctx.fillStyle = 'rgba(0,0,255,0.35)';
+  ctx.fillRect(PX * BODY_I0, PX * BODY_J0, PX * (BODY_I1 - BODY_I0), PX * (BODY_J1 - BODY_J0));
+
+  // Particle traces (blue dots)
+  ctx.fillStyle = 'rgba(0,0,255,0.9)';
+  for (let q = 0; q < NC; q++) {
+    if (px[q] > 0 && px[q] < N && py[q] > 0 && py[q] < N) {
+      ctx.fillRect(PX * px[q], PX * py[q], 1.2, 1.2);
+    }
+  }
+
+  // Cross-cut polylines at j = JMID, baseline y = 200, deviations × scale
+  ctx.lineWidth = 1.4;
+  function polyline(strokeStyle, getY) {
+    ctx.strokeStyle = strokeStyle;
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+      const yPx = getY(i);
+      const xPx = PX * i;
+      if (i === 0) ctx.moveTo(xPx, yPx); else ctx.lineTo(xPx, yPx);
+    }
+    ctx.stroke();
+  }
+  polyline('rgba(0,200,255,0.9)', i => 200 - 50 * rho[idx(i, JMID)]);
+  polyline('rgba(255,0,0,0.9)',   i => 200 - 100 * p[idx(i, JMID)]);
+  polyline('rgba(220,180,0,0.9)', i => 200 - 100 * vx[idx(i, JMID)]);
+  polyline('rgba(0,180,0,0.9)',   i => 200 - 1000 * (e[idx(i, JMID)] / Math.max(rho[idx(i, JMID)], 0.01) - 1));
+
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(120,120,120,0.4)';
+  ctx.beginPath(); ctx.moveTo(0, 200); ctx.lineTo(W, 200); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, 100); ctx.lineTo(W, 100); ctx.stroke();
+
+  // Text annotations
+  ctx.fillStyle = '#000';
+  ctx.font = '11px sans-serif';
+  ctx.textBaseline = 'top';
+  ctx.fillText('Compressible Bluff Body Slip (CPU, N = 100) — RealThermo translation',  10, 8);
+  ctx.fillText(`u₀ = ${u0.toFixed(2)},  γ = ${gammaVal.toFixed(2)},  ν = ${nuMul.toFixed(2)}·h,  μ = ${muVal.toFixed(2)}`, 10, 24);
+  ctx.fillText('Cross-cut at j = N/2:   Cyan ρ   Red p   Yellow uₓ   Green T−1', 10, 40);
+  ctx.fillText('Blue square = slip-wall bluff body.   Blue dots = particle trace.', 10, 56);
+  ctx.fillText(`t = ${simTime.toFixed(3)}    D_cum = ${D_cum.toExponential(2)}`, 10, 540);
+  ctx.fillText(`E_int = ${internalEnergy.toFixed(3)}    E_kin = ${kineticEnergy.toFixed(3)}    E_tot = ${(internalEnergy + kineticEnergy).toFixed(3)}`, 10, 556);
+  ctx.fillText(`C_D = ${drag.toFixed(3)}    C_L = ${lift.toFixed(3)}`, 10, 572);
+  ctx.fillText('Equations: ∂ρ/∂t+∇·m=0,  ∂m/∂t+∇·(m u)+∇p=∇·(ν∇u),  ∂e/∂t+∇·(e u)+p∇·u = ν|∇u|².', 10, 588);
+}
+
+function advectParticles() {
+  const ADV = 5000;
+  const dtSub = dt * substeps;
+  for (let q = 0; q < NC; q++) {
+    const i = Math.max(0, Math.min(N-1, Math.floor(px[q])));
+    const j = Math.max(0, Math.min(N-1, Math.floor(py[q])));
+    if (inBody(i, j)) continue;        // don't advect particles through the body
+    const qi = idx(i, j);
+    px[q] += ADV * vx[qi] * dtSub;
+    py[q] += ADV * vy[qi] * dtSub;
+  }
+}
+
+initState();
+
+function frame() {
+  if (!paused) {
+    for (let s = 0; s < substeps; s++) step();
+    advectParticles();
+    frameCnt++;
+    if (frameCnt >= seedFreq) { resetParticles(); frameCnt = 0; }
+  }
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

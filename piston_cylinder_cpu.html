@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Piston-Cylinder — Heat Engine / Heat Pump (CPU 1D)</title>
+<style>
+  body { margin: 0; background: #fff; font-family: sans-serif; color: #000; }
+  #wrap { display: flex; flex-direction: column; align-items: center; padding: 8px; }
+  canvas { display: block; border: 1px solid #888; }
+  #controls { display: flex; gap: 10px; align-items: center; margin: 8px 0; font-size: 12px; flex-wrap: wrap; max-width: 760px; justify-content: center; }
+  #controls button { padding: 4px 10px; cursor: pointer; }
+  #controls label { display: flex; gap: 4px; align-items: center; }
+  #info { width: 760px; font-size: 11px; line-height: 1.35; }
+  code { background: #eee; padding: 1px 3px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv" width="760" height="420"></canvas>
+  <div id="controls">
+    <button id="btnPause">Pause</button>
+    <button id="btnReset">Reset</button>
+    <button id="btnCycle">Run Cycle</button>
+    <label>load F: <input id="rngLoad" type="range" min="0" max="1.2" step="0.02" value="0.80" /><span id="lblLoad">0.80</span></label>
+    <label>piston mass: <input id="rngMp" type="range" min="0.01" max="0.5" step="0.01" value="0.05" /><span id="lblMp">0.05</span></label>
+    <label>shock visc: <input id="rngCq" type="range" min="0" max="4" step="0.1" value="1.5" /><span id="lblCq">1.5</span></label>
+    <label>T_hot: <input id="rngThot" type="range" min="0.5" max="3.0" step="0.05" value="1.8" /><span id="lblThot">1.80</span></label>
+    <label>T_cold: <input id="rngTcold" type="range" min="0.2" max="2.0" step="0.05" value="0.6" /><span id="lblTcold">0.60</span></label>
+    <label>τ_bath: <input id="rngTau" type="range" min="0.05" max="2.0" step="0.05" value="0.30" /><span id="lblTau">0.30</span></label>
+    <span id="lblMode" style="font-weight:bold;"></span>
+  </div>
+  <pre id="diag" style="font-size:11px; line-height:1.35; margin:0 0 8px; min-height:9em; width:760px;"></pre>
+  <div id="info">
+    <b>Piston-cylinder: one device, two modes, four-phase cycle.</b> A 1D
+    compressible gas (Lagrangian mass coordinate, von&nbsp;Neumann–Richtmyer
+    artificial viscosity <code>q</code>) in a cylinder closed at the left,
+    with a piston at the right pushed by gas pressure and resisted by an
+    external load <code>F</code>. If <code>F &lt; p_gas</code> the gas
+    expands and pushes the piston out (engine mode, work out, gas cools).
+    If <code>F &gt; p_gas</code> the load drives the piston in (pump mode,
+    work in, gas heats). The <b>Cycle</b> button drives a four-phase
+    Stirling-like cycle: <em>compress</em> → <em>hold-hot</em> (reject
+    Q<sub>hot</sub> to a T<sub>hot</sub> bath) → <em>expand</em>
+    → <em>hold-cold</em> (absorb Q<sub>cold</sub> from a T<sub>cold</sub>
+    bath). Cumulative dissipation <code>D = ∫(−q·du)dt</code> sets
+    η_engine = W_net/Q_hot below the Carnot bound 1 − T_cold/T_hot.
+    EOS <code>p = γρT</code>, <code>T = ε</code>, γ = 0.1.
+  </div>
+</div>
+
+<script>
+"use strict";
+
+// ============================================================================
+// parameters
+// ============================================================================
+const N      = 200;
+const gamma  = 0.1;
+const GAD    = 1 + gamma;
+const L      = 1.0;
+const X_P0   = 0.25;
+const RHO0   = 4.0;
+const EPS0   = 1.0;
+const M      = RHO0 * X_P0;
+const dm     = M / N;
+
+let Fload = 0.80, Mp = 0.05, cq = 1.5;
+let T_hot = 1.8, T_cold = 0.6, tau_bath = 0.3;
+let paused = false, simTime = 0;
+
+// Cycle state machine
+let cycling = false;
+let phase   = -1;     // -1 idle, 0 compress, 1 hold-hot, 2 expand, 3 hold-cold
+let phaseT0 = 0;
+const PHASE_NAMES   = ['COMPRESS', 'HOLD-HOT (reject Q_hot)', 'EXPAND', 'HOLD-COLD (absorb Q_cold)'];
+const PHASE_DUR     = [1.5, 1.0, 1.5, 1.0];   // sim-time per phase
+const PHASE_LOAD    = [1.05, 1.05, 0.30, 0.30];
+const PHASE_BATHON  = [false, true, false, true];     // bath active in hold phases
+const PHASE_BATHT   = [0, 'hot', 0, 'cold'];
+
+// per-cycle accumulators
+let Qhot = 0, Qcold = 0, Wnet = 0, Dcycle = 0, cycleCount = 0;
+// rolling P-V history (for the small P-V plot)
+const PV_MAX = 1200;
+const PVhist = new Float64Array(PV_MAX * 2);
+let PVlen = 0;
+
+const xx  = new Float64Array(N + 1);
+const uu  = new Float64Array(N + 1);
+const eps = new Float64Array(N);
+const rho = new Float64Array(N);
+const pr  = new Float64Array(N);
+const qv  = new Float64Array(N);
+
+let E0 = 1, Wload = 0;
+let D_cumul = 0;
+
+// ============================================================================
+// DOM
+// ============================================================================
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+const CW = canvas.width, CH = canvas.height;
+const btnPause = document.getElementById('btnPause');
+const btnReset = document.getElementById('btnReset');
+const btnCycle = document.getElementById('btnCycle');
+const rngLoad = document.getElementById('rngLoad'), lblLoad = document.getElementById('lblLoad');
+const rngMp = document.getElementById('rngMp'), lblMp = document.getElementById('lblMp');
+const rngCq = document.getElementById('rngCq'), lblCq = document.getElementById('lblCq');
+const rngThot = document.getElementById('rngThot'), lblThot = document.getElementById('lblThot');
+const rngTcold = document.getElementById('rngTcold'), lblTcold = document.getElementById('lblTcold');
+const rngTau = document.getElementById('rngTau'), lblTau = document.getElementById('lblTau');
+const lblMode = document.getElementById('lblMode');
+const diagEl = document.getElementById('diag');
+
+// ============================================================================
+// state
+// ============================================================================
+function setup() {
+  for (let i = 0; i <= N; i++) { xx[i] = X_P0 * i / N; uu[i] = 0; }
+  for (let k = 0; k < N; k++) eps[k] = EPS0;
+  simTime = 0; Wload = 0; D_cumul = 0;
+  E0 = internalEnergy();
+  cycling = false; phase = -1;
+  Qhot = 0; Qcold = 0; Wnet = 0; Dcycle = 0; cycleCount = 0;
+  PVlen = 0;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, CW, CH);
+}
+
+function internalEnergy() { let s = 0; for (let k = 0; k < N; k++) s += dm * eps[k]; return s; }
+function kineticEnergy() {
+  let s = 0;
+  for (let i = 1; i < N; i++) s += 0.5 * dm * uu[i] * uu[i];
+  s += 0.5 * Mp * uu[N] * uu[N];
+  return s;
+}
+function computeAux() {
+  for (let k = 0; k < N; k++) {
+    const w = xx[k + 1] - xx[k];
+    rho[k] = dm / Math.max(w, 1e-9);
+    pr[k]  = gamma * rho[k] * eps[k];
+    const du = uu[k + 1] - uu[k];
+    const c = Math.sqrt(GAD * Math.max(pr[k], 0) / Math.max(rho[k], 1e-9));
+    qv[k] = du < 0 ? rho[k] * (cq * cq * du * du - cq * c * du) : 0;
+  }
+}
+
+function maxStableDt() {
+  let dtm = 1e9;
+  for (let k = 0; k < N; k++) {
+    const w = xx[k + 1] - xx[k];
+    const c = Math.sqrt(GAD * Math.max(pr[k], 1e-12) / Math.max(rho[k], 1e-9));
+    const speed = c + Math.abs(uu[k + 1] - uu[k]) + 1e-9;
+    dtm = Math.min(dtm, 0.25 * w / speed);
+  }
+  return dtm;
+}
+
+function meanT() { let s = 0; for (let k = 0; k < N; k++) s += eps[k]; return s / N; }
+function meanP() { let s = 0; for (let k = 0; k < N; k++) s += pr[k];  return s / N; }
+function cylVolume() { return xx[N]; }
+
+function applyBath(dt, T_bath) {
+  // Newton-cooling relaxation of internal energy toward T_bath. Integrate
+  // total heat exchanged (per unit area) over this step.
+  let Qexch = 0;
+  const k_b = 1 / Math.max(tau_bath, 1e-3);
+  for (let k = 0; k < N; k++) {
+    const de = k_b * (T_bath - eps[k]) * dt;
+    eps[k] = Math.max(1e-6, eps[k] + de);
+    Qexch += dm * de;     // positive if gas gained heat from bath
+  }
+  return Qexch;
+}
+
+function step(dt) {
+  computeAux();
+  // Cycle scheduler: override load + decide bath
+  let bathOn = false, bathT = 0;
+  if (cycling) {
+    const tp = simTime - phaseT0;
+    if (tp >= PHASE_DUR[phase]) {
+      // advance phase; finalise cycle counter at end of full cycle
+      phase = (phase + 1) % 4;
+      phaseT0 = simTime;
+      if (phase === 0 && cycleCount > 0) {
+        // reset per-cycle accumulators at the start of each new cycle
+        Qhot = 0; Qcold = 0; Wnet = 0; Dcycle = 0;
+      }
+      if (phase === 0) cycleCount++;
+    }
+    Fload = PHASE_LOAD[phase];
+    bathOn = PHASE_BATHON[phase];
+    bathT  = PHASE_BATHT[phase] === 'hot' ? T_hot : T_cold;
+  }
+
+  // velocities (staggered)
+  for (let i = 1; i < N; i++)
+    uu[i] += dt * ((pr[i - 1] + qv[i - 1]) - (pr[i] + qv[i])) / dm;
+  uu[N] += dt * ((pr[N - 1] + qv[N - 1]) - Fload) / Mp;
+  uu[0] = 0;
+  // positions
+  for (let i = 1; i <= N; i++) xx[i] += dt * uu[i];
+  if (xx[N] > L) { xx[N] = L; if (uu[N] > 0) uu[N] = 0; }
+  if (xx[N] < 0.02) { xx[N] = 0.02; if (uu[N] < 0) uu[N] = 0; }
+  for (let i = 1; i < N; i++) if (xx[i] >= xx[i + 1]) xx[i] = xx[i + 1] - 1e-6;
+
+  let dD = 0;
+  for (let k = 0; k < N; k++) {
+    const du = uu[k + 1] - uu[k];
+    eps[k] = Math.max(1e-6, eps[k] - dt * (pr[k] + qv[k]) * du / dm);
+    dD += -qv[k] * du;
+  }
+  D_cumul += dt * dD;
+  if (cycling) Dcycle += dt * dD;
+
+  // bath coupling (during hold phases) — accumulate Q_hot (rejected, negative
+  // here = gas loses heat to hot bath) and Q_cold (absorbed, positive).
+  if (bathOn) {
+    const Qexch = applyBath(dt, bathT);
+    if (PHASE_BATHT[phase] === 'hot') Qhot += -Qexch;    // gas → bath
+    else                              Qcold += Qexch;     // bath → gas
+  }
+
+  const dW = Fload * uu[N] * dt;
+  Wload += dW;
+  if (cycling) Wnet += dW;
+
+  // P-V history (running tail)
+  const V = cylVolume(), P = meanP();
+  if (PVlen < PV_MAX) {
+    PVhist[2*PVlen] = V; PVhist[2*PVlen+1] = P; PVlen++;
+  } else {
+    // shift in
+    for (let i = 0; i < PV_MAX - 1; i++) {
+      PVhist[2*i] = PVhist[2*(i+1)]; PVhist[2*i+1] = PVhist[2*(i+1)+1];
+    }
+    PVhist[2*(PV_MAX-1)] = V; PVhist[2*(PV_MAX-1)+1] = P;
+  }
+
+  simTime += dt;
+}
+
+// ============================================================================
+// rendering
+// ============================================================================
+const X0 = 30, X1 = 510, XS = (X1 - X0) / L;
+function tcolor(T) {
+  const s = Math.max(0, Math.min(1, (T - 0.4) / 1.6));
+  const r = Math.round(255 * s), b = Math.round(255 * (1 - s));
+  return `rgb(${r},${Math.round(80 * (1 - Math.abs(2 * s - 1)))},${b})`;
+}
+
+function renderPV() {
+  // P-V diagram in panel x ∈ [550, 740], y ∈ [25, 215]
+  const PX0 = 555, PX1 = 740, PY0 = 25, PY1 = 215;
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(PX0, PY0, PX1-PX0, PY1-PY0);
+  ctx.fillStyle = '#000'; ctx.font = '10px sans-serif';
+  ctx.fillText('P–V diagram', PX0, PY0 - 4);
+  ctx.fillText('V →', PX1 - 18, PY1 + 12);
+  ctx.save(); ctx.translate(PX0 - 4, PY0 + 6); ctx.rotate(-Math.PI/2); ctx.fillText('P ↑', 0, 0); ctx.restore();
+  if (PVlen < 2) return;
+  // auto scale
+  let Vmin = 1e9, Vmax = -1e9, Pmin = 1e9, Pmax = -1e9;
+  for (let i = 0; i < PVlen; i++) {
+    const V = PVhist[2*i], P = PVhist[2*i+1];
+    if (V < Vmin) Vmin = V; if (V > Vmax) Vmax = V;
+    if (P < Pmin) Pmin = P; if (P > Pmax) Pmax = P;
+  }
+  const dV = Math.max(Vmax - Vmin, 1e-9);
+  const dP = Math.max(Pmax - Pmin, 1e-9);
+  const Wpx = PX1 - PX0 - 8, Hpx = PY1 - PY0 - 8;
+  ctx.strokeStyle = 'rgba(0,80,200,0.85)'; ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  for (let i = 0; i < PVlen; i++) {
+    const V = PVhist[2*i], P = PVhist[2*i+1];
+    const x = PX0 + 4 + Wpx * (V - Vmin) / dV;
+    const y = PY1 - 4 - Hpx * (P - Pmin) / dP;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  // highlight current point
+  const Vc = PVhist[2*(PVlen-1)], Pc = PVhist[2*(PVlen-1)+1];
+  const cx = PX0 + 4 + Wpx * (Vc - Vmin) / dV;
+  const cy = PY1 - 4 - Hpx * (Pc - Pmin) / dP;
+  ctx.fillStyle = '#a00'; ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI*2); ctx.fill();
+}
+
+function render() {
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, CW, CH);
+  for (let k = 0; k < N; k++) {
+    ctx.fillStyle = tcolor(eps[k]);
+    const xa = X0 + xx[k] * XS, xb = X0 + xx[k + 1] * XS;
+    ctx.fillRect(xa, 25, xb - xa + 0.6, 70);
+  }
+  const xp = X0 + xx[N] * XS;
+  ctx.fillStyle = '#888'; ctx.fillRect(xp, 25, X1 - xp, 70);
+  ctx.fillStyle = '#222'; ctx.fillRect(xp - 4, 18, 8, 84);
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(X0, 25, X1 - X0, 70);
+  ctx.fillStyle = '#000'; ctx.font = '11px sans-serif';
+  ctx.fillText('closed end', X0, 16);
+  ctx.fillText('piston (load F)', xp - 30, 114);
+
+  const BASE = 280, AMP = 130;
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.moveTo(X0, BASE); ctx.lineTo(X1, BASE); ctx.stroke();
+  const curve = (color, fn) => {
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+    for (let k = 0; k < N; k++) {
+      const xc = X0 + 0.5 * (xx[k] + xx[k + 1]) * XS;
+      const y = BASE - AMP * Math.max(0, Math.min(1, fn(k)));
+      if (k === 0) ctx.moveTo(xc, y); else ctx.lineTo(xc, y);
+    }
+    ctx.stroke();
+  };
+  curve('rgba(220,0,0,0.95)',  k => eps[k] / 2.0);
+  curve('rgba(0,80,255,0.95)', k => pr[k] / 1.2);
+  curve('rgba(0,160,0,0.95)',  k => rho[k] / 8.0);
+  ctx.fillStyle = '#000';
+  ctx.fillText('Profiles vs x:  red T,  blue p,  green ρ', X0, 135);
+
+  // phase indicator
+  if (cycling) {
+    ctx.fillStyle = '#a00'; ctx.font = '12px sans-serif';
+    ctx.fillText(`Cycle phase: ${PHASE_NAMES[phase]}  (cycle #${cycleCount})`, X0, 305);
+  }
+
+  renderPV();
+}
+
+function diagnostics() {
+  const U = internalEnergy(), K = kineticEnergy();
+  const dU = U - E0;
+  const Tmean = meanT();
+  const Vp = uu[N], expanding = Vp >= 0;
+  if (!cycling) {
+    lblMode.textContent = expanding ? 'mode: EXPANDING — heat engine (work out)'
+                                    : 'mode: COMPRESSING — heat pump (work in)';
+    lblMode.style.color = expanding ? '#a00' : '#06a';
+  } else {
+    lblMode.textContent = `cycle phase ${phase}: ${PHASE_NAMES[phase]}`;
+    lblMode.style.color = '#a00';
+  }
+
+  const Wout = Math.max(Wload, 0);
+  const Win  = Math.max(-Wload, 0);
+  const etaEng  = (Wout + D_cumul) > 1e-9 ? 100 * Wout / (Wout + D_cumul) : 0;
+  const etaPump = Win > 1e-9 ? 100 * Math.max(Win - D_cumul, 0) / Win : 0;
+
+  // closed-cycle metrics (only meaningful after at least one full cycle)
+  let cyc = '';
+  if (cycling && cycleCount >= 1) {
+    const carnot = T_hot > 0 ? 100 * (1 - T_cold / T_hot) : 0;
+    const etaCycle = Qhot > 1e-9 ? 100 * Math.max(Wnet, 0) / Qhot : 0;
+    cyc =
+      `CYCLE #${cycleCount}:   W_net = ${Wnet.toFixed(4)}   Q_hot = ${Qhot.toFixed(4)}   Q_cold = ${Qcold.toFixed(4)}   D_cycle = ${Dcycle.toExponential(2)}\n` +
+      `                  η_engine = W_net/Q_hot = ${etaCycle.toFixed(1)} %    Carnot bound  1 − T_c/T_h = ${carnot.toFixed(1)} %\n`;
+  }
+
+  diagEl.textContent =
+    `piston x_p = ${xx[N].toFixed(4)}   V_p = ${Vp.toFixed(4)}   t = ${simTime.toFixed(3)}\n` +
+    `internal U = ${U.toFixed(4)}   kinetic K = ${K.toExponential(2)}   work on load W = ${Wload.toFixed(4)}\n` +
+    `energy check  U + K + W = ${(U + K + Wload).toFixed(4)}   (= E0 = ${E0.toFixed(4)})\n` +
+    `T_mean = ${Tmean.toFixed(4)}   ΔU = ${dU.toFixed(4)}   cumulative D = ${D_cumul.toExponential(3)}\n` +
+    `HEAT PUMP:     W_in  = ${Win.toFixed(4)}    η = 1 − D/W_in = ${etaPump.toFixed(1)} %\n` +
+    `HEAT ENGINE:   W_out = ${Wout.toFixed(4)}    η = W/(W+D)   = ${etaEng.toFixed(1)} %\n` +
+    cyc;
+}
+
+// ============================================================================
+// loop
+// ============================================================================
+function frame() {
+  if (!paused) {
+    computeAux();
+    let dt = maxStableDt();
+    const target = 0.0015;
+    let acc = 0;
+    while (acc < target) { const s = Math.min(dt, target - acc); step(s); acc += s; computeAux(); dt = maxStableDt(); }
+    render();
+    diagnostics();
+  }
+  requestAnimationFrame(frame);
+}
+
+btnPause.addEventListener('click', () => { paused = !paused; btnPause.textContent = paused ? 'Resume' : 'Pause'; });
+btnReset.addEventListener('click', setup);
+btnCycle.addEventListener('click', () => {
+  cycling = !cycling;
+  btnCycle.textContent = cycling ? 'Stop Cycle' : 'Run Cycle';
+  if (cycling) {
+    phase = 0; phaseT0 = simTime;
+    Qhot = 0; Qcold = 0; Wnet = 0; Dcycle = 0; cycleCount = 1;
+  }
+});
+rngLoad.addEventListener('input', () => { Fload = parseFloat(rngLoad.value); lblLoad.textContent = Fload.toFixed(2); });
+rngMp.addEventListener('input',   () => { Mp = parseFloat(rngMp.value); lblMp.textContent = Mp.toFixed(2); });
+rngCq.addEventListener('input',   () => { cq = parseFloat(rngCq.value); lblCq.textContent = cq.toFixed(1); });
+rngThot.addEventListener('input', () => { T_hot = parseFloat(rngThot.value); lblThot.textContent = T_hot.toFixed(2); });
+rngTcold.addEventListener('input',() => { T_cold = parseFloat(rngTcold.value); lblTcold.textContent = T_cold.toFixed(2); });
+rngTau.addEventListener('input',  () => { tau_bath = parseFloat(rngTau.value); lblTau.textContent = tau_bath.toFixed(2); });
+
+setup();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

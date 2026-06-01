@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Half Heat Engine — Joule expansion + working piston (CPU 2D)</title>
+<style>
+  body { margin: 0; background: #fff; font-family: sans-serif; color: #000; }
+  #wrap { display: flex; flex-direction: column; align-items: center; padding: 8px; }
+  canvas { display: block; border: 1px solid #888; }
+  #controls { display: flex; gap: 10px; align-items: center; margin: 8px 0; font-size: 12px; flex-wrap: wrap; max-width: 760px; justify-content: center; }
+  #controls button { padding: 4px 10px; cursor: pointer; }
+  #controls label { display: flex; gap: 4px; align-items: center; }
+  #info { width: 760px; font-size: 11px; line-height: 1.35; }
+  code { background: #eee; padding: 1px 3px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv" width="400" height="400"></canvas>
+  <div id="controls">
+    <button id="btnReset">Reset</button>
+    <button id="btnValve">Open Valve</button>
+    <button id="btnPause">Pause</button>
+    <label>load F: <input id="rngLoad" type="range" min="0" max="2.0" step="0.02" value="0.30" /><span id="lblLoad">0.30</span></label>
+    <label>piston mass: <input id="rngMp" type="range" min="0.1" max="10" step="0.1" value="1.0" /><span id="lblMp">1.0</span></label>
+    <label>T_left init: <input id="rngTL" type="range" min="1.0" max="4.0" step="0.1" value="2.0" /><span id="lblTL">2.0</span></label>
+    <label>ρ_left init: <input id="rngRL" type="range" min="1.0" max="8.0" step="0.5" value="4.0" /><span id="lblRL">4.0</span></label>
+    <label>dt (×h): <input id="rngDt" type="range" min="0.0001" max="0.05" step="0.0005" value="0.025" /><span id="lblDt">0.025</span></label>
+    <label>μ_mom (mom visc): <input id="rngMuMom" type="range" min="0.1" max="3.0" step="0.05" value="0.4" /><span id="lblMuMom">0.40</span></label>
+    <label>μ_diff (ρ,e diff): <input id="rngMu" type="range" min="0.05" max="2.0" step="0.05" value="0.40" /><span id="lblMu">0.40</span></label>
+    <span id="lblPhase" style="font-weight:bold;"></span>
+    <span id="lblTime">t = 0.000</span>
+  </div>
+  <pre id="diag" style="font-size:11px; line-height:1.35; margin:0 0 8px; min-height:10em; width:760px;"></pre>
+  <div id="info">
+    <b>Half heat engine (expansion stroke only).</b> A hot dense gas in the
+    left chamber sits behind a closed valve (red bar). The right chamber starts
+    at zero volume — the piston (black bar) is flush against the valve. <b>Click
+    "Open Valve"</b>: gas expands through the channel into the right chamber,
+    pushes the piston outward, and the piston does work <code>W = ∫F·v dt</code>
+    against an external load <code>F</code>. The experiment ends when the piston
+    hits the right wall. Diagnostics report:
+    <code>W</code> done on the load, the heat-energy loss
+    <code>Q_lost = U_L(0) − U_L(t)</code> in the left chamber, and the
+    half-engine efficiency <code>η = W/Q_lost</code>. The dissipation D in the
+    channel jet (and elsewhere) sets a hard upper bound on η well below 1.
+    EOS <code>p = γe</code>, γ = 0.1, <code>T = e/ρ</code>.
+  </div>
+</div>
+
+<script>
+"use strict";
+
+// ============================================================================
+// parameters / geometry
+// ============================================================================
+const N     = 100;
+const PXC   = 4;
+const W     = N * PXC;
+const gamma = 0.1;
+const h     = 1 / N;
+const nu    = 0.01 * h;
+let   dt    = 0.025 * h;   // live via "dt (×h)" slider (original default)
+let   mu_mom = 0.4;        // artificial viscosity in MOMENTUM equation (live via slider)
+let   mu     = 0.4;        // artificial viscosity for ρ and e diffusion (live via slider)
+
+// Compact left chamber: 20% of cylinder. Expansion ratio ~5 (vs ~2.5 before),
+// roughly doubling the reversible η bound from ~10% to ~17% for T_L=2 / γ=0.1.
+// Wall column thinned to 10 cells and channel taller (j ≥ 85, 15 cells) to
+// further reduce the channel-throttling dissipation D.
+const WALL_I0 = Math.round(0.20 * N);   // 20  — was 40
+const WALL_I1 = Math.round(0.30 * N);   // 30  — was 60 (wall = 10 cells, was 20)
+const CHAN_J0 = Math.round(0.85 * N);   // 85  — was 90 (channel = 15 cells tall, was 10)
+const J_CHAN  = Math.round(0.92 * N);
+const J_MID   = Math.round(0.50 * N);
+const BASE    = W / 2;
+
+const X_MIN   = (WALL_I1 + 1) / N;       // valve position — piston starts here
+const X_MAX   = (N - 1) / N;
+
+const X_P0 = X_MIN;                       // piston flush against valve initially
+let X_p = X_P0;
+let V_p = 0;
+let Ip  = Math.floor(X_p * N);
+
+let Fload = 0.30, Mp = 1.0;
+let T_L_init = 2.0, R_L_init = 4.0;
+let Wload = 0;
+
+// experiment state machine
+let phase = 'closed';      // 'closed' | 'open' | 'done'
+let U_L0 = 0;              // initial internal energy in the LEFT chamber (frozen at valve-open)
+let D_cumul = 0;
+let W_pdV  = 0;            // work done by gas on the wall = ∫ p_face · V_p · dt
+
+// fields
+let vx, vy, mx, my, rho, e, p, sxx, syy, sxy, x, y, fx, fy;
+let t = 0, simTime = 0, paused = false;
+
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+const btnReset = document.getElementById('btnReset');
+const btnValve = document.getElementById('btnValve');
+const btnPause = document.getElementById('btnPause');
+const rngLoad = document.getElementById('rngLoad'), lblLoad = document.getElementById('lblLoad');
+const rngMp = document.getElementById('rngMp'), lblMp = document.getElementById('lblMp');
+const rngTL = document.getElementById('rngTL'), lblTL = document.getElementById('lblTL');
+const rngRL = document.getElementById('rngRL'), lblRL = document.getElementById('lblRL');
+const rngDt = document.getElementById('rngDt'), lblDt = document.getElementById('lblDt');
+const lblPhase = document.getElementById('lblPhase');
+const lblTime = document.getElementById('lblTime');
+const diagEl = document.getElementById('diag');
+
+function isWall(i, j) {
+  if (i >= WALL_I0 && i < WALL_I1 && j < CHAN_J0) return true;
+  if (i >= Ip) return true;
+  return false;
+}
+
+function alloc() {
+  const a = new Array(N);
+  for (let i = 0; i < N; i++) a[i] = new Float64Array(N);
+  return a;
+}
+
+function totalU_left() {
+  let s = 0;
+  for (let i = 1; i < WALL_I0; i++) for (let j = 1; j < N - 1; j++) s += e[i][j];
+  return s * h * h;
+}
+function totalU_right() {
+  let s = 0;
+  for (let i = WALL_I1; i < Ip; i++) for (let j = 1; j < N - 1; j++) s += e[i][j];
+  return s * h * h;
+}
+function totalU_chan() {
+  let s = 0;
+  for (let i = WALL_I0; i < WALL_I1; i++) for (let j = CHAN_J0; j < N - 1; j++) s += e[i][j];
+  return s * h * h;
+}
+function totalK() {
+  let s = 0;
+  for (let i = 1; i < N - 1; i++) for (let j = 1; j < N - 1; j++) if (!isWall(i, j)) {
+    const r = rho[i][j];
+    s += 0.5 * (mx[i][j] * mx[i][j] + my[i][j] * my[i][j]) / Math.max(r, 1e-9);
+  }
+  return s * h * h;
+}
+
+function setup() {
+  vx = alloc(); vy = alloc(); mx = alloc(); my = alloc();
+  rho = alloc(); e = alloc(); p = alloc();
+  sxx = alloc(); syy = alloc(); sxy = alloc();
+  x = alloc(); y = alloc(); fx = alloc(); fy = alloc();
+
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) {
+      x[i][j] = PXC * i; y[i][j] = PXC * j;
+      // Left chamber: hot and dense.  Right chamber (initially negligible)
+      // and channel: cool, low density.
+      if (i < WALL_I0) {
+        rho[i][j] = R_L_init;
+        e[i][j]   = R_L_init * T_L_init;      // e = ρT
+      } else {
+        rho[i][j] = 1; e[i][j] = 1;            // T = 1 in the cool region
+      }
+    }
+  }
+  X_p = X_P0; V_p = 0; Ip = Math.floor(X_p * N); Wload = 0; W_pdV = 0;
+  t = 0; simTime = 0; D_cumul = 0; U_L0 = totalU_left();
+  phase = 'closed';
+  btnValve.textContent = 'Open Valve';
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, W);
+}
+
+// ============================================================================
+// one in-place cell update (same as piston_cylinder_2d_cpu.html core)
+// ============================================================================
+function updateCell(i, j) {
+  vx[i][j] = mx[i][j] / Math.max(rho[i][j], 1e-9);
+  vy[i][j] = my[i][j] / Math.max(rho[i][j], 1e-9);
+  p[i][j]  = gamma * e[i][j];
+
+  sxx[i][j] = nu * (vx[i][j] - vx[i - 1][j]) / h;
+  sxy[i][j] = nu * 0.5 * (vx[i][j] - vx[i][j - 1] + vy[i][j] - vy[i - 1][j]) / h;
+  syy[i][j] = nu * (vy[i][j] - vy[i][j - 1]) / h;
+
+  mx[i][j] = mx[i][j]
+    + mu_mom * dt * (vx[i + 1][j] + vx[i - 1][j] - 4 * vx[i][j] + vx[i][j + 1] + vx[i][j - 1]) / h
+    - 0.5 * dt * (vx[i + 1][j] * mx[i + 1][j] - vx[i - 1][j] * mx[i - 1][j]) / h
+    - 0.5 * dt * (vy[i][j + 1] * mx[i][j + 1] - vy[i][j - 1] * mx[i][j - 1]) / h
+    - dt * gamma * (e[i + 1][j] - e[i - 1][j]) / h
+    + dt * (sxx[i + 1][j] - sxx[i][j] + sxy[i][j + 1] - sxy[i][j]) / h;
+
+  my[i][j] = my[i][j]
+    + mu_mom * dt * (vy[i + 1][j] + vy[i - 1][j] - 4 * vy[i][j] + vy[i][j + 1] + vy[i][j - 1]) / h
+    - 0.5 * dt * (vx[i + 1][j] * my[i + 1][j] - vx[i - 1][j] * my[i - 1][j]) / h
+    - 0.5 * dt * (vy[i][j + 1] * my[i][j + 1] - vy[i][j - 1] * my[i][j - 1]) / h
+    - dt * gamma * (e[i][j + 1] - e[i][j - 1]) / h
+    + dt * (sxy[i + 1][j] - sxy[i][j] + syy[i][j + 1] - syy[i][j]) / h;
+
+  rho[i][j] = rho[i][j]
+    - 0.5 * dt * (mx[i + 1][j] - mx[i - 1][j]) / h
+    - 0.5 * dt * (my[i][j + 1] - my[i][j - 1]) / h
+    + mu * dt * (rho[i + 1][j] + rho[i - 1][j] - 4 * rho[i][j] + rho[i][j + 1] + rho[i][j - 1]) / h;
+
+  // Dissipation heating uses the momentum-viscosity coefficient mu_mom — this
+  // is the term that returns the kinetic-energy loss from viscous smoothing
+  // back into the gas as heat (and that we accumulate as the 2nd-Law witness D).
+  const sumsq = Math.pow(vx[i + 1][j] - vx[i][j], 2) + Math.pow(vx[i][j + 1] - vx[i][j], 2)
+              + Math.pow(vy[i + 1][j] - vy[i][j], 2) + Math.pow(vy[i][j + 1] - vy[i][j], 2);
+  e[i][j] = e[i][j]
+    + mu * dt * (e[i + 1][j] + e[i - 1][j] - 4 * e[i][j] + e[i][j + 1] + e[i][j - 1]) / h
+    - 0.5 * dt * (vx[i + 1][j] * e[i + 1][j] - vx[i - 1][j] * e[i - 1][j]) / h
+    - 0.5 * dt * (vy[i][j + 1] * e[i][j + 1] - vy[i][j - 1] * e[i][j - 1]) / h
+    - dt * gamma * e[i][j] * (vx[i + 1][j] - vx[i - 1][j] + vy[i][j + 1] - vy[i][j - 1]) / h
+    + dt * mu_mom * sumsq / h;
+  D_cumul += dt * mu_mom * sumsq * h;
+
+  if (rho[i][j] < 0.05) rho[i][j] = 0.05;
+  if (e[i][j]   < 0.05) e[i][j]   = 0.05;
+}
+
+function applyPistonBC() {
+  for (let j = 0; j < N; j++) {
+    if (Ip - 1 < 0) continue;
+    rho[Ip][j] = rho[Ip - 1][j];
+    e[Ip][j]   = e[Ip - 1][j];
+    mx[Ip][j]  = rho[Ip][j] * V_p;
+    my[Ip][j]  = 0;
+  }
+}
+
+function handleSnap(newIp) {
+  if (newIp === Ip) return;
+  if (newIp > Ip) {
+    for (let i = Ip; i < newIp; i++) {
+      for (let j = 0; j < N; j++) {
+        rho[i][j] = rho[i - 1][j] * 0.5; rho[i - 1][j] *= 0.5;
+        e[i][j]   = e[i - 1][j]   * 0.5; e[i - 1][j]   *= 0.5;
+        mx[i][j]  = mx[i - 1][j]  * 0.5; mx[i - 1][j]  *= 0.5;
+        my[i][j]  = my[i - 1][j]  * 0.5; my[i - 1][j]  *= 0.5;
+      }
+    }
+  } else {
+    for (let i = Ip - 1; i >= newIp; i--) {
+      for (let j = 0; j < N; j++) {
+        if (i - 1 < 0) continue;
+        rho[i - 1][j] += rho[i][j];
+        e[i - 1][j]   += e[i][j];
+        mx[i - 1][j]  += mx[i][j];
+        my[i - 1][j]  += my[i][j];
+      }
+    }
+  }
+  Ip = newIp;
+}
+
+const ACC_CAP = 10, VP_CAP = 0.6, C_DAMP = 1.0;
+
+function pistonStep() {
+  // Average gas pressure on the face
+  let pSum = 0;
+  for (let j = 0; j < N; j++) pSum += gamma * e[Ip - 1][j];
+  const Fgas = pSum / N;
+
+  if (phase === 'closed') {
+    V_p = 0;
+  } else if (phase === 'done') {
+    V_p = 0;
+  } else {
+    let accel = (Fgas - Fload - C_DAMP * V_p) / Mp;
+    if (accel >  ACC_CAP) accel =  ACC_CAP;
+    if (accel < -ACC_CAP) accel = -ACC_CAP;
+    V_p += dt * accel;
+    if (V_p >  VP_CAP) V_p =  VP_CAP;
+    if (V_p < -VP_CAP) V_p = -VP_CAP;
+  }
+  X_p += dt * V_p;
+  if (X_p < X_MIN) { X_p = X_MIN; if (V_p < 0) V_p = 0; }
+  if (X_p >= X_MAX - 1e-6) {
+    X_p = X_MAX; if (V_p > 0) V_p = 0;
+    if (phase === 'open') phase = 'done';   // experiment ends
+  }
+  handleSnap(Math.floor(X_p * N));
+  if (phase === 'open') {
+    Wload += Fload * V_p * dt;        // work delivered to external load
+    W_pdV += Fgas  * V_p * dt;        // work done BY the gas ON the piston = ∫ p_face · V_p · dt
+  }
+}
+
+// closed valve = a row of wall cells across the channel exit (i ≈ WALL_I1-1,
+// j ≥ CHAN_J0). Implemented by enforcing zero normal velocity and Neumann
+// ρ/e at i = WALL_I1.
+function applyValve() {
+  if (phase !== 'closed') return;
+  for (let j = CHAN_J0; j < N - 1; j++) {
+    mx[WALL_I1 - 1][j] = 0;   // zero velocity at last left-side cell
+    mx[WALL_I0][j]     = 0;   // and reinforce the closed channel
+    rho[WALL_I1 - 1][j] = rho[WALL_I1 - 2][j];
+    e[WALL_I1 - 1][j]   = e[WALL_I1 - 2][j];
+  }
+}
+
+function floors() {
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    if (!isFinite(rho[i][j]) || rho[i][j] < 0.05) rho[i][j] = 0.05;
+    if (!isFinite(e[i][j])   || e[i][j]   < 0.05) e[i][j]   = 0.05;
+    if (!isFinite(mx[i][j])) mx[i][j] = 0;
+    if (!isFinite(my[i][j])) my[i][j] = 0;
+    if (rho[i][j] > 50) rho[i][j] = 50;
+    if (e[i][j]   > 50) e[i][j]   = 50;
+    const r = rho[i][j];
+    const vmag = Math.sqrt(mx[i][j] * mx[i][j] + my[i][j] * my[i][j]) / r;
+    if (vmag > 10) { const k = 10 / vmag; mx[i][j] *= k; my[i][j] *= k; }
+  }
+}
+
+function physics() {
+  for (let q = 0; q < 20; q++) {
+    floors();
+    for (let i = 1; i < WALL_I0; i++)      for (let j = 1; j < N - 1; j++)      updateCell(i, j);
+    if (phase !== 'closed') {
+      for (let i = WALL_I1; i < Ip; i++)     for (let j = 1; j < N - 1; j++)      updateCell(i, j);
+      for (let i = WALL_I0; i < WALL_I1; i++) for (let j = CHAN_J0; j < N - 1; j++) updateCell(i, j);
+    }
+
+    for (let i = 0; i < N; i++) {
+      e[0][i] = e[1][i];           e[i][0] = e[i][1];      e[i][N - 1] = e[i][N - 2];
+      mx[i][0] = mx[i][1];         mx[i][N - 1] = mx[i][N - 2];
+      my[0][i] = my[1][i];         my[N - 1][i] = my[N - 2][i];
+      rho[0][i] = rho[1][i];       rho[i][0] = rho[i][1];  rho[i][N - 1] = rho[i][N - 2];
+    }
+    for (let j = 0; j < CHAN_J0; j++) {
+      e[WALL_I0][j]   = e[WALL_I0 - 1][j];   e[WALL_I1 - 1][j]   = e[WALL_I1][j];
+      rho[WALL_I0][j] = rho[WALL_I0 - 1][j]; rho[WALL_I1 - 1][j] = rho[WALL_I1][j];
+    }
+    for (let i = WALL_I0 + 1; i < WALL_I1 - 1; i++) {
+      e[i][CHAN_J0 - 1] = e[i][CHAN_J0]; rho[i][CHAN_J0 - 1] = rho[i][CHAN_J0]; mx[i][CHAN_J0 - 1] = mx[i][CHAN_J0];
+    }
+
+    applyValve();
+    applyPistonBC();
+    pistonStep();
+  }
+}
+
+// ============================================================================
+// rendering
+// ============================================================================
+function bgFade(a) { ctx.fillStyle = `rgba(255,255,255,${a / 255})`; ctx.fillRect(0, 0, W, W); }
+function pt(x, y, d) { ctx.fillRect(x - d / 2, y - d / 2, d, d); }
+
+function render() {
+  if (t > 0.005) {
+    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) { x[i][j] = PXC * i; y[i][j] = PXC * j; }
+    t = 0;
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, W);
+  }
+
+  // wall column
+  ctx.fillStyle = 'rgba(0,0,255,0.4)';
+  ctx.fillRect(WALL_I0 * PXC, 0, (WALL_I1 - WALL_I0) * PXC, CHAN_J0 * PXC);
+
+  // closed-valve overlay (red bar) — valve at the RIGHT end of the channel
+  if (phase === 'closed') {
+    ctx.fillStyle = 'rgba(220,0,0,0.85)';
+    ctx.fillRect((WALL_I1 - 1) * PXC, CHAN_J0 * PXC, PXC * 1.5, (N - CHAN_J0) * PXC);
+  }
+
+  // outside-piston region + piston bar
+  ctx.fillStyle = 'rgba(200,200,200,0.85)';
+  ctx.fillRect(Ip * PXC, 0, W - Ip * PXC, W);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(Ip * PXC - 1, 0, 3, W);
+
+  // tracer particles
+  ctx.fillStyle = 'rgba(0,0,255,1)';
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    if (isWall(i, j)) continue;
+    x[i][j] += 10000 * vx[i][j] * dt;
+    y[i][j] += 10000 * vy[i][j] * dt;
+    pt(x[i][j], y[i][j], 1);
+  }
+
+  // cross-cut curves
+  for (let i = 0; i < N; i++) {
+    if (i >= Ip) continue;
+    ctx.fillStyle = 'rgba(0,200,200,1)'; pt(PXC * i, BASE - 10  * rho[i][J_CHAN], 3);
+    ctx.fillStyle = 'rgba(255,0,0,1)';   pt(PXC * i, BASE - 100 * p[i][J_CHAN], 3);
+    ctx.fillStyle = 'rgba(220,220,0,1)'; pt(PXC * i, BASE - 100 * vx[i][J_CHAN], 3);
+    ctx.fillStyle = 'rgba(0,180,0,1)';   pt(PXC * i, BASE - 1000 * (e[i][J_CHAN] / Math.max(rho[i][J_CHAN], 1e-9) - 1), 3);
+                                         pt(PXC * i, BASE - 1000 * (e[i][J_MID]  / Math.max(rho[i][J_MID], 1e-9)  - 1), 3);
+  }
+
+  ctx.fillStyle = '#000'; ctx.font = '10px sans-serif';
+  ctx.fillText("Half Heat Engine (N=" + N + "²): hot dense L  →  valve  →  piston work", 6, 12);
+  ctx.fillText("Cyan: ρ (×1/10)   Red: p   Yellow: vx   Green: T-1   Blue dots: tracers", 6, W - 14);
+  ctx.strokeStyle = '#000';
+  ctx.beginPath(); ctx.moveTo(0, BASE); ctx.lineTo(W, BASE); ctx.stroke();
+}
+
+function diagnostics() {
+  const U_L = totalU_left();
+  const U_R = totalU_right();
+  const U_C = totalU_chan();
+  const K   = totalK();
+  const Q_lost = U_L0 - U_L;                       // heat-energy lost from left chamber
+  const eta_wall = (Q_lost > 1e-9) ? 100 * W_pdV  / Q_lost : 0;   // work done on wall / Q_lost
+  const eta_load = (Q_lost > 1e-9) ? 100 * Wload  / Q_lost : 0;   // work delivered to load
+  const phaseTxt = phase === 'closed'
+    ? 'VALVE CLOSED — set initial state, then click "Open Valve"'
+    : (phase === 'done' ? 'EXPERIMENT DONE — piston at right wall' : 'EXPANSION IN PROGRESS');
+  lblPhase.textContent = phaseTxt;
+  lblPhase.style.color = phase === 'open' ? '#a00' : (phase === 'done' ? '#06a' : '#444');
+
+  diagEl.textContent =
+    `phase = ${phase}   piston X_p = ${X_p.toFixed(4)}   V_p = ${V_p.toFixed(4)}   t = ${simTime.toFixed(3)}\n` +
+    `\n` +
+    `LEFT chamber:   U_L = ${U_L.toFixed(4)}   (initial U_L0 = ${U_L0.toFixed(4)})\n` +
+    `RIGHT chamber:  U_R = ${U_R.toFixed(4)}\n` +
+    `CHANNEL:        U_C = ${U_C.toFixed(4)}\n` +
+    `Kinetic energy: K   = ${K.toExponential(3)}    cumulative D = ${D_cumul.toExponential(3)}\n` +
+    `\n` +
+    `Heat lost from L:        Q_lost = U_L0 − U_L = ${Q_lost.toFixed(4)}\n` +
+    `Work done on wall:       W_wall = ∫ p · dV   = ${W_pdV.toFixed(4)}\n` +
+    `Work delivered to load:  W_load = ∫ F · dx   = ${Wload.toFixed(4)}\n` +
+    `Half-engine efficiency:  η = W_wall / Q_lost = ${eta_wall.toFixed(1)} %    (delivered η = ${eta_load.toFixed(1)} %)`;
+}
+
+// ============================================================================
+// frame loop
+// ============================================================================
+function frame() {
+  if (!paused) {
+    if (!isFinite(V_p) || !isFinite(X_p)) { setup(); }
+    bgFade(50);
+    t += dt; simTime += dt;
+    physics();
+    render();
+    diagnostics();
+    lblTime.textContent = 't = ' + simTime.toFixed(3);
+  }
+  requestAnimationFrame(frame);
+}
+
+btnReset.addEventListener('click', () => { setup(); paused = false; btnPause.textContent = 'Pause'; });
+btnValve.addEventListener('click', () => {
+  if (phase === 'closed') {
+    phase = 'open';
+    U_L0 = totalU_left();        // snapshot just at the moment the valve opens
+    Wload = 0;
+    W_pdV = 0;
+    D_cumul = 0;
+    btnValve.textContent = 'Close (n/a)';
+    btnValve.disabled = true;
+  }
+});
+btnPause.addEventListener('click', () => { paused = !paused; btnPause.textContent = paused ? 'Resume' : 'Pause'; });
+rngLoad.addEventListener('input', () => { Fload = parseFloat(rngLoad.value); lblLoad.textContent = Fload.toFixed(2); });
+rngMp.addEventListener('input',   () => { Mp = parseFloat(rngMp.value); lblMp.textContent = Mp.toFixed(1); });
+rngTL.addEventListener('input',   () => {
+  T_L_init = parseFloat(rngTL.value);
+  lblTL.textContent = T_L_init.toFixed(1);
+  if (phase === 'closed') { setup(); btnValve.disabled = false; }
+});
+rngRL.addEventListener('input',   () => {
+  R_L_init = parseFloat(rngRL.value);
+  lblRL.textContent = R_L_init.toFixed(1);
+  if (phase === 'closed') { setup(); btnValve.disabled = false; }
+});
+rngDt.addEventListener('input', () => {
+  const m = parseFloat(rngDt.value);
+  dt = m * h;
+  lblDt.textContent = m.toFixed(4);
+});
+const rngMuMom = document.getElementById('rngMuMom'), lblMuMom = document.getElementById('lblMuMom');
+const rngMu    = document.getElementById('rngMu'),    lblMu    = document.getElementById('lblMu');
+rngMuMom.addEventListener('input', () => { mu_mom = parseFloat(rngMuMom.value); lblMuMom.textContent = mu_mom.toFixed(2); });
+rngMu.addEventListener('input',    () => { mu     = parseFloat(rngMu.value);    lblMu.textContent    = mu.toFixed(2); });
+// hook also to btnReset to re-enable valve
+btnReset.addEventListener('click', () => { btnValve.disabled = false; });
+
+setup();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
