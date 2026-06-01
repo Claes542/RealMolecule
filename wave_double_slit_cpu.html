@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Wave Equation: Double-Slit Experiment — CPU translation</title>
+<style>
+  body { margin: 0; padding: 8px; background: #fff; font-family: sans-serif; }
+  #wrap { display: flex; flex-direction: column; align-items: center; }
+  canvas { display: block; border: 1px solid #888; background: #fff; }
+  #controls { display: flex; gap: 10px; align-items: center; margin-top: 8px; font-size: 12px; flex-wrap: wrap; max-width: 760px; justify-content: center; }
+  label { display: flex; gap: 4px; align-items: center; }
+  input[type="range"] { width: 130px; }
+  #info { width: 760px; font-size: 11px; line-height: 1.35; margin-top: 8px; }
+  code { background: #f0f0f0; padding: 0 3px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv" width="600" height="600"></canvas>
+  <div id="controls">
+    <button id="btnPause">Pause</button>
+    <button id="btnReset">Reset (impulse)</button>
+    <label><input id="chkPeriodic" type="checkbox" /> periodic source</label>
+    <label>amp A: <input id="rngAmp" type="range" min="10" max="200" step="5" value="100" /><span id="lblAmp">100</span></label>
+    <label>freq ω: <input id="rngFreq" type="range" min="0.5" max="40" step="0.5" value="10" /><span id="lblFreq">10.0</span></label>
+    <label>damping: <input id="rngDamp" type="range" min="0.9990" max="1.0000" step="0.0001" value="0.9999" /><span id="lblDamp">0.9999</span></label>
+    <label>dt (×h): <input id="rngDt" type="range" min="0.02" max="0.5" step="0.01" value="0.10" /><span id="lblDt">0.10</span></label>
+    <label>substeps: <input id="rngSubsteps" type="range" min="1" max="40" step="1" value="10" /><span id="lblSubsteps">10</span></label>
+  </div>
+  <div id="info">
+    Linear wave equation on a 2D membrane, first-order form:
+    <br><code>&nbsp; ∂v/∂t = ∂s_x/∂x + ∂s_y/∂y</code> (Newton's 2nd Law,
+    transverse displacement velocity v with membrane stresses s_x, s_y)
+    <br><code>&nbsp; ∂s_x/∂t = ∂v/∂x,&nbsp; ∂s_y/∂t = ∂v/∂y</code> (stress
+    rate vs strain velocity)
+    <br><br>
+    <b>Double-slit IC</b>: two narrow strips of v = A on the right edge
+    (j ∈ [80, 85) and [120, 125)) at the moment Reset is pressed. The two
+    wavefronts propagate leftward and superpose, generating the
+    characteristic interference pattern.
+    <br><br>
+    Toggle <b>periodic source</b> to drive the slits at frequency ω
+    (v_slit = A·sin(ωt)) — produces a sustained interference pattern
+    rather than a one-shot impulse.
+    Tiny damping factor (0.9999 per substep) keeps the wave bounded
+    inside the box. dt = 0.10·h is well within the CFL bound dt ≤ h/√2
+    for 2D wave propagation; slide down for sharper fronts, slide up
+    for faster propagation (with risk of CFL instability).
+  </div>
+</div>
+
+<script>
+// ============================================================================
+// 2D linear wave equation -- CPU translation in RealThermo style of the p5
+// double-slit experiment. Three fields (v, sx, sy) on N×N grid, midpoint
+// time stepping. Boundary: Neumann (zero-derivative) by truncation; the
+// right edge of v is forced by the "source" (impulse at Reset, or periodic
+// in the periodic-source mode).
+// ============================================================================
+
+const N = 200;
+const NC = N * N;
+const idx = (i, j) => i + N * j;
+
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+const W = canvas.width;
+const PX = W / N;          // 3 px per cell at N = 200
+
+// Fields: old/new + midpoint for time staggering.
+const vOld  = new Float32Array(NC), vNew  = new Float32Array(NC), vMid  = new Float32Array(NC);
+const sxOld = new Float32Array(NC), sxNew = new Float32Array(NC), sxMid = new Float32Array(NC);
+const syOld = new Float32Array(NC), syNew = new Float32Array(NC), syMid = new Float32Array(NC);
+
+const h = 1 / N;
+let dt = 0.10 * h;
+let substeps = 10;
+let amp = 100, freq = 10.0, damping = 0.9999;
+let periodic = false;
+let paused = false;
+let simTime = 0;
+let vMax = 1e-9;
+
+// Slit locations on the right edge (i = N-1). The p5 source used M=200 with
+// slits at j∈[80,85) and j∈[120,125). At N=200 those are exactly the same.
+const SLITS = [
+  { j0: 80, j1: 85 },
+  { j0: 120, j1: 125 }
+];
+
+// Controls
+const rngAmp = document.getElementById('rngAmp'), lblAmp = document.getElementById('lblAmp');
+const rngFreq = document.getElementById('rngFreq'), lblFreq = document.getElementById('lblFreq');
+const rngDamp = document.getElementById('rngDamp'), lblDamp = document.getElementById('lblDamp');
+const rngDt = document.getElementById('rngDt'), lblDt = document.getElementById('lblDt');
+const rngSubsteps = document.getElementById('rngSubsteps'), lblSubsteps = document.getElementById('lblSubsteps');
+const chkPeriodic = document.getElementById('chkPeriodic');
+const btnPause = document.getElementById('btnPause');
+const btnReset = document.getElementById('btnReset');
+
+rngAmp.addEventListener('input',  () => { amp = parseFloat(rngAmp.value); lblAmp.textContent = amp.toFixed(0); });
+rngFreq.addEventListener('input', () => { freq = parseFloat(rngFreq.value); lblFreq.textContent = freq.toFixed(1); });
+rngDamp.addEventListener('input', () => { damping = parseFloat(rngDamp.value); lblDamp.textContent = damping.toFixed(4); });
+rngDt.addEventListener('input',   () => { const m = parseFloat(rngDt.value); dt = m * h; lblDt.textContent = m.toFixed(2); });
+rngSubsteps.addEventListener('input', () => { substeps = parseInt(rngSubsteps.value); lblSubsteps.textContent = substeps; });
+chkPeriodic.addEventListener('change', () => { periodic = chkPeriodic.checked; });
+btnPause.addEventListener('click', () => { paused = !paused; btnPause.textContent = paused ? 'Resume' : 'Pause'; });
+btnReset.addEventListener('click', initState);
+
+function initState() {
+  vOld.fill(0); vNew.fill(0); vMid.fill(0);
+  sxOld.fill(0); sxNew.fill(0); sxMid.fill(0);
+  syOld.fill(0); syNew.fill(0); syMid.fill(0);
+  simTime = 0;
+  // Impulse: pre-load v at the two slit strips on the right edge.
+  if (!periodic) {
+    for (const sl of SLITS) {
+      for (let j = sl.j0; j < sl.j1; j++) {
+        vOld[idx(N - 1, j)] = amp;
+        vNew[idx(N - 1, j)] = amp;
+      }
+    }
+  }
+}
+
+function step() {
+  // Midpoint averages
+  for (let q = 0; q < NC; q++) {
+    vMid[q]  = 0.5 * (vOld[q]  + vNew[q]);
+    sxMid[q] = 0.5 * (sxOld[q] + sxNew[q]);
+    syMid[q] = 0.5 * (syOld[q] + syNew[q]);
+  }
+  // Update interior
+  for (let j = 1; j < N - 1; j++) {
+    for (let i = 1; i < N - 1; i++) {
+      const q  = idx(i, j);
+      const qE = idx(i + 1, j);
+      const qNp = idx(i, j + 1);
+      sxNew[q] = sxOld[q] + dt * (vMid[qE]  - vMid[q]) / h;
+      syNew[q] = syOld[q] + dt * (vMid[qNp] - vMid[q]) / h;
+      const qW = idx(i - 1, j);
+      const qS = idx(i, j - 1);
+      vNew[q]  = damping * vOld[q]
+               + dt * (sxMid[q] - sxMid[qW] + syMid[q] - syMid[qS]) / h;
+    }
+  }
+  // Periodic source: forced v at the slits, sinusoidal in sim-time.
+  if (periodic) {
+    const s = amp * Math.sin(2 * Math.PI * freq * simTime);
+    for (const sl of SLITS) {
+      for (let j = sl.j0; j < sl.j1; j++) {
+        vNew[idx(N - 1, j)] = s;
+      }
+    }
+  }
+  // Roll
+  for (let q = 0; q < NC; q++) {
+    vOld[q]  = vNew[q];
+    sxOld[q] = sxNew[q];
+    syOld[q] = syNew[q];
+  }
+  simTime += dt;
+}
+
+function render() {
+  // Re-scan |v| max for auto-scaling
+  let m = 1e-9;
+  for (let q = 0; q < NC; q++) { const av = Math.abs(vOld[q]); if (av > m) m = av; }
+  vMax = m;
+  const invMax = 1 / vMax;
+
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, W);
+  // Blue intensity for |v|, sign painted as red (v<0) on top of blue (v>0)
+  for (let j = 0; j < N; j++) {
+    for (let i = 0; i < N; i++) {
+      const v = vOld[idx(i, j)];
+      const a = Math.min(1, Math.abs(v) * invMax);
+      if (v >= 0) ctx.fillStyle = `rgba(0, 80, 255, ${a.toFixed(3)})`;
+      else        ctx.fillStyle = `rgba(220, 0, 0, ${a.toFixed(3)})`;
+      ctx.fillRect(PX * i, PX * j, PX + 0.5, PX + 0.5);
+    }
+  }
+
+  // Mark the slit positions on the right edge (yellow strips)
+  ctx.fillStyle = 'rgba(220, 200, 0, 0.8)';
+  for (const sl of SLITS) {
+    ctx.fillRect(PX * (N - 1) - 2, PX * sl.j0, 4, PX * (sl.j1 - sl.j0));
+  }
+
+  // Labels
+  ctx.fillStyle = '#000'; ctx.font = '12px sans-serif'; ctx.textBaseline = 'top';
+  ctx.fillText('Wave equation: Double-Slit Experiment', 12, 10);
+  ctx.fillText('∂v/∂t = ∂s_x/∂x + ∂s_y/∂y;  ∂s_x/∂t = ∂v/∂x,  ∂s_y/∂t = ∂v/∂y', 12, 28);
+  ctx.fillText(`N = ${N}², dt/h = ${(dt/h).toFixed(2)}, substeps = ${substeps}, t = ${simTime.toFixed(2)}, |v|_max = ${vMax.toExponential(2)}`, 12, 46);
+  ctx.fillText('Yellow strips on right edge: slit positions.  Blue: v > 0   Red: v < 0', 12, W - 36);
+  ctx.fillText(periodic ? 'Periodic source ON — sustained interference pattern' : 'Impulse IC — one-shot wavefront from each slit', 12, W - 20);
+}
+
+initState();
+
+function frame() {
+  if (!paused) {
+    for (let s = 0; s < substeps; s++) step();
+  }
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
