@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Reaction-Diffusion: Belousov-Zhabotinsky — CPU translation</title>
+<style>
+  body { margin: 0; padding: 8px; background: #fff; font-family: sans-serif; }
+  #wrap { display: flex; flex-direction: column; align-items: center; }
+  canvas { display: block; border: 1px solid #888; background: #fff; }
+  #controls { display: flex; gap: 10px; align-items: center; margin-top: 8px; font-size: 12px; flex-wrap: wrap; max-width: 760px; justify-content: center; }
+  label { display: flex; gap: 4px; align-items: center; }
+  input[type="range"] { width: 130px; }
+  #info { width: 760px; font-size: 11px; line-height: 1.35; margin-top: 8px; }
+  code { background: #f0f0f0; padding: 0 3px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv" width="600" height="600"></canvas>
+  <div id="controls">
+    <label>α (reaction): <input id="rngAlpha" type="range" min="0.0" max="2.0" step="0.05" value="0.50" /><span id="lblAlpha">0.50</span></label>
+    <label>diff coef ε·dt/h²: <input id="rngDiff" type="range" min="0.0" max="0.25" step="0.005" value="0.15" /><span id="lblDiff">0.15</span></label>
+    <label>dt: <input id="rngDt" type="range" min="0.05" max="2.0" step="0.05" value="0.50" /><span id="lblDt">0.50</span></label>
+    <label>substeps/frame: <input id="rngSubsteps" type="range" min="1" max="40" step="1" value="4" /><span id="lblSubsteps">4</span></label>
+    <button id="btnPause">Pause</button>
+    <button id="btnReset">Reset</button>
+  </div>
+  <div id="info">
+    Three-species cyclic-competition reaction-diffusion system
+    (Belousov–Zhabotinsky-style):
+    <br><code>&nbsp; ∂u/∂t &minus; ε·Δu = α·u·(v−w)</code>
+    <br><code>&nbsp; ∂v/∂t &minus; ε·Δv = α·v·(w−u)</code>
+    <br><code>&nbsp; ∂w/∂t &minus; ε·Δw = α·w·(u−v)</code>
+    <br><b>Conservation</b>: ∂(u+v+w)/∂t &minus; ε·Δ(u+v+w) = 0 — the total
+    of the three species is locally conserved (the reaction is
+    rock-paper-scissors cyclic; nothing is created or destroyed).
+    <br><br>
+    Random IC: spiral waves and target patterns emerge as one species
+    locally dominates and then is overtaken by the next in the cycle.
+    Vary α to control the reaction speed; the diffusion smooths the
+    fronts between species patches. Diffusion coef ε·dt/h² = 0.25 is
+    the explicit-Euler stability boundary; default 0.15 stays well
+    inside.
+    <br><br>
+    <b>Red</b>: u species. <b>Blue</b>: v species. <b>Green</b>: w
+    species. <b>Polylines</b>: cross-cuts of u (red), v (blue), w
+    (green) along j = N/2.
+  </div>
+</div>
+
+<script>
+// ============================================================================
+// Belousov-Zhabotinsky 3-species cyclic reaction-diffusion -- CPU translation
+// in RealThermo style.  Coupled fields u, v, w on a square N×N grid.
+// ============================================================================
+
+const N = 200;
+const NC = N * N;
+const idx = (i, j) => i + N * j;
+
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+const W = canvas.width;
+const PX = W / N;                    // 3 px per cell at N = 200
+
+const u = new Float32Array(NC), uN = new Float32Array(NC);
+const v = new Float32Array(NC), vN = new Float32Array(NC);
+const w = new Float32Array(NC), wN = new Float32Array(NC);
+
+let alpha = 0.50;
+let diffCoef = 0.15;                 // = ε·dt/h² ;  0.25 is explicit-Euler limit
+let dt = 0.50;
+let substeps = 4;
+let paused = false;
+let simTime = 0;
+
+const rngAlpha = document.getElementById('rngAlpha'), lblAlpha = document.getElementById('lblAlpha');
+const rngDiff = document.getElementById('rngDiff'),   lblDiff = document.getElementById('lblDiff');
+const rngDt = document.getElementById('rngDt'),       lblDt = document.getElementById('lblDt');
+const rngSubsteps = document.getElementById('rngSubsteps'), lblSubsteps = document.getElementById('lblSubsteps');
+const btnPause = document.getElementById('btnPause');
+const btnReset = document.getElementById('btnReset');
+
+rngAlpha.addEventListener('input', () => { alpha = parseFloat(rngAlpha.value); lblAlpha.textContent = alpha.toFixed(2); });
+rngDiff.addEventListener('input',  () => { diffCoef = parseFloat(rngDiff.value); lblDiff.textContent = diffCoef.toFixed(2); });
+rngDt.addEventListener('input',    () => { dt = parseFloat(rngDt.value); lblDt.textContent = dt.toFixed(2); });
+rngSubsteps.addEventListener('input', () => { substeps = parseInt(rngSubsteps.value); lblSubsteps.textContent = substeps; });
+btnPause.addEventListener('click', () => { paused = !paused; btnPause.textContent = paused ? 'Resume' : 'Pause'; });
+btnReset.addEventListener('click', initState);
+
+function initState() {
+  // Boundary cells stay at 1 (matches the source); interior random ∈ [0, 1]
+  for (let q = 0; q < NC; q++) { u[q] = 1; v[q] = 1; w[q] = 1; }
+  for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
+    const q = idx(i, j);
+    u[q] = Math.random();
+    v[q] = Math.random();
+    w[q] = Math.random();
+  }
+  simTime = 0;
+}
+
+function step() {
+  for (let j = 1; j < N - 1; j++) {
+    for (let i = 1; i < N - 1; i++) {
+      const q  = idx(i, j);
+      const qE = idx(i + 1, j), qW = idx(i - 1, j);
+      const qNp = idx(i, j + 1), qS = idx(i, j - 1);
+      const uc = u[q], vc = v[q], wc = w[q];
+      const lapU = u[qE] + u[qW] + u[qNp] + u[qS] - 4 * uc;
+      const lapV = v[qE] + v[qW] + v[qNp] + v[qS] - 4 * vc;
+      const lapW = w[qE] + w[qW] + w[qNp] + w[qS] - 4 * wc;
+      const fu = alpha * uc * (vc - wc);
+      const fv = alpha * vc * (wc - uc);
+      const fw = alpha * wc * (uc - vc);
+      uN[q] = uc + diffCoef * lapU + dt * fu;
+      vN[q] = vc + diffCoef * lapV + dt * fv;
+      wN[q] = wc + diffCoef * lapW + dt * fw;
+    }
+  }
+  // Copy back
+  for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
+    const q = idx(i, j);
+    u[q] = uN[q]; v[q] = vN[q]; w[q] = wN[q];
+  }
+  // Neumann boundary
+  for (let i = 0; i < N; i++) {
+    u[idx(i, 0)]     = u[idx(i, 1)];     u[idx(i, N-1)] = u[idx(i, N-2)];
+    u[idx(0, i)]     = u[idx(1, i)];     u[idx(N-1, i)] = u[idx(N-2, i)];
+    v[idx(i, 0)]     = v[idx(i, 1)];     v[idx(i, N-1)] = v[idx(i, N-2)];
+    v[idx(0, i)]     = v[idx(1, i)];     v[idx(N-1, i)] = v[idx(N-2, i)];
+    w[idx(i, 0)]     = w[idx(i, 1)];     w[idx(i, N-1)] = w[idx(i, N-2)];
+    w[idx(0, i)]     = w[idx(1, i)];     w[idx(N-1, i)] = w[idx(N-2, i)];
+  }
+  simTime += dt;
+}
+
+function render() {
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, W);
+  // RGB blend: red for u, green for w, blue for v.  Cell area-fill with each.
+  for (let j = 0; j < N; j++) {
+    for (let i = 0; i < N; i++) {
+      const q = idx(i, j);
+      const uc = Math.max(0, Math.min(1, u[q]));
+      const vc = Math.max(0, Math.min(1, v[q]));
+      const wc = Math.max(0, Math.min(1, w[q]));
+      ctx.fillStyle = `rgba(220, 0, 0, ${uc.toFixed(3)})`;
+      ctx.fillRect(PX * i, PX * j, PX + 0.5, PX + 0.5);
+      ctx.fillStyle = `rgba(0, 0, 220, ${vc.toFixed(3)})`;
+      ctx.fillRect(PX * i, PX * j, PX + 0.5, PX + 0.5);
+      ctx.fillStyle = `rgba(0, 180, 0, ${wc.toFixed(3)})`;
+      ctx.fillRect(PX * i, PX * j, PX + 0.5, PX + 0.5);
+    }
+  }
+  // Mid-line cross-cut polylines for u (red), v (blue), w (green)
+  const JMID = Math.floor(N / 2);
+  const BASE = W * 0.5, AMP = W * 0.40;
+  function polyline(field, colour) {
+    ctx.strokeStyle = colour; ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+      const c = field[idx(i, JMID)];
+      const y = BASE - AMP * (c - 0.5) * 2;
+      if (i === 0) ctx.moveTo(PX * i, y); else ctx.lineTo(PX * i, y);
+    }
+    ctx.stroke();
+  }
+  polyline(u, 'rgba(180,0,0,0.95)');
+  polyline(v, 'rgba(0,0,180,0.95)');
+  polyline(w, 'rgba(0,140,0,0.95)');
+  ctx.strokeStyle = 'rgba(120,120,120,0.5)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, BASE); ctx.lineTo(W, BASE); ctx.stroke();
+
+  ctx.fillStyle = '#000'; ctx.font = '12px sans-serif'; ctx.textBaseline = 'top';
+  ctx.fillText('Reaction-Diffusion: Belousov-Zhabotinsky (3-species cyclic)', 12, 10);
+  ctx.fillText('∂u/∂t − ε·Δu = α·u·(v−w),  cyclic for (v→u,w), (w→v,u)', 12, 28);
+  ctx.fillText(`α = ${alpha.toFixed(2)}, ε·dt/h² = ${diffCoef.toFixed(2)}, dt = ${dt.toFixed(2)}, t = ${simTime.toFixed(2)}`, 12, 46);
+  ctx.fillText('red: u   blue: v   green: w   (polylines: mid cross-cut)', 12, W - 36);
+  ctx.fillText('Conservation: ∂(u+v+w)/∂t − ε·Δ(u+v+w) = 0', 12, W - 20);
+}
+
+initState();
+
+function frame() {
+  if (!paused) {
+    for (let s = 0; s < substeps; s++) step();
+  }
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
