@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Wave Equation: Double-Slit Experiment — p5.js original (N=200)</title>
+<script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+</head>
+<body>
+<script>
+// Wave Equation: Double-Slit Experiment
+// dv/dt = ds_x/dx + ds_y/dy  (Newton's 2nd Law)
+// ds_x/dt = dv/dx,  ds_y/dt = dv/dy  (stress rate vs strain rate)
+// v = deflection velocity, s_x and s_y = membrane stresses
+
+var vold = [], vnew = [];
+var sxold = [], sxnew = [], sxm = [];
+var syold = [], synew = [], sym = [];
+var vm = [];
+var M = 200;
+var h = 1 / M;
+var dt = 0.1 * h;
+var a = 0;
+var vmax = 0;
+
+function setup() {
+  createCanvas(450, 450);
+  for (var i = 0; i < M; i++) {
+    vold[i] = [];  vnew[i] = [];
+    sxold[i] = []; sxnew[i] = []; sxm[i] = [];
+    syold[i] = []; synew[i] = []; sym[i] = [];
+    vm[i] = [];
+  }
+  for (var i = 0; i < M; i++) {
+    for (var j = 0; j < M; j++) {
+      vold[i][j] = 0;  vnew[i][j] = 0;
+      sxold[i][j] = 0; sxnew[i][j] = 0; sxm[i][j] = 0;
+      syold[i][j] = 0; synew[i][j] = 0; sym[i][j] = 0;
+      vm[i][j] = 0;
+    }
+  }
+  // Impulse at the two slits on the right edge
+  for (var j = 80; j < 85; j++) {
+    vnew[M-1][j] = 100; vold[M-1][j] = 100;
+  }
+  for (var j = 120; j < 125; j++) {
+    vnew[M-1][j] = 100; vold[M-1][j] = 100;
+  }
+}
+
+function draw() {
+  background(251, 251, 251, 255);
+
+  for (var p = 0; p < 10; p++) {
+    for (var m = 0; m < 4; m++) {
+      for (var i = 0; i < M; i++) {
+        for (var j = 0; j < M; j++) {
+          vm[i][j]  = (vold[i][j]  + vnew[i][j])  / 2;
+          sxm[i][j] = (sxold[i][j] + sxnew[i][j]) / 2;
+          sym[i][j] = (syold[i][j] + synew[i][j]) / 2;
+        }
+      }
+      for (var i = 1; i < M-1; i++) {
+        for (var j = 1; j < M-1; j++) {
+          sxnew[i][j] = sxold[i][j] + dt * (vm[i+1][j] - vm[i][j]) / h;
+          synew[i][j] = syold[i][j] + dt * (vm[i][j+1] - vm[i][j]) / h;
+          vnew[i][j]  = 0.9999 * vold[i][j]
+                      + dt * (sxm[i][j] - sxm[i-1][j] + sym[i][j] - sym[i][j-1]) / h;
+        }
+      }
+    }
+    vmax = 0;
+    for (var i = 0; i < M; i++) {
+      for (var j = 0; j < M; j++) {
+        vold[i][j]  = vnew[i][j];
+        sxold[i][j] = sxnew[i][j];
+        syold[i][j] = synew[i][j];
+        if (abs(vold[i][j]) > vmax) vmax = abs(vold[i][j]);
+      }
+    }
+  }
+
+  noStroke();
+  for (var i = 0; i < M; i++) {
+    for (var j = 0; j < M; j++) {
+      fill(0, 0, 255, 255 * abs(vold[i][j]) / (vmax + 1e-9));
+      rect(2 * i, 2 * j, 2, 2);
+    }
+  }
+  fill(0);
+  text("Wave equation: Double-Slit Experiment", 50, 20);
+  text("dv/dt = ds_x/dx + ds_y/dy  (Newton's 2nd Law)", 50, 40);
+  text("ds_x/dt = dv/dx, ds_y/dt = dv/dy  (stress rate vs strain rate)", 50, 60);
+  text("Initial impulse load at slits", 50, 100);
+  text("Admire interference pattern!", 50, 120);
+  text("Change to periodic impulse at slits", 50, 140);
+}
+</script>
+</body>
+</html>
