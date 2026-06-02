@@ -338,6 +338,46 @@ footer a { color: #4fc3f7; text-decoration: none; }
       checking the ratio is a quantitative test of the with-Dynamics 2nd
       Law for this flow.</div>
     </a>
+    <a class="card" href="bluff_body_mach2_3d_gpu_slip.html" style="border-color:#ff9e80;background:#180c08;padding:14px">
+      <h3 style="color:#ff9e80">bluff_body_mach2_3d_gpu_slip.html  (Mach M, 3D WebGPU, 200³, SLIP body + shapes)</h3>
+      <div class="desc">3D WebGPU bluff-body simulator at 200³ with a
+      <b>slip boundary condition</b> on the body and a <b>shape selector</b>
+      (cube, sphere, cylinder z/y, wedge, two spheres in tandem, 3D cross).
+      <br><br>
+      <b>Slip b.c.</b> Instead of zeroing the velocity inside the body
+      (no-slip), only the <em>normal</em> component is removed via a body
+      force <code>f = −K · (u·n̂) · n̂</code> on fluid cells adjacent to the
+      body, where n̂ is the outward unit normal computed from the mask
+      gradient. The tangential component is left free, so the body looks
+      <em>solid</em> to the flow (mass cannot pass through it) but
+      <em>frictionless</em> along its surface — no viscous boundary layer.
+      Drag is then carried entirely by the pressure asymmetry (front/back
+      stagnation), with no skin-friction contribution. This is the classical
+      idealisation used in inviscid bluff-body and gas-dynamics calculations,
+      and it is what makes the <em>shape</em> selector physically meaningful:
+      with no-slip the boundary layer dominates and round vs faceted shapes
+      look similar; with slip you cleanly see how a wedge, a sphere and a
+      tandem pair shape the bow shock and wake differently.
+      <br><br>
+      Storage buffers 256 MB each — requires a desktop-class WebGPU GPU.</div>
+    </a>
+    <a class="card" href="bluff_body_mach2_3d_gpu_slip_300.html" style="border-color:#ff9e80;background:#180c08;padding:14px">
+      <h3 style="color:#ff9e80">bluff_body_mach2_3d_gpu_slip_300.html  (Mach M, 3D WebGPU, <b>300³ ≈ 27 M cells</b>, SLIP body + shapes)</h3>
+      <div class="desc">Same simulator as the 200³ slip variant, but at
+      <b>300³</b> resolution — ~3.4× more cells, finer bow shock and wake
+      structure, and noticeably sharper shape signatures. Same slip
+      boundary condition <code>f = −K · (u·n̂) · n̂</code>, same shape
+      selector (cube, sphere, cylinder z/y, wedge, two spheres, 3D cross).
+      <br><br>
+      <b>Hardware requirement.</b> Each state buffer is 864 MB, so the
+      adapter must advertise <code>maxStorageBufferBindingSize ≥ 1 GB</code>.
+      Modern desktop NVIDIA, AMD, and Apple M2/M3 typically qualify;
+      integrated and older GPUs will refuse with a clean
+      <em>"Adapter only supports X MB"</em> message and you should use the
+      200³ card above instead. If it runs but feels slow, drop the substeps
+      slider from 3 → 1 first; that gives 3× framerate at the cost of slower
+      sim-time evolution.</div>
+    </a>
   </div>
 
   <h3 id="rt-rd" style="color:#ff9e80;margin-top:14px;font-size:15px">Reaction-Diffusion (front formation &amp; coarsening)</h3>
