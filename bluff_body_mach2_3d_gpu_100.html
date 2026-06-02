@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Bluff Body Mach 2 3D — Compressible Navier-Stokes on GPU</title>
+<title>Bluff Body Mach 2 3D (N=100) — Compressible Navier-Stokes on GPU</title>
 <style>
   body { margin: 0; background: #fff; font-family: sans-serif; color: #000; }
   #wrap { display: flex; flex-direction: column; align-items: center; padding: 8px; }
@@ -50,17 +50,17 @@
       <code>p = γe</code>, γ = 0.2; ν = 0.3 h.
     </p>
     <p>
-      <b>Grid:</b> 200³ = 8 000 000 cells. State packed as 8 floats per cell
+      <b>Grid:</b> 100³ = 1 000 000 cells. State packed as 8 floats per cell
       (5 data: ρ, e, m<sub>x</sub>, m<sub>y</sub>, m<sub>z</sub>; + 3 pad);
-      ping-pong storage buffers of 256 MB each. Requires
-      <code>maxStorageBufferBindingSize ≥ 256 MB</code> from the adapter (most
-      modern desktop GPUs support up to 1–2 GB).
+      ping-pong storage buffers of 32 MB each — well within the default
+      <code>maxStorageBufferBindingSize</code> on essentially any
+      WebGPU adapter.
     </p>
   </div>
 </div>
 
 <script>
-const N = 200;
+const N = 100;
 let substepsPerFrame = 3;
 let paused = false;
 
@@ -97,8 +97,8 @@ async function main() {
   const adapter = await navigator.gpu.requestAdapter();
   if (!adapter) { status.textContent = 'No WebGPU adapter.'; return; }
 
-  // 200³ × 32 bytes = 256 MB per state buffer — over the default 128 MB
-  // maxStorageBufferBindingSize. Request a higher limit from the adapter.
+  // 100³ × 32 bytes = 32 MB per state buffer — well within the default
+  // maxStorageBufferBindingSize on essentially any WebGPU adapter.
   const NCELL = N * N * N;
   const STATE_BYTES = NCELL * CELL_FLOATS * 4;
   const requiredLimits = {};
