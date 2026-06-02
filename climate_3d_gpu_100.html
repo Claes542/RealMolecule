@@ -1,0 +1,1222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Bluff Body Mach 2 3D — Compressible Navier-Stokes on GPU</title>
+<style>
+  body { margin: 0; background: #fff; font-family: sans-serif; color: #000; }
+  #wrap { display: flex; flex-direction: column; align-items: center; padding: 8px; }
+  canvas { display: block; image-rendering: pixelated; border: 1px solid #888; }
+  #canvasStack { position: relative; width: 720px; height: 720px; }
+  #canvasStack canvas { position: absolute; top: 0; left: 0; }
+  #cvParticles { background: transparent !important; border: none !important; pointer-events: none; }
+  #wakeWrap { display: flex; flex-direction: row; gap: 16px; align-items: flex-start; }
+  #cvWake { display: block; border: 1px solid #888; image-rendering: pixelated; background: #000; }
+  #wakeLabel { font-size: 11px; line-height: 1.35; max-width: 220px; }
+  #info { width: 720px; font-size: 11px; line-height: 1.35; margin-top: 8px; }
+  code { font-size: 11px; background: #eee; padding: 1px 3px; }
+  #status { font-weight: bold; }
+  #controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 12px; flex-wrap: wrap; }
+  #controls button { padding: 4px 10px; font-size: 12px; cursor: pointer; }
+  #controls label { display: flex; gap: 4px; align-items: center; }
+  #controls input[type="range"] { width: 120px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="wakeWrap">
+    <div id="canvasStack">
+      <canvas id="cv" width="720" height="720"></canvas>
+      <canvas id="cvParticles" width="720" height="720"></canvas>
+    </div>
+    <div>
+      <canvas id="cvWake" width="240" height="240"></canvas>
+      <div id="wakeLabel">
+        <b>Cross-section (yz, at i = 0.75·N)</b><br>
+        Perpendicular to one horizontal axis. Colour = density (blue ⟶ white
+        ⟶ red, ρ ∈ [0.5, 1.5]). Shows the 3D structure of the convection
+        cells that the xy slice can't reveal: rising and sinking plumes,
+        roll-cell organisation, etc.
+      </div>
+    </div>
+  </div>
+  <div id="controls">
+    <button id="btnPause">Pause</button>
+    <button id="btnReset">Reset</button>
+    <label>Substeps/frame:
+      <input id="rngSubsteps" type="range" min="0" max="20" step="1" value="3" />
+      <span id="lblSubsteps">3</span>
+    </label>
+    <label>art visc ν (×h):
+      <input id="rngNu" type="range" min="0.01" max="0.5" step="0.01" value="0.10" />
+      <span id="lblNu">0.10</span>
+    </label>
+    <label>shock visc C (μ += C·h·|−∇·u|):
+      <input id="rngCvisc" type="range" min="0" max="20" step="0.5" value="1.0" />
+      <span id="lblCvisc">1.0</span>
+    </label>
+    <label>diff μ (Lap smoothing on ρ,e,m):
+      <input id="rngMu" type="range" min="0.0" max="0.5" step="0.01" value="0.10" />
+      <span id="lblMu">0.10</span>
+    </label>
+    <label>gravity g:
+      <input id="rngG" type="range" min="0" max="5.0" step="0.05" value="0.50" />
+      <span id="lblG">0.50</span>
+    </label>
+    <label>T_hot (bottom):
+      <input id="rngThot" type="range" min="1.0" max="4.0" step="0.05" value="2.00" />
+      <span id="lblThot">2.00</span>
+    </label>
+    <label>T_cold (top):
+      <input id="rngTcold" type="range" min="0.3" max="2.0" step="0.05" value="0.80" />
+      <span id="lblTcold">0.80</span>
+    </label>
+    <label>seed every (frames):
+      <input id="rngSeedFreq" type="range" min="1" max="200" step="1" value="20" />
+      <span id="lblSeedFreq">20</span>
+    </label>
+    <label>trace speed (×):
+      <input id="rngAdvect" type="range" min="0" max="40000" step="500" value="8000" />
+      <span id="lblAdvect">8000</span>
+    </label>
+    <span id="lblTime">t = 0.000</span>
+  </div>
+  <div id="info">
+    <div id="status">Initializing WebGPU…</div>
+    <p>
+      <b>Basic 3D climate model — Rayleigh-Bénard convection.</b>
+      Compressible Navier–Stokes in a closed cubic box, with a constant
+      gravitational body force <code>−g·ρ</code> in the −y direction. The
+      <b>bottom wall</b> (j = 0) is held at hot temperature
+      <code>T_hot</code>; the <b>top wall</b> (j = N−1) at cold
+      <code>T_cold</code>. The four side walls are closed (no-slip,
+      Neumann ρ, e). When the bottom-to-top temperature contrast exceeds
+      a critical Rayleigh number, the fluid develops convection cells:
+      hot fluid rises in plumes, cools at the ceiling, sinks back down,
+      transporting heat upward — the simplest model of atmospheric
+      circulation.
+    </p>
+    <p>
+      <b>Display:</b> mid-z slice (xy plane through the centre of the box).
+      Colour = density (blue low → white mid → red high), tuned to ρ ∈ [0.5, 1.5].
+      Black dots = forward-streak particle traces showing the instantaneous
+      velocity field. Side panel: yz wake slice at i = 0.75·N.
+    </p>
+    <p>
+      <b>Equations:</b>
+      <code>∂ρ/∂t + ∇·(ρv) = 0</code>;
+      <code>∂(ρv)/∂t + ∇·(ρv⊗v) + ∇p = ∇·σ − g·ρ·ŷ</code>;
+      <code>∂e/∂t + ∇·(e v) + p∇·v = ν|∇v|² + diffusion</code>;
+      <code>p = γe</code>, γ = 0.2.
+    </p>
+    <p>
+      <b>Grid:</b> 100³ = 1 000 000 cells. State packed as 8 floats per cell;
+      ping-pong storage buffers of 32 MB each — runs on any WebGPU GPU.
+    </p>
+  </div>
+</div>
+
+<script>
+const N = 100;
+let substepsPerFrame = 3;
+let paused = false;
+
+const GAMMA = 0.2;
+const H = 1.0 / N;
+let   NU = 0.1 * H;       // live via "art visc ν" slider, in units of h
+const DT = 0.02 * H;      // conservative dt for 3D stability
+let   MU = 0.1;       // Laplacian smoothing coefficient on ρ, e, m (live via slider)
+let   G_GRAV = 0.50;  // constant downward body force per unit mass (live via slider)
+let   T_HOT  = 2.0;   // bottom-wall temperature (live via slider)
+let   T_COLD = 0.8;   // top-wall temperature (live via slider)
+
+const CELL_FLOATS = 8;    // 5 data + 3 pad per cell
+
+const status = document.getElementById('status');
+const canvas = document.getElementById('cv');
+const btnPause = document.getElementById('btnPause');
+const btnReset = document.getElementById('btnReset');
+const rngSubsteps = document.getElementById('rngSubsteps');
+const lblSubsteps = document.getElementById('lblSubsteps');
+const rngNu = document.getElementById('rngNu');
+const lblNu = document.getElementById('lblNu');
+const rngCvisc = document.getElementById('rngCvisc');
+const lblCvisc = document.getElementById('lblCvisc');
+let CVISC = 1.0;          // shock-viscosity coefficient (live via slider)
+let nuDirty = false;
+const lblTime = document.getElementById('lblTime');
+
+btnPause.addEventListener('click', () => {
+  paused = !paused;
+  btnPause.textContent = paused ? 'Resume' : 'Pause';
+});
+rngSubsteps.addEventListener('input', () => {
+  substepsPerFrame = parseInt(rngSubsteps.value, 10);
+  lblSubsteps.textContent = String(substepsPerFrame);
+});
+rngNu.addEventListener('input', () => {
+  NU = parseFloat(rngNu.value) * H;
+  lblNu.textContent = parseFloat(rngNu.value).toFixed(2);
+  nuDirty = true;
+});
+rngCvisc.addEventListener('input', () => {
+  CVISC = parseFloat(rngCvisc.value);
+  lblCvisc.textContent = CVISC.toFixed(1);
+  nuDirty = true;
+});
+const rngMu = document.getElementById('rngMu');
+const lblMu = document.getElementById('lblMu');
+rngMu.addEventListener('input', () => {
+  MU = parseFloat(rngMu.value);
+  lblMu.textContent = MU.toFixed(2);
+  nuDirty = true;
+});
+// Climate sliders — gravity, hot/cold wall temperatures
+const rngG = document.getElementById('rngG'), lblG = document.getElementById('lblG');
+const rngThot = document.getElementById('rngThot'), lblThot = document.getElementById('lblThot');
+const rngTcold = document.getElementById('rngTcold'), lblTcold = document.getElementById('lblTcold');
+rngG.addEventListener('input', () => {
+  G_GRAV = parseFloat(rngG.value); lblG.textContent = G_GRAV.toFixed(2); nuDirty = true;
+});
+rngThot.addEventListener('input', () => {
+  T_HOT = parseFloat(rngThot.value); lblThot.textContent = T_HOT.toFixed(2); nuDirty = true;
+});
+rngTcold.addEventListener('input', () => {
+  T_COLD = parseFloat(rngTcold.value); lblTcold.textContent = T_COLD.toFixed(2); nuDirty = true;
+});
+
+// Particle controls
+const rngSeedFreq = document.getElementById('rngSeedFreq'), lblSeedFreq = document.getElementById('lblSeedFreq');
+const rngAdvect = document.getElementById('rngAdvect'), lblAdvect = document.getElementById('lblAdvect');
+let seedFreq = 20;
+let advectMag = 8000;
+rngSeedFreq.addEventListener('input', () => { seedFreq = parseInt(rngSeedFreq.value, 10); lblSeedFreq.textContent = seedFreq; });
+rngAdvect.addEventListener('input', () => { advectMag = parseFloat(rngAdvect.value); lblAdvect.textContent = advectMag.toFixed(0); });
+
+async function main() {
+  if (!navigator.gpu) {
+    status.textContent = 'WebGPU not supported in this browser. Try Chrome 113+, Edge 113+, or Safari 17+.';
+    return;
+  }
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) { status.textContent = 'No WebGPU adapter.'; return; }
+
+  // 200³ × 32 bytes = 256 MB per state buffer — over the default 128 MB
+  // maxStorageBufferBindingSize. Request a higher limit from the adapter.
+  const NCELL = N * N * N;
+  const STATE_BYTES = NCELL * CELL_FLOATS * 4;
+  const requiredLimits = {};
+  const wanted = Math.max(STATE_BYTES, 320 * 1024 * 1024);
+  if (adapter.limits.maxStorageBufferBindingSize >= wanted) {
+    requiredLimits.maxStorageBufferBindingSize = wanted;
+  } else {
+    status.textContent = `Adapter only supports ${(adapter.limits.maxStorageBufferBindingSize/1048576).toFixed(0)} MB storage-buffer bindings; need ${(wanted/1048576).toFixed(0)} MB for N=${N}³. Try a smaller N or a more capable GPU.`;
+    return;
+  }
+  if (adapter.limits.maxBufferSize >= wanted) {
+    requiredLimits.maxBufferSize = wanted;
+  }
+  const device = await adapter.requestDevice({ requiredLimits });
+  device.addEventListener('uncapturederror', (e) => {
+    console.error('WebGPU error:', e.error.message);
+    status.textContent = 'WebGPU error (see console): ' + e.error.message;
+  });
+
+  const ctx = canvas.getContext('webgpu');
+  const format = navigator.gpu.getPreferredCanvasFormat();
+  ctx.configure({ device, format, alphaMode: 'opaque' });
+
+  // ---------------------------------------------------------------------------
+  // Body geometry: cubic body of side 0.25 N centred in the domain
+  // ---------------------------------------------------------------------------
+  const BODY_0 = Math.round(N * 0.375);
+  const BODY_1 = Math.round(N * 0.625);
+  function inBody(i, j, k) {
+    return i >= BODY_0 && i <= BODY_1
+        && j >= BODY_0 && j <= BODY_1
+        && k >= BODY_0 && k <= BODY_1;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Buffers
+  // ---------------------------------------------------------------------------
+  const stateA = device.createBuffer({
+    size: STATE_BYTES,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+  const stateB = device.createBuffer({
+    size: STATE_BYTES,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+  const maskBuf = device.createBuffer({
+    size: NCELL * 4,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+  const paramsBuf = device.createBuffer({
+    size: 12 * 4,                   // 8 base + g + t_hot + t_cold + pad
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+
+  device.queue.writeBuffer(paramsBuf, 0, new Float32Array([
+    N, H, DT, GAMMA, NU, MU, CVISC, G_GRAV, T_HOT, T_COLD, 0, 0,
+  ]));
+
+  status.textContent = `Allocating initial state (${(STATE_BYTES/1048576).toFixed(0)} MB per buffer)…`;
+  await new Promise(r => setTimeout(r, 0));
+
+  // Initial state — uniform ρ, smoothly stratified e between T_hot at the
+  // bottom and T_cold at the top, zero velocity, plus a small random
+  // perturbation in e to break the symmetry and seed convective instability.
+  // Mask buffer left all-zero (no body).
+  const init = new Float32Array(NCELL * CELL_FLOATS);
+  const mask = new Uint32Array(NCELL);
+  for (let k = 0; k < N; k++) {
+    for (let j = 0; j < N; j++) {
+      const frac = j / (N - 1);
+      const T_lin = T_HOT * (1 - frac) + T_COLD * frac;
+      for (let i = 0; i < N; i++) {
+        const idx = i + N * (j + N * k);
+        const off = idx * CELL_FLOATS;
+        const noise = 0.02 * (Math.random() - 0.5);
+        init[off + 0] = 1.0;                       // rho
+        init[off + 1] = 1.0 * (T_lin + noise);     // e = ρ·T
+        init[off + 2] = 0.0;                       // mx (starting at rest)
+        init[off + 3] = 0.0;                       // my
+        init[off + 4] = 0.0;                       // mz
+        // mask[idx] = 0 by default (no body)
+      }
+    }
+  }
+  device.queue.writeBuffer(stateA, 0, init);
+  device.queue.writeBuffer(stateB, 0, init);
+  device.queue.writeBuffer(maskBuf, 0, mask);
+
+  // Display texture (mid-z slice)
+  const sliceTex = device.createTexture({
+    size: [N, N, 1],
+    format: 'rgba8unorm',
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  });
+  const sliceView = sliceTex.createView();
+  const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+
+  // ---------------------------------------------------------------------------
+  // WGSL shaders
+  // ---------------------------------------------------------------------------
+  const cellStruct = `
+    struct Cell {
+      rho: f32, e: f32, mx: f32, my: f32, mz: f32,
+      pad0: f32, pad1: f32, pad2: f32,
+    };
+    struct Params {
+      N: f32, h: f32, dt: f32, gamma: f32, nu: f32, mu: f32, cvisc: f32, g: f32,
+      t_hot: f32, t_cold: f32, _p0: f32, _p1: f32,
+    };
+  `;
+
+  const stepShader = cellStruct + /* wgsl */ `
+    @group(0) @binding(0) var<uniform> P: Params;
+    @group(0) @binding(1) var<storage, read>       state_in:  array<Cell>;
+    @group(0) @binding(2) var<storage, read>       mask:      array<u32>;
+    @group(0) @binding(3) var<storage, read_write> state_out: array<Cell>;
+
+    fn idx(i: u32, j: u32, k: u32) -> u32 {
+      let n = u32(P.N);
+      return i + n * (j + n * k);
+    }
+    fn read_n(i: u32, j: u32, k: u32, cc: Cell) -> Cell {
+      let id = idx(i, j, k);
+      if (mask[id] != 0u) {
+        var g: Cell;
+        g.rho = cc.rho; g.e = cc.e;
+        g.mx = 0.0; g.my = 0.0; g.mz = 0.0;
+        g.pad0 = 0.0; g.pad1 = 0.0; g.pad2 = 0.0;
+        return g;
+      }
+      return state_in[id];
+    }
+    fn v_of(c: Cell) -> vec3<f32> {
+      let r = max(c.rho, 0.05);
+      return vec3<f32>(c.mx / r, c.my / r, c.mz / r);
+    }
+
+    @compute @workgroup_size(8, 8, 4)
+    fn step(@builtin(global_invocation_id) gid: vec3<u32>) {
+      let n = u32(P.N);
+      let i = gid.x; let j = gid.y; let k = gid.z;
+      if (i >= n || j >= n || k >= n) { return; }
+
+      let id = idx(i, j, k);
+      let cell = state_in[id];
+
+      // ---- Outer-box boundary (closed-box convection) ----
+      // Bottom (j == 0): NON-SYMMETRIC heating in x.
+      //   • Strong hot patch:  i ∈ [0.10·N, 0.35·N)   → T_hot
+      //   • Cool/cold patch:   i ∈ [0.60·N, 0.85·N)   → T_cold
+      //   • Elsewhere:         insulating (Neumann)
+      // The two patches are placed off-centre and at different widths so
+      // the resulting circulation has no symmetry plane in x.
+      if (j == 0u) {
+        let c1 = state_in[idx(i, 1u, k)];
+        let fi = f32(i) / P.N;     // normalised x in [0, 1)
+        var w: Cell;
+        w.rho = c1.rho;
+        if (fi >= 0.10 && fi < 0.35) {
+          w.e = max(c1.rho, 0.05) * P.t_hot;        // hot patch
+        } else if (fi >= 0.60 && fi < 0.85) {
+          w.e = max(c1.rho, 0.05) * P.t_cold;       // cold patch
+        } else {
+          w.e = c1.e;                                // insulating elsewhere
+        }
+        w.mx = 0.0; w.my = 0.0; w.mz = 0.0;
+        w.pad0 = 0.0; w.pad1 = 0.0; w.pad2 = 0.0;
+        state_out[id] = w;
+        return;
+      }
+      // Top (j == N-1): cold wall, no-slip, e set to ρ_neighbor · T_cold
+      if (j == n - 1u) {
+        let c1 = state_in[idx(i, j - 1u, k)];
+        var w: Cell;
+        w.rho = c1.rho;
+        w.e   = max(c1.rho, 0.05) * P.t_cold;
+        w.mx = 0.0; w.my = 0.0; w.mz = 0.0;
+        w.pad0 = 0.0; w.pad1 = 0.0; w.pad2 = 0.0;
+        state_out[id] = w;
+        return;
+      }
+      // Side walls (closed): no-slip in normal velocity, Neumann ρ, e
+      if (i == 0u)     { var c1 = state_in[idx(1u, j, k)];      c1.mx = 0.0;  state_out[id] = c1; return; }
+      if (i == n - 1u) { var c1 = state_in[idx(n - 2u, j, k)];  c1.mx = 0.0;  state_out[id] = c1; return; }
+      if (k == 0u)     { var c1 = state_in[idx(i, j, 1u)];      c1.mz = 0.0;  state_out[id] = c1; return; }
+      if (k == n - 1u) { var c1 = state_in[idx(i, j, n - 2u)];  c1.mz = 0.0;  state_out[id] = c1; return; }
+
+      // ---- Interior fluid update ----
+      let rho_c = max(cell.rho, 0.05);
+      let e_c = cell.e;
+      let v_c = v_of(cell);
+
+      // 6 face neighbours, mask-aware
+      let c_xp = read_n(i+1u, j, k, cell);
+      let c_xm = read_n(i-1u, j, k, cell);
+      let c_yp = read_n(i, j+1u, k, cell);
+      let c_ym = read_n(i, j-1u, k, cell);
+      let c_zp = read_n(i, j, k+1u, cell);
+      let c_zm = read_n(i, j, k-1u, cell);
+
+      let v_xp = v_of(c_xp); let v_xm = v_of(c_xm);
+      let v_yp = v_of(c_yp); let v_ym = v_of(c_ym);
+      let v_zp = v_of(c_zp); let v_zm = v_of(c_zm);
+
+      // Diagonal viscous stress components (one-sided)
+      let sxx_c  = P.nu * (v_c.x - v_xm.x) / P.h;
+      let syy_c  = P.nu * (v_c.y - v_ym.y) / P.h;
+      let szz_c  = P.nu * (v_c.z - v_zm.z) / P.h;
+      let sxx_xp = P.nu * (v_xp.x - v_c.x) / P.h;
+      let syy_yp = P.nu * (v_yp.y - v_c.y) / P.h;
+      let szz_zp = P.nu * (v_zp.z - v_c.z) / P.h;
+
+      // Off-diagonal stresses at centre
+      let sxy_c = P.nu * 0.5 * ((v_c.x - v_ym.x) + (v_c.y - v_xm.y)) / P.h;
+      let sxz_c = P.nu * 0.5 * ((v_c.x - v_zm.x) + (v_c.z - v_xm.z)) / P.h;
+      let syz_c = P.nu * 0.5 * ((v_c.y - v_zm.y) + (v_c.z - v_ym.z)) / P.h;
+
+      // Off-diagonal stresses shifted +1 in each direction (for divergence)
+      // (small approximation: use the diagonal-shifted neighbour for the cross term)
+      let c_xp_yp = read_n(i+1u, j+1u, k, cell);
+      let c_xp_zp = read_n(i+1u, j, k+1u, cell);
+      let c_yp_zp = read_n(i, j+1u, k+1u, cell);
+      let v_xp_yp = v_of(c_xp_yp);
+      let v_xp_zp = v_of(c_xp_zp);
+      let v_yp_zp = v_of(c_yp_zp);
+      let sxy_yp = P.nu * 0.5 * ((v_yp.x - v_c.x) + (v_xp_yp.y - v_yp.y)) / P.h;
+      let sxz_zp = P.nu * 0.5 * ((v_zp.x - v_c.x) + (v_xp_zp.z - v_zp.z)) / P.h;
+      let sxy_xp = P.nu * 0.5 * ((v_xp.x - v_xp.x) + (v_xp.y - v_c.y)) / P.h;  // approx
+      let sxz_xp = P.nu * 0.5 * ((v_xp.x - v_xp.x) + (v_xp.z - v_c.z)) / P.h;
+      let syz_yp = P.nu * 0.5 * ((v_yp.y - v_yp.y) + (v_yp_zp.z - v_yp.z)) / P.h;
+      let syz_zp = P.nu * 0.5 * ((v_zp.y - v_yp_zp.y) + (v_zp.z - v_zp.z)) / P.h;
+
+      // Shock-capturing viscosity: bump μ locally where the flow is
+      // compressing (∇·u < 0).  μ_eff = μ + cvisc · h · max(0, −∇·u).
+      let divu = 0.5 * ((v_xp.x - v_xm.x) + (v_yp.y - v_ym.y) + (v_zp.z - v_zm.z)) / P.h;
+      let mu_eff = P.mu + P.cvisc * P.h * max(0.0, -divu);
+
+      // 3D laplacians (artificial viscosity terms)
+      let lap_vx = (v_xp.x + v_xm.x - 6.0*v_c.x + v_yp.x + v_ym.x + v_zp.x + v_zm.x) / P.h;
+      let lap_vy = (v_xp.y + v_xm.y - 6.0*v_c.y + v_yp.y + v_ym.y + v_zp.y + v_zm.y) / P.h;
+      let lap_vz = (v_xp.z + v_xm.z - 6.0*v_c.z + v_yp.z + v_ym.z + v_zp.z + v_zm.z) / P.h;
+      let lap_rho = (c_xp.rho + c_xm.rho - 6.0*rho_c + c_yp.rho + c_ym.rho + c_zp.rho + c_zm.rho) / P.h;
+      let lap_e   = (c_xp.e   + c_xm.e   - 6.0*e_c   + c_yp.e   + c_ym.e   + c_zp.e   + c_zm.e)   / P.h;
+
+      // Momentum updates (use mu_eff for the diffusion term so shocks pick up extra damping)
+      let mx_new = cell.mx
+        + mu_eff * P.dt * lap_vx
+        - 0.5 * P.dt * (v_xp.x * c_xp.mx - v_xm.x * c_xm.mx) / P.h
+        - 0.5 * P.dt * (v_yp.y * c_yp.mx - v_ym.y * c_ym.mx) / P.h
+        - 0.5 * P.dt * (v_zp.z * c_zp.mx - v_zm.z * c_zm.mx) / P.h
+        - P.dt * P.gamma * (c_xp.e - c_xm.e) / P.h
+        + P.dt * ((sxx_xp - sxx_c) + (sxy_yp - sxy_c) + (sxz_zp - sxz_c)) / P.h;
+
+      let my_new = cell.my
+        + mu_eff * P.dt * lap_vy
+        - 0.5 * P.dt * (v_xp.x * c_xp.my - v_xm.x * c_xm.my) / P.h
+        - 0.5 * P.dt * (v_yp.y * c_yp.my - v_ym.y * c_ym.my) / P.h
+        - 0.5 * P.dt * (v_zp.z * c_zp.my - v_zm.z * c_zm.my) / P.h
+        - P.dt * P.gamma * (c_yp.e - c_ym.e) / P.h
+        + P.dt * ((sxy_xp - sxy_c) + (syy_yp - syy_c) + (syz_zp - syz_c)) / P.h
+        - P.dt * P.g * (rho_c - 1.0);   // Boussinesq buoyancy (force only from ρ deviations)
+
+      let mz_new = cell.mz
+        + mu_eff * P.dt * lap_vz
+        - 0.5 * P.dt * (v_xp.x * c_xp.mz - v_xm.x * c_xm.mz) / P.h
+        - 0.5 * P.dt * (v_yp.y * c_yp.mz - v_ym.y * c_ym.mz) / P.h
+        - 0.5 * P.dt * (v_zp.z * c_zp.mz - v_zm.z * c_zm.mz) / P.h
+        - P.dt * P.gamma * (c_zp.e - c_zm.e) / P.h
+        + P.dt * ((sxz_xp - sxz_c) + (syz_yp - syz_c) + (szz_zp - szz_c)) / P.h;
+
+      // Density and energy updates with positivity floors
+      let rho_raw = rho_c
+        - 0.5 * P.dt * ((c_xp.mx - c_xm.mx) + (c_yp.my - c_ym.my) + (c_zp.mz - c_zm.mz)) / P.h
+        + mu_eff * P.dt * lap_rho;
+      // Viscous-dissipation heating: |∇u|² summed over all 9 gradient
+      // components (forward differences along each axis), the rate at which
+      // kinetic energy is irreversibly converted into internal energy by
+      // the viscous-stress divergence in the momentum equation. This is the
+      // 2nd-Law witness D for this flow; without it, energy is leaking from
+      // the system.
+      let sumsq =
+          (v_xp.x - v_c.x) * (v_xp.x - v_c.x)
+        + (v_yp.x - v_c.x) * (v_yp.x - v_c.x)
+        + (v_zp.x - v_c.x) * (v_zp.x - v_c.x)
+        + (v_xp.y - v_c.y) * (v_xp.y - v_c.y)
+        + (v_yp.y - v_c.y) * (v_yp.y - v_c.y)
+        + (v_zp.y - v_c.y) * (v_zp.y - v_c.y)
+        + (v_xp.z - v_c.z) * (v_xp.z - v_c.z)
+        + (v_yp.z - v_c.z) * (v_yp.z - v_c.z)
+        + (v_zp.z - v_c.z) * (v_zp.z - v_c.z);
+
+      let e_raw = e_c
+        - 0.5 * P.dt * (v_xp.x * c_xp.e - v_xm.x * c_xm.e) / P.h
+        - 0.5 * P.dt * (v_yp.y * c_yp.e - v_ym.y * c_ym.e) / P.h
+        - 0.5 * P.dt * (v_zp.z * c_zp.e - v_zm.z * c_zm.e) / P.h
+        - P.dt * P.gamma * e_c * ((v_xp.x - v_xm.x) + (v_yp.y - v_ym.y) + (v_zp.z - v_zm.z)) / P.h
+        + mu_eff * P.dt * lap_e
+        + mu_eff * P.dt * sumsq / P.h;
+      let rho_new = max(0.05, rho_raw);
+      let e_new   = max(0.05, e_raw);
+
+      var out: Cell;
+      out.rho = rho_new; out.e = e_new;
+      out.mx = mx_new;   out.my = my_new; out.mz = mz_new;
+      out.pad0 = 0.0; out.pad1 = 0.0; out.pad2 = 0.0;
+      state_out[id] = out;
+    }
+  `;
+
+  const renderShader = cellStruct + /* wgsl */ `
+    @group(0) @binding(0) var<uniform> P: Params;
+    @group(0) @binding(1) var<storage, read> state_in: array<Cell>;
+    @group(0) @binding(2) var<storage, read> mask:     array<u32>;
+    @group(0) @binding(3) var sliceTex: texture_storage_2d<rgba8unorm, write>;
+
+    fn idx(i: u32, j: u32, k: u32) -> u32 {
+      let n = u32(P.N);
+      return i + n * (j + n * k);
+    }
+    fn colormap(t: f32) -> vec4<f32> {
+      let s = clamp(t, 0.0, 1.0);
+      if (s < 0.5) {
+        let u = s * 2.0;
+        return vec4<f32>(u, u, 1.0, 1.0);
+      } else {
+        let u = (s - 0.5) * 2.0;
+        return vec4<f32>(1.0, 1.0 - u, 1.0 - u, 1.0);
+      }
+    }
+
+    @compute @workgroup_size(8, 8)
+    fn render_slice(@builtin(global_invocation_id) gid: vec3<u32>) {
+      let n = u32(P.N);
+      let i = gid.x; let j = gid.y;
+      if (i >= n || j >= n) { return; }
+      let k = n / 2u;
+      let id = idx(i, j, k);
+
+      var color = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+      if (mask[id] != 0u) {
+        color = vec4<f32>(1.0, 1.0, 0.0, 1.0);
+      } else {
+        // Colour by TEMPERATURE T = e/ρ — for the climate model this
+        // is the convectively interesting field (density barely varies).
+        let r = max(state_in[id].rho, 0.05);
+        let T = state_in[id].e / r;
+        let t = clamp((T - P.t_cold) / max(P.t_hot - P.t_cold, 0.01), 0.0, 1.0);
+        color = colormap(t);
+      }
+      let tex_y = n - 1u - j;
+      textureStore(sliceTex, vec2<u32>(i, tex_y), color);
+    }
+  `;
+
+  const blitShader = /* wgsl */ `
+    @group(0) @binding(0) var samp: sampler;
+    @group(0) @binding(1) var tex:  texture_2d<f32>;
+    struct VSOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
+    @vertex
+    fn vs(@builtin(vertex_index) vi: u32) -> VSOut {
+      var p = array<vec2<f32>, 3>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>( 3.0, -1.0),
+        vec2<f32>(-1.0,  3.0),
+      );
+      let xy = p[vi];
+      var o: VSOut;
+      o.pos = vec4<f32>(xy, 0.0, 1.0);
+      o.uv = vec2<f32>((xy.x + 1.0) * 0.5, 1.0 - (xy.y + 1.0) * 0.5);
+      return o;
+    }
+    @fragment
+    fn fs(in: VSOut) -> @location(0) vec4<f32> {
+      return textureSample(tex, samp, in.uv);
+    }
+  `;
+
+  // ---------------------------------------------------------------------------
+  // Pipelines, bind groups, frame loop
+  // ---------------------------------------------------------------------------
+  const stepModule   = device.createShaderModule({ code: stepShader });
+  const renderModule = device.createShaderModule({ code: renderShader });
+  const blitModule   = device.createShaderModule({ code: blitShader });
+  for (const [name, mod] of [['step', stepModule], ['render', renderModule], ['blit', blitModule]]) {
+    const info = await mod.getCompilationInfo();
+    for (const msg of info.messages) {
+      console.log(`[${name}] ${msg.type}: line ${msg.lineNum}:${msg.linePos} — ${msg.message}`);
+    }
+  }
+  const stepPipeline = device.createComputePipeline({
+    layout: 'auto',
+    compute: { module: stepModule, entryPoint: 'step' },
+  });
+  const renderPipeline = device.createComputePipeline({
+    layout: 'auto',
+    compute: { module: renderModule, entryPoint: 'render_slice' },
+  });
+  const blitPipeline = device.createRenderPipeline({
+    layout: 'auto',
+    vertex: { module: blitModule, entryPoint: 'vs' },
+    fragment: { module: blitModule, entryPoint: 'fs', targets: [{ format }] },
+    primitive: { topology: 'triangle-list' },
+  });
+
+  function makeStepBindGroup(sin, sout) {
+    return device.createBindGroup({
+      layout: stepPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: sin } },
+        { binding: 2, resource: { buffer: maskBuf } },
+        { binding: 3, resource: { buffer: sout } },
+      ],
+    });
+  }
+  const bgAtoB = makeStepBindGroup(stateA, stateB);
+  const bgBtoA = makeStepBindGroup(stateB, stateA);
+
+  function makeRenderBindGroup(sin) {
+    return device.createBindGroup({
+      layout: renderPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: sin } },
+        { binding: 2, resource: { buffer: maskBuf } },
+        { binding: 3, resource: sliceView },
+      ],
+    });
+  }
+  const rbA = makeRenderBindGroup(stateA);
+  const rbB = makeRenderBindGroup(stateB);
+
+  const blitBindGroup = device.createBindGroup({
+    layout: blitPipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: sampler },
+      { binding: 1, resource: sliceView },
+    ],
+  });
+
+  // ----- Velocity-readback for particle tracing -----
+  // Extract the mid-z slice velocities (vx, vy) into a small storage buffer,
+  // then copy to a MAP_READ staging buffer so JS can advect particles.
+  const VEL_FLOATS = 2;    // vx, vy per cell
+  const VEL_BYTES = N * N * VEL_FLOATS * 4;
+  const velBuf = device.createBuffer({
+    size: VEL_BYTES,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+  });
+  const velStaging = device.createBuffer({
+    size: VEL_BYTES,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+  const extractShader = cellStruct + /* wgsl */ `
+    @group(0) @binding(0) var<uniform> P: Params;
+    @group(0) @binding(1) var<storage, read> state_in: array<Cell>;
+    @group(0) @binding(2) var<storage, read_write> vel: array<f32>;
+    @compute @workgroup_size(8, 8, 1)
+    fn extract(@builtin(global_invocation_id) gid: vec3<u32>) {
+      let n = u32(P.N);
+      let i = gid.x; let j = gid.y;
+      if (i >= n || j >= n) { return; }
+      let kmid = n / 2u;
+      let q = i + n * (j + n * kmid);
+      let c = state_in[q];
+      let r = max(c.rho, 0.05);
+      vel[2u * (i + n * j) + 0u] = c.mx / r;
+      vel[2u * (i + n * j) + 1u] = c.my / r;
+    }
+  `;
+  const extractModule = device.createShaderModule({ code: extractShader });
+  const extractPipeline = device.createComputePipeline({
+    layout: 'auto',
+    compute: { module: extractModule, entryPoint: 'extract' },
+  });
+  function makeExtractBG(sin) {
+    return device.createBindGroup({
+      layout: extractPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: sin } },
+        { binding: 2, resource: { buffer: velBuf } },
+      ],
+    });
+  }
+  const exA = makeExtractBG(stateA);
+  const exB = makeExtractBG(stateB);
+
+  // CPU-side velocity buffer (updated whenever velStaging is mappable)
+  let cpuVel = new Float32Array(N * N * 2);
+  let mapPending = false;
+
+  // ----- Centerline-cut readback (e along x through j = k = N/2) -----
+  const ELINE_BYTES = N * 4;        // 1 float per i
+  const eLineBuf = device.createBuffer({
+    size: ELINE_BYTES,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+  });
+  const eLineStaging = device.createBuffer({
+    size: ELINE_BYTES,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+  const eLineShader = cellStruct + /* wgsl */ `
+    @group(0) @binding(0) var<uniform> P: Params;
+    @group(0) @binding(1) var<storage, read> state_in: array<Cell>;
+    @group(0) @binding(2) var<storage, read_write> e_line: array<f32>;
+    @compute @workgroup_size(64, 1, 1)
+    fn extract_eline(@builtin(global_invocation_id) gid: vec3<u32>) {
+      let n = u32(P.N);
+      let i = gid.x;
+      if (i >= n) { return; }
+      let mid = n / 2u;
+      let q = i + n * (mid + n * mid);
+      e_line[i] = state_in[q].e;
+    }
+  `;
+  const eLineModule = device.createShaderModule({ code: eLineShader });
+  const eLinePipeline = device.createComputePipeline({
+    layout: 'auto',
+    compute: { module: eLineModule, entryPoint: 'extract_eline' },
+  });
+  function makeELineBG(sin) {
+    return device.createBindGroup({
+      layout: eLinePipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: sin } },
+        { binding: 2, resource: { buffer: eLineBuf } },
+      ],
+    });
+  }
+  const eLA = makeELineBG(stateA);
+  const eLB = makeELineBG(stateB);
+  let cpuELine = null;
+  let eLinePending = false;
+
+  // ----- Wake-slice readback (yz density plane at i ≈ 0.75·N) -----
+  const WAKE_I = Math.round(0.75 * N);
+  const WAKE_BYTES = N * N * 4;       // 1 float per cell
+  const wakeBuf = device.createBuffer({
+    size: WAKE_BYTES,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+  });
+  const wakeStaging = device.createBuffer({
+    size: WAKE_BYTES,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+  const wakeShader = cellStruct + /* wgsl */ `
+    @group(0) @binding(0) var<uniform> P: Params;
+    @group(0) @binding(1) var<storage, read> state_in: array<Cell>;
+    @group(0) @binding(2) var<storage, read_write> rho_slice: array<f32>;
+    fn idx(i: u32, j: u32, k: u32) -> u32 {
+      let n = u32(P.N);
+      return i + n * (j + n * k);
+    }
+    @compute @workgroup_size(8, 8, 1)
+    fn extract_wake(@builtin(global_invocation_id) gid: vec3<u32>) {
+      let n = u32(P.N);
+      let j = gid.x; let k = gid.y;
+      if (j >= n || k >= n) { return; }
+      let wakeI = u32(${WAKE_I});
+      // Extract TEMPERATURE T = e/ρ for the climate display
+      let c = state_in[idx(wakeI, j, k)];
+      let r = max(c.rho, 0.05);
+      rho_slice[j + n * k] = c.e / r;
+    }
+  `;
+  const wakeModule = device.createShaderModule({ code: wakeShader });
+  const wakePipeline = device.createComputePipeline({
+    layout: 'auto',
+    compute: { module: wakeModule, entryPoint: 'extract_wake' },
+  });
+  function makeWakeBG(sin) {
+    return device.createBindGroup({
+      layout: wakePipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: sin } },
+        { binding: 2, resource: { buffer: wakeBuf } },
+      ],
+    });
+  }
+  const wbA = makeWakeBG(stateA);
+  const wbB = makeWakeBG(stateB);
+  const wakeCanvas = document.getElementById('cvWake');
+  const wctx = wakeCanvas.getContext('2d');
+  const wImage = wctx.createImageData(N, N);
+  let cpuWake = null;
+  let wakePending = false;
+  function renderWake() {
+    if (!cpuWake) return;
+    const data = wImage.data;
+    const Tmid = 0.5 * (T_HOT + T_COLD);
+    const Trange = Math.max(0.01, T_HOT - T_COLD);
+    for (let q = 0; q < N * N; q++) {
+      const T = cpuWake[q];
+      // Map T ∈ [T_cold, T_hot] → blue ⟶ white ⟶ red. T = midpoint → white.
+      const tn = Math.max(-1, Math.min(1, (T - Tmid) / (Trange * 0.5)));
+      let R = 255, G = 255, B = 255;
+      if (tn >= 0) { B = G = Math.round(255 * (1 - tn)); }
+      else         { R = G = Math.round(255 * (1 + tn)); }
+      const p = q * 4;
+      data[p] = R; data[p+1] = G; data[p+2] = B; data[p+3] = 255;
+    }
+    // Put pixels at native resolution then scale via 2D canvas
+    const off = document.createElement('canvas');
+    off.width = N; off.height = N;
+    off.getContext('2d').putImageData(wImage, 0, 0);
+    wctx.imageSmoothingEnabled = false;
+    wctx.drawImage(off, 0, 0, wakeCanvas.width, wakeCanvas.height);
+  }
+
+  // ----- Force readback (drag & lift on the body) -----
+  // Extract the pressure on the 4 axis-aligned body-face layers (front/back
+  // in x, top/bottom in y). Sum on CPU after mapping to get drag and lift.
+  const FACE_SLOTS = 4;   // front, back, top, bottom
+  const FACE_BYTES = N * N * FACE_SLOTS * 4;
+  const faceBuf = device.createBuffer({
+    size: FACE_BYTES,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+  });
+  const faceStaging = device.createBuffer({
+    size: FACE_BYTES,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+  const faceShader = cellStruct + /* wgsl */ `
+    @group(0) @binding(0) var<uniform> P: Params;
+    @group(0) @binding(1) var<storage, read> state_in: array<Cell>;
+    @group(0) @binding(2) var<storage, read_write> faces: array<f32>;
+    fn idx(i: u32, j: u32, k: u32) -> u32 {
+      let n = u32(P.N);
+      return i + n * (j + n * k);
+    }
+    @compute @workgroup_size(8, 8, 1)
+    fn extract_face(@builtin(global_invocation_id) gid: vec3<u32>) {
+      let n = u32(P.N);
+      let a = gid.x; let b = gid.y;
+      if (a >= n || b >= n) { return; }
+      let body_0 = u32(0.375 * P.N);
+      let body_1 = u32(0.625 * P.N);
+      let nsq = n * n;
+      // Front (i = body_0 − 1, j = a, k = b)
+      var ff = 0.0;
+      if (body_0 > 0u) { ff = P.gamma * state_in[idx(body_0 - 1u, a, b)].e; }
+      faces[0u * nsq + a + n * b] = ff;
+      // Back (i = body_1 + 1)
+      var fb = 0.0;
+      if (body_1 + 1u < n) { fb = P.gamma * state_in[idx(body_1 + 1u, a, b)].e; }
+      faces[1u * nsq + a + n * b] = fb;
+      // Top (j = body_1 + 1)
+      var ft = 0.0;
+      if (body_1 + 1u < n) { ft = P.gamma * state_in[idx(a, body_1 + 1u, b)].e; }
+      faces[2u * nsq + a + n * b] = ft;
+      // Bottom (j = body_0 − 1)
+      var fbot = 0.0;
+      if (body_0 > 0u) { fbot = P.gamma * state_in[idx(a, body_0 - 1u, b)].e; }
+      faces[3u * nsq + a + n * b] = fbot;
+    }
+  `;
+  const faceModule = device.createShaderModule({ code: faceShader });
+  const facePipeline = device.createComputePipeline({
+    layout: 'auto',
+    compute: { module: faceModule, entryPoint: 'extract_face' },
+  });
+  function makeFaceBG(sin) {
+    return device.createBindGroup({
+      layout: facePipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: sin } },
+        { binding: 2, resource: { buffer: faceBuf } },
+      ],
+    });
+  }
+  const fbA = makeFaceBG(stateA);
+  const fbB = makeFaceBG(stateB);
+  let cpuFaces = null;        // Float32Array(N*N*FACE_SLOTS) once first map resolves
+  let facePending = false;
+  let currentDrag = 0, currentLift = 0;
+  const BODY_0_JS = Math.round(0.375 * N);
+  const BODY_1_JS = Math.round(0.625 * N);
+  const FACE_CELLS = (BODY_1_JS - BODY_0_JS + 1) * (BODY_1_JS - BODY_0_JS + 1);
+
+  function computeForcesFromFaces() {
+    if (!cpuFaces) return;
+    const NN = N * N;
+    let frontSum = 0, backSum = 0, topSum = 0, botSum = 0;
+    for (let b = BODY_0_JS; b <= BODY_1_JS; b++) {
+      for (let a = BODY_0_JS; a <= BODY_1_JS; a++) {
+        const idx2 = a + N * b;
+        frontSum += cpuFaces[0 * NN + idx2];
+        backSum  += cpuFaces[1 * NN + idx2];
+        topSum   += cpuFaces[2 * NN + idx2];
+        botSum   += cpuFaces[3 * NN + idx2];
+      }
+    }
+    // Per-cell area is h². Force = Σ p · h² over the face. Drag = front − back,
+    // Lift = bottom − top (sign convention: +y is "down" in image coordinates,
+    // so a downward-pointing lift is what gas-on-bottom-face produces; we report
+    // (bottom − top) so positive means "lift up the body").
+    const h2 = (1 / N) * (1 / N);
+    currentDrag = (frontSum - backSum) * h2;
+    currentLift = (botSum - topSum) * h2;
+  }
+
+  // ----- Particle system -----
+  const particlesCanvas = document.getElementById('cvParticles');
+  const pctx = particlesCanvas.getContext('2d');
+  const P_NX = 80, P_NY = 80;        // 6400 particles on a regular grid
+  const N_PARTICLES = P_NX * P_NY;
+  const PX = particlesCanvas.width / N;   // pixels per cell on the overlay
+  const px = new Float32Array(N_PARTICLES);
+  const py = new Float32Array(N_PARTICLES);
+  function resetParticles() {
+    let k = 0;
+    for (let pj = 0; pj < P_NY; pj++) {
+      for (let pi = 0; pi < P_NX; pi++) {
+        // Spread the particles uniformly over the [0, N] × [0, N] domain
+        px[k] = (pi + 0.5) * (N / P_NX);
+        py[k] = (pj + 0.5) * (N / P_NY);
+        k++;
+      }
+    }
+  }
+  resetParticles();
+  let pFrameCnt = 0;
+
+  function advectParticles() {
+    const DTSUB = DT * Math.max(1, substepsPerFrame);
+    const adv = advectMag * DTSUB;
+    const Ni = N;
+    for (let k = 0; k < N_PARTICLES; k++) {
+      const i = Math.max(0, Math.min(Ni - 1, Math.floor(px[k])));
+      const j = Math.max(0, Math.min(Ni - 1, Math.floor(py[k])));
+      const qi = 2 * (i + Ni * j);
+      const vx = cpuVel[qi + 0];
+      const vy = cpuVel[qi + 1];
+      px[k] += adv * vx;
+      py[k] += adv * vy;
+      // Keep particles inside the box; if they exit on the right, wrap or hide
+      if (px[k] >= Ni - 1) px[k] = Ni - 1;
+      if (px[k] <= 0)      px[k] = 0;
+      if (py[k] >= Ni - 1) py[k] = Ni - 1;
+      if (py[k] <= 0)      py[k] = 0;
+    }
+  }
+
+  // Each particle's trace is now a FORWARD-projected streamline starting from
+  // its current position: at each frame we integrate the velocity field N_STREAK
+  // small steps ahead, drawing the path. The leading edge of each streak is the
+  // particle's predicted future, trailing back to its current position.
+  const N_STREAK = 25;     // forward-projection steps per streak
+  const STREAK_DT = 0.005; // size of each forward step in (px-cell) units, gets multiplied by velocity·advectMag
+
+  function renderParticles() {
+    // Clear the streak overlay entirely each frame (no fading needed —
+    // streaks are drawn fresh by forward integration)
+    pctx.clearRect(0, 0, particlesCanvas.width, particlesCanvas.height);
+    pctx.lineWidth = 1.0;
+    const Ni = N;
+    for (let k = 0; k < N_PARTICLES; k++) {
+      // Start at current particle position
+      let xc = px[k], yc = py[k];
+      // Draw the current-position dot
+      pctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+      pctx.fillRect(xc * PX - 0.8, yc * PX - 0.8, 1.8, 1.8);
+      // Forward streak: integrate velocity field N_STREAK steps ahead
+      pctx.beginPath();
+      pctx.moveTo(xc * PX, yc * PX);
+      let alphaPrev = 0.85;
+      for (let s = 0; s < N_STREAK; s++) {
+        const i = Math.max(0, Math.min(Ni - 1, Math.floor(xc)));
+        const j = Math.max(0, Math.min(Ni - 1, Math.floor(yc)));
+        const qi = 2 * (i + Ni * j);
+        const vx = cpuVel[qi + 0];
+        const vy = cpuVel[qi + 1];
+        xc += STREAK_DT * advectMag * vx;
+        yc += STREAK_DT * advectMag * vy;
+        if (xc < 0 || xc >= Ni - 1 || yc < 0 || yc >= Ni - 1) break;
+        pctx.lineTo(xc * PX, yc * PX);
+      }
+      // Stroke with declining alpha so the future-end of the streak fades out
+      // (the further-future part is less certain because the velocity field
+      // changes); render each segment one-shot here for simplicity.
+      pctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+      pctx.stroke();
+    }
+  }
+
+  function renderELine() {
+    if (!cpuELine) return;
+    const W = particlesCanvas.width;
+    const H = particlesCanvas.height;
+    const BASE = H - 50;                  // baseline y
+    const AMP  = 90;                      // amplitude (so curve spans BASE ± AMP/2)
+    // Erase the bottom strip we're about to redraw — use destination-out so
+    // we don't tint the WebGPU layer underneath.
+    pctx.globalCompositeOperation = 'destination-out';
+    pctx.fillStyle = 'rgba(0,0,0,1)';
+    pctx.fillRect(0, BASE - AMP, W, AMP + 60);
+    pctx.globalCompositeOperation = 'source-over';
+    // Translucent white box behind the line so the plot is readable against
+    // the density-coloured WebGPU canvas.
+    pctx.fillStyle = 'rgba(255,255,255,0.55)';
+    pctx.fillRect(0, BASE - AMP, W, AMP + 50);
+    // Baseline (e = 1) and faint upper guide (e = 2)
+    pctx.strokeStyle = 'rgba(120,120,120,0.7)';
+    pctx.lineWidth = 1;
+    pctx.beginPath(); pctx.moveTo(0, BASE); pctx.lineTo(W, BASE); pctx.stroke();
+    pctx.strokeStyle = 'rgba(120,120,120,0.3)';
+    pctx.beginPath(); pctx.moveTo(0, BASE - AMP); pctx.lineTo(W, BASE - AMP); pctx.stroke();
+    // Polyline of e along the centerline (i = 0..N-1)
+    pctx.strokeStyle = 'rgba(0,80,200,1)';
+    pctx.lineWidth = 1.6;
+    pctx.beginPath();
+    for (let i = 0; i < N; i++) {
+      const e = cpuELine[i];
+      const x = i * (W / N);
+      const y = BASE - AMP * Math.max(0, Math.min(1, (e - 1) / 2));   // map e ∈ [1, 3] → [BASE, BASE-AMP]
+      if (i === 0) pctx.moveTo(x, y); else pctx.lineTo(x, y);
+    }
+    pctx.stroke();
+    // Label
+    pctx.fillStyle = '#000';
+    pctx.font = '11px sans-serif';
+    pctx.textBaseline = 'bottom';
+    pctx.fillText('e along centerline x  (e ∈ [1, 3] → blue baseline at e=1, guide at e=3)', 8, BASE + 14);
+  }
+
+  btnReset.addEventListener('click', () => {
+    device.queue.writeBuffer(stateA, 0, init);
+    device.queue.writeBuffer(stateB, 0, init);
+    pingState = 'A';
+    simTime = 0;
+    frameCount = 0;
+    lblTime.textContent = 't = 0.000';
+  });
+
+  let pingState = 'A';
+  let frameCount = 0;
+  let simTime = 0;
+
+  function frame() {
+    frameCount++;
+    // Re-upload params if any slider changed
+    if (nuDirty) {
+      device.queue.writeBuffer(paramsBuf, 0, new Float32Array([
+        N, H, DT, GAMMA, NU, MU, CVISC, G_GRAV, T_HOT, T_COLD, 0, 0,
+      ]));
+      nuDirty = false;
+    }
+    const encoder = device.createCommandEncoder();
+
+    const stepsThisFrame = paused ? 0 : substepsPerFrame;
+    for (let s = 0; s < stepsThisFrame; s++) {
+      const pass = encoder.beginComputePass();
+      pass.setPipeline(stepPipeline);
+      pass.setBindGroup(0, pingState === 'A' ? bgAtoB : bgBtoA);
+      pass.dispatchWorkgroups(Math.ceil(N/8), Math.ceil(N/8), Math.ceil(N/4));
+      pass.end();
+      pingState = (pingState === 'A') ? 'B' : 'A';
+      simTime += DT;
+    }
+
+    {
+      const pass = encoder.beginComputePass();
+      pass.setPipeline(renderPipeline);
+      pass.setBindGroup(0, pingState === 'A' ? rbA : rbB);
+      pass.dispatchWorkgroups(Math.ceil(N/8), Math.ceil(N/8));
+      pass.end();
+    }
+
+    // Extract mid-z velocity slice → small storage buffer → staging buffer for CPU readback.
+    // Only issue a fresh readback if the previous one has been consumed (mapPending is false).
+    if (!mapPending) {
+      const passEx = encoder.beginComputePass();
+      passEx.setPipeline(extractPipeline);
+      passEx.setBindGroup(0, pingState === 'A' ? exA : exB);
+      passEx.dispatchWorkgroups(Math.ceil(N/8), Math.ceil(N/8));
+      passEx.end();
+      encoder.copyBufferToBuffer(velBuf, 0, velStaging, 0, VEL_BYTES);
+    }
+
+    // Extract body-face pressures for drag/lift
+    if (!facePending) {
+      const passFc = encoder.beginComputePass();
+      passFc.setPipeline(facePipeline);
+      passFc.setBindGroup(0, pingState === 'A' ? fbA : fbB);
+      passFc.dispatchWorkgroups(Math.ceil(N/8), Math.ceil(N/8));
+      passFc.end();
+      encoder.copyBufferToBuffer(faceBuf, 0, faceStaging, 0, FACE_BYTES);
+    }
+
+    // Extract wake yz density slice
+    if (!wakePending) {
+      const passW = encoder.beginComputePass();
+      passW.setPipeline(wakePipeline);
+      passW.setBindGroup(0, pingState === 'A' ? wbA : wbB);
+      passW.dispatchWorkgroups(Math.ceil(N/8), Math.ceil(N/8));
+      passW.end();
+      encoder.copyBufferToBuffer(wakeBuf, 0, wakeStaging, 0, WAKE_BYTES);
+    }
+
+    // Extract centerline e(x, N/2, N/2)
+    if (!eLinePending) {
+      const passEl = encoder.beginComputePass();
+      passEl.setPipeline(eLinePipeline);
+      passEl.setBindGroup(0, pingState === 'A' ? eLA : eLB);
+      passEl.dispatchWorkgroups(Math.ceil(N/64));
+      passEl.end();
+      encoder.copyBufferToBuffer(eLineBuf, 0, eLineStaging, 0, ELINE_BYTES);
+    }
+
+    {
+      const pass = encoder.beginRenderPass({
+        colorAttachments: [{
+          view: ctx.getCurrentTexture().createView(),
+          loadOp: 'clear', storeOp: 'store',
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        }],
+      });
+      pass.setPipeline(blitPipeline);
+      pass.setBindGroup(0, blitBindGroup);
+      pass.draw(3, 1, 0, 0);
+      pass.end();
+    }
+
+    device.queue.submit([encoder.finish()]);
+
+    // Map the velocity staging buffer asynchronously; when it resolves, copy
+    // into cpuVel and unmap. Particle advection on the next frame uses cpuVel.
+    if (!mapPending) {
+      mapPending = true;
+      velStaging.mapAsync(GPUMapMode.READ).then(() => {
+        cpuVel = new Float32Array(velStaging.getMappedRange().slice(0));
+        velStaging.unmap();
+        mapPending = false;
+      }).catch((err) => {
+        console.error('vel map failed:', err);
+        mapPending = false;
+      });
+    }
+
+    // Map face staging asynchronously for drag/lift
+    if (!facePending) {
+      facePending = true;
+      faceStaging.mapAsync(GPUMapMode.READ).then(() => {
+        cpuFaces = new Float32Array(faceStaging.getMappedRange().slice(0));
+        faceStaging.unmap();
+        computeForcesFromFaces();
+        facePending = false;
+      }).catch((err) => {
+        console.error('face map failed:', err);
+        facePending = false;
+      });
+    }
+
+    // Map wake-slice staging asynchronously and redraw the wake canvas
+    if (!wakePending) {
+      wakePending = true;
+      wakeStaging.mapAsync(GPUMapMode.READ).then(() => {
+        cpuWake = new Float32Array(wakeStaging.getMappedRange().slice(0));
+        wakeStaging.unmap();
+        renderWake();
+        wakePending = false;
+      }).catch((err) => {
+        console.error('wake map failed:', err);
+        wakePending = false;
+      });
+    }
+
+    // Map centerline-e staging asynchronously
+    if (!eLinePending) {
+      eLinePending = true;
+      eLineStaging.mapAsync(GPUMapMode.READ).then(() => {
+        cpuELine = new Float32Array(eLineStaging.getMappedRange().slice(0));
+        eLineStaging.unmap();
+        eLinePending = false;
+      }).catch((err) => {
+        console.error('eline map failed:', err);
+        eLinePending = false;
+      });
+    }
+
+    // Advect + render particles using the latest cpuVel; reset on cadence.
+    // (With forward-streak rendering the trail itself is generated each frame
+    // by forward integration, so we just need to keep the particle seed grid
+    // sensible — reset periodically so they don't all drift off-screen.)
+    pFrameCnt++;
+    if (pFrameCnt >= seedFreq) {
+      resetParticles();
+      pFrameCnt = 0;
+    }
+    advectParticles();
+    renderParticles();
+    renderELine();
+
+    if (frameCount % 10 === 0) {
+      lblTime.textContent = `t = ${simTime.toFixed(3)}    g = ${G_GRAV.toFixed(2)}    T_hot = ${T_HOT.toFixed(2)}    T_cold = ${T_COLD.toFixed(2)}`;
+      status.textContent =
+        `${paused ? 'paused' : 'running'} — frame ${frameCount} — N = ${N}³ = ${NCELL.toLocaleString()} cells, ` +
+        `${substepsPerFrame} substeps/frame, ${(STATE_BYTES/1048576).toFixed(0)} MB per state buffer`;
+    }
+    requestAnimationFrame(frame);
+  }
+
+  status.textContent = `WebGPU ready — N = ${N}³, ${substepsPerFrame} substeps/frame. Starting…`;
+  requestAnimationFrame(frame);
+}
+
+main().catch(err => {
+  console.error(err);
+  status.textContent = 'Error: ' + err.message;
+});
+</script>
+</body>
+</html>
