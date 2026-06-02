@@ -1513,14 +1513,11 @@ async function main() {
     renderELine();
 
     if (frameCount % 10 === 0) {
-      // Energy balance:  F_drag · u₀  =  D_rate  +  K̇_out  (steady state)
-      const dragFromBalance = U_INFLOW > 1e-9 ? (D_rate + K_out) / U_INFLOW : 0;
-      const dragFromDonly   = U_INFLOW > 1e-9 ? D_rate / U_INFLOW : 0;
-      const ratio = Math.abs(currentDrag) > 1e-9 ? dragFromBalance / currentDrag : 0;
+      const dragFromD = U_INFLOW > 1e-9 ? D_rate / U_INFLOW : 0;
+      const ratio = Math.abs(currentDrag) > 1e-9 ? dragFromD / currentDrag : 0;
       lblTime.textContent =
         `t = ${simTime.toFixed(3)}    drag = ${currentDrag.toExponential(2)}    lift = ${currentLift.toExponential(2)}    ` +
-        `D_rate = ${D_rate.toExponential(2)}    K̇_out = ${K_out.toExponential(2)}    ` +
-        `(D+K̇_out)/u₀ = ${dragFromBalance.toExponential(2)}    ratio = ${ratio.toFixed(2)}    D_cum = ${D_cum.toExponential(3)}`;
+        `D_rate = ${D_rate.toExponential(2)}    D/u₀ = ${dragFromD.toExponential(2)}    (D/u₀)/drag = ${ratio.toFixed(2)}    D_cum = ${D_cum.toExponential(3)}`;
       status.textContent =
         `${paused ? 'paused' : 'running'} — frame ${frameCount} — N = ${N}³ = ${NCELL.toLocaleString()} cells, ` +
         `${substepsPerFrame} substeps/frame, ${(STATE_BYTES/1048576).toFixed(0)} MB per state buffer`;
