@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Bluff Body Mach 2 3D — Compressible Navier-Stokes on GPU</title>
+<style>
+  body { margin: 0; background: #fff; font-family: sans-serif; color: #000; }
+  #wrap { display: flex; flex-direction: column; align-items: center; padding: 8px; }
+  canvas { display: block; image-rendering: pixelated; border: 1px solid #888; }
+  #info { width: 720px; font-size: 11px; line-height: 1.35; margin-top: 8px; }
+  code { font-size: 11px; background: #eee; padding: 1px 3px; }
+  #status { font-weight: bold; }
+  #controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 12px; flex-wrap: wrap; }
+  #controls button { padding: 4px 10px; font-size: 12px; cursor: pointer; }
+  #controls label { display: flex; gap: 4px; align-items: center; }
+  #controls input[type="range"] { width: 120px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv" width="720" height="720"></canvas>
+  <div id="controls">
+    <button id="btnPause">Pause</button>
+    <button id="btnReset">Reset</button>
+    <label>Substeps/frame:
+      <input id="rngSubsteps" type="range" min="0" max="20" step="1" value="3" />
+      <span id="lblSubsteps">3</span>
+    </label>
+    <span id="lblTime">t = 0.000</span>
+  </div>
+  <div id="info">
+    <div id="status">Initializing WebGPU…</div>
+    <p>
+      <b>Bluff-body flow at Mach 2 in 3D, compressible Navier–Stokes, WebGPU.</b>
+      Uniform inflow ρ = 1, e = 1, v<sub>x</sub> = 1 from the left.
+      A cubic body of side 0.25 N centred in the domain acts as a hard no-slip
+      wall (frozen ρ, e; zero momentum). Fluid cells adjacent to the body see a
+      zero-momentum / matching-ρ-e ghost.
+    </p>
+    <p>
+      <b>Display:</b> mid-z slice (xy plane through the centre of the box).
+      Colour = density (blue low → white mid → red high), tuned to ρ ∈ [0.5, 1.5].
+      Body cells overlaid in yellow.
+    </p>
+    <p>
+      <b>Equations:</b>
+      <code>∂ρ/∂t + ∇·(ρv) = 0</code>;
+      <code>∂(ρv)/∂t + ∇·(ρv⊗v) + ∇p = ∇·σ</code>;
+      <code>∂e/∂t + ∇·(e v) + p∇·v = 0</code>;
+      <code>p = γe</code>, γ = 0.2; ν = 0.3 h.
+    </p>
+    <p>
+      <b>Grid:</b> 200³ = 8 000 000 cells. State packed as 8 floats per cell
+      (5 data: ρ, e, m<sub>x</sub>, m<sub>y</sub>, m<sub>z</sub>; + 3 pad);
+      ping-pong storage buffers of 256 MB each. Requires
+      <code>maxStorageBufferBindingSize ≥ 256 MB</code> from the adapter (most
+      modern desktop GPUs support up to 1–2 GB).
+    </p>
+  </div>
+</div>
+
+<script>
+const N = 200;
+let substepsPerFrame = 3;
+let paused = false;
+
+const GAMMA = 0.2;
+const H = 1.0 / N;
+const NU = 0.3 * H;
+const DT = 0.02 * H;      // conservative dt for 3D stability
+const MU = 0.2;
+
+const CELL_FLOATS = 8;    // 5 data + 3 pad per cell
+
+const status = document.getElementById('status');
+const canvas = document.getElementById('cv');
+const btnPause = document.getElementById('btnPause');
+const btnReset = document.getElementById('btnReset');
+const rngSubsteps = document.getElementById('rngSubsteps');
+const lblSubsteps = document.getElementById('lblSubsteps');
+const lblTime = document.getElementById('lblTime');
+
+btnPause.addEventListener('click', () => {
+  paused = !paused;
+  btnPause.textContent = paused ? 'Resume' : 'Pause';
+});
+rngSubsteps.addEventListener('input', () => {
+  substepsPerFrame = parseInt(rngSubsteps.value, 10);
+  lblSubsteps.textContent = String(substepsPerFrame);
+});
+
+async function main() {
+  if (!navigator.gpu) {
+    status.textContent = 'WebGPU not supported in this browser. Try Chrome 113+, Edge 113+, or Safari 17+.';
+    return;
+  }
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) { status.textContent = 'No WebGPU adapter.'; return; }
+
+  // 200³ × 32 bytes = 256 MB per state buffer — over the default 128 MB
+  // maxStorageBufferBindingSize. Request a higher limit from the adapter.
+  const NCELL = N * N * N;
+  const STATE_BYTES = NCELL * CELL_FLOATS * 4;
+  const requiredLimits = {};
+  const wanted = Math.max(STATE_BYTES, 320 * 1024 * 1024);
+  if (adapter.limits.maxStorageBufferBindingSize >= wanted) {
+    requiredLimits.maxStorageBufferBindingSize = wanted;
+  } else {
+    status.textContent = `Adapter only supports ${(adapter.limits.maxStorageBufferBindingSize/1048576).toFixed(0)} MB storage-buffer bindings; need ${(wanted/1048576).toFixed(0)} MB for N=${N}³. Try a smaller N or a more capable GPU.`;
+    return;
+  }
+  if (adapter.limits.maxBufferSize >= wanted) {
+    requiredLimits.maxBufferSize = wanted;
+  }
+  const device = await adapter.requestDevice({ requiredLimits });
+  device.addEventListener('uncapturederror', (e) => {
+    console.error('WebGPU error:', e.error.message);
+    status.textContent = 'WebGPU error (see console): ' + e.error.message;
+  });
+
+  const ctx = canvas.getContext('webgpu');
+  const format = navigator.gpu.getPreferredCanvasFormat();
+  ctx.configure({ device, format, alphaMode: 'opaque' });
+
+  // ---------------------------------------------------------------------------
+  // Body geometry: cubic body of side 0.25 N centred in the domain
+  // ---------------------------------------------------------------------------
+  const BODY_0 = Math.round(N * 0.375);
+  const BODY_1 = Math.round(N * 0.625);
+  function inBody(i, j, k) {
+    return i >= BODY_0 && i <= BODY_1
+        && j >= BODY_0 && j <= BODY_1
+        && k >= BODY_0 && k <= BODY_1;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Buffers
+  // ---------------------------------------------------------------------------
+  const stateA = device.createBuffer({
+    size: STATE_BYTES,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+  const stateB = device.createBuffer({
+    size: STATE_BYTES,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+  const maskBuf = device.createBuffer({
+    size: NCELL * 4,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+  const paramsBuf = device.createBuffer({
+    size: 8 * 4,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+
+  device.queue.writeBuffer(paramsBuf, 0, new Float32Array([
+    N, H, DT, GAMMA, NU, MU, 0, 0,
+  ]));
+
+  status.textContent = `Allocating initial state (${(STATE_BYTES/1048576).toFixed(0)} MB per buffer)…`;
+  await new Promise(r => setTimeout(r, 0));
+
+  // Initial state and mask (built in JS and uploaded once)
+  const init = new Float32Array(NCELL * CELL_FLOATS);
+  const mask = new Uint32Array(NCELL);
+  for (let k = 0; k < N; k++) {
+    for (let j = 0; j < N; j++) {
+      for (let i = 0; i < N; i++) {
+        const idx = i + N * (j + N * k);
+        const off = idx * CELL_FLOATS;
+        const body = inBody(i, j, k);
+        init[off + 0] = 1.0;             // rho
+        init[off + 1] = 1.0;             // e
+        init[off + 2] = body ? 0.0 : 1.0; // mx
+        init[off + 3] = 0.0;             // my
+        init[off + 4] = 0.0;             // mz
+        if (body) mask[idx] = 1;
+      }
+    }
+  }
+  device.queue.writeBuffer(stateA, 0, init);
+  device.queue.writeBuffer(stateB, 0, init);
+  device.queue.writeBuffer(maskBuf, 0, mask);
+
+  // Display texture (mid-z slice)
+  const sliceTex = device.createTexture({
+    size: [N, N, 1],
+    format: 'rgba8unorm',
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  });
+  const sliceView = sliceTex.createView();
+  const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+
+  // ---------------------------------------------------------------------------
+  // WGSL shaders
+  // ---------------------------------------------------------------------------
+  const cellStruct = `
+    struct Cell {
+      rho: f32, e: f32, mx: f32, my: f32, mz: f32,
+      pad0: f32, pad1: f32, pad2: f32,
+    };
+    struct Params {
+      N: f32, h: f32, dt: f32, gamma: f32, nu: f32, mu: f32, _p0: f32, _p1: f32,
+    };
+  `;
+
+  const stepShader = cellStruct + /* wgsl */ `
+    @group(0) @binding(0) var<uniform> P: Params;
+    @group(0) @binding(1) var<storage, read>       state_in:  array<Cell>;
+    @group(0) @binding(2) var<storage, read>       mask:      array<u32>;
+    @group(0) @binding(3) var<storage, read_write> state_out: array<Cell>;
+
+    fn idx(i: u32, j: u32, k: u32) -> u32 {
+      let n = u32(P.N);
+      return i + n * (j + n * k);
+    }
+    fn read_n(i: u32, j: u32, k: u32, cc: Cell) -> Cell {
+      let id = idx(i, j, k);
+      if (mask[id] != 0u) {
+        var g: Cell;
+        g.rho = cc.rho; g.e = cc.e;
+        g.mx = 0.0; g.my = 0.0; g.mz = 0.0;
+        g.pad0 = 0.0; g.pad1 = 0.0; g.pad2 = 0.0;
+        return g;
+      }
+      return state_in[id];
+    }
+    fn v_of(c: Cell) -> vec3<f32> {
+      let r = max(c.rho, 0.05);
+      return vec3<f32>(c.mx / r, c.my / r, c.mz / r);
+    }
+
+    @compute @workgroup_size(8, 8, 4)
+    fn step(@builtin(global_invocation_id) gid: vec3<u32>) {
+      let n = u32(P.N);
+      let i = gid.x; let j = gid.y; let k = gid.z;
+      if (i >= n || j >= n || k >= n) { return; }
+
+      let id = idx(i, j, k);
+      let cell = state_in[id];
+
+      // ---- Body cells: frozen no-slip wall ----
+      if (mask[id] != 0u) {
+        var w: Cell;
+        w.rho = cell.rho; w.e = cell.e;
+        w.mx = 0.0; w.my = 0.0; w.mz = 0.0;
+        w.pad0 = 0.0; w.pad1 = 0.0; w.pad2 = 0.0;
+        state_out[id] = w;
+        return;
+      }
+
+      // ---- Outer-box boundary ----
+      if (i == 0u) {
+        var inflow: Cell;
+        inflow.rho = 1.0; inflow.e = 1.0;
+        inflow.mx = 1.0; inflow.my = 0.0; inflow.mz = 0.0;
+        inflow.pad0 = 0.0; inflow.pad1 = 0.0; inflow.pad2 = 0.0;
+        state_out[id] = inflow;
+        return;
+      }
+      if (i == n - 1u) { state_out[id] = state_in[idx(i - 1u, j, k)]; return; }
+      if (j == 0u)     { state_out[id] = state_in[idx(i, 1u, k)];     return; }
+      if (j == n - 1u) { state_out[id] = state_in[idx(i, j - 1u, k)]; return; }
+      if (k == 0u)     { state_out[id] = state_in[idx(i, j, 1u)];     return; }
+      if (k == n - 1u) { state_out[id] = state_in[idx(i, j, k - 1u)]; return; }
+
+      // ---- Interior fluid update ----
+      let rho_c = max(cell.rho, 0.05);
+      let e_c = cell.e;
+      let v_c = v_of(cell);
+
+      // 6 face neighbours, mask-aware
+      let c_xp = read_n(i+1u, j, k, cell);
+      let c_xm = read_n(i-1u, j, k, cell);
+      let c_yp = read_n(i, j+1u, k, cell);
+      let c_ym = read_n(i, j-1u, k, cell);
+      let c_zp = read_n(i, j, k+1u, cell);
+      let c_zm = read_n(i, j, k-1u, cell);
+
+      let v_xp = v_of(c_xp); let v_xm = v_of(c_xm);
+      let v_yp = v_of(c_yp); let v_ym = v_of(c_ym);
+      let v_zp = v_of(c_zp); let v_zm = v_of(c_zm);
+
+      // Diagonal viscous stress components (one-sided)
+      let sxx_c  = P.nu * (v_c.x - v_xm.x) / P.h;
+      let syy_c  = P.nu * (v_c.y - v_ym.y) / P.h;
+      let szz_c  = P.nu * (v_c.z - v_zm.z) / P.h;
+      let sxx_xp = P.nu * (v_xp.x - v_c.x) / P.h;
+      let syy_yp = P.nu * (v_yp.y - v_c.y) / P.h;
+      let szz_zp = P.nu * (v_zp.z - v_c.z) / P.h;
+
+      // Off-diagonal stresses at centre
+      let sxy_c = P.nu * 0.5 * ((v_c.x - v_ym.x) + (v_c.y - v_xm.y)) / P.h;
+      let sxz_c = P.nu * 0.5 * ((v_c.x - v_zm.x) + (v_c.z - v_xm.z)) / P.h;
+      let syz_c = P.nu * 0.5 * ((v_c.y - v_zm.y) + (v_c.z - v_ym.z)) / P.h;
+
+      // Off-diagonal stresses shifted +1 in each direction (for divergence)
+      // (small approximation: use the diagonal-shifted neighbour for the cross term)
+      let c_xp_yp = read_n(i+1u, j+1u, k, cell);
+      let c_xp_zp = read_n(i+1u, j, k+1u, cell);
+      let c_yp_zp = read_n(i, j+1u, k+1u, cell);
+      let v_xp_yp = v_of(c_xp_yp);
+      let v_xp_zp = v_of(c_xp_zp);
+      let v_yp_zp = v_of(c_yp_zp);
+      let sxy_yp = P.nu * 0.5 * ((v_yp.x - v_c.x) + (v_xp_yp.y - v_yp.y)) / P.h;
+      let sxz_zp = P.nu * 0.5 * ((v_zp.x - v_c.x) + (v_xp_zp.z - v_zp.z)) / P.h;
+      let sxy_xp = P.nu * 0.5 * ((v_xp.x - v_xp.x) + (v_xp.y - v_c.y)) / P.h;  // approx
+      let sxz_xp = P.nu * 0.5 * ((v_xp.x - v_xp.x) + (v_xp.z - v_c.z)) / P.h;
+      let syz_yp = P.nu * 0.5 * ((v_yp.y - v_yp.y) + (v_yp_zp.z - v_yp.z)) / P.h;
+      let syz_zp = P.nu * 0.5 * ((v_zp.y - v_yp_zp.y) + (v_zp.z - v_zp.z)) / P.h;
+
+      // 3D laplacians (artificial viscosity terms)
+      let lap_vx = (v_xp.x + v_xm.x - 6.0*v_c.x + v_yp.x + v_ym.x + v_zp.x + v_zm.x) / P.h;
+      let lap_vy = (v_xp.y + v_xm.y - 6.0*v_c.y + v_yp.y + v_ym.y + v_zp.y + v_zm.y) / P.h;
+      let lap_vz = (v_xp.z + v_xm.z - 6.0*v_c.z + v_yp.z + v_ym.z + v_zp.z + v_zm.z) / P.h;
+      let lap_rho = (c_xp.rho + c_xm.rho - 6.0*rho_c + c_yp.rho + c_ym.rho + c_zp.rho + c_zm.rho) / P.h;
+      let lap_e   = (c_xp.e   + c_xm.e   - 6.0*e_c   + c_yp.e   + c_ym.e   + c_zp.e   + c_zm.e)   / P.h;
+
+      // Momentum updates
+      let mx_new = cell.mx
+        + P.mu * P.dt * lap_vx
+        - 0.5 * P.dt * (v_xp.x * c_xp.mx - v_xm.x * c_xm.mx) / P.h
+        - 0.5 * P.dt * (v_yp.y * c_yp.mx - v_ym.y * c_ym.mx) / P.h
+        - 0.5 * P.dt * (v_zp.z * c_zp.mx - v_zm.z * c_zm.mx) / P.h
+        - P.dt * P.gamma * (c_xp.e - c_xm.e) / P.h
+        + P.dt * ((sxx_xp - sxx_c) + (sxy_yp - sxy_c) + (sxz_zp - sxz_c)) / P.h;
+
+      let my_new = cell.my
+        + P.mu * P.dt * lap_vy
+        - 0.5 * P.dt * (v_xp.x * c_xp.my - v_xm.x * c_xm.my) / P.h
+        - 0.5 * P.dt * (v_yp.y * c_yp.my - v_ym.y * c_ym.my) / P.h
+        - 0.5 * P.dt * (v_zp.z * c_zp.my - v_zm.z * c_zm.my) / P.h
+        - P.dt * P.gamma * (c_yp.e - c_ym.e) / P.h
+        + P.dt * ((sxy_xp - sxy_c) + (syy_yp - syy_c) + (syz_zp - syz_c)) / P.h;
+
+      let mz_new = cell.mz
+        + P.mu * P.dt * lap_vz
+        - 0.5 * P.dt * (v_xp.x * c_xp.mz - v_xm.x * c_xm.mz) / P.h
+        - 0.5 * P.dt * (v_yp.y * c_yp.mz - v_ym.y * c_ym.mz) / P.h
+        - 0.5 * P.dt * (v_zp.z * c_zp.mz - v_zm.z * c_zm.mz) / P.h
+        - P.dt * P.gamma * (c_zp.e - c_zm.e) / P.h
+        + P.dt * ((sxz_xp - sxz_c) + (syz_yp - syz_c) + (szz_zp - szz_c)) / P.h;
+
+      // Density and energy updates with positivity floors
+      let rho_raw = rho_c
+        - 0.5 * P.dt * ((c_xp.mx - c_xm.mx) + (c_yp.my - c_ym.my) + (c_zp.mz - c_zm.mz)) / P.h
+        + P.mu * P.dt * lap_rho;
+      let e_raw = e_c
+        - 0.5 * P.dt * (v_xp.x * c_xp.e - v_xm.x * c_xm.e) / P.h
+        - 0.5 * P.dt * (v_yp.y * c_yp.e - v_ym.y * c_ym.e) / P.h
+        - 0.5 * P.dt * (v_zp.z * c_zp.e - v_zm.z * c_zm.e) / P.h
+        - P.dt * P.gamma * e_c * ((v_xp.x - v_xm.x) + (v_yp.y - v_ym.y) + (v_zp.z - v_zm.z)) / P.h
+        + P.mu * P.dt * lap_e;
+      let rho_new = max(0.05, rho_raw);
+      let e_new   = max(0.05, e_raw);
+
+      var out: Cell;
+      out.rho = rho_new; out.e = e_new;
+      out.mx = mx_new;   out.my = my_new; out.mz = mz_new;
+      out.pad0 = 0.0; out.pad1 = 0.0; out.pad2 = 0.0;
+      state_out[id] = out;
+    }
+  `;
+
+  const renderShader = cellStruct + /* wgsl */ `
+    @group(0) @binding(0) var<uniform> P: Params;
+    @group(0) @binding(1) var<storage, read> state_in: array<Cell>;
+    @group(0) @binding(2) var<storage, read> mask:     array<u32>;
+    @group(0) @binding(3) var sliceTex: texture_storage_2d<rgba8unorm, write>;
+
+    fn idx(i: u32, j: u32, k: u32) -> u32 {
+      let n = u32(P.N);
+      return i + n * (j + n * k);
+    }
+    fn colormap(t: f32) -> vec4<f32> {
+      let s = clamp(t, 0.0, 1.0);
+      if (s < 0.5) {
+        let u = s * 2.0;
+        return vec4<f32>(u, u, 1.0, 1.0);
+      } else {
+        let u = (s - 0.5) * 2.0;
+        return vec4<f32>(1.0, 1.0 - u, 1.0 - u, 1.0);
+      }
+    }
+
+    @compute @workgroup_size(8, 8)
+    fn render_slice(@builtin(global_invocation_id) gid: vec3<u32>) {
+      let n = u32(P.N);
+      let i = gid.x; let j = gid.y;
+      if (i >= n || j >= n) { return; }
+      let k = n / 2u;
+      let id = idx(i, j, k);
+
+      var color = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+      if (mask[id] != 0u) {
+        color = vec4<f32>(1.0, 1.0, 0.0, 1.0);  // body: yellow
+      } else {
+        let rho = state_in[id].rho;
+        let t = clamp(rho - 0.5, 0.0, 1.0);   // map rho in [0.5, 1.5]
+        color = colormap(t);
+      }
+      let tex_y = n - 1u - j;
+      textureStore(sliceTex, vec2<u32>(i, tex_y), color);
+    }
+  `;
+
+  const blitShader = /* wgsl */ `
+    @group(0) @binding(0) var samp: sampler;
+    @group(0) @binding(1) var tex:  texture_2d<f32>;
+    struct VSOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
+    @vertex
+    fn vs(@builtin(vertex_index) vi: u32) -> VSOut {
+      var p = array<vec2<f32>, 3>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>( 3.0, -1.0),
+        vec2<f32>(-1.0,  3.0),
+      );
+      let xy = p[vi];
+      var o: VSOut;
+      o.pos = vec4<f32>(xy, 0.0, 1.0);
+      o.uv = vec2<f32>((xy.x + 1.0) * 0.5, 1.0 - (xy.y + 1.0) * 0.5);
+      return o;
+    }
+    @fragment
+    fn fs(in: VSOut) -> @location(0) vec4<f32> {
+      return textureSample(tex, samp, in.uv);
+    }
+  `;
+
+  // ---------------------------------------------------------------------------
+  // Pipelines, bind groups, frame loop
+  // ---------------------------------------------------------------------------
+  const stepModule   = device.createShaderModule({ code: stepShader });
+  const renderModule = device.createShaderModule({ code: renderShader });
+  const blitModule   = device.createShaderModule({ code: blitShader });
+  for (const [name, mod] of [['step', stepModule], ['render', renderModule], ['blit', blitModule]]) {
+    const info = await mod.getCompilationInfo();
+    for (const msg of info.messages) {
+      console.log(`[${name}] ${msg.type}: line ${msg.lineNum}:${msg.linePos} — ${msg.message}`);
+    }
+  }
+  const stepPipeline = device.createComputePipeline({
+    layout: 'auto',
+    compute: { module: stepModule, entryPoint: 'step' },
+  });
+  const renderPipeline = device.createComputePipeline({
+    layout: 'auto',
+    compute: { module: renderModule, entryPoint: 'render_slice' },
+  });
+  const blitPipeline = device.createRenderPipeline({
+    layout: 'auto',
+    vertex: { module: blitModule, entryPoint: 'vs' },
+    fragment: { module: blitModule, entryPoint: 'fs', targets: [{ format }] },
+    primitive: { topology: 'triangle-list' },
+  });
+
+  function makeStepBindGroup(sin, sout) {
+    return device.createBindGroup({
+      layout: stepPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: sin } },
+        { binding: 2, resource: { buffer: maskBuf } },
+        { binding: 3, resource: { buffer: sout } },
+      ],
+    });
+  }
+  const bgAtoB = makeStepBindGroup(stateA, stateB);
+  const bgBtoA = makeStepBindGroup(stateB, stateA);
+
+  function makeRenderBindGroup(sin) {
+    return device.createBindGroup({
+      layout: renderPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: sin } },
+        { binding: 2, resource: { buffer: maskBuf } },
+        { binding: 3, resource: sliceView },
+      ],
+    });
+  }
+  const rbA = makeRenderBindGroup(stateA);
+  const rbB = makeRenderBindGroup(stateB);
+
+  const blitBindGroup = device.createBindGroup({
+    layout: blitPipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: sampler },
+      { binding: 1, resource: sliceView },
+    ],
+  });
+
+  btnReset.addEventListener('click', () => {
+    device.queue.writeBuffer(stateA, 0, init);
+    device.queue.writeBuffer(stateB, 0, init);
+    pingState = 'A';
+    simTime = 0;
+    frameCount = 0;
+    lblTime.textContent = 't = 0.000';
+  });
+
+  let pingState = 'A';
+  let frameCount = 0;
+  let simTime = 0;
+
+  function frame() {
+    frameCount++;
+    const encoder = device.createCommandEncoder();
+
+    const stepsThisFrame = paused ? 0 : substepsPerFrame;
+    for (let s = 0; s < stepsThisFrame; s++) {
+      const pass = encoder.beginComputePass();
+      pass.setPipeline(stepPipeline);
+      pass.setBindGroup(0, pingState === 'A' ? bgAtoB : bgBtoA);
+      pass.dispatchWorkgroups(Math.ceil(N/8), Math.ceil(N/8), Math.ceil(N/4));
+      pass.end();
+      pingState = (pingState === 'A') ? 'B' : 'A';
+      simTime += DT;
+    }
+
+    {
+      const pass = encoder.beginComputePass();
+      pass.setPipeline(renderPipeline);
+      pass.setBindGroup(0, pingState === 'A' ? rbA : rbB);
+      pass.dispatchWorkgroups(Math.ceil(N/8), Math.ceil(N/8));
+      pass.end();
+    }
+
+    {
+      const pass = encoder.beginRenderPass({
+        colorAttachments: [{
+          view: ctx.getCurrentTexture().createView(),
+          loadOp: 'clear', storeOp: 'store',
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        }],
+      });
+      pass.setPipeline(blitPipeline);
+      pass.setBindGroup(0, blitBindGroup);
+      pass.draw(3, 1, 0, 0);
+      pass.end();
+    }
+
+    device.queue.submit([encoder.finish()]);
+    if (frameCount % 10 === 0) {
+      lblTime.textContent = `t = ${simTime.toFixed(3)}`;
+      status.textContent =
+        `${paused ? 'paused' : 'running'} — frame ${frameCount} — N = ${N}³ = ${NCELL.toLocaleString()} cells, ` +
+        `${substepsPerFrame} substeps/frame, ${(STATE_BYTES/1048576).toFixed(0)} MB per state buffer`;
+    }
+    requestAnimationFrame(frame);
+  }
+
+  status.textContent = `WebGPU ready — N = ${N}³, ${substepsPerFrame} substeps/frame. Starting…`;
+  requestAnimationFrame(frame);
+}
+
+main().catch(err => {
+  console.error(err);
+  status.textContent = 'Error: ' + err.message;
+});
+</script>
+</body>
+</html>
