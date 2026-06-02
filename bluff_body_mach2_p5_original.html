@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Compressible Bluff Body Mach 2 — p5.js original (N=400)</title>
+<script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+</head>
+<body>
+<script>
+// Compressible Navier-Stokes Bluff Body Mach 2
+// Conservation of mass, momentum and internal energy
+
+let vx = [], vy = [];
+// momentum
+let mx = [], my = [];
+// density
+let rho = [];
+// internal energy
+let e = [];
+// pressure
+let p = [];
+let sxx = [], syy = [], sxy = [];
+// particle trace
+let x = [], y = [];
+// external force
+let fx = [], fy = [];
+
+let N = 400;
+let dt;
+let t = 0;
+let h;
+let nu;
+// gas constant
+let gamma = 0.2;
+
+function setup() {
+  createCanvas(400, 400);
+  for (var i = 0; i < N; i++) {
+    x[i] = [];   y[i] = [];
+    vx[i] = [];  vy[i] = [];
+    mx[i] = [];  my[i] = [];
+    rho[i] = []; e[i] = [];
+    p[i] = [];
+    fx[i] = [];  fy[i] = [];
+    sxx[i] = []; syy[i] = []; sxy[i] = [];
+    for (var j = 0; j < N; j++) {
+      x[i][j] = i; y[i][j] = j;
+      vx[i][j] = 0; vy[i][j] = 0;
+      rho[i][j] = 1; e[i][j] = 1; p[i][j] = 0;
+      mx[i][j] = 0; my[i][j] = 0;
+      fx[i][j] = 0; fy[i][j] = 0;
+      sxx[i][j] = 0; syy[i][j] = 0; sxy[i][j] = 0;
+    }
+  }
+  for (var i = 0; i < N; i++) {
+    for (var j = 0; j < N; j++) {
+      vx[i][j] = 1;
+      mx[i][j] = 1;
+      rho[i][j] = 1;
+    }
+  }
+
+  h = 1 / N;
+  nu = 0.3 * h;
+  dt = 0.1 * h;
+}
+
+function draw() {
+  background(255, 255, 255, 255);
+  noStroke();
+  t = t + dt;
+
+  for (var q = 0; q < 10; q++) {
+    for (var i = 1; i < N - 1; i++) {
+      for (var j = 1; j < N - 1; j++) {
+
+        vx[i][j] = mx[i][j] / rho[i][j];
+        vy[i][j] = my[i][j] / rho[i][j];
+        p[i][j]  = gamma * e[i][j];
+
+        if (i > 195 && i < 205) {
+          if (j > 150 && j < 250) {
+            fx[i][j] = -500 * vx[i][j];
+          }
+        }
+
+        sxx[i][j] = nu * (vx[i][j] - vx[i-1][j]) / h;
+        sxy[i][j] = nu * 0.5 * (vx[i][j] - vx[i][j-1] + vy[i][j] - vy[i-1][j]) / h;
+        syy[i][j] = nu * (vy[i][j] - vy[i][j-1]) / h;
+
+        mx[i][j] = mx[i][j]
+          + 0.01 * dt * (vx[i+1][j] + vx[i-1][j] - 4*vx[i][j] + vx[i][j+1] + vx[i][j-1]) / h
+          - 0.5  * dt * (vx[i+1][j]*mx[i+1][j] - vx[i-1][j]*mx[i-1][j]) / h
+          - 0.5  * dt * (vy[i][j+1]*mx[i][j+1] - vy[i][j-1]*mx[i][j-1]) / h
+          - dt * gamma * (e[i+1][j] - e[i-1][j]) / h
+          + dt * (sxx[i+1][j] - sxx[i][j] + sxy[i][j+1] - sxy[i][j]) / h
+          + dt * fx[i][j];
+
+        my[i][j] = my[i][j]
+          + 0.01 * dt * (vy[i+1][j] + vy[i-1][j] - 4*vy[i][j] + vy[i][j+1] + vy[i][j-1]) / h
+          - 0.5  * dt * (vx[i+1][j]*my[i+1][j] - vx[i-1][j]*my[i-1][j]) / h
+          - 0.5  * dt * (vy[i][j+1]*my[i][j+1] - vy[i][j-1]*my[i][j-1]) / h
+          - dt * gamma * (e[i][j+1] - e[i][j-1]) / h
+          + dt * (sxy[i+1][j] - sxy[i][j] + syy[i][j+1] - syy[i][j]) / h;
+
+        rho[i][j] = rho[i][j]
+          - 0.5 * dt * (mx[i+1][j] - mx[i-1][j]) / h
+          - 0.5 * dt * (my[i][j+1] - my[i][j-1]) / h
+          + 0.2 * dt * (rho[i+1][j] + rho[i-1][j] - 4*rho[i][j] + rho[i][j+1] + rho[i][j-1]) / h;
+
+        e[i][j] = e[i][j]
+          + 0.2 * dt * (e[i+1][j] + e[i-1][j] - 4*e[i][j] + e[i][j+1] + e[i][j-1]) / h
+          - 0.5 * dt * (vx[i+1][j]*e[i+1][j] - vx[i-1][j]*e[i-1][j]) / h
+          - 0.5 * dt * (vy[i][j+1]*e[i][j+1] - vy[i][j-1]*e[i][j-1]) / h
+          - dt * gamma * e[i][j] * (vx[i+1][j] - vx[i-1][j] + vy[i][j+1] - vy[i][j-1]) / h;
+      }
+    }
+    for (var i = 0; i < N; i++) {
+      e[N-1][i] = e[N-2][i];
+      e[i][0]   = e[i][1];      e[i][N-1] = e[i][N-2];
+      mx[N-1][i] = mx[N-2][i];
+      mx[i][0]   = mx[i][1];    mx[i][N-1] = mx[i][N-2];
+      my[N-1][i] = my[N-2][i];
+      my[i][0]   = my[i][1];    my[i][N-1] = my[i][N-2];
+      rho[N-1][i] = rho[N-2][i];
+      rho[i][0]   = rho[i][1];  rho[i][N-1] = rho[i][N-2];
+    }
+  }
+
+  fill(0);
+  if (t > 0.0001) {
+    for (var i = 0; i < N; i++) {
+      for (var j = 0; j < N; j++) {
+        x[i][j] = i; y[i][j] = j;
+      }
+    }
+    t = 0;
+    background(255, 255, 255, 255);
+  }
+  for (var i = 0; i < N; i++) {
+    for (var j = 0; j < N; j++) {
+      x[i][j] += 5000 * vx[i][j] * dt;
+      y[i][j] += 5000 * vy[i][j] * dt;
+      fill(255, 0, 0, 255);
+      ellipse(x[i][j], y[i][j], 1);
+    }
+  }
+  for (var i = 0; i < N; i++) {
+    fill(0, 0, 255, 255); ellipse(i, 300 - 100 * rho[i][200], 2);
+    fill(0, 255, 0, 255); ellipse(i, 300 - 100 *  vx[i][200], 2);
+  }
+  for (var i = 195; i < 205; i++) {
+    for (var j = 150; j < 250; j++) {
+      fill(255, 255, 0, 255);
+      ellipse(i, j, 2);
+    }
+  }
+  fill(0);
+  text("Compressible Navier-Stokes: Bluff Body Mach 2", 50, 10);
+  text("momentum (mx,my), density rho, internal energy e", 50, 50);
+  text("viscous stresses sxx, sxy, syy", 50, 70);
+  text("sxx=nu*dvx/dx; sxy=nu*(dvx/dy+dvy/dx)/2, syy=nu*dvy/dy, nu viscosity", 30, 90);
+  text("drho/dt + d(mx)/dx + d(my)/dy = 0", 30, 110);
+  text("dmx/dt + d(mx*vx)/dx + d(mx*vy)/dy + dp/dx = dsxx/dx + dsxy/dy", 30, 130);
+  text("dmy/dt + d(my*vx)/dx + d(my*vy)/dy + dp/dy = dsxy/dx + dsyy/dy", 30, 150);
+  text("de/dt + d(e*vx)/dx + d(e*vy)/dy + p*(dvx/dx + dvy/dy) = 0", 30, 170);
+  text("vx = mx/rho, vy = my/rho, p = gamma*e, 0 < gamma < 1.", 30, 190);
+  text("Conservation of mass, momentum, internal energy:", 50, 30);
+  text("Initial data: Uniform flow + bluff body (yellow) represented by force", 50, 270);
+  text("Blue: Density (mid crosscut).", 50, 290);
+  text("Green: Horisontal velocity (crosscut).", 50, 310);
+  text("Red: Trace of fluid particles (updated).", 50, 330);
+}
+</script>
+</body>
+</html>
