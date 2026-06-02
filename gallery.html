@@ -378,6 +378,41 @@ footer a { color: #4fc3f7; text-decoration: none; }
       slider from 3 → 1 first; that gives 3× framerate at the cost of slower
       sim-time evolution.</div>
     </a>
+    <a class="card" href="bluff_body_mach2_3d_gpu_slip_400.html" style="border-color:#ff9e80;background:#180c08;padding:14px">
+      <h3 style="color:#ff9e80">bluff_body_mach2_3d_gpu_slip_400.html  (Mach M, 3D WebGPU, <b>400³ ≈ 64 M cells</b>, SLIP + shapes + airplane + slice slider)</h3>
+      <div class="desc">Same simulator pushed to <b>400³</b> resolution — at
+      the ceiling of what current WebGPU adapters can address. Two new
+      additions on top of the 300³ feature set:
+      <br><br>
+      <b>(1) Airplane shape.</b> A parametric inviscid aircraft silhouette
+      (fuselage cylinder + swept tapered wing + vertical fin + horizontal
+      stabiliser) added to the shape selector. Wing thickness is floored at
+      ~4 cells so it stays visible to the mask-gradient slip force at this
+      resolution. The default Mach 2.0 inflow puts the geometry in the
+      regime where slip-wall + inviscid CFD was the production tool for
+      supersonic aircraft design through the 1980s (Concorde, SR-71,
+      F-104/F-4 generation): supersonic lift is a pressure-asymmetry effect
+      <code>C<sub>L</sub> = 4α/√(M²−1)</code>, no viscous Kutta condition
+      needed, and the bow-shock / wing-shock / expansion-fan / base-wake
+      pattern is what you see in the simulator.
+      <br><br>
+      <b>(2) Slice z slider.</b> The main view shows a single xy cross-section
+      of the 3D box; previously this was hard-coded to mid-height (z = 0.5),
+      which only intersects the fuselage and wing. The new slider lets you
+      scroll the slice height from 0 to 1, so the vertical tail fin (at
+      z &gt; 0.5) and the air above/below the airplane become visible. Drag,
+      lift, dissipation and wake-panel readouts are unaffected — they
+      integrate over the full 3D volume regardless of which slice you view.
+      <br><br>
+      <b>Hardware.</b> Each state buffer is <b>1.91 GiB</b>, so the adapter
+      must advertise <code>maxStorageBufferBindingSize ≥ 2 GiB</code> — at
+      the ceiling of what Apple Silicon (M2/M3/M4 Pro/Max), recent NVIDIA
+      and AMD desktop GPUs expose. Total GPU memory footprint of the sim
+      is ≈ 4.3 GB (two state buffers + mask + extracts). On weaker GPUs the
+      existing safeguard shows a clean
+      <em>"Adapter only supports X MB"</em> message and you should use the
+      300³ card above.</div>
+    </a>
   </div>
 
   <h3 id="rt-rd" style="color:#ff9e80;margin-top:14px;font-size:15px">Reaction-Diffusion (front formation &amp; coarsening)</h3>
