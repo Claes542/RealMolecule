@@ -665,6 +665,158 @@ async function main() {
   let cpuVel = new Float32Array(N * N * 2);
   let mapPending = false;
 
+  // ----- Outflow KE-flux readback (closes the energy balance for drag) -----
+  // K̇_out = ∫ ½ ρ u² · u_x dA over the right outflow plane (i = N−2).
+  const KOUT_BYTES = N * N * 4;
+  const koutBuf = device.createBuffer({
+    size: KOUT_BYTES,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+  });
+  const koutStaging = device.createBuffer({
+    size: KOUT_BYTES,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+  const koutShader = cellStruct + /* wgsl */ `
+    @group(0) @binding(0) var<uniform> P: Params;
+    @group(0) @binding(1) var<storage, read> state_in: array<Cell>;
+    @group(0) @binding(2) var<storage, read_write> kout: array<f32>;
+    @compute @workgroup_size(8, 8, 1)
+    fn extract_kout(@builtin(global_invocation_id) gid: vec3<u32>) {
+      let n = u32(P.N);
+      let j = gid.x; let k = gid.y;
+      if (j >= n || k >= n) { return; }
+      let i = n - 2u;
+      let c = state_in[i + n * (j + n * k)];
+      let r = max(c.rho, 0.05);
+      let u = c.mx / r; let v = c.my / r; let w = c.mz / r;
+      let kn = 0.5 * r * (u*u + v*v + w*w);
+      kout[j + n * k] = kn * u;     // KE × axial velocity = KE flux per unit area
+    }
+  `;
+  const koutModule = device.createShaderModule({ code: koutShader });
+  const koutPipeline = device.createComputePipeline({
+    layout: 'auto',
+    compute: { module: koutModule, entryPoint: 'extract_kout' },
+  });
+  function makeKoutBG(sin) {
+    return device.createBindGroup({
+      layout: koutPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: sin } },
+        { binding: 2, resource: { buffer: koutBuf } },
+      ],
+    });
+  }
+  const koA = makeKoutBG(stateA);
+  const koB = makeKoutBG(stateB);
+  let cpuKout = null;
+  let koutPending = false;
+  let K_out = 0;   // outflow KE flux (energy per unit time leaving through i = N−2)
+  function consumeKout() {
+    if (!cpuKout) return;
+    let sum = 0;
+    for (let q = 0; q < N * N; q++) sum += cpuKout[q];
+    K_out = sum * H * H;   // × cell-face area
+  }
+
+  // ----- Total-dissipation readback (D-rate, integrated to D_cum) -----
+  // Per-cell dissipation density: μ_eff · |∇u|² (using forward differences,
+  // matching the energy-equation heating term).  Reduce over k on the GPU
+  // (write a 2D N² slab); JS sums it to a single scalar per frame.
+  const DISS_BYTES = N * N * 4;
+  const dissBuf = device.createBuffer({
+    size: DISS_BYTES,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+  });
+  const dissStaging = device.createBuffer({
+    size: DISS_BYTES,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+  const dissShader = cellStruct + /* wgsl */ `
+    @group(0) @binding(0) var<uniform> P: Params;
+    @group(0) @binding(1) var<storage, read> state_in: array<Cell>;
+    @group(0) @binding(2) var<storage, read_write> diss_ij: array<f32>;
+    fn idx3(i: u32, j: u32, k: u32) -> u32 {
+      let n = u32(P.N);
+      return i + n * (j + n * k);
+    }
+    fn v_at(c: Cell) -> vec3<f32> {
+      let r = max(c.rho, 0.05);
+      return vec3<f32>(c.mx / r, c.my / r, c.mz / r);
+    }
+    @compute @workgroup_size(8, 8, 1)
+    fn extract_diss(@builtin(global_invocation_id) gid: vec3<u32>) {
+      let n = u32(P.N);
+      let i = gid.x; let j = gid.y;
+      if (i >= n - 1u || j >= n - 1u || i == 0u || j == 0u) {
+        diss_ij[i + n * j] = 0.0;
+        return;
+      }
+      var sum = 0.0;
+      for (var k = 1u; k < n - 1u; k = k + 1u) {
+        let c   = state_in[idx3(i, j, k)];
+        let cxp = state_in[idx3(i+1u, j, k)];
+        let cyp = state_in[idx3(i, j+1u, k)];
+        let czp = state_in[idx3(i, j, k+1u)];
+        let vc  = v_at(c);
+        let vxp = v_at(cxp); let vyp = v_at(cyp); let vzp = v_at(czp);
+        let dvx_dx = vxp.x - vc.x;
+        let dvx_dy = vyp.x - vc.x;
+        let dvx_dz = vzp.x - vc.x;
+        let dvy_dx = vxp.y - vc.y;
+        let dvy_dy = vyp.y - vc.y;
+        let dvy_dz = vzp.y - vc.y;
+        let dvz_dx = vxp.z - vc.z;
+        let dvz_dy = vyp.z - vc.z;
+        let dvz_dz = vzp.z - vc.z;
+        let sumsq = dvx_dx*dvx_dx + dvx_dy*dvx_dy + dvx_dz*dvx_dz
+                  + dvy_dx*dvy_dx + dvy_dy*dvy_dy + dvy_dz*dvy_dz
+                  + dvz_dx*dvz_dx + dvz_dy*dvz_dy + dvz_dz*dvz_dz;
+        // Shock viscosity contribution (local ∇·u)
+        let cxm = state_in[idx3(i-1u, j, k)];
+        let cym = state_in[idx3(i, j-1u, k)];
+        let czm = state_in[idx3(i, j, k-1u)];
+        let vxm = v_at(cxm); let vym = v_at(cym); let vzm = v_at(czm);
+        let divu = 0.5 * ((vxp.x - vxm.x) + (vyp.y - vym.y) + (vzp.z - vzm.z)) / P.h;
+        let mu_eff = P.mu + P.cvisc * P.h * max(0.0, -divu);
+        sum = sum + mu_eff * sumsq;
+      }
+      diss_ij[i + n * j] = sum;
+    }
+  `;
+  const dissModule = device.createShaderModule({ code: dissShader });
+  const dissPipeline = device.createComputePipeline({
+    layout: 'auto',
+    compute: { module: dissModule, entryPoint: 'extract_diss' },
+  });
+  function makeDissBG(sin) {
+    return device.createBindGroup({
+      layout: dissPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: sin } },
+        { binding: 2, resource: { buffer: dissBuf } },
+      ],
+    });
+  }
+  const dbA = makeDissBG(stateA);
+  const dbB = makeDissBG(stateB);
+  let cpuDiss = null;
+  let dissPending = false;
+  let D_rate = 0;     // ∫∫∫ μ_eff |∇u|² dx (per unit time)
+  let D_cum = 0;      // ∫ D_rate dt
+  function consumeDissipation() {
+    if (!cpuDiss) return;
+    let sum = 0;
+    for (let q = 0; q < N * N; q++) sum += cpuDiss[q];
+    // sumsq is (Δv)² per neighbour pair; multiplying by mu_eff inside shader
+    // already. Convert to per-volume dissipation by × h² (cell volume / h),
+    // then accumulate over one frame's sim-time = DT * substepsPerFrame.
+    D_rate = sum * H * H;
+    D_cum += D_rate * DT * Math.max(1, substepsPerFrame);
+  }
+
   // ----- Centerline-cut readback (ρ and e along x through j = k = N/2) -----
   // Layout: 2 floats per i — [e_line(i), rho_line(i)] interleaved.
   const ELINE_BYTES = N * 2 * 4;
@@ -1091,6 +1243,7 @@ async function main() {
     pingState = 'A';
     simTime = 0;
     frameCount = 0;
+    D_rate = 0; D_cum = 0;
     lblTime.textContent = 't = 0.000';
   });
 
@@ -1202,6 +1355,26 @@ async function main() {
       encoder.copyBufferToBuffer(eLineBuf, 0, eLineStaging, 0, ELINE_BYTES);
     }
 
+    // Extract total dissipation (N² slab; sum on CPU)
+    if (!dissPending) {
+      const passD = encoder.beginComputePass();
+      passD.setPipeline(dissPipeline);
+      passD.setBindGroup(0, pingState === 'A' ? dbA : dbB);
+      passD.dispatchWorkgroups(Math.ceil(N/8), Math.ceil(N/8));
+      passD.end();
+      encoder.copyBufferToBuffer(dissBuf, 0, dissStaging, 0, DISS_BYTES);
+    }
+
+    // Extract outflow KE-flux (right outflow plane)
+    if (!koutPending) {
+      const passK = encoder.beginComputePass();
+      passK.setPipeline(koutPipeline);
+      passK.setBindGroup(0, pingState === 'A' ? koA : koB);
+      passK.dispatchWorkgroups(Math.ceil(N/8), Math.ceil(N/8));
+      passK.end();
+      encoder.copyBufferToBuffer(koutBuf, 0, koutStaging, 0, KOUT_BYTES);
+    }
+
     {
       const pass = encoder.beginRenderPass({
         colorAttachments: [{
@@ -1296,6 +1469,34 @@ async function main() {
       });
     }
 
+    // Map dissipation staging
+    if (!dissPending) {
+      dissPending = true;
+      dissStaging.mapAsync(GPUMapMode.READ).then(() => {
+        cpuDiss = new Float32Array(dissStaging.getMappedRange().slice(0));
+        dissStaging.unmap();
+        consumeDissipation();
+        dissPending = false;
+      }).catch((err) => {
+        console.error('diss map failed:', err);
+        dissPending = false;
+      });
+    }
+
+    // Map outflow KE-flux staging
+    if (!koutPending) {
+      koutPending = true;
+      koutStaging.mapAsync(GPUMapMode.READ).then(() => {
+        cpuKout = new Float32Array(koutStaging.getMappedRange().slice(0));
+        koutStaging.unmap();
+        consumeKout();
+        koutPending = false;
+      }).catch((err) => {
+        console.error('kout map failed:', err);
+        koutPending = false;
+      });
+    }
+
     // Advect + render particles. With p5-style backward-tail rendering we
     // need the particles themselves to move with the flow; the comet tail
     // is generated by accumulating past positions on the faded overlay.
@@ -1312,7 +1513,14 @@ async function main() {
     renderELine();
 
     if (frameCount % 10 === 0) {
-      lblTime.textContent = `t = ${simTime.toFixed(3)}    drag = ${currentDrag.toExponential(2)}    lift = ${currentLift.toExponential(2)}`;
+      // Energy balance:  F_drag · u₀  =  D_rate  +  K̇_out  (steady state)
+      const dragFromBalance = U_INFLOW > 1e-9 ? (D_rate + K_out) / U_INFLOW : 0;
+      const dragFromDonly   = U_INFLOW > 1e-9 ? D_rate / U_INFLOW : 0;
+      const ratio = Math.abs(currentDrag) > 1e-9 ? dragFromBalance / currentDrag : 0;
+      lblTime.textContent =
+        `t = ${simTime.toFixed(3)}    drag = ${currentDrag.toExponential(2)}    lift = ${currentLift.toExponential(2)}    ` +
+        `D_rate = ${D_rate.toExponential(2)}    K̇_out = ${K_out.toExponential(2)}    ` +
+        `(D+K̇_out)/u₀ = ${dragFromBalance.toExponential(2)}    ratio = ${ratio.toFixed(2)}    D_cum = ${D_cum.toExponential(3)}`;
       status.textContent =
         `${paused ? 'paused' : 'running'} — frame ${frameCount} — N = ${N}³ = ${NCELL.toLocaleString()} cells, ` +
         `${substepsPerFrame} substeps/frame, ${(STATE_BYTES/1048576).toFixed(0)} MB per state buffer`;

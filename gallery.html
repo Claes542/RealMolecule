@@ -323,9 +323,21 @@ footer a { color: #4fc3f7; text-decoration: none; }
       diagnostic views: (1) mid-z xy slice with p5-style backward-tail
       particle traces, (2) yz wake cross-section (480 px) with its own
       in-plane particle traces, (3) centerline polylines of ρ (green) and e
-      (blue). Drag and lift computed from body-face pressure integrals.
-      Viscous dissipation D properly fed back as heat. Storage buffers 256 MB
-      each — requires a desktop-class WebGPU GPU.</div>
+      (blue). Storage buffers 256 MB each — requires a desktop-class WebGPU GPU.
+      <br><br>
+      <b>Energy-balance diagnostic (2nd Law witness).</b> The simulator
+      computes <em>both</em> the drag force on the body (by integrating
+      pressure over the body faces) and the cumulative viscous dissipation
+      <code>D = ∫∫∫ μ_eff |∇u|² dx</code> over the volume. In steady state,
+      conservation of energy requires
+      <code>F<sub>drag</sub> · u<sub>0</sub> = D<sub>rate</sub> + K̇<sub>out</sub></code>,
+      where K̇<sub>out</sub> is the kinetic-energy flux leaving the
+      right outflow plane. All three quantities are read off the diagnostics
+      label and the ratio
+      <code>(D<sub>rate</sub> + K̇<sub>out</sub>) / (F<sub>drag</sub> · u<sub>0</sub>)</code>
+      should sit near 1.0 — a direct, quantitative test that the discretised
+      compressible Navier–Stokes flow respects the 2nd Law as the dissipation
+      term in the energy equation.</div>
     </a>
   </div>
 
