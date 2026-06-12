@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Climate Convection 2D — Compressible Gas under Gravity (WebGPU, RealNSE)</title>
+<style>
+  body{margin:0;background:#111;color:#ddd;font:13px/1.4 system-ui,sans-serif}
+  #bar{padding:8px 10px;display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+  #bar label{display:flex;gap:5px;align-items:center;white-space:nowrap}
+  canvas{display:block;margin:0 auto;background:#000}
+  button{background:#333;color:#eee;border:1px solid #555;padding:4px 10px;cursor:pointer}
+  #status{padding:6px 10px;color:#9cf;min-height:1.2em}
+  .eqs{padding:6px 10px;color:#888;font-size:12px;max-width:1024px;margin:0 auto}
+</style>
+</head>
+<body>
+<div id="bar">
+  <button id="play">Pause</button>
+  <button id="reset">Reset</button>
+  <label>field
+    <select id="field">
+      <option value="0" selected>temperature</option>
+      <option value="1">density</option>
+      <option value="2">speed</option>
+      <option value="3">vertical velocity</option>
+    </select>
+  </label>
+  <label><input id="part" type="checkbox" checked> tracers</label>
+  <label><input id="prof" type="checkbox" checked> profiles</label>
+  <label>g <input id="grav" type="range" min="0" max="6" step="0.25" value="3.0"><span id="gravV">3.0</span></label>
+  <label>T_hot <input id="thot" type="range" min="1" max="4" step="0.1" value="3.0"><span id="thotV">3.0</span></label>
+  <label>T_cold <input id="tcold" type="range" min="0.05" max="1" step="0.05" value="0.1"><span id="tcoldV">0.10</span></label>
+  <label>nu/h <input id="visc" type="range" min="0.05" max="2" step="0.05" value="0.4"><span id="viscV">0.40</span></label>
+  <label>dt/h <input id="dts" type="range" min="0.005" max="0.1" step="0.005" value="0.1"><span id="dtsV">0.100</span></label>
+  <label>steps/frame <input id="steps" type="range" min="1" max="40" step="1" value="10"><span id="stepsV">10</span></label>
+</div>
+<canvas id="cv" width="1024" height="288"></canvas>
+<div id="status"></div>
+<div class="eqs">
+  <b>Climate as a compressible gas under gravity (RealNSE).</b>
+  A perfect gas fills an extended rectangle, heated from below (hot wall T_hot)
+  and cooled on top (cold wall T_cold), under a constant downward gravity g;
+  the side walls are periodic, the top/bottom walls free-slip and impermeable.
+  Heated gas at the bottom becomes buoyant and rises, cooled gas at the top
+  sinks &mdash; the deterministic equations organise this into convection cells,
+  the overturning that carries heat upward in every real atmosphere.
+  &nbsp; rho_t + div m = 0 &nbsp;|&nbsp; m_t + div(m v) + grad p &minus; nu lap v = rho g &nbsp;|&nbsp; e_t + div(e v) + p div v = nu |grad v|&sup2;,
+  &nbsp; p = gamma e = gamma rho T, gamma = 1. Colour = temperature (blue cold &rarr; red hot); white dots = tracers.
+  &nbsp; <b>Vertical profiles</b> (horizontal averages vs height, value increasing rightward): temperature (red), density (cyan), turbulent dissipation (yellow).
+</div>
+
+<script type="module">
+const NX = 512, NY = 144;        // extended rectangle (aspect 32:9)
+const RESX = 1024, RESY = 288;   // canvas pixels (2 px/cell)
+const NP  = 140;                 // tracers per side (NP*NP total)
+const RESET_T = 0.6;             // sim-time between tracer re-seeds
+const statusEl = document.getElementById('status');
+
+const WGSL = /* wgsl */`
+struct Params {
+  NX:u32, NY:u32, field:u32, np:u32,
+  h:f32, dt:f32, gamma:f32, nu:f32,
+  grav:f32, thot:f32, tcold:f32, contrast:f32,
+  resx:f32, resy:f32, reset:u32, pscale:f32,
+};
+
+@group(0) @binding(0) var<storage, read>        inState  : array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read_write>  outState : array<vec4<f32>>;
+@group(0) @binding(2) var<uniform>              P        : Params;
+
+fn IDX(i:u32, j:u32) -> u32 { return i + j*P.NX; }
+
+@compute @workgroup_size(8,8)
+fn cs(@builtin(global_invocation_id) gid : vec3<u32>) {
+  let NX = P.NX; let NY = P.NY;
+  let i = gid.x; let j = gid.y;
+  if (i>=NX || j>=NY) { return; }
+
+  // --- thermal walls: top (j=0, cold) and bottom (j=NY-1, hot) ---
+  // free-slip (copy tangential momentum), impermeable (m_y=0),
+  // Neumann density, Dirichlet temperature (e = rho*T_wall).
+  if (j==0u) {
+    let s = inState[IDX(i,1u)];
+    outState[IDX(i,0u)] = vec4<f32>(s.x, s.y, 0.0, s.x*P.tcold);
+    return;
+  }
+  if (j==NY-1u) {
+    let s = inState[IDX(i,NY-2u)];
+    outState[IDX(i,NY-1u)] = vec4<f32>(s.x, s.y, 0.0, s.x*P.thot);
+    return;
+  }
+
+  let h = P.h; let dt = P.dt; let g = P.gamma; let nu = P.nu;
+  let ip = (i+1u)%NX; let im = (i+NX-1u)%NX;   // periodic in x
+  let C  = inState[IDX(i,j)];
+  let E  = inState[IDX(ip,j)];
+  let W  = inState[IDX(im,j)];
+  let U  = inState[IDX(i,j-1u)];               // up   (toward cold top)
+  let D  = inState[IDX(i,j+1u)];               // down (toward hot bottom)
+
+  let vxC = C.y/max(C.x,1e-6); let vyC = C.z/max(C.x,1e-6);
+  let vxE = E.y/max(E.x,1e-6); let vxW = W.y/max(W.x,1e-6);
+  let vyU = U.z/max(U.x,1e-6); let vyD = D.z/max(D.x,1e-6);
+  let vxU = U.y/max(U.x,1e-6); let vxD = D.y/max(D.x,1e-6);
+  let vyE = E.z/max(E.x,1e-6); let vyW = W.z/max(W.x,1e-6);
+
+  let divv = ((vxE-vxW) + (vyD-vyU))/(2.0*h);
+  let cC = sqrt((1.0+g)*g*max(C.w,0.0)/max(C.x,1e-6));            // sound speed
+  // Lax-Friedrichs viscosity floor + shock capture, capped for explicit stability
+  let nuEff = min( max(nu, 0.55*(length(vec2<f32>(vxC,vyC)) + cC)) + 2.0*h*max(0.0,-divv), 0.2*h/dt );
+
+  let lapR  = E.x+W.x-4.0*C.x+U.x+D.x;
+  let lapMx = E.y+W.y-4.0*C.y+U.y+D.y;
+  let lapMy = E.z+W.z-4.0*C.z+U.z+D.z;
+  let lapE  = E.w+W.w-4.0*C.w+U.w+D.w;
+
+  let rho_new = C.x + nuEff*dt*lapR/h
+    - 0.5*dt*(E.y - W.y)/h - 0.5*dt*(D.z - U.z)/h;
+
+  let mx_new  = C.y + nuEff*dt*lapMx/h
+    - 0.5*dt*(vxE*E.y - vxW*W.y)/h - 0.5*dt*(vyD*D.y - vyU*U.y)/h
+    - 0.5*dt*g*(E.w - W.w)/h;
+
+  let my_new  = C.z + nuEff*dt*lapMy/h
+    - 0.5*dt*(vxE*E.z - vxW*W.z)/h - 0.5*dt*(vyD*D.z - vyU*U.z)/h
+    - 0.5*dt*g*(D.w - U.w)/h
+    + dt*P.grav*C.x;                                              // gravity, downward (+j)
+
+  let e_new   = C.w + nuEff*dt*lapE/h
+    - 0.5*dt*(vxE*E.w - vxW*W.w)/h - 0.5*dt*(vyD*D.w - vyU*U.w)/h
+    - dt*g*C.w*divv;
+
+  outState[IDX(i,j)] = vec4<f32>(max(rho_new,1e-2), mx_new, my_new, max(e_new,1e-4));
+}
+
+// ---------- field render ----------
+@group(0) @binding(0) var<storage, read> st : array<vec4<f32>>;
+@group(0) @binding(1) var<uniform>        R  : Params;
+
+@vertex
+fn vs(@builtin(vertex_index) vi:u32) -> @builtin(position) vec4<f32> {
+  var pos = array<vec2<f32>,3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.));
+  return vec4<f32>(pos[vi], 0., 1.);
+}
+fn cmap(tt:f32) -> vec3<f32> {
+  let x = clamp(tt, 0.0, 1.0);
+  let r = clamp(1.5 - abs(4.0*x-3.0), 0.0, 1.0);
+  let g = clamp(1.5 - abs(4.0*x-2.0), 0.0, 1.0);
+  let b = clamp(1.5 - abs(4.0*x-1.0), 0.0, 1.0);
+  return vec3<f32>(r,g,b);
+}
+@fragment
+fn fs(@builtin(position) fc: vec4<f32>) -> @location(0) vec4<f32> {
+  let i = u32(clamp(fc.x/R.resx * f32(R.NX), 0.0, f32(R.NX-1u)));
+  let j = u32(clamp(fc.y/R.resy * f32(R.NY), 0.0, f32(R.NY-1u)));
+  let s = st[i + j*R.NX];
+  var t: f32;
+  if (R.field==0u)      { t = (s.w/max(s.x,1e-6) - R.tcold)/max(R.thot-R.tcold,1e-6); }   // temperature
+  else if (R.field==1u) { t = 0.5 + (s.x-1.0)*0.5*R.contrast; }                            // density
+  else if (R.field==2u) { let vx=s.y/max(s.x,1e-6); let vy=s.z/max(s.x,1e-6); t = sqrt(vx*vx+vy*vy)*R.contrast; }
+  else                  { t = 0.5 - 0.5*(s.z/max(s.x,1e-6))*R.contrast; }                  // vertical velocity (up = warm)
+  return vec4<f32>(cmap(t), 1.0);
+}
+
+// ---------- tracer compute ----------
+@group(0) @binding(0) var<storage, read>       pst  : array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read_write> part : array<vec2<f32>>;
+@group(0) @binding(2) var<uniform>             PP   : Params;
+
+@compute @workgroup_size(64)
+fn pcs(@builtin(global_invocation_id) gid : vec3<u32>) {
+  let p = gid.x;
+  let total = PP.np*PP.np;
+  if (p>=total) { return; }
+  let px = p % PP.np; let py = p / PP.np;
+  if (PP.reset==1u) {
+    part[p] = vec2<f32>((f32(px)+0.5)/f32(PP.np), (f32(py)+0.5)/f32(PP.np));
+    return;
+  }
+  var pos = part[p];
+  let ci = u32(clamp(pos.x*f32(PP.NX), 0.0, f32(PP.NX-1u)));
+  let cj = u32(clamp(pos.y*f32(PP.NY), 0.0, f32(PP.NY-1u)));
+  let s = pst[ci + cj*PP.NX];
+  let vx = s.y/max(s.x,1e-6); let vy = s.z/max(s.x,1e-6);
+  // normalised displacement: x spans the wide domain, y spans unit height
+  pos = pos + vec2<f32>(vx*f32(PP.NY)/f32(PP.NX), vy)*PP.pscale;
+  pos.x = fract(pos.x + 1.0);                       // periodic x
+  pos.y = clamp(pos.y, 0.001, 0.999);               // walls y
+  part[p] = pos;
+}
+
+// ---------- tracer render (instanced quads) ----------
+@group(0) @binding(0) var<storage, read> pr : array<vec2<f32>>;
+@group(0) @binding(1) var<uniform>       PR : Params;
+
+@vertex
+fn pvs(@builtin(vertex_index) vi:u32, @builtin(instance_index) ii:u32) -> @builtin(position) vec4<f32> {
+  var quad = array<vec2<f32>,6>(vec2<f32>(-1.,-1.),vec2<f32>(1.,-1.),vec2<f32>(-1.,1.),
+                                vec2<f32>(-1.,1.),vec2<f32>(1.,-1.),vec2<f32>(1.,1.));
+  let pos = pr[ii];
+  let cx = pos.x*2.0 - 1.0;
+  let cy = 1.0 - pos.y*2.0;
+  let o  = quad[vi]*vec2<f32>(2.0/PR.resx, 2.0/PR.resy)*1.4;
+  return vec4<f32>(cx+o.x, cy+o.y, 0.0, 1.0);
+}
+@fragment
+fn pfs() -> @location(0) vec4<f32> { return vec4<f32>(1.0,1.0,1.0,0.85); }
+
+// ---------- horizontally-averaged vertical profiles ----------
+@group(0) @binding(0) var<storage, read>        pf_in  : array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read_write>  pf_out : array<vec4<f32>>;
+@group(0) @binding(2) var<uniform>              PF     : Params;
+fn IDXp(i:u32, j:u32) -> u32 { return i + j*PF.NX; }
+
+@compute @workgroup_size(64)
+fn profcs(@builtin(global_invocation_id) gid : vec3<u32>) {
+  let j = gid.x; let NX = PF.NX; let NY = PF.NY;
+  if (j>=NY) { return; }
+  let h = PF.h; let dt = PF.dt; let g = PF.gamma; let nu = PF.nu;
+  var sT=0.0; var sR=0.0; var sD=0.0;
+  for (var i=0u; i<NX; i++) {
+    let C = pf_in[IDXp(i,j)];
+    sT += C.w/max(C.x,1e-6);
+    sR += C.x;
+    if (j>0u && j<NY-1u) {
+      let ip=(i+1u)%NX; let im=(i+NX-1u)%NX;
+      let E=pf_in[IDXp(ip,j)]; let W=pf_in[IDXp(im,j)];
+      let U=pf_in[IDXp(i,j-1u)]; let D=pf_in[IDXp(i,j+1u)];
+      let vxC=C.y/max(C.x,1e-6); let vyC=C.z/max(C.x,1e-6);
+      let vxE=E.y/max(E.x,1e-6); let vxW=W.y/max(W.x,1e-6);
+      let vxU=U.y/max(U.x,1e-6); let vxD=D.y/max(D.x,1e-6);
+      let vyE=E.z/max(E.x,1e-6); let vyW=W.z/max(W.x,1e-6);
+      let vyU=U.z/max(U.x,1e-6); let vyD=D.z/max(D.x,1e-6);
+      let dvxdx=(vxE-vxW)/(2.0*h); let dvxdy=(vxD-vxU)/(2.0*h);
+      let dvydx=(vyE-vyW)/(2.0*h); let dvydy=(vyD-vyU)/(2.0*h);
+      let divv=dvxdx+dvydy;
+      let cC=sqrt((1.0+g)*g*max(C.w,0.0)/max(C.x,1e-6));
+      let nuEff=min(max(nu,0.55*(length(vec2<f32>(vxC,vyC))+cC))+2.0*h*max(0.0,-divv),0.2*h/dt);
+      sD += nuEff*h*(dvxdx*dvxdx+dvxdy*dvxdy+dvydx*dvydx+dvydy*dvydy);
+    }
+  }
+  let inv = 1.0/f32(NX);
+  pf_out[j] = vec4<f32>(sT*inv, sR*inv, sD*inv, 0.0);
+}
+
+@group(0) @binding(0) var<storage, read>        st_prof : array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read_write>  st_stat : array<vec4<f32>>;
+@group(0) @binding(2) var<uniform>              SP      : Params;
+@compute @workgroup_size(1)
+fn statcs() {
+  var mR=1e-9; var mD=1e-12;
+  for (var j=0u; j<SP.NY; j++) { let p=st_prof[j]; mR=max(mR,p.y); mD=max(mD,p.z); }
+  st_stat[0] = vec4<f32>(0.0, mR, mD, 0.0);
+}
+
+struct LineU { mode:u32, NY:u32, p0:u32, p1:u32, xbase:f32, xwidth:f32, tcold:f32, thot:f32, col:vec4<f32> };
+@group(0) @binding(0) var<storage, read> ln_prof : array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read> ln_stat : array<vec4<f32>>;
+@group(0) @binding(2) var<uniform>       L       : LineU;
+struct LOut { @builtin(position) pos:vec4<f32>, @location(0) col:vec4<f32> };
+
+@vertex
+fn lvs(@builtin(vertex_index) vi:u32) -> LOut {
+  let j = vi;
+  let p = ln_prof[j];
+  let s = ln_stat[0];
+  var nrm:f32;
+  if (L.mode==0u)      { nrm = (p.x - L.tcold)/max(L.thot-L.tcold,1e-6); }   // temperature
+  else if (L.mode==1u) { nrm = p.y/max(s.y,1e-9); }                          // density
+  else                 { nrm = p.z/max(s.z,1e-12); }                         // dissipation
+  nrm = clamp(nrm, 0.0, 1.0);
+  let xclip = L.xbase + L.xwidth*nrm;
+  let yclip = 1.0 - 2.0*f32(j)/f32(L.NY-1u);
+  var o:LOut; o.pos = vec4<f32>(xclip, yclip, 0.0, 1.0); o.col = L.col; return o;
+}
+@fragment
+fn lfs(@location(0) c:vec4<f32>) -> @location(0) vec4<f32> { return c; }
+`;
+
+async function main() {
+  if (!navigator.gpu) { statusEl.textContent='WebGPU not available in this browser.'; return; }
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) { statusEl.textContent='No WebGPU adapter.'; return; }
+  const device = await adapter.requestDevice();
+  const ctx = document.getElementById('cv').getContext('webgpu');
+  const format = navigator.gpu.getPreferredCanvasFormat();
+  ctx.configure({ device, format, alphaMode:'opaque' });
+
+  const cells = NX*NY, byteSize = cells*16;
+  const bufA = device.createBuffer({ size:byteSize, usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST });
+  const bufB = device.createBuffer({ size:byteSize, usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST });
+  const partBuf = device.createBuffer({ size:NP*NP*8, usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST });
+  const paramBuf = device.createBuffer({ size:64, usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST });
+  const profBuf = device.createBuffer({ size:NY*16, usage:GPUBufferUsage.STORAGE });
+  const statBuf = device.createBuffer({ size:16, usage:GPUBufferUsage.STORAGE });
+  const lnT = device.createBuffer({ size:48, usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST });
+  const lnR = device.createBuffer({ size:48, usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST });
+  const lnD = device.createBuffer({ size:48, usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST });
+
+  const h = 1/NY;
+  const init = new Float32Array(cells*4);
+  function setIC() {
+    const g = parseFloat(grav.value), Th = parseFloat(thot.value), Tc = parseFloat(tcold.value);
+    const Tprof = (j) => Tc + (Th - Tc) * (NY - 1 - j) / (NY - 1);   // hot bottom, cold top
+    // hydrostatic pressure column for the (unstable) mean profile
+    const pcol = new Float64Array(NY);
+    pcol[0] = Tc * 0.4;                       // pressure at the cold top
+    for (let j=1;j<NY;j++) pcol[j] = pcol[j-1] + (pcol[j-1]/Tprof(j-1))*g*h;
+    for (let j=0;j<NY;j++) for (let i=0;i<NX;i++) {
+      const k=(i+j*NX)*4;
+      const seed = 0.05*Math.sin(2*Math.PI*6*i/NX)*Math.sin(Math.PI*j/(NY-1));
+      const Tl = Tprof(j)*(1+seed);
+      init[k]   = pcol[j]/Tl;     // rho
+      init[k+1] = 0;              // mx
+      init[k+2] = 0;              // my
+      init[k+3] = pcol[j];        // e = rho*Tl
+    }
+    device.queue.writeBuffer(bufA,0,init); device.queue.writeBuffer(bufB,0,init);
+    cur=0; simTime=0; needReset=true;
+  }
+
+  const mod = device.createShaderModule({ code:WGSL });
+  const BGL = (entries)=>device.createBindGroupLayout({entries});
+  const computeBGL = BGL([
+    {binding:0,visibility:GPUShaderStage.COMPUTE,buffer:{type:'read-only-storage'}},
+    {binding:1,visibility:GPUShaderStage.COMPUTE,buffer:{type:'storage'}},
+    {binding:2,visibility:GPUShaderStage.COMPUTE,buffer:{type:'uniform'}} ]);
+  const fieldBGL = BGL([
+    {binding:0,visibility:GPUShaderStage.FRAGMENT,buffer:{type:'read-only-storage'}},
+    {binding:1,visibility:GPUShaderStage.FRAGMENT,buffer:{type:'uniform'}} ]);
+  const pcompBGL = BGL([
+    {binding:0,visibility:GPUShaderStage.COMPUTE,buffer:{type:'read-only-storage'}},
+    {binding:1,visibility:GPUShaderStage.COMPUTE,buffer:{type:'storage'}},
+    {binding:2,visibility:GPUShaderStage.COMPUTE,buffer:{type:'uniform'}} ]);
+  const prendBGL = BGL([
+    {binding:0,visibility:GPUShaderStage.VERTEX,buffer:{type:'read-only-storage'}},
+    {binding:1,visibility:GPUShaderStage.VERTEX,buffer:{type:'uniform'}} ]);
+  const lineBGL = BGL([
+    {binding:0,visibility:GPUShaderStage.VERTEX,buffer:{type:'read-only-storage'}},
+    {binding:1,visibility:GPUShaderStage.VERTEX,buffer:{type:'read-only-storage'}},
+    {binding:2,visibility:GPUShaderStage.VERTEX,buffer:{type:'uniform'}} ]);
+
+  const computePipe = device.createComputePipeline({ layout:device.createPipelineLayout({bindGroupLayouts:[computeBGL]}), compute:{module:mod,entryPoint:'cs'} });
+  const pcompPipe  = device.createComputePipeline({ layout:device.createPipelineLayout({bindGroupLayouts:[pcompBGL]}),  compute:{module:mod,entryPoint:'pcs'} });
+  const fieldPipe  = device.createRenderPipeline({ layout:device.createPipelineLayout({bindGroupLayouts:[fieldBGL]}),
+    vertex:{module:mod,entryPoint:'vs'}, fragment:{module:mod,entryPoint:'fs',targets:[{format}]}, primitive:{topology:'triangle-list'} });
+  const partPipe   = device.createRenderPipeline({ layout:device.createPipelineLayout({bindGroupLayouts:[prendBGL]}),
+    vertex:{module:mod,entryPoint:'pvs'}, fragment:{module:mod,entryPoint:'pfs',targets:[{format,blend:{color:{srcFactor:'src-alpha',dstFactor:'one-minus-src-alpha'},alpha:{srcFactor:'one',dstFactor:'one-minus-src-alpha'}}}]}, primitive:{topology:'triangle-list'} });
+  const profPipe = device.createComputePipeline({ layout:device.createPipelineLayout({bindGroupLayouts:[computeBGL]}), compute:{module:mod,entryPoint:'profcs'} });
+  const statPipe = device.createComputePipeline({ layout:device.createPipelineLayout({bindGroupLayouts:[computeBGL]}), compute:{module:mod,entryPoint:'statcs'} });
+  const linePipe = device.createRenderPipeline({ layout:device.createPipelineLayout({bindGroupLayouts:[lineBGL]}),
+    vertex:{module:mod,entryPoint:'lvs'}, fragment:{module:mod,entryPoint:'lfs',targets:[{format}]}, primitive:{topology:'line-strip'} });
+
+  const BG=(layout,res)=>device.createBindGroup({layout,entries:res.map((r,i)=>({binding:i,resource:{buffer:r}}))});
+  const cAB=BG(computeBGL,[bufA,bufB,paramBuf]), cBA=BG(computeBGL,[bufB,bufA,paramBuf]);
+  const rA =BG(fieldBGL,[bufA,paramBuf]),        rB =BG(fieldBGL,[bufB,paramBuf]);
+  const pcA=BG(pcompBGL,[bufA,partBuf,paramBuf]),pcB=BG(pcompBGL,[bufB,partBuf,paramBuf]);
+  const prBG=BG(prendBGL,[partBuf,paramBuf]);
+  const profA=BG(computeBGL,[bufA,profBuf,paramBuf]), profB=BG(computeBGL,[bufB,profBuf,paramBuf]);
+  const statBG=BG(computeBGL,[profBuf,statBuf,paramBuf]);
+  const lineBG_T=BG(lineBGL,[profBuf,statBuf,lnT]);
+  const lineBG_R=BG(lineBGL,[profBuf,statBuf,lnR]);
+  const lineBG_D=BG(lineBGL,[profBuf,statBuf,lnD]);
+
+  let cur=0, simTime=0, needReset=true;
+
+  // UI
+  const playBtn=document.getElementById('play'), resetBtn=document.getElementById('reset');
+  const field=document.getElementById('field'), grav=document.getElementById('grav'),
+        thot=document.getElementById('thot'), tcold=document.getElementById('tcold'),
+        visc=document.getElementById('visc'), dts=document.getElementById('dts'),
+        steps=document.getElementById('steps'), partChk=document.getElementById('part'),
+        profChk=document.getElementById('prof');
+  let playing=true;
+  playBtn.onclick=()=>{playing=!playing; playBtn.textContent=playing?'Pause':'Play';};
+  resetBtn.onclick=()=>setIC();
+  const lbl=(el,id,d)=>{const o=document.getElementById(id); const f=()=>o.textContent=parseFloat(el.value).toFixed(d); el.oninput=f; f();};
+  lbl(grav,'gravV',1); lbl(thot,'thotV',1); lbl(tcold,'tcoldV',2); lbl(visc,'viscV',2); lbl(dts,'dtsV',3);
+  steps.oninput=()=>document.getElementById('stepsV').textContent=steps.value;
+  // rebuild IC when gravity or wall temperatures change
+  grav.addEventListener('change', setIC); thot.addEventListener('change', setIC); tcold.addEventListener('change', setIC);
+
+  setIC();
+
+  const pbuf=new ArrayBuffer(64), pu=new Uint32Array(pbuf), pf=new Float32Array(pbuf);
+  function writeLine(buf,mode,xbase,xwidth,col){
+    const a=new ArrayBuffer(48), u=new Uint32Array(a), f=new Float32Array(a);
+    u[0]=mode; u[1]=NY; f[4]=xbase; f[5]=xwidth; f[6]=parseFloat(tcold.value); f[7]=parseFloat(thot.value);
+    f[8]=col[0]; f[9]=col[1]; f[10]=col[2]; f[11]=1;
+    device.queue.writeBuffer(buf,0,a);
+  }
+  let frames=0,last=performance.now();
+  function frame(){
+    const K=parseInt(steps.value);
+    const dt=parseFloat(dts.value)*h;
+    let reset=0;
+    if (needReset){ reset=1; needReset=false; }
+    else if (playing){ simTime+=dt*K; if(simTime>RESET_T){ reset=1; simTime=0; } }
+
+    pu[0]=NX; pu[1]=NY; pu[2]=parseInt(field.value); pu[3]=NP;
+    pf[4]=h; pf[5]=dt; pf[6]=1.0; pf[7]=parseFloat(visc.value);
+    pf[8]=parseFloat(grav.value); pf[9]=parseFloat(thot.value); pf[10]=parseFloat(tcold.value); pf[11]=1.0;
+    pf[12]=RESX; pf[13]=RESY; pu[14]=reset; pf[15]=5.0*dt*K;      // tracer advection scale (per frame)
+    device.queue.writeBuffer(paramBuf,0,pbuf);
+    writeLine(lnT, 0, -0.98, 0.60, [1.0,0.35,0.25]);   // temperature (red)
+    writeLine(lnR, 1, -0.33, 0.60, [0.35,0.75,1.0]);   // density (cyan)
+    writeLine(lnD, 2,  0.33, 0.60, [1.0,0.90,0.20]);   // turbulent dissipation (yellow)
+
+    const enc=device.createCommandEncoder();
+    if (playing){
+      for(let s=0;s<K;s++){ const cp=enc.beginComputePass(); cp.setPipeline(computePipe);
+        cp.setBindGroup(0, cur===0?cAB:cBA); cp.dispatchWorkgroups(Math.ceil(NX/8),Math.ceil(NY/8)); cp.end(); cur^=1; }
+    }
+    // tracers advance once per frame on the current field
+    { const cp=enc.beginComputePass(); cp.setPipeline(pcompPipe);
+      cp.setBindGroup(0, cur===0?pcA:pcB); cp.dispatchWorkgroups(Math.ceil(NP*NP/64)); cp.end(); }
+    // horizontally-averaged vertical profiles + auto-scale
+    if (profChk.checked){
+      { const cp=enc.beginComputePass(); cp.setPipeline(profPipe); cp.setBindGroup(0, cur===0?profA:profB); cp.dispatchWorkgroups(Math.ceil(NY/64)); cp.end(); }
+      { const cp=enc.beginComputePass(); cp.setPipeline(statPipe); cp.setBindGroup(0, statBG); cp.dispatchWorkgroups(1); cp.end(); }
+    }
+
+    const rp=enc.beginRenderPass({colorAttachments:[{view:ctx.getCurrentTexture().createView(),loadOp:'clear',storeOp:'store',clearValue:{r:0,g:0,b:0,a:1}}]});
+    rp.setPipeline(fieldPipe); rp.setBindGroup(0, cur===0?rA:rB); rp.draw(3);
+    if (profChk.checked){ rp.setPipeline(linePipe);
+      rp.setBindGroup(0, lineBG_T); rp.draw(NY);
+      rp.setBindGroup(0, lineBG_R); rp.draw(NY);
+      rp.setBindGroup(0, lineBG_D); rp.draw(NY); }
+    if (partChk.checked){ rp.setPipeline(partPipe); rp.setBindGroup(0, prBG); rp.draw(6, NP*NP); }
+    rp.end();
+    device.queue.submit([enc.finish()]);
+
+    frames++; const now=performance.now();
+    if(now-last>500){ statusEl.textContent=`${NX}x${NY} GPU — ${(frames*1000/(now-last)).toFixed(0)} fps, ${K} steps/frame`; frames=0; last=now; }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+main();
+</script>
+</body>
+</html>

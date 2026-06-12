@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="results" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.85);border:1px solid #444;padding:10px;z-index:100;font-size:13px;max-height:90vh;overflow-y:auto;min-width:380px"></div>
+<script>
+// Sequential computation of atomic reference energies
+// H, C, N, O with canonical valence pseudopotentials
+// 200^3 grid, 10 au screen
+// Stores energies in sessionStorage
+
+var atoms = [
+  { el: 'H', Z: 1, rc: 0,   note: '1 valence electron, bare' },
+  { el: 'C', Z: 4, rc: 0.4, note: '4 valence electrons' },
+  { el: 'N', Z: 3, rc: 0.5, note: '3 valence electrons' },
+  { el: 'O', Z: 2, rc: 0.8, note: '2 valence electrons' },
+];
+
+var idx = 0;
+var results = {};
+
+var N = 200, scr = 10;
+var hg = scr / N;
+var ci = Math.round(N / 2);
+
+// Restore progress
+(function() {
+  var saved = sessionStorage.getItem('atom_energies_progress');
+  if (saved) {
+    var state = JSON.parse(saved);
+    idx = state.idx;
+    results = state.results;
+    sessionStorage.removeItem('atom_energies_progress');
+  }
+})();
+
+if (idx < atoms.length) {
+  var a = atoms[idx];
+  window.USER_NN = N;
+  window.USER_ATOMS = [{ i: ci, j: ci, k: ci, Z: a.Z, el: a.el }];
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 30000;
+  window.USER_Z = [a.Z];
+  window.USER_RC = [a.rc];
+  window.USER_DYNAMICS = false;
+  window.NO_AUTO_DYNAMICS = true;
+  window.CONVERGENCE_THRESHOLD = 0.001;
+  console.log('Computing E(' + a.el + '): Z=' + a.Z + ' r_c=' + a.rc);
+}
+
+function updateTable() {
+  var div = document.getElementById('results');
+  var html = '<b style="color:#0cf">Atomic Reference Energies</b><br>';
+  html += '<span style="color:#888;font-size:11px">200^3 grid, 10 au screen</span><br><br>';
+  html += '<table style="border-collapse:collapse"><tr style="color:#0cf;border-bottom:1px solid #444">';
+  html += '<th style="padding:3px 8px">Atom</th><th>Z</th><th>r_c</th><th>E (Ha)</th><th>E (eV)</th></tr>';
+  for (var a of atoms) {
+    var e = results[a.el];
+    var cur = (atoms[idx] && atoms[idx].el === a.el);
+    var cls = cur && e === undefined ? 'style="color:#ff0"' : (e === undefined ? 'style="color:#444"' : '');
+    html += '<tr ' + cls + '><td style="padding:3px 8px">' + a.el + '</td><td>' + a.Z + '</td><td>' + a.rc + '</td>';
+    html += '<td>' + (e !== undefined ? e.toFixed(4) : (cur ? 'running...' : 'pending')) + '</td>';
+    html += '<td>' + (e !== undefined ? (e * 27.211).toFixed(2) : '') + '</td></tr>';
+  }
+  html += '</table>';
+  if (idx >= atoms.length) {
+    html += '<br><span style="color:#0f0">All atomic energies computed and stored.</span>';
+    html += '<br><span style="color:#888;font-size:11px">Use these for binding energy computation:</span>';
+    html += '<br><span style="color:#888;font-size:11px">E_bind = E(molecule) - &Sigma; n_i &middot; E(atom_i)</span>';
+  }
+  div.innerHTML = html;
+}
+updateTable();
+
+window.onSweepDone = function(Emin, steps) {
+  var a = atoms[idx];
+  results[a.el] = Emin;
+  console.log('E(' + a.el + ') = ' + Emin.toFixed(6) + ' Ha');
+  updateTable();
+  idx++;
+  if (idx < atoms.length) {
+    sessionStorage.setItem('atom_energies_progress', JSON.stringify({ idx: idx, results: results }));
+    setTimeout(function() { location.reload(); }, 500);
+  } else {
+    // Save final results to localStorage for use by other simulations
+    localStorage.setItem('realqm_atom_energies', JSON.stringify(results));
+    console.log('=== DONE ===', results);
+  }
+};
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

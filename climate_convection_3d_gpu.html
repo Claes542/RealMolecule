@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Climate Convection 3D — Compressible Gas under Gravity (WebGPU, RealNSE)</title>
+<style>
+  body{margin:0;background:#111;color:#ddd;font:13px/1.4 system-ui,sans-serif}
+  #bar{padding:8px 10px;display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+  #bar label{display:flex;gap:5px;align-items:center;white-space:nowrap}
+  canvas{display:block;margin:0 auto;background:#000}
+  button{background:#333;color:#eee;border:1px solid #555;padding:4px 10px;cursor:pointer}
+  #status{padding:6px 10px;color:#9cf;min-height:1.2em}
+  .eqs{padding:6px 10px;color:#888;font-size:12px;max-width:900px;margin:0 auto}
+</style>
+</head>
+<body>
+<div id="bar">
+  <button id="play">Pause</button>
+  <button id="reset">Reset</button>
+  <label>field
+    <select id="field">
+      <option value="0" selected>temperature</option>
+      <option value="1">density</option>
+      <option value="2">speed</option>
+      <option value="3">vertical velocity</option>
+    </select>
+  </label>
+  <label><input id="prof" type="checkbox" checked> profiles</label>
+  <label>g <input id="grav" type="range" min="0" max="6" step="0.25" value="3.0"><span id="gravV">3.0</span></label>
+  <label>T_hot <input id="thot" type="range" min="1" max="4" step="0.1" value="3.0"><span id="thotV">3.0</span></label>
+  <label>T_cold <input id="tcold" type="range" min="0.05" max="1" step="0.05" value="0.1"><span id="tcoldV">0.10</span></label>
+  <label>nu/h <input id="visc" type="range" min="0.05" max="2" step="0.05" value="0.4"><span id="viscV">0.40</span></label>
+  <label>dt/h <input id="dts" type="range" min="0.005" max="0.08" step="0.005" value="0.05"><span id="dtsV">0.050</span></label>
+  <label>steps/frame <input id="steps" type="range" min="1" max="30" step="1" value="6"><span id="stepsV">6</span></label>
+</div>
+<canvas id="cv" width="768" height="384"></canvas>
+<div id="status"></div>
+<div class="eqs">
+  <b>Climate as a 3D compressible gas under gravity (RealNSE).</b>
+  A perfect gas fills a box, heated from below (hot floor) and cooled on top
+  (cold lid) under downward gravity g; the four side walls are periodic, the
+  floor/lid free-slip and impermeable. Buoyant hot gas rises, cold gas sinks,
+  and the deterministic equations organise this into three-dimensional
+  convection cells. Shown: a vertical temperature slice through the mid-plane
+  (blue cold &rarr; red hot). Vertical profiles (horizontal averages over the
+  whole layer vs height): temperature (red), density (cyan), turbulent
+  dissipation (yellow). &nbsp; rho_t + div m = 0,
+  m_t + div(m v) + grad p &minus; nu lap v = rho g,
+  e_t + div(e v) + p div v = nu|grad v|&sup2;; p = gamma rho T, gamma = 1.
+</div>
+
+<script type="module">
+const NX = 128, NY = 128, NZ = 64;     // box: wide horizontal, shorter vertical
+const RESX = 768, RESY = 384;          // canvas (vertical x-z slice)
+const NCELL = NX*NY*NZ;
+const statusEl = document.getElementById('status');
+
+const WGSL = /* wgsl */`
+struct Params {
+  NX:u32, NY:u32, NZ:u32, field:u32,
+  h:f32, dt:f32, gamma:f32, nu:f32,
+  grav:f32, thot:f32, tcold:f32, contrast:f32,
+  resx:f32, resy:f32, p0:u32, p1:u32,
+};
+
+@group(0) @binding(0) var<storage, read>        inS  : array<vec4<f32>>;   // (rho, mx, my, mz)
+@group(0) @binding(1) var<storage, read>        inE  : array<f32>;         // e
+@group(0) @binding(2) var<storage, read_write>  outS : array<vec4<f32>>;
+@group(0) @binding(3) var<storage, read_write>  outE : array<f32>;
+@group(0) @binding(4) var<uniform>              P    : Params;
+
+fn IDX(i:u32, j:u32, k:u32) -> u32 { return i + j*P.NX + k*P.NX*P.NY; }
+
+@compute @workgroup_size(4,4,4)
+fn cs(@builtin(global_invocation_id) gid : vec3<u32>) {
+  let NX=P.NX; let NY=P.NY; let NZ=P.NZ;
+  let i=gid.x; let j=gid.y; let k=gid.z;
+  if (i>=NX || j>=NY || k>=NZ) { return; }
+
+  // vertical walls: k=0 hot floor, k=NZ-1 cold lid (free-slip, impermeable, Dirichlet T)
+  if (k==0u) {
+    let s = inS[IDX(i,j,1u)]; let r = s.x;
+    outS[IDX(i,j,0u)] = vec4<f32>(r, s.y, s.z, 0.0);
+    outE[IDX(i,j,0u)] = r*P.thot;
+    return;
+  }
+  if (k==NZ-1u) {
+    let s = inS[IDX(i,j,NZ-2u)]; let r = s.x;
+    outS[IDX(i,j,NZ-1u)] = vec4<f32>(r, s.y, s.z, 0.0);
+    outE[IDX(i,j,NZ-1u)] = r*P.tcold;
+    return;
+  }
+
+  let h=P.h; let dt=P.dt; let g=P.gamma; let nu=P.nu;
+  let ipx=(i+1u)%NX; let imx=(i+NX-1u)%NX;
+  let jpy=(j+1u)%NY; let jmy=(j+NY-1u)%NY;
+  let ku=k+1u; let kd=k-1u;                       // ku=up(cold), kd=down(hot)
+
+  let C  = inS[IDX(i,j,k)];   let eC  = inE[IDX(i,j,k)];
+  let XP = inS[IDX(ipx,j,k)]; let eXP = inE[IDX(ipx,j,k)];
+  let XM = inS[IDX(imx,j,k)]; let eXM = inE[IDX(imx,j,k)];
+  let YP = inS[IDX(i,jpy,k)]; let eYP = inE[IDX(i,jpy,k)];
+  let YM = inS[IDX(i,jmy,k)]; let eYM = inE[IDX(i,jmy,k)];
+  let ZU = inS[IDX(i,j,ku)];  let eZU = inE[IDX(i,j,ku)];
+  let ZD = inS[IDX(i,j,kd)];  let eZD = inE[IDX(i,j,kd)];
+
+  let vC  = C.yzw /max(C.x,1e-6);
+  let vXP = XP.yzw/max(XP.x,1e-6); let vXM = XM.yzw/max(XM.x,1e-6);
+  let vYP = YP.yzw/max(YP.x,1e-6); let vYM = YM.yzw/max(YM.x,1e-6);
+  let vZU = ZU.yzw/max(ZU.x,1e-6); let vZD = ZD.yzw/max(ZD.x,1e-6);
+
+  let divv = ((vXP.x-vXM.x) + (vYP.y-vYM.y) + (vZU.z-vZD.z))/(2.0*h);
+  let cC = sqrt((1.0+g)*g*max(eC,0.0)/max(C.x,1e-6));
+  // 3D Lax-Friedrichs viscosity floor, capped for explicit 7-point stability (< h/(6 dt))
+  let nuEff = min( max(nu, 0.55*(length(vC) + cC)) + 2.0*h*max(0.0,-divv), 0.13*h/dt );
+
+  let lapS = XP+XM+YP+YM+ZU+ZD - 6.0*C;
+  let lapE = eXP+eXM+eYP+eYM+eZU+eZD - 6.0*eC;
+
+  let rho_new = C.x + nuEff*dt*lapS.x/h
+    - 0.5*dt*(XP.y-XM.y)/h - 0.5*dt*(YP.z-YM.z)/h - 0.5*dt*(ZU.w-ZD.w)/h;
+
+  let mx_new = C.y + nuEff*dt*lapS.y/h
+    - 0.5*dt*(vXP.x*XP.y - vXM.x*XM.y)/h
+    - 0.5*dt*(vYP.y*YP.y - vYM.y*YM.y)/h
+    - 0.5*dt*(vZU.z*ZU.y - vZD.z*ZD.y)/h
+    - 0.5*dt*g*(eXP - eXM)/h;
+
+  let my_new = C.z + nuEff*dt*lapS.z/h
+    - 0.5*dt*(vXP.x*XP.z - vXM.x*XM.z)/h
+    - 0.5*dt*(vYP.y*YP.z - vYM.y*YM.z)/h
+    - 0.5*dt*(vZU.z*ZU.z - vZD.z*ZD.z)/h
+    - 0.5*dt*g*(eYP - eYM)/h;
+
+  let mz_new = C.w + nuEff*dt*lapS.w/h
+    - 0.5*dt*(vXP.x*XP.w - vXM.x*XM.w)/h
+    - 0.5*dt*(vYP.y*YP.w - vYM.y*YM.w)/h
+    - 0.5*dt*(vZU.z*ZU.w - vZD.z*ZD.w)/h
+    - 0.5*dt*g*(eZU - eZD)/h
+    - dt*P.grav*C.x;                              // gravity, downward (-z toward k=0)
+
+  let e_new = eC + nuEff*dt*lapE/h
+    - 0.5*dt*(vXP.x*eXP - vXM.x*eXM)/h
+    - 0.5*dt*(vYP.y*eYP - vYM.y*eYM)/h
+    - 0.5*dt*(vZU.z*eZU - vZD.z*eZD)/h
+    - dt*g*eC*divv;
+
+  outS[IDX(i,j,k)] = vec4<f32>(max(rho_new,1e-2), mx_new, my_new, mz_new);
+  outE[IDX(i,j,k)] = max(e_new, 1e-4);
+}
+
+// ---------- vertical-slice render (x-z plane at mid-y) ----------
+@group(0) @binding(0) var<storage, read> rS : array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read> rE : array<f32>;
+@group(0) @binding(2) var<uniform>       R  : Params;
+
+@vertex
+fn vs(@builtin(vertex_index) vi:u32) -> @builtin(position) vec4<f32> {
+  var pos = array<vec2<f32>,3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.));
+  return vec4<f32>(pos[vi], 0., 1.);
+}
+fn cmap(tt:f32) -> vec3<f32> {
+  let x = clamp(tt, 0.0, 1.0);
+  return vec3<f32>(clamp(1.5-abs(4.0*x-3.0),0.0,1.0),
+                   clamp(1.5-abs(4.0*x-2.0),0.0,1.0),
+                   clamp(1.5-abs(4.0*x-1.0),0.0,1.0));
+}
+@fragment
+fn fs(@builtin(position) fc: vec4<f32>) -> @location(0) vec4<f32> {
+  let i = u32(clamp(fc.x/R.resx * f32(R.NX), 0.0, f32(R.NX-1u)));
+  let kf = (1.0 - fc.y/R.resy) * f32(R.NZ);           // top of canvas = cold lid (large k)
+  let k = u32(clamp(kf, 0.0, f32(R.NZ-1u)));
+  let j = R.NY/2u;                                     // mid-plane slice
+  let idx = i + j*R.NX + k*R.NX*R.NY;
+  let s = rS[idx]; let e = rE[idx];
+  var t:f32;
+  if (R.field==0u)      { t = (e/max(s.x,1e-6) - R.tcold)/max(R.thot-R.tcold,1e-6); }
+  else if (R.field==1u) { t = 0.5 + (s.x-1.0)*0.5*R.contrast; }
+  else if (R.field==2u) { t = length(s.yzw)/max(s.x,1e-6)*R.contrast; }
+  else                  { t = 0.5 - 0.5*(s.w/max(s.x,1e-6))*R.contrast; }
+  return vec4<f32>(cmap(t), 1.0);
+}
+
+// ---------- horizontally-averaged vertical profiles ----------
+@group(0) @binding(0) var<storage, read>        pS  : array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read>        pE  : array<f32>;
+@group(0) @binding(2) var<storage, read_write>  pOut: array<vec4<f32>>;
+@group(0) @binding(3) var<uniform>              PF  : Params;
+fn IDXp(i:u32, j:u32, k:u32) -> u32 { return i + j*PF.NX + k*PF.NX*PF.NY; }
+
+@compute @workgroup_size(64)
+fn profcs(@builtin(global_invocation_id) gid : vec3<u32>) {
+  let k = gid.x; let NX=PF.NX; let NY=PF.NY; let NZ=PF.NZ;
+  if (k>=NZ) { return; }
+  let h=PF.h; let dt=PF.dt; let g=PF.gamma; let nu=PF.nu;
+  var sT=0.0; var sR=0.0; var sD=0.0;
+  for (var j=0u; j<NY; j++) {
+    for (var i=0u; i<NX; i++) {
+      let C = pS[IDXp(i,j,k)]; let eC = pE[IDXp(i,j,k)];
+      sT += eC/max(C.x,1e-6); sR += C.x;
+      if (k>0u && k<NZ-1u) {
+        let ipx=(i+1u)%NX; let imx=(i+NX-1u)%NX;
+        let jpy=(j+1u)%NY; let jmy=(j+NY-1u)%NY;
+        let XP=pS[IDXp(ipx,j,k)]; let XM=pS[IDXp(imx,j,k)];
+        let YP=pS[IDXp(i,jpy,k)]; let YM=pS[IDXp(i,jmy,k)];
+        let ZU=pS[IDXp(i,j,k+1u)]; let ZD=pS[IDXp(i,j,k-1u)];
+        let vC=C.yzw/max(C.x,1e-6);
+        let gx=(XP.yzw/max(XP.x,1e-6) - XM.yzw/max(XM.x,1e-6))/(2.0*h);
+        let gy=(YP.yzw/max(YP.x,1e-6) - YM.yzw/max(YM.x,1e-6))/(2.0*h);
+        let gz=(ZU.yzw/max(ZU.x,1e-6) - ZD.yzw/max(ZD.x,1e-6))/(2.0*h);
+        let divv=gx.x+gy.y+gz.z;
+        let cC=sqrt((1.0+g)*g*max(eC,0.0)/max(C.x,1e-6));
+        let nuEff=min(max(nu,0.55*(length(vC)+cC))+2.0*h*max(0.0,-divv),0.13*h/dt);
+        sD += nuEff*h*(dot(gx,gx)+dot(gy,gy)+dot(gz,gz));
+      }
+    }
+  }
+  let inv = 1.0/f32(NX*NY);
+  pOut[k] = vec4<f32>(sT*inv, sR*inv, sD*inv, 0.0);
+}
+
+@group(0) @binding(0) var<storage, read>        sPro : array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read_write>  sSta : array<vec4<f32>>;
+@group(0) @binding(2) var<uniform>              SP   : Params;
+@compute @workgroup_size(1)
+fn statcs() {
+  var mR=1e-9; var mD=1e-12;
+  for (var k=0u; k<SP.NZ; k++) { let p=sPro[k]; mR=max(mR,p.y); mD=max(mD,p.z); }
+  sSta[0] = vec4<f32>(0.0, mR, mD, 0.0);
+}
+
+struct LineU { mode:u32, NZ:u32, p0:u32, p1:u32, xbase:f32, xwidth:f32, tcold:f32, thot:f32, col:vec4<f32> };
+@group(0) @binding(0) var<storage, read> lPro : array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read> lSta : array<vec4<f32>>;
+@group(0) @binding(2) var<uniform>       L    : LineU;
+struct LOut { @builtin(position) pos:vec4<f32>, @location(0) col:vec4<f32> };
+
+@vertex
+fn lvs(@builtin(vertex_index) vi:u32) -> LOut {
+  let k = vi;
+  let p = lPro[k]; let s = lSta[0];
+  var nrm:f32;
+  if (L.mode==0u)      { nrm = (p.x - L.tcold)/max(L.thot-L.tcold,1e-6); }
+  else if (L.mode==1u) { nrm = p.y/max(s.y,1e-9); }
+  else                 { nrm = p.z/max(s.z,1e-12); }
+  nrm = clamp(nrm, 0.0, 1.0);
+  let xclip = L.xbase + L.xwidth*nrm;
+  let yclip = -1.0 + 2.0*f32(k)/f32(L.NZ-1u);          // k=0 floor at bottom, k=NZ-1 lid at top
+  var o:LOut; o.pos = vec4<f32>(xclip, yclip, 0.0, 1.0); o.col = L.col; return o;
+}
+@fragment
+fn lfs(@location(0) c:vec4<f32>) -> @location(0) vec4<f32> { return c; }
+`;
+
+async function main() {
+  if (!navigator.gpu) { statusEl.textContent='WebGPU not available in this browser.'; return; }
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) { statusEl.textContent='No WebGPU adapter.'; return; }
+  const device = await adapter.requestDevice();
+  device.addEventListener('uncapturederror', e=>{ statusEl.textContent='GPU error: '+e.error.message; });
+  const ctx = document.getElementById('cv').getContext('webgpu');
+  const format = navigator.gpu.getPreferredCanvasFormat();
+  ctx.configure({ device, format, alphaMode:'opaque' });
+
+  const SBYTES = NCELL*16, EBYTES = NCELL*4;
+  const sA = device.createBuffer({ size:SBYTES, usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST });
+  const sB = device.createBuffer({ size:SBYTES, usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST });
+  const eA = device.createBuffer({ size:EBYTES, usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST });
+  const eB = device.createBuffer({ size:EBYTES, usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST });
+  const paramBuf = device.createBuffer({ size:64, usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST });
+  const profBuf = device.createBuffer({ size:NZ*16, usage:GPUBufferUsage.STORAGE });
+  const statBuf = device.createBuffer({ size:16, usage:GPUBufferUsage.STORAGE });
+  const lnT = device.createBuffer({ size:48, usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST });
+  const lnR = device.createBuffer({ size:48, usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST });
+  const lnD = device.createBuffer({ size:48, usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST });
+
+  const h = 1/NZ;
+  const sInit = new Float32Array(NCELL*4), eInit = new Float32Array(NCELL);
+  function setIC() {
+    const g=parseFloat(grav.value), Th=parseFloat(thot.value), Tc=parseFloat(tcold.value);
+    const Tprof = (k) => Tc + (Th - Tc) * (NZ - 1 - k) / (NZ - 1);   // hot floor (k=0), cold lid
+    const pcol = new Float64Array(NZ);
+    pcol[NZ-1] = Tc * 0.4;                          // pressure at cold lid
+    for (let k=NZ-2;k>=0;k--) pcol[k] = pcol[k+1] + (pcol[k+1]/Tprof(k+1))*g*h;
+    for (let k=0;k<NZ;k++) for (let j=0;j<NY;j++) for (let i=0;i<NX;i++) {
+      const idx=i + j*NX + k*NX*NY;
+      const seed = 0.05*Math.sin(2*Math.PI*4*i/NX)*Math.sin(2*Math.PI*4*j/NY)*Math.sin(Math.PI*k/(NZ-1));
+      const Tl = Tprof(k)*(1+seed);
+      sInit[idx*4]=pcol[k]/Tl; sInit[idx*4+1]=0; sInit[idx*4+2]=0; sInit[idx*4+3]=0;
+      eInit[idx]=pcol[k];
+    }
+    device.queue.writeBuffer(sA,0,sInit); device.queue.writeBuffer(sB,0,sInit);
+    device.queue.writeBuffer(eA,0,eInit); device.queue.writeBuffer(eB,0,eInit);
+    cur=0;
+  }
+
+  const mod = device.createShaderModule({ code:WGSL });
+  const BGL = (entries)=>device.createBindGroupLayout({entries});
+  const C=GPUShaderStage.COMPUTE, V=GPUShaderStage.VERTEX, F=GPUShaderStage.FRAGMENT;
+  const ro={type:'read-only-storage'}, st={type:'storage'}, un={type:'uniform'};
+  const csBGL = BGL([{binding:0,visibility:C,buffer:ro},{binding:1,visibility:C,buffer:ro},
+                     {binding:2,visibility:C,buffer:st},{binding:3,visibility:C,buffer:st},
+                     {binding:4,visibility:C,buffer:un}]);
+  const fieldBGL = BGL([{binding:0,visibility:F,buffer:ro},{binding:1,visibility:F,buffer:ro},{binding:2,visibility:F,buffer:un}]);
+  const profBGL = BGL([{binding:0,visibility:C,buffer:ro},{binding:1,visibility:C,buffer:ro},
+                       {binding:2,visibility:C,buffer:st},{binding:3,visibility:C,buffer:un}]);
+  const statBGL = BGL([{binding:0,visibility:C,buffer:ro},{binding:1,visibility:C,buffer:st},{binding:2,visibility:C,buffer:un}]);
+  const lineBGL = BGL([{binding:0,visibility:V,buffer:ro},{binding:1,visibility:V,buffer:ro},{binding:2,visibility:V,buffer:un}]);
+
+  const PL = (l)=>device.createPipelineLayout({bindGroupLayouts:[l]});
+  const csPipe   = device.createComputePipeline({ layout:PL(csBGL),   compute:{module:mod,entryPoint:'cs'} });
+  const profPipe = device.createComputePipeline({ layout:PL(profBGL), compute:{module:mod,entryPoint:'profcs'} });
+  const statPipe = device.createComputePipeline({ layout:PL(statBGL), compute:{module:mod,entryPoint:'statcs'} });
+  const fieldPipe= device.createRenderPipeline({ layout:PL(fieldBGL),
+    vertex:{module:mod,entryPoint:'vs'}, fragment:{module:mod,entryPoint:'fs',targets:[{format}]}, primitive:{topology:'triangle-list'} });
+  const linePipe = device.createRenderPipeline({ layout:PL(lineBGL),
+    vertex:{module:mod,entryPoint:'lvs'}, fragment:{module:mod,entryPoint:'lfs',targets:[{format}]}, primitive:{topology:'line-strip'} });
+
+  const BG=(layout,res)=>device.createBindGroup({layout,entries:res.map((r,i)=>({binding:i,resource:{buffer:r}}))});
+  const csAB=BG(csBGL,[sA,eA,sB,eB,paramBuf]), csBA=BG(csBGL,[sB,eB,sA,eA,paramBuf]);
+  const rA=BG(fieldBGL,[sA,eA,paramBuf]),       rB=BG(fieldBGL,[sB,eB,paramBuf]);
+  const profA=BG(profBGL,[sA,eA,profBuf,paramBuf]), profB=BG(profBGL,[sB,eB,profBuf,paramBuf]);
+  const statBG=BG(statBGL,[profBuf,statBuf,paramBuf]);
+  const lineBG_T=BG(lineBGL,[profBuf,statBuf,lnT]), lineBG_R=BG(lineBGL,[profBuf,statBuf,lnR]), lineBG_D=BG(lineBGL,[profBuf,statBuf,lnD]);
+
+  let cur=0;
+
+  const playBtn=document.getElementById('play'), resetBtn=document.getElementById('reset');
+  const field=document.getElementById('field'), grav=document.getElementById('grav'),
+        thot=document.getElementById('thot'), tcold=document.getElementById('tcold'),
+        visc=document.getElementById('visc'), dts=document.getElementById('dts'),
+        steps=document.getElementById('steps'), profChk=document.getElementById('prof');
+  let playing=true;
+  playBtn.onclick=()=>{playing=!playing; playBtn.textContent=playing?'Pause':'Play';};
+  resetBtn.onclick=()=>setIC();
+  const lbl=(el,id,d)=>{const o=document.getElementById(id); const f=()=>o.textContent=parseFloat(el.value).toFixed(d); el.oninput=f; f();};
+  lbl(grav,'gravV',1); lbl(thot,'thotV',1); lbl(tcold,'tcoldV',2); lbl(visc,'viscV',2); lbl(dts,'dtsV',3);
+  steps.oninput=()=>document.getElementById('stepsV').textContent=steps.value;
+  grav.addEventListener('change',setIC); thot.addEventListener('change',setIC); tcold.addEventListener('change',setIC);
+
+  setIC();
+
+  const pbuf=new ArrayBuffer(64), pu=new Uint32Array(pbuf), pf=new Float32Array(pbuf);
+  function writeLine(buf,mode,xbase,xwidth,col){
+    const a=new ArrayBuffer(48), u=new Uint32Array(a), f=new Float32Array(a);
+    u[0]=mode; u[1]=NZ; f[4]=xbase; f[5]=xwidth; f[6]=parseFloat(tcold.value); f[7]=parseFloat(thot.value);
+    f[8]=col[0]; f[9]=col[1]; f[10]=col[2]; f[11]=1;
+    device.queue.writeBuffer(buf,0,a);
+  }
+  let frames=0,last=performance.now();
+  function frame(){
+    const K=parseInt(steps.value);
+    const dt=parseFloat(dts.value)*h;
+    pu[0]=NX; pu[1]=NY; pu[2]=NZ; pu[3]=parseInt(field.value);
+    pf[4]=h; pf[5]=dt; pf[6]=1.0; pf[7]=parseFloat(visc.value);
+    pf[8]=parseFloat(grav.value); pf[9]=parseFloat(thot.value); pf[10]=parseFloat(tcold.value); pf[11]=1.0;
+    pf[12]=RESX; pf[13]=RESY; pu[14]=0; pu[15]=0;
+    device.queue.writeBuffer(paramBuf,0,pbuf);
+    writeLine(lnT,0,-0.98,0.60,[1.0,0.35,0.25]);
+    writeLine(lnR,1,-0.33,0.60,[0.35,0.75,1.0]);
+    writeLine(lnD,2, 0.33,0.60,[1.0,0.90,0.20]);
+
+    const enc=device.createCommandEncoder();
+    if (playing){
+      for(let s=0;s<K;s++){ const cp=enc.beginComputePass(); cp.setPipeline(csPipe);
+        cp.setBindGroup(0, cur===0?csAB:csBA); cp.dispatchWorkgroups(Math.ceil(NX/4),Math.ceil(NY/4),Math.ceil(NZ/4)); cp.end(); cur^=1; }
+    }
+    if (profChk.checked){
+      { const cp=enc.beginComputePass(); cp.setPipeline(profPipe); cp.setBindGroup(0, cur===0?profA:profB); cp.dispatchWorkgroups(Math.ceil(NZ/64)); cp.end(); }
+      { const cp=enc.beginComputePass(); cp.setPipeline(statPipe); cp.setBindGroup(0, statBG); cp.dispatchWorkgroups(1); cp.end(); }
+    }
+    const rp=enc.beginRenderPass({colorAttachments:[{view:ctx.getCurrentTexture().createView(),loadOp:'clear',storeOp:'store',clearValue:{r:0,g:0,b:0,a:1}}]});
+    rp.setPipeline(fieldPipe); rp.setBindGroup(0, cur===0?rA:rB); rp.draw(3);
+    if (profChk.checked){ rp.setPipeline(linePipe);
+      rp.setBindGroup(0, lineBG_T); rp.draw(NZ);
+      rp.setBindGroup(0, lineBG_R); rp.draw(NZ);
+      rp.setBindGroup(0, lineBG_D); rp.draw(NZ); }
+    rp.end();
+    device.queue.submit([enc.finish()]);
+
+    frames++; const now=performance.now();
+    if(now-last>500){ statusEl.textContent=`${NX}x${NY}x${NZ} GPU — ${(frames*1000/(now-last)).toFixed(0)} fps, ${K} steps/frame (vertical mid-plane slice)`; frames=0; last=now; }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+main();
+</script>
+</body>
+</html>

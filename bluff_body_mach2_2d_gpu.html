@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Bluff Body Mach 2 — Compressible Navier-Stokes on GPU</title>
+<style>
+  body { margin: 0; background: #fff; font-family: sans-serif; color: #000; }
+  #wrap { display: flex; flex-direction: column; align-items: center; padding: 8px; }
+  canvas { display: block; image-rendering: pixelated; border: 1px solid #888; }
+  #info { width: 720px; font-size: 11px; line-height: 1.35; margin-top: 8px; }
+  code { font-size: 11px; background: #eee; padding: 1px 3px; }
+  #status { font-weight: bold; }
+  #controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 12px; flex-wrap: wrap; }
+  #controls button { padding: 4px 10px; font-size: 12px; cursor: pointer; }
+  #controls label { display: flex; gap: 4px; align-items: center; }
+  #controls input[type="range"] { width: 120px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv" width="720" height="720"></canvas>
+  <div id="controls">
+    <button id="btnPause">Pause</button>
+    <button id="btnReset">Reset</button>
+    <label>Substeps/frame:
+      <input id="rngSubsteps" type="range" min="0" max="20" step="1" value="4" />
+      <span id="lblSubsteps">4</span>
+    </label>
+    <span id="lblTime">t = 0.000</span>
+  </div>
+  <div id="info">
+    <div id="status">Initializing WebGPU…</div>
+    <p>
+      <b>Bluff-body flow at Mach 2, compressible Navier–Stokes, WebGPU.</b>
+      Uniform horizontal inflow ρ = 1, e = 1, v<sub>x</sub> = 1 from the left.
+      A rectangular body (yellow) is represented by a penalty force
+      f<sub>x</sub> = −500·v<sub>x</sub> in the body cells, which damps the
+      velocity inside the body and forces the flow around it. The wake develops
+      a shock structure characteristic of supersonic flow past a blunt obstacle.
+    </p>
+    <p>
+      <b>Display:</b> density field (blue low → white mid → red high), tuned to
+      ρ ∈ [0.5, 1.5]. The body region is overlaid in yellow.
+    </p>
+    <p>
+      <b>Equations:</b>
+      <code>∂ρ/∂t + ∇·(ρv) = 0</code>;
+      <code>∂(ρv)/∂t + ∇·(ρv⊗v) + ∇p = ∇·σ + f</code>;
+      <code>∂e/∂t + ∇·(e v) + p∇·v = 0</code>;
+      <code>p = γe</code>, γ = 0.2; ν = 0.3 h.
+    </p>
+    <p>
+      <b>Grid:</b> 512² = 262 144 cells. Boundary conditions: inflow (Dirichlet)
+      on the left, zero-gradient on right and top/bottom (free outflow / free-slip).
+    </p>
+  </div>
+</div>
+
+<script>
+const N = 512;
+let substepsPerFrame = 4;
+let paused = false;
+
+const GAMMA = 0.2;
+const H = 1.0 / N;
+const NU = 0.3 * H;
+const DT = 0.03 * H;     // conservative dt for stability at this resolution
+const MU = 0.2;          // artificial viscosity on the density/energy Laplacian
+
+const status = document.getElementById('status');
+const canvas = document.getElementById('cv');
+const btnPause = document.getElementById('btnPause');
+const btnReset = document.getElementById('btnReset');
+const rngSubsteps = document.getElementById('rngSubsteps');
+const lblSubsteps = document.getElementById('lblSubsteps');
+const lblTime = document.getElementById('lblTime');
+
+btnPause.addEventListener('click', () => {
+  paused = !paused;
+  btnPause.textContent = paused ? 'Resume' : 'Pause';
+});
+rngSubsteps.addEventListener('input', () => {
+  substepsPerFrame = parseInt(rngSubsteps.value, 10);
+  lblSubsteps.textContent = String(substepsPerFrame);
+});
+
+async function main() {
+  if (!navigator.gpu) {
+    status.textContent = 'WebGPU not supported in this browser. Try Chrome 113+, Edge 113+, or Safari 17+.';
+    return;
+  }
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) { status.textContent = 'No WebGPU adapter.'; return; }
+  const device = await adapter.requestDevice();
+  device.addEventListener('uncapturederror', (e) => {
+    console.error('WebGPU error:', e.error.message);
+    status.textContent = 'WebGPU error (see console): ' + e.error.message;
+  });
+
+  const ctx = canvas.getContext('webgpu');
+  const format = navigator.gpu.getPreferredCanvasFormat();
+  ctx.configure({ device, format, alphaMode: 'opaque' });
+
+  // ---------------------------------------------------------------------------
+  // Body geometry (N-relative): square of side 0.25 N centred in the domain
+  // ---------------------------------------------------------------------------
+  const BODY_I0 = Math.round(N * 0.375);
+  const BODY_I1 = Math.round(N * 0.625);
+  const BODY_J0 = Math.round(N * 0.375);
+  const BODY_J1 = Math.round(N * 0.625);
+
+  function inBody(i, j) {
+    return i >= BODY_I0 && i <= BODY_I1 && j >= BODY_J0 && j <= BODY_J1;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Buffers
+  // ---------------------------------------------------------------------------
+  const NCELL = N * N;
+  const STATE_BYTES = NCELL * 4 * 4;   // vec4(rho, e, mx, my) per cell
+
+  const stateA = device.createBuffer({
+    size: STATE_BYTES,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+  const stateB = device.createBuffer({
+    size: STATE_BYTES,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+  // bodyMask: 1 in body cells, 0 elsewhere
+  const maskBuf = device.createBuffer({
+    size: NCELL * 4,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+  const paramsBuf = device.createBuffer({
+    size: 8 * 4,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+
+  device.queue.writeBuffer(paramsBuf, 0, new Float32Array([
+    N, H, DT, GAMMA, NU, MU, 0, 0,
+  ]));
+
+  // Initial state: uniform horizontal inflow in the fluid; body cells start at
+  // rest (zero momentum) and are frozen as a no-slip wall in the step shader.
+  const init = new Float32Array(NCELL * 4);
+  const mask = new Uint32Array(NCELL);
+  for (let j = 0; j < N; j++) {
+    for (let i = 0; i < N; i++) {
+      const idx = i + N * j;
+      const off = idx * 4;
+      const body = inBody(i, j);
+      init[off + 0] = 1.0;             // rho
+      init[off + 1] = 1.0;             // e (e/rho = 1, same temperature)
+      init[off + 2] = body ? 0.0 : 1.0; // mx: fluid = 1, body = 0
+      init[off + 3] = 0.0;             // my
+      if (body) mask[idx] = 1;
+    }
+  }
+  device.queue.writeBuffer(stateA, 0, init);
+  device.queue.writeBuffer(stateB, 0, init);
+  device.queue.writeBuffer(maskBuf, 0, mask);
+
+  // Display texture
+  const displayTex = device.createTexture({
+    size: [N, N, 1],
+    format: 'rgba8unorm',
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  });
+  const displayView = displayTex.createView();
+  const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+
+  // ---------------------------------------------------------------------------
+  // WGSL shaders
+  // ---------------------------------------------------------------------------
+  const paramsBlock = `
+    struct Params {
+      N: f32, h: f32, dt: f32, gamma: f32, nu: f32, mu: f32, _p0: f32, _p1: f32,
+    };
+  `;
+
+  // Body cells are a hard wall: their state is frozen with zero momentum each
+  // step. Fluid cells reading body neighbours substitute a zero-momentum ghost
+  // with the same rho/e as the centre cell, producing a zero-flux / no-slip
+  // wall (parallel to the Joule version's chamber-separator handling).
+  const stepShader = paramsBlock + /* wgsl */ `
+    @group(0) @binding(0) var<uniform> P: Params;
+    @group(0) @binding(1) var<storage, read>       state_in:  array<vec4<f32>>;
+    @group(0) @binding(2) var<storage, read>       mask:      array<u32>;
+    @group(0) @binding(3) var<storage, read_write> state_out: array<vec4<f32>>;
+
+    fn idx(i: u32, j: u32) -> u32 {
+      let n = u32(P.N);
+      return i + n * j;
+    }
+    fn read_n(i: u32, j: u32, cc: vec4<f32>) -> vec4<f32> {
+      let id = idx(i, j);
+      if (mask[id] != 0u) {
+        return vec4<f32>(cc.x, cc.y, 0.0, 0.0);  // no-slip wall ghost
+      }
+      return state_in[id];
+    }
+
+    @compute @workgroup_size(8, 8)
+    fn step(@builtin(global_invocation_id) gid: vec3<u32>) {
+      let n = u32(P.N);
+      let i = gid.x; let j = gid.y;
+      if (i >= n || j >= n) { return; }
+
+      let id = idx(i, j);
+      let cell = state_in[id];
+
+      // ---- Body cells: frozen no-slip wall ----
+      if (mask[id] != 0u) {
+        state_out[id] = vec4<f32>(cell.x, cell.y, 0.0, 0.0);
+        return;
+      }
+
+      // ---- Outer-box boundary conditions ----
+      if (i == 0u) {
+        state_out[id] = vec4<f32>(1.0, 1.0, 1.0, 0.0);   // Dirichlet inflow
+        return;
+      }
+      if (i == n - 1u) {
+        state_out[id] = state_in[idx(i - 1u, j)];        // zero-gradient outflow
+        return;
+      }
+      if (j == 0u) {
+        state_out[id] = state_in[idx(i, 1u)];
+        return;
+      }
+      if (j == n - 1u) {
+        state_out[id] = state_in[idx(i, j - 1u)];
+        return;
+      }
+
+      // ---- Interior fluid update ----
+      let rho_c = max(cell.x, 0.05);
+      let e_c   = cell.y;
+      let mx_c  = cell.z;
+      let my_c  = cell.w;
+      let vx_c  = mx_c / rho_c;
+      let vy_c  = my_c / rho_c;
+
+      // Mask-aware neighbour reads (body neighbours -> no-slip ghost)
+      let c_xp = read_n(i+1u, j, cell);
+      let c_xm = read_n(i-1u, j, cell);
+      let c_yp = read_n(i, j+1u, cell);
+      let c_ym = read_n(i, j-1u, cell);
+
+      let vx_xp = c_xp.z / max(c_xp.x, 0.05);
+      let vx_xm = c_xm.z / max(c_xm.x, 0.05);
+      let vx_yp = c_yp.z / max(c_yp.x, 0.05);
+      let vx_ym = c_ym.z / max(c_ym.x, 0.05);
+      let vy_xp = c_xp.w / max(c_xp.x, 0.05);
+      let vy_xm = c_xm.w / max(c_xm.x, 0.05);
+      let vy_yp = c_yp.w / max(c_yp.x, 0.05);
+      let vy_ym = c_ym.w / max(c_ym.x, 0.05);
+
+      let sxx_c  = P.nu * (vx_c - vx_xm) / P.h;
+      let syy_c  = P.nu * (vy_c - vy_ym) / P.h;
+      let sxy_c  = P.nu * 0.5 * ((vx_c - vx_ym) + (vy_c - vy_xm)) / P.h;
+      let sxx_xp = P.nu * (vx_xp - vx_c) / P.h;
+      let syy_yp = P.nu * (vy_yp - vy_c) / P.h;
+      let c_xp_yp = read_n(i+1u, j+1u, cell);
+      let c_xp_ym = read_n(i+1u, j-1u, cell);
+      let vy_xp_yp = c_xp_yp.w / max(c_xp_yp.x, 0.05);
+      let vx_xp_ym = c_xp_ym.z / max(c_xp_ym.x, 0.05);
+      let sxy_yp = P.nu * 0.5 * ((vx_yp - vx_c) + (vy_xp_yp - vy_yp)) / P.h;
+      let sxy_xp = P.nu * 0.5 * ((vx_xp - vx_xp_ym) + (vy_xp - vy_c)) / P.h;
+
+      let lap_vx  = (vx_xp + vx_xm - 4.0*vx_c + vx_yp + vx_ym) / P.h;
+      let lap_vy  = (vy_xp + vy_xm - 4.0*vy_c + vy_yp + vy_ym) / P.h;
+      let lap_rho = (c_xp.x + c_xm.x - 4.0*rho_c + c_yp.x + c_ym.x) / P.h;
+      let lap_e   = (c_xp.y + c_xm.y - 4.0*e_c   + c_yp.y + c_ym.y) / P.h;
+
+      let mx_new = mx_c
+        + P.mu * P.dt * lap_vx
+        - 0.5 * P.dt * (vx_xp * c_xp.z - vx_xm * c_xm.z) / P.h
+        - 0.5 * P.dt * (vy_yp * c_yp.z - vy_ym * c_ym.z) / P.h
+        - P.dt * P.gamma * (c_xp.y - c_xm.y) / P.h
+        + P.dt * ((sxx_xp - sxx_c) + (sxy_yp - sxy_c)) / P.h;
+
+      let my_new = my_c
+        + P.mu * P.dt * lap_vy
+        - 0.5 * P.dt * (vx_xp * c_xp.w - vx_xm * c_xm.w) / P.h
+        - 0.5 * P.dt * (vy_yp * c_yp.w - vy_ym * c_ym.w) / P.h
+        - P.dt * P.gamma * (c_yp.y - c_ym.y) / P.h
+        + P.dt * ((sxy_xp - sxy_c) + (syy_yp - syy_c)) / P.h;
+
+      let rho_raw = rho_c
+        - 0.5 * P.dt * ((c_xp.z - c_xm.z) + (c_yp.w - c_ym.w)) / P.h
+        + P.mu * P.dt * lap_rho;
+
+      let e_raw = e_c
+        - 0.5 * P.dt * (vx_xp * c_xp.y - vx_xm * c_xm.y) / P.h
+        - 0.5 * P.dt * (vy_yp * c_yp.y - vy_ym * c_ym.y) / P.h
+        - P.dt * P.gamma * e_c * ((vx_xp - vx_xm) + (vy_yp - vy_ym)) / P.h
+        + P.mu * P.dt * lap_e;
+
+      let rho_new = max(0.05, rho_raw);
+      let e_new   = max(0.05, e_raw);
+
+      state_out[id] = vec4<f32>(rho_new, e_new, mx_new, my_new);
+    }
+  `;
+
+  const renderShader = paramsBlock + /* wgsl */ `
+    @group(0) @binding(0) var<uniform> P: Params;
+    @group(0) @binding(1) var<storage, read> state_in: array<vec4<f32>>;
+    @group(0) @binding(2) var<storage, read> mask:     array<u32>;
+    @group(0) @binding(3) var displayTex: texture_storage_2d<rgba8unorm, write>;
+
+    fn colormap(t: f32) -> vec4<f32> {
+      let s = clamp(t, 0.0, 1.0);
+      if (s < 0.5) {
+        let u = s * 2.0;
+        return vec4<f32>(u, u, 1.0, 1.0);
+      } else {
+        let u = (s - 0.5) * 2.0;
+        return vec4<f32>(1.0, 1.0 - u, 1.0 - u, 1.0);
+      }
+    }
+
+    @compute @workgroup_size(8, 8)
+    fn render(@builtin(global_invocation_id) gid: vec3<u32>) {
+      let n = u32(P.N);
+      let i = gid.x; let j = gid.y;
+      if (i >= n || j >= n) { return; }
+      let id = i + n * j;
+
+      var color = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+      if (mask[id] != 0u) {
+        // Body region: solid yellow overlay
+        color = vec4<f32>(1.0, 1.0, 0.0, 1.0);
+      } else {
+        let rho = state_in[id].x;
+        // Map rho in [0.5, 1.5] to colormap [0, 1]
+        let t = clamp(rho - 0.5, 0.0, 1.0);
+        color = colormap(t);
+      }
+      let tex_y = n - 1u - j;
+      textureStore(displayTex, vec2<u32>(i, tex_y), color);
+    }
+  `;
+
+  const blitShader = /* wgsl */ `
+    @group(0) @binding(0) var samp: sampler;
+    @group(0) @binding(1) var tex:  texture_2d<f32>;
+    struct VSOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
+    @vertex
+    fn vs(@builtin(vertex_index) vi: u32) -> VSOut {
+      var p = array<vec2<f32>, 3>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>( 3.0, -1.0),
+        vec2<f32>(-1.0,  3.0),
+      );
+      let xy = p[vi];
+      var o: VSOut;
+      o.pos = vec4<f32>(xy, 0.0, 1.0);
+      o.uv = vec2<f32>((xy.x + 1.0) * 0.5, 1.0 - (xy.y + 1.0) * 0.5);
+      return o;
+    }
+    @fragment
+    fn fs(in: VSOut) -> @location(0) vec4<f32> {
+      return textureSample(tex, samp, in.uv);
+    }
+  `;
+
+  // ---------------------------------------------------------------------------
+  // Pipelines, bind groups, frame loop (mirror the 2D Joule structure)
+  // ---------------------------------------------------------------------------
+  const stepModule   = device.createShaderModule({ code: stepShader });
+  const renderModule = device.createShaderModule({ code: renderShader });
+  const blitModule   = device.createShaderModule({ code: blitShader });
+  for (const [name, mod] of [['step', stepModule], ['render', renderModule], ['blit', blitModule]]) {
+    const info = await mod.getCompilationInfo();
+    for (const msg of info.messages) {
+      console.log(`[${name}] ${msg.type}: line ${msg.lineNum}:${msg.linePos} — ${msg.message}`);
+    }
+  }
+  const stepPipeline = device.createComputePipeline({
+    layout: 'auto',
+    compute: { module: stepModule, entryPoint: 'step' },
+  });
+  const renderPipeline = device.createComputePipeline({
+    layout: 'auto',
+    compute: { module: renderModule, entryPoint: 'render' },
+  });
+  const blitPipeline = device.createRenderPipeline({
+    layout: 'auto',
+    vertex: { module: blitModule, entryPoint: 'vs' },
+    fragment: { module: blitModule, entryPoint: 'fs', targets: [{ format }] },
+    primitive: { topology: 'triangle-list' },
+  });
+
+  function makeStepBindGroup(sin, sout) {
+    return device.createBindGroup({
+      layout: stepPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: sin } },
+        { binding: 2, resource: { buffer: maskBuf } },
+        { binding: 3, resource: { buffer: sout } },
+      ],
+    });
+  }
+  const bgAtoB = makeStepBindGroup(stateA, stateB);
+  const bgBtoA = makeStepBindGroup(stateB, stateA);
+
+  function makeRenderBindGroup(sin) {
+    return device.createBindGroup({
+      layout: renderPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: sin } },
+        { binding: 2, resource: { buffer: maskBuf } },
+        { binding: 3, resource: displayView },
+      ],
+    });
+  }
+  const rbA = makeRenderBindGroup(stateA);
+  const rbB = makeRenderBindGroup(stateB);
+
+  const blitBindGroup = device.createBindGroup({
+    layout: blitPipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: sampler },
+      { binding: 1, resource: displayView },
+    ],
+  });
+
+  btnReset.addEventListener('click', () => {
+    device.queue.writeBuffer(stateA, 0, init);
+    device.queue.writeBuffer(stateB, 0, init);
+    pingState = 'A';
+    simTime = 0;
+    frameCount = 0;
+    lblTime.textContent = 't = 0.000';
+  });
+
+  let pingState = 'A';
+  let frameCount = 0;
+  let simTime = 0;
+
+  function frame() {
+    frameCount++;
+    const encoder = device.createCommandEncoder();
+
+    const stepsThisFrame = paused ? 0 : substepsPerFrame;
+    for (let s = 0; s < stepsThisFrame; s++) {
+      const pass = encoder.beginComputePass();
+      pass.setPipeline(stepPipeline);
+      pass.setBindGroup(0, pingState === 'A' ? bgAtoB : bgBtoA);
+      pass.dispatchWorkgroups(Math.ceil(N/8), Math.ceil(N/8));
+      pass.end();
+      pingState = (pingState === 'A') ? 'B' : 'A';
+      simTime += DT;
+    }
+
+    {
+      const pass = encoder.beginComputePass();
+      pass.setPipeline(renderPipeline);
+      pass.setBindGroup(0, pingState === 'A' ? rbA : rbB);
+      pass.dispatchWorkgroups(Math.ceil(N/8), Math.ceil(N/8));
+      pass.end();
+    }
+
+    {
+      const pass = encoder.beginRenderPass({
+        colorAttachments: [{
+          view: ctx.getCurrentTexture().createView(),
+          loadOp: 'clear', storeOp: 'store',
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        }],
+      });
+      pass.setPipeline(blitPipeline);
+      pass.setBindGroup(0, blitBindGroup);
+      pass.draw(3, 1, 0, 0);
+      pass.end();
+    }
+
+    device.queue.submit([encoder.finish()]);
+    if (frameCount % 10 === 0) {
+      lblTime.textContent = `t = ${simTime.toFixed(3)}`;
+      status.textContent =
+        `${paused ? 'paused' : 'running'} — frame ${frameCount} — N = ${N}² = ${NCELL.toLocaleString()} cells, ` +
+        `${substepsPerFrame} substeps/frame`;
+    }
+    requestAnimationFrame(frame);
+  }
+
+  status.textContent = `WebGPU ready — N = ${N}², ${substepsPerFrame} substeps/frame. Starting…`;
+  requestAnimationFrame(frame);
+}
+
+main().catch(err => {
+  console.error(err);
+  status.textContent = 'Error: ' + err.message;
+});
+</script>
+</body>
+</html>

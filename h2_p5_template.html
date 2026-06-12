@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html><head>
   <meta charset="utf-8">
-  <title>H2 — p5.js RealQM template (Claude)</title>
+  <title>H2 — Original p5.js Template</title>
   <style>body { margin: 0; background: #fff; font-family: monospace; }</style>
 </head><body>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
 <script>
 // ============================================================
-// H2 RealQM — minimal p5.js template (cleaned)
+// H2 RealQM — Original p5.js Template (reference implementation)
 // Two electrons in non-overlapping domains, kernels at ±D/2.
 // Algorithm (per step):
 //   c_i = u_self - u_other   (advection driver for domain front)
@@ -18,9 +18,9 @@
 //   normalise u_i each step
 // ============================================================
 
-const N = 100, N2 = 50, TSTOP = 1300;
+const N = 100, N2 = 50, TSTOP = 2000;
 const h = 10 / N, d = 0.1, dt = d * h * h;
-let D = 20;  // kernel separation (grid cells); physical = D·h au
+let D = 16;  // kernel separation (grid cells); physical = D·h = 1.6 au
 let t = 0, Ekin = 0, Epot = 0, Etot = 0;
 
 // Fields: u[i][x][y][z], w[i][x][y][z], P[i][x][y][z] for electrons i=0,1; K[x][y][z].
@@ -36,7 +36,7 @@ function zero3D() {
 }
 
 function setup() {
-  createCanvas(720, 560);
+  createCanvas(720, 620);
   // Allocate
   for (let m = 0; m < 2; m++) { u[m] = zero3D(); w[m] = zero3D(); P[m] = zero3D(); }
   K = zero3D();
@@ -152,7 +152,7 @@ function draw() {
 
   // Labels + numeric readout
   fill(0); textSize(11);
-  text("H2 RealQM — minimal p5.js template", 5, 14);
+  text("H2 RealQM — Original p5.js Template (reference)", 5, 14);
   text("u_i: non-overlap electron amplitudes (red/blue 2D, yellow 1D)", 5, 30);
   text("w_i: characteristic function, front-tracked (black 1D)", 5, 46);
   text("P_i: Hartree potential from OTHER electron (blue 1D)", 5, 62);
@@ -160,14 +160,16 @@ function draw() {
   text("Kernel-kernel distance D·h = " + (D * h).toFixed(2) + " au (H2 eq 1.4)", 5, 98);
   text("E_kin   = " + Ekin.toFixed(4) + " Ha", 5, 440);
   text("E_pot   = " + Epot.toFixed(4) + " Ha", 5, 454);
-  text("E_total = " + Etot.toFixed(4) + " Ha   (Kolos-Wolniewicz ref = -1.1745 at R=1.4)", 5, 468);
-  text("step " + t + " / " + TSTOP, 5, 486);
-  text("N=" + N + "³ grid, h=" + h.toFixed(4) + " au,  dt=" + dt.toExponential(2), 5, 502);
-  text("Algorithm:", 5, 524);
+  text("E_total = " + Etot.toFixed(4) + " Ha", 5, 468);
+  text("Reference (Kolos-Wolniewicz exact):  E = -1.1745 Ha at R=1.4 au", 5, 484);
+  text("step " + t + " / " + TSTOP, 5, 500);
+  text("N=" + N + "³ grid, h=" + h.toFixed(4) + " au,  dt=" + dt.toExponential(2), 5, 516);
+  text("Algorithm:", 5, 538);
   fill(80); textSize(10);
-  text("w_i += 2dt·|c_i|·Δw_i + 10·dt·c_i·|∇w_i|        (front track)", 20, 538);
-  text("u_i += ½d·∇·(w_i∇u_i) + dt·(K − 2P_i)·u_i·w_i   (ITP)", 20, 550);
-  text("P_j += dt·(ΔP_j + 2π·u_{1-j}²)                  (Poisson)", 20, 562);
+  text("c_i = u_i − u_j                                 (advection driver, i,j = 0,1)", 20, 552);
+  text("w_i += 2dt·|c_i|·Δw_i + 10·dt·c_i·|∇w_i|        (front track)", 20, 564);
+  text("u_i += ½d·∇·(w_i∇u_i) + dt·(K − 2P_i)·u_i·w_i   (ITP eigensolve)", 20, 576);
+  text("P_j += dt·(ΔP_j + 2π·u_{1−j}²)                  (Poisson from other electron)", 20, 588);
 }
 </script>
 </body></html>

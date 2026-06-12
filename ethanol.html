@@ -145,7 +145,7 @@
         { i: gHoh.i,j: gHoh.j,k: gHoh.k,Z: 1, el: 'H'  }
       ];
       window.USER_Z  = [4, 4, 2, 1, 1, 1, 1, 1, 1];
-      window.USER_RC = [0.4, 0.4, 0.5, 0, 0, 0, 0, 0, 0];
+      window.USER_RC = [0.4, 0.4, 0.8, 0, 0, 0, 0, 0, 0];  // O at r_c=0.8 matching reference
       window.USER_SCREEN = scr;
       window.USER_STEPS = 100000;
 
@@ -168,6 +168,28 @@
       document.body.appendChild(p5s);
     };
     document.body.appendChild(s);
+  </script>
+
+  <script>
+    window._view3D = true;
+    window._view3D_fixed = true;
+  </script>
+  <div id="bindInfo" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.85);color:#fff;font-family:monospace;font-size:13px;padding:10px 14px;border:1px solid #4fc3f7;border-radius:6px;z-index:100">
+    <div style="color:#4fc3f7;font-weight:bold;margin-bottom:4px">C2H5OH binding energy</div>
+    <div style="font-size:11px;color:#888">E(H)=-0.4986, E(C)=-14.50, E(O)=-2.32 (r_c=0.5)</div>
+    <div style="font-size:11px;color:#888">Sum of atoms = 2&middot;E(C) + 6&middot;E(H) + E(O) = -34.31 Ha</div>
+    <div id="bindVal" style="font-size:15px;margin-top:4px;color:#ff0">E_bind = ...</div>
+    <div style="font-size:11px;color:#888;margin-top:4px">Experimental D0 = -0.4265 Ha (-11.61 eV)</div>
+  </div>
+  <script>
+    var E_atoms = 2 * (-14.50) + 6 * (-0.4986) + (-2.32);  // -34.31 Ha
+    setInterval(function() {
+      if (typeof E === 'undefined' || !isFinite(E)) return;
+      var eBind = E - E_atoms;
+      document.getElementById('bindVal').textContent =
+        'E(C2H5OH) = ' + E.toFixed(4) + ' Ha\nE_bind = ' + eBind.toFixed(4) + ' Ha = ' + (eBind * 27.211).toFixed(2) + ' eV';
+      document.getElementById('bindVal').style.whiteSpace = 'pre';
+    }, 500);
   </script>
 </body>
 </html>

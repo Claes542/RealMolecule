@@ -280,6 +280,43 @@ footer a { color: #4fc3f7; text-decoration: none; }
       and 3D mid-plane particle traces. Default parameters tuned for one
       BB→BC→stable virial trajectory.</div>
     </a>
+    <a class="card" href="cosmology_3d_gpu.html" style="border-color:#ff9e80;background:#180c08;padding:14px">
+      <h3 style="color:#ff9e80">cosmology_3d_gpu.html  (3D WebGPU, 100³ — strong gravity, lots of action)</h3>
+      <div class="desc">The same 3D self-gravitating RNS tuned for <b>dramatic dynamics</b>:
+      strong gravity <code>G = 500</code>, base viscosity <code>ν = 0.3h</code>, shock-capture
+      <code>C = 0</code> by default (shock viscosity <code>ν += C·h²·|∇u|</code>). A central mass
+      bump collapses under its own gravity, overshoots, bounces, and rings down — gravitation
+      vs. fluid pressure in real time. Sliders for γ, shock viscosity C, substeps and Poisson
+      iterations; density / temperature / φ cross-cuts and mid-plane particle traces.
+      <br><br>
+      <b>Two critical relations to explore.</b> The Jeans threshold for collapse scales as
+      <code>G<sub>crit</sub> ∝ γ(1+γ)</code> (a stiffer gas needs more gravity); and the
+      <em>outcome</em> is set by <code>Γ = 1+γ</code> vs <code>4/3</code> — for
+      <b>γ &gt; 1/3</b> the collapse halts at a pressure-supported (virialised) core, while for
+      <b>γ &lt; 1/3</b> it runs away to a grid-limited knot. Newtonian gravity, so no black hole:
+      no horizon without GR.</div>
+    </a>
+    <a class="card" href="selfgrav_collapse_2d_gpu.html" style="border-color:#ff9e80;background:#180c08;padding:14px">
+      <h3 style="color:#ff9e80">selfgrav_collapse_2d_gpu.html  (2D self-gravitating gas — collapse to a core)</h3>
+      <div class="desc">An <b>isolated</b> self-gravitating gas cloud (φ=0 at the walls, not periodic),
+      reduced to its essence: a cold <b>pressureless "dust"</b> disc that free-falls under its own gravity.
+      All pressure/heat is generated <em>during</em> collapse by compression and the irreversible
+      dissipation <code>ν|∇u|²</code> (added to internal energy). Watch it free-fall → form a dense core →
+      <b>overshoot, bounce, and ring down</b> to a virialised core. Four log-scale centre-row line plots:
+      <span style="color:#4de6ff">density</span>, <span style="color:#ff9933">temperature</span>,
+      <span style="color:#ffe833">pressure</span>, <span style="color:#ff66ff">|potential|</span>; live central ρ, T.
+      Sliders for γ, G, ν, dt, contrast, steps. Note: 2D gravity is logarithmic (a <em>filament</em>), so the
+      stability threshold here is Γ&gt;1 — <b>any γ&gt;0 halts</b>.</div>
+    </a>
+    <a class="card" href="selfgrav_collapse_3d_gpu.html" style="border-color:#ff9e80;background:#180c08;padding:14px">
+      <h3 style="color:#ff9e80">selfgrav_collapse_3d_gpu.html  (3D self-gravitating gas, 100³ — collapse to a core)</h3>
+      <div class="desc">The full <b>3D</b> analog: an isolated pressureless dust <b>sphere</b> on a 100³ grid with
+      a seven-point Poisson solve and genuine Newtonian <code>1/r²</code> gravity. Same stabilized RNS +
+      <code>ν|∇u|²</code> heating; rendered as a movable <b>z-slice</b> with the same four log-scale
+      cross-cut line plots and live central ρ, T. This is where the real
+      <b>Γ&gt;4/3 (γ&gt;1/3)</b> threshold lives: above it the collapse bounces into a pressure-supported core,
+      below it runs away — the behaviour the 2D filament cannot show. Newtonian, so no black hole.</div>
+    </a>
   </div>
 
   <h3 id="rt-bluff" style="color:#ff9e80;margin-top:14px;font-size:15px">Bluff-body flow</h3>
@@ -411,7 +448,47 @@ footer a { color: #4fc3f7; text-decoration: none; }
       is ≈ 4.3 GB (two state buffers + mask + extracts). On weaker GPUs the
       existing safeguard shows a clean
       <em>"Adapter only supports X MB"</em> message and you should use the
-      300³ card above.</div>
+      300³ card above.
+      <br><br>
+      <b>New: realistic parametric airliner.</b> A second airplane option
+      <em>"Airliner (NACA wing, ovoid fuselage, engines, dihedral)"</em> is
+      now in the shape dropdown. Improvements over the basic airplane:
+      NACA-0015 airfoil cross-section on wing + horizontal stab + fin (instead
+      of flat slabs), ovoid fuselage with conical nose and tail cone (instead
+      of pure cylinder), 4° wing dihedral, and two engine nacelles with
+      pylons under the wings. All feature thicknesses still floored at ≥4
+      cells so they remain visible to the slip-penalty force at 400³.</div>
+    </a>
+    <a class="card" href="bluff_body_mach2_3d_gpu_slip_400_cad.html" style="border-color:#ff9e80;background:#180c08;padding:14px">
+      <h3 style="color:#ff9e80">bluff_body_mach2_3d_gpu_slip_400_cad.html  (Mach M, 3D WebGPU, <b>400³ + CAD-voxelised body</b>)</h3>
+      <div class="desc">Same 400³ slip simulator, but the body mask is
+      <b>loaded from a precomputed binary file</b> rather than computed from
+      an analytical <code>inBody</code>. Lets you put a real airliner, fighter
+      jet, missile, or any other CAD geometry into the flow without writing
+      an analytical shape function.
+      <br><br>
+      <b>Pipeline.</b> The companion Python script
+      <code>cad_to_mask.py</code> (in the same directory) takes an STL/OBJ/PLY
+      file, scales and positions it inside the unit cube, voxelises at pitch
+      = 1/N, flood-fills the interior so the slip-penalty mask gradient
+      computes proper outward normals, and emits a raw 256 MB Uint32 binary.
+      The HTML <code>fetch()</code>es the file at startup and uploads it
+      directly to the mask GPU buffer. Falls back to a cube + status note if
+      the file is missing.
+      <br><br>
+      <b>Usage:</b>
+      <code style="font-size:11px">pip install trimesh numpy</code><br>
+      <code style="font-size:11px">python3 cad_to_mask.py airliner.stl --N 400 --scale 0.55 --out airplane_N400.bin</code><br>
+      Then serve this HTML over <code>http://</code> (not <code>file://</code>)
+      so the fetch can read the .bin file. Suggested CAD sources: NASA
+      Common Research Model, NASA OpenVSP parametric exports, GrabCAD,
+      Thingiverse.
+      <br><br>
+      <b>Why CAD beats parametric.</b> True wing camber and twist, real
+      engine nacelle inlets and exhausts, fuselage cross-section variation,
+      canopy bumps and fairings, trailing-edge geometry — all the features
+      that go invisible at &lt;4 cells in a parametric inBody — are recovered
+      to single-cell precision when the source is a CAD surface.</div>
     </a>
   </div>
 
