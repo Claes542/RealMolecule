@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="results" style="position:fixed;top:8px;right:8px;background:rgba(0,0,0,0.94);border:1px solid #444;padding:10px;z-index:100;font-size:12px;min-width:420px">loading…</div>
+<script>
+window.onerror = function(msg, src, line, col){ var d=document.getElementById('results');
+  if(d) d.innerHTML='<b style="color:#f55">JS ERROR</b><br><span style="color:#ff0">'+msg+'</span><br>'+(src||'').split('/').pop()+' '+line+':'+col; return false; };
+// O-16 SPREAD sweep: 8e + 16p in progressively more spread-out shell configs (more shells = more
+// spread = less over-binding). Goal: reach ~100% of exp (127.6 MeV, -122 model) WITHOUT any size
+// law and WITHOUT any strong force -- the extra shells themselves are the saturation.
+// Electrons inner, protons outer; fixed radius step so 'more shells' => physically larger/spread.
+(function(){
+var CONFIGS = [
+  { e:[4,4],            p:[8,8] },                              // compact (was 180%)
+  { e:[4,4],            p:[4,4,4,4] },                          // (was 159%)
+  { e:[2,2,2,2],        p:[4,4,4,4] },                          // spread electrons
+  { e:[2,2,2,2],        p:[4,4,2,2,2,2] },                      // + spread outer protons
+  { e:[2,2,2,2],        p:[2,2,2,2,2,2,2,2] },                  // very spread
+  { e:[4,4],            p:[2,2,2,2,2,2,2,2] },                  // compact e, spread p
+];
+var EXP = 127.6;
+var GN = 180, SCR = 15, CEN = 90, HH = SCR/GN;   // big box: spread configs reach far out
+var R0 = 0.42, DR = 0.42;
+function dirsFor(n){ if(n===1)return[[0,0,1]]; if(n===2)return[[0,0,1],[0,0,-1]];
+  if(n===4)return[[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]];
+  return[[1,1,1],[1,1,-1],[1,-1,1],[1,-1,-1],[-1,1,1],[-1,1,-1],[-1,-1,1],[-1,-1,-1]]; }
+function nm(c){ return c.e.join('+')+' | '+c.p.join('+'); }
+
+var idx=0, results={};
+var saved=sessionStorage.getItem('o16spread');
+if(saved){ var st=JSON.parse(saved); idx=st.idx; results=st.results; sessionStorage.removeItem('o16spread'); }
+
+if (idx < CONFIGS.length) {
+  var cf = CONFIGS[idx];
+  var shells = cf.e.map(function(n){return {n:n,q:-1,el:'e'};}).concat(cf.p.map(function(n){return {n:n,q:1,el:'P'};}));
+  var atomList=[], chg=[], mss=[], zz=[], znuc=[], rcut=[], zoneList=[];
+  for (var k=0;k<shells.length;k++){
+    var sh=shells[k], rr=R0+DR*k, sgn=(k%2===0)?1:-1, ai=[], dirs=dirsFor(sh.n);
+    for (var t=0;t<dirs.length;t++){
+      var dv=dirs[t], nr=Math.sqrt(dv[0]*dv[0]+dv[1]*dv[1]+dv[2]*dv[2])||1;
+      ai.push(atomList.length);
+      atomList.push({ i:Math.round(CEN+sgn*dv[0]/nr*rr/HH), j:Math.round(CEN+sgn*dv[1]/nr*rr/HH),
+                      k:Math.round(CEN+sgn*dv[2]/nr*rr/HH), Z:1, el:sh.el });
+      chg.push(sh.q); mss.push(1); zz.push(1); znuc.push(0); rcut.push(0);
+    }
+    zoneList.push({ rMax:(k<shells.length-1?R0+DR*(k+0.5):1e9), atoms:ai });
+  }
+  window.USER_NUCLEUS_MODE=true; window.USER_NN=GN; window.USER_ATOMS=atomList; window.USER_SCREEN=SCR;
+  window.USER_STEPS=24000; window.USER_DYNAMICS=false;   // hard max-iteration cap: records E and advances even if it oscillates (conv threshold too strict for the oscillating ones)
+  window.USER_Z=zz; window.USER_Z_NUC=znuc; window.USER_RC=rcut; window.USER_MASS=mss; window.USER_CHARGE=chg;
+  window.USER_SHELL_RADIUS=0.5; window.USER_SHELL_ZONES=zoneList;
+  window.USER_CURV_REG=0.5; window.USER_DIRICHLET_EP='electron';
+  window.FREEZE_BOUNDARY=true; window.CONVERGENCE_THRESHOLD=0.02;
+  console.log('O-16 spread '+(idx+1)+'/'+CONFIGS.length+': '+nm(cf));
+}
+
+function render(){
+  var div=document.getElementById('results');
+  var html='<b style="color:#0cf">O-16 spread sweep</b> <span style="color:#888">8e | 16p, more shells = more spread</span><br>'
+    +'<span style="color:#888;font-size:10px">target: ~100% of exp 127.6 MeV, no size law / no strong force</span><br><br>'
+    +'<table><tr style="color:#0cf"><th style="padding:1px 8px;text-align:left">config (e | p)</th><th>E</th><th>MeV</th><th>%exp</th></tr>';
+  for (var j=0;j<CONFIGS.length;j++){ var E=results[j], cur=(j===idx), mev=(E!==undefined)?E/2.12*2.22:null;
+    var col=cur&&E===undefined?'#ff0':(E===undefined?'#555':'#ddd');
+    html+='<tr style="color:'+col+'"><td style="padding:1px 8px;text-align:left">'+nm(CONFIGS[j])+'</td>'
+      +'<td style="text-align:right">'+(E!==undefined?E.toFixed(1):(cur?'…':'—'))+'</td>'
+      +'<td style="text-align:right">'+(mev!==null?mev.toFixed(0):'')+'</td>'
+      +'<td style="text-align:right">'+(mev!==null?Math.round(mev/EXP*100)+'%':'')+'</td></tr>'; }
+  html+='</table><br><span style="color:#888">'+Object.keys(results).length+'/'+CONFIGS.length+'</span>';
+  if(idx>=CONFIGS.length) html+=' <span style="color:#0f0">— complete</span>';
+  div.innerHTML=html;
+}
+render();
+
+window.onSweepDone=function(E){ results[idx]=E; console.log(nm(CONFIGS[idx])+' E='+E.toFixed(3)); render(); idx++;
+  if(idx<CONFIGS.length){ sessionStorage.setItem('o16spread',JSON.stringify({idx:idx,results:results})); setTimeout(function(){location.reload();},600); }
+  else console.log('=== O-16 spread done ===',results); };
+
+var solver=document.createElement('script'); solver.src='molecule_nucleus.js?t='+Date.now();
+solver.onload=function(){ var p=document.createElement('script'); p.src='https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js'; document.body.appendChild(p); };
+document.body.appendChild(solver);
+})();
+</script>
+</body></html>

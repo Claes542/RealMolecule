@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// RealNucleus: Be-8 as a SINGLE nested unit 4e + 8p -- the direct scale-up of the alpha recipe
+// (alpha = 2e core + 4 protons). Here: 4 electrons as an inner core (4 separate -1 clouds, NOT a
+// merged -4 monopole), then 8 protons surrounding in two nested shells (4+4). "Protons
+// surrounding electrons." Tests the doubling hypothesis: deuteron(1e+2p) -> alpha(2e+4p) ->
+// Be-8(4e+8p). Equal masses (charge CLOUDS), frozen, 3-zone nested split.
+//   E below -55.6 (= 2 alphas) => the doubling KEEPS binding as one unit (no strong force).
+//   E above -55.6 => the system prefers to split into 2 alphas (clustering wins).
+(function() {
+  var gridN = 160, scr = 10, N2 = 80;
+  var h = scr / gridN;
+  var tetA = [[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]];
+  var tetB = [[-1,-1,-1],[-1,1,1],[1,-1,1],[1,1,-1]];
+  var atoms = [];
+  function shell(dirs, r, el) {
+    var sc = r / Math.sqrt(3);
+    for (var i = 0; i < 4; i++)
+      atoms.push({ i: Math.round(N2 + dirs[i][0]*sc/h), j: Math.round(N2 + dirs[i][1]*sc/h),
+                   k: Math.round(N2 + dirs[i][2]*sc/h), Z: 1, el: el });
+  }
+  shell(tetA, 0.40, 'e');   // 0..3  electron core (4 separate -1)
+  shell(tetB, 0.90, 'P');   // 4..7  inner proton shell
+  shell(tetA, 1.50, 'P');   // 8..11 outer proton shell
+
+  var charge = [], mass = [], Zarr = [], Znuc = [], rc = [];
+  function fill(n, q) { for (var i = 0; i < n; i++) { charge.push(q); mass.push(1); Zarr.push(1); Znuc.push(0); rc.push(0); } }
+  fill(4, -1); fill(4, 1); fill(4, 1);   // e core, P inner, P outer
+
+  console.log('RealNucleus Be-8 (4e+8p single unit): 4 electron core + 8 protons in two shells');
+
+  window.USER_BOND_PAIRS = [ [0,4,"e-Pin:"], [4,8,"Pin-Pout:"], [0,1,"e-e:"] ];
+  window.USER_REFERENCE = { energy: "Be-8 = 4e+8p single nested unit; compare 2 alphas = -55.6; exp 56.5 MeV" };
+
+  window.USER_NUCLEUS_MODE = true;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;
+  window.USER_N_MOVE = 50;
+  window.USER_Z = Zarr;
+  window.USER_Z_NUC = Znuc;
+  window.USER_RC = rc;
+  window.USER_MASS = mass;              // equal masses: charge clouds
+  window.USER_CHARGE = charge;          // 4 e -1 (core), 8 p +1 (two shells)
+  window.USER_SHELL_RADIUS = 0.5;
+  // 3-zone nested split: e core / inner protons / outer protons
+  window.USER_SHELL_ZONES = [
+    { rMax: 0.65, atoms: [0,1,2,3] },    // electron core
+    { rMax: 1.20, atoms: [4,5,6,7] },    // inner proton shell
+    { rMax: 1e9,  atoms: [8,9,10,11] },  // outer proton shell
+  ];
+  window.USER_CURV_REG = 0.5;
+  window.USER_DIRICHLET_EP = 'electron';
+  window.FREEZE_BOUNDARY = true;        // frozen partition; relax only wavefunctions
+  window.INIT_ZEFF = 1;
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule_nucleus.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

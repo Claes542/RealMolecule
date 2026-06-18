@@ -122,7 +122,7 @@ const NUC_SUBSTEPS = window.USER_NUC_SUBSTEPS || (NELEC <= 5 ? 2 : 1);
 const DAMPING = window.USER_DAMPING || 0.98;       // light damping
 const MAX_VEL = NELEC <= 5 ? 0.3 : NELEC > 200 ? 0.03 : 0.1;  // au/au_time
 let forceScale = window.USER_FORCE_SCALE || 1.0;       // adjustable via slider/keys
-let boundarySpeed = 0.5;    // dt_w for free boundary evolution
+let boundarySpeed = window.USER_BOUNDARY_SPEED !== undefined ? window.USER_BOUNDARY_SPEED : 0.5;    // dt_w for free boundary evolution
 let nucVel = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
 // Apply initial velocities if specified
 if (window.USER_INIT_VEL) {
@@ -1487,8 +1487,38 @@ ${(function() {
     var sr = window.USER_SHELL_RADIUS;
     var si = window.USER_SHELL_INNER;  // array of inner domain indices
     var so = window.USER_SHELL_OUTER;  // array of outer domain indices
+    var zones = window.USER_SHELL_ZONES;  // optional N-zone nesting: [{rMax, atoms:[...]}, ...] inner->outer
+    if (zones && zones.length) {
+      var zHeader = `
+  let cx = f32(${Math.round(NN/2)}u); let cy = cx; let cz = cx;
+  let rx = f32(i) - cx; let ry = f32(j) - cy; let rz = f32(kk) - cz;
+  let rDist = sqrt(rx*rx + ry*ry + rz*rz) * p.h;`;
+      var zBody = zones.map(function(z, zi) {
+        var list = z.atoms;
+        var pick = `var bestZ${zi}: u32 = ${list[0]}u; var bestZ${zi}D: f32 = 1e10;
+    ${list.map((idx, ai) => `{ let z${zi}_${ai}x = f32(i) - f32(atoms[${idx}u].posI); let z${zi}_${ai}y = f32(j) - f32(atoms[${idx}u].posJ); let z${zi}_${ai}z = f32(kk) - f32(atoms[${idx}u].posK); let z${zi}_${ai}d = sqrt(z${zi}_${ai}x*z${zi}_${ai}x+z${zi}_${ai}y*z${zi}_${ai}y+z${zi}_${ai}z*z${zi}_${ai}z); if (z${zi}_${ai}d < bestZ${zi}D) { bestZ${zi}D = z${zi}_${ai}d; bestZ${zi} = ${idx}u; } }`).join('\n    ')}
+    label[id] = bestZ${zi};
+    bestU[id] = ${zi === 0 ? 'exp(rDist) - 1.0' : 'exp(-rDist)'};`;
+        if (zi === 0) return `  if (rDist < ${z.rMax.toFixed(4)}) {\n    ${pick}\n  }`;
+        if (zi === zones.length - 1) return ` else {\n    ${pick}\n  }`;
+        return ` else if (rDist < ${z.rMax.toFixed(4)}) {\n    ${pick}\n  }`;
+      }).join('');
+      return zHeader + '\n' + zBody;
+    }
     if (!sr || !si || !so) return '  label[id] = bestN;';
-    // Spherical split: r < shell_radius → inner, r >= shell_radius → outer
+    var sm = window.USER_SHELL_MID;        // optional middle-zone domain indices
+    var sr2 = window.USER_SHELL_RADIUS2;   // optional second (outer) boundary radius
+    var hasMid = sm && sr2;
+    // Optional middle shell: sr <= r < sr2 -> closest mid atom (3-zone nesting)
+    var midBlock = !hasMid ? '' : ` else if (rDist < ${sr2.toFixed(4)}) {
+    // Middle shell: assign to closest mid atom
+    var bestMid: u32 = ${sm[0]}u;
+    var bestMidD: f32 = 1e10;
+    ${sm.map((idx, mi) => `{ let mi${mi}x = f32(i) - f32(atoms[${idx}u].posI); let mi${mi}y = f32(j) - f32(atoms[${idx}u].posJ); let mi${mi}z = f32(kk) - f32(atoms[${idx}u].posK); let mi${mi}d = sqrt(mi${mi}x*mi${mi}x+mi${mi}y*mi${mi}y+mi${mi}z*mi${mi}z); if (mi${mi}d < bestMidD) { bestMidD = mi${mi}d; bestMid = ${idx}u; } }`).join('\n    ')}
+    label[id] = bestMid;
+    bestU[id] = exp(-rDist);  // exp(-r) for inner proton shell
+  }`;
+    // Spherical split: r < shell_radius → inner, [mid,] r >= → outer
     return `
   let cx = f32(${Math.round(NN/2)}u); let cy = cx; let cz = cx;
   let rx = f32(i) - cx; let ry = f32(j) - cy; let rz = f32(kk) - cz;
@@ -1500,7 +1530,7 @@ ${(function() {
     ${si.map((idx, ii) => `{ let di${ii}x = f32(i) - f32(atoms[${idx}u].posI); let di${ii}y = f32(j) - f32(atoms[${idx}u].posJ); let di${ii}z = f32(kk) - f32(atoms[${idx}u].posK); let di${ii}d = sqrt(di${ii}x*di${ii}x+di${ii}y*di${ii}y+di${ii}z*di${ii}z); if (di${ii}d < bestInnerD) { bestInnerD = di${ii}d; bestInner = ${idx}u; } }`).join('\n    ')}
     label[id] = bestInner;
     bestU[id] = exp(rDist) - 1.0;  // exp(r)-1: zero at center, increasing to shell boundary
-  } else {
+  }${midBlock} else {
     // Outer shell: assign to closest outer atom
     var bestOuter: u32 = ${so[0]}u;
     var bestOuterD: f32 = 1e10;

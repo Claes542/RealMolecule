@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// RealNucleus: Deuterium (2H) = 2 protons + 1 electron, as nested shells "1+1" (like H-).
+// Central -1 electron core, then the two protons as TWO CONCENTRIC +1 shells:
+//   inner proton shell (mid zone)  +  outer proton shell (outer zone).
+// Just as H- stacks its two electrons in nested shells around one proton, here the two
+// protons stack in nested shells around one electron. 3-zone radial split in the solver.
+// Frozen, shells locked. Solver: molecule_nucleus.js. Scale 9.5 <-> 2.22 MeV.
+(function() {
+  var gridN = 200, scr = 10, N2 = 100;
+  var h = scr / gridN;
+  var rIn = 0.65, rOut = 1.2;          // seed radii of inner / outer proton shells (au)
+  var atoms = [];
+
+  atoms.push({ i: N2, j: N2, k: N2, Z: 1, el: 'e' });                              // 0: electron core -1
+  atoms.push({ i: N2, j: N2, k: Math.round(N2 + rIn/h),  Z: 1, el: 'P' });         // 1: inner proton shell +1
+  atoms.push({ i: N2, j: N2, k: Math.round(N2 + rOut/h), Z: 1, el: 'P' });         // 2: outer proton shell +1
+
+  console.log('RealNucleus 2H (nested 1+1): -1 core + inner proton shell + outer proton shell (H- analogue)');
+
+  window.USER_BOND_PAIRS = [ [1,2,"in-out P:"], [0,1,"e-Pin:"] ];
+  window.USER_REFERENCE = { energy: "Deuterium nested 1+1: e core + inner/outer proton shells; exp binding 2.22 MeV" };
+
+  window.USER_NUCLEUS_MODE = true;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;
+  window.USER_N_MOVE = 50;
+  window.USER_Z = [1, 1, 1];
+  window.USER_Z_NUC = [0, 0, 0];
+  window.USER_RC = [0, 0, 0];
+  window.USER_MASS = [1, 1, 1];        // equal masses: protons are charge CLOUDS, like electrons
+  window.USER_CHARGE = [-1, 1, 1];
+  // 3-zone nested shell:  r<0.45 -> electron core,  0.45<=r<0.9 -> inner proton,  r>=0.9 -> outer proton
+  window.USER_SHELL_RADIUS = 0.45;     // core / inner boundary
+  window.USER_SHELL_RADIUS2 = 0.9;     // inner / outer boundary
+  window.USER_SHELL_INNER = [0];       // electron core
+  window.USER_SHELL_MID = [1];         // inner proton shell
+  window.USER_SHELL_OUTER = [2];       // outer proton shell
+  window.USER_CURV_REG = 0.5;
+  window.USER_DIRICHLET_EP = 'electron';
+  window.USER_LOCKED_GROUPS = [[1, 2]];  // hold the inner/outer proton boundary
+  window.INIT_ZEFF = 1;
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule_nucleus.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
