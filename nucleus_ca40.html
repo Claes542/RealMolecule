@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// Ca-40 analog: 20 electrons dodecahedron + 40 protons (golden-spiral outer shell)
+// For V_ee calibration at Z=20 — doubly magic Z=N=20 (the last Platonic-anchor case).
+(function() {
+  var gridN = 200, scr = 16, N2 = 100;
+  var h = scr / gridN;
+  var atoms = [];
+
+  // 20 electrons at dodecahedron vertices, radius Rin
+  // Dodecahedron vertices: (±1,±1,±1), (0,±φ,±1/φ), (±1/φ,0,±φ), (±φ,±1/φ,0)
+  var Rin = 0.40;
+  var phi = (1 + Math.sqrt(5)) / 2;
+  var inv = 1 / phi;
+  var verts = [];
+  for (var sx = -1; sx <= 1; sx += 2)
+    for (var sy = -1; sy <= 1; sy += 2)
+      for (var sz = -1; sz <= 1; sz += 2)
+        verts.push([sx, sy, sz]);
+  for (var s1 = -1; s1 <= 1; s1 += 2)
+    for (var s2 = -1; s2 <= 1; s2 += 2) {
+      verts.push([0, s1 * phi, s2 * inv]);
+      verts.push([s2 * inv, 0, s1 * phi]);
+      verts.push([s1 * phi, s2 * inv, 0]);
+    }
+  // Normalize so the longest vertex sits at radius Rin
+  var maxv = 0;
+  for (var v = 0; v < verts.length; v++) {
+    var n = Math.sqrt(verts[v][0]*verts[v][0] + verts[v][1]*verts[v][1] + verts[v][2]*verts[v][2]);
+    if (n > maxv) maxv = n;
+  }
+  var Lin = Rin / maxv;
+  for (var t = 0; t < 20; t++) {
+    var d = verts[t];
+    atoms.push({
+      i: Math.round(N2 + Lin*d[0]/h),
+      j: Math.round(N2 + Lin*d[1]/h),
+      k: Math.round(N2 + Lin*d[2]/h),
+      Z: 1, el: 'e',
+    });
+  }
+
+  // 40 protons on outer sphere via golden-spiral distribution
+  var R = 1.40;
+  var phiSpiral = Math.PI * (3 - Math.sqrt(5));
+  for (var p = 0; p < 40; p++) {
+    var y = 1 - (p / (40 - 1)) * 2;
+    var radius = Math.sqrt(1 - y * y);
+    var theta = phiSpiral * p;
+    var px = R * Math.cos(theta) * radius;
+    var py = R * y;
+    var pz = R * Math.sin(theta) * radius;
+    atoms.push({
+      i: Math.round(N2 + px/h),
+      j: Math.round(N2 + py/h),
+      k: Math.round(N2 + pz/h),
+      Z: 1, el: 'P',
+    });
+  }
+
+  var N_TOT = 60;
+  window.USER_NUCLEUS_MODE = false;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  window.CONVERGENCE_THRESHOLD = 0.05;
+  window.NO_AUTO_DYNAMICS = true;
+  window.USER_Z = Array(N_TOT).fill(1);
+  window.USER_Z_NUC = Array(N_TOT).fill(0);
+  window.USER_RC = Array(N_TOT).fill(0.5);
+  window.USER_MASS = Array(N_TOT).fill(1);
+  window.USER_CHARGE = [].concat(Array(20).fill(-1), Array(40).fill(+1));
+  window.USER_SHELL_RADIUS = 0.75;
+  window.USER_SHELL_INNER = Array.from({length: 20}, function(_, i){ return i; });
+  window.USER_SHELL_OUTER = Array.from({length: 40}, function(_, i){ return i + 20; });
+  window.USER_LOCKED_GROUPS = [];
+  for (var i = 0; i < N_TOT; i++) {
+    for (var j = i + 1; j < N_TOT; j++) {
+      window.USER_LOCKED_GROUPS.push([i, j]);
+    }
+  }
+  window.INIT_ZEFF = 1;
+  window.USER_BOND_PAIRS = [
+    [0, 1, "e1-e2:"],
+    [0, 20, "e1-P1:"],
+    [20, 21, "P1-P2:"],
+  ];
+  window.USER_REFERENCE = {
+    bonds: {},
+    energy: "Ca-40 analog: 20 electrons dodecahedron + 40 protons spiral. V_ee calibration target.",
+  };
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

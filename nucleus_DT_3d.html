@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// D + T -> He-4 + n in 3D multiphase Coulomb continuum mechanics.
+// D (deuterium):   2 protons + 1 electron (net +1)
+// T (tritium):     3 protons + 2 electrons (net +1)
+// Total constituents: 5 protons + 3 electrons (conserved)
+// Outcome:         He-4 (4p + 2e) + n (1p + 1e)  -- a free neutron leaves
+//
+// Equal mass m=1 throughout, all boundaries free, dynamics enabled.
+// Sweep with ?rsep=value to map E(R_sep).
+(function() {
+  var gridN = 180, scr = 14, N2 = 90;
+  var h = scr / gridN;
+
+  var params = new URLSearchParams(window.location.search);
+  var Rsep = parseFloat(params.get('rsep'));
+  if (!Rsep && Rsep !== 0) Rsep = 1.5;     // hardcoded default — D and T centers 1.5 au apart
+  console.log('[nucleus_DT_3d] Rsep =', Rsep);
+
+  var dProton = 0.45;     // proton offset from cluster center
+  var dElec   = 0.30;     // electron offset (for T's two electrons)
+
+  var atoms = [];
+
+  // ----- D cluster at (-Rsep/2, 0, 0): 1 electron + 2 protons -----
+  var xD = -Rsep / 2;
+  atoms.push({
+    i: Math.round(N2 + xD/h), j: N2, k: N2,
+    Z: 1, el: 'e',
+  });   // 0: electron of D
+  atoms.push({
+    i: Math.round(N2 + xD/h), j: Math.round(N2 + dProton/h), k: N2,
+    Z: 1, el: 'P',
+  });   // 1: D proton 1 (top)
+  atoms.push({
+    i: Math.round(N2 + xD/h), j: Math.round(N2 - dProton/h), k: N2,
+    Z: 1, el: 'P',
+  });   // 2: D proton 2 (bottom)
+
+  // ----- T cluster at (+Rsep/2, 0, 0): 2 electrons + 3 protons -----
+  var xT = +Rsep / 2;
+  atoms.push({
+    i: Math.round(N2 + xT/h), j: N2, k: Math.round(N2 + dElec/h),
+    Z: 1, el: 'e',
+  });   // 3: T electron 1
+  atoms.push({
+    i: Math.round(N2 + xT/h), j: N2, k: Math.round(N2 - dElec/h),
+    Z: 1, el: 'e',
+  });   // 4: T electron 2
+  atoms.push({
+    i: Math.round(N2 + xT/h), j: Math.round(N2 + dProton/h), k: N2,
+    Z: 1, el: 'P',
+  });   // 5: T proton 1 (top)
+  atoms.push({
+    i: Math.round(N2 + xT/h), j: Math.round(N2 - dProton/h), k: N2,
+    Z: 1, el: 'P',
+  });   // 6: T proton 2 (bottom)
+  atoms.push({
+    i: Math.round(N2 + (xT + dProton)/h), j: N2, k: N2,
+    Z: 1, el: 'P',
+  });   // 7: T proton 3 (extra, makes total proton count = 3)
+
+  var N_TOT = 8;
+
+  window.USER_NUCLEUS_MODE = true;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;
+  window.CONVERGENCE_THRESHOLD = 0.05;
+  window.NO_AUTO_DYNAMICS = false;
+
+  window.USER_Z = Array(N_TOT).fill(1);
+  window.USER_Z_NUC = Array(N_TOT).fill(0);
+  window.USER_RC = Array(N_TOT).fill(0.5);
+  window.USER_MASS = Array(N_TOT).fill(1);
+
+  // Charges: e e P P (D) | e e P P P (T)
+  window.USER_CHARGE = [-1, +1, +1, -1, -1, +1, +1, +1];
+
+  window.USER_SHELL_RADIUS = 0.6;
+  window.USER_SHELL_INNER = [0, 3, 4];                  // electrons inside
+  window.USER_SHELL_OUTER = [1, 2, 5, 6, 7];            // protons outside
+
+  // All boundaries free
+  window.USER_LOCKED_GROUPS = [];
+
+  window.INIT_ZEFF = 1;
+
+  window.USER_BOND_PAIRS = [
+    [0, 1, "eD-pD1:"],     // D internal
+    [0, 2, "eD-pD2:"],
+    [1, 2, "pD1-pD2:"],
+    [3, 4, "eT1-eT2:"],    // T internal
+    [3, 5, "eT1-pT1:"],
+    [5, 6, "pT1-pT2:"],
+    [5, 7, "pT1-pT3:"],
+    [0, 3, "eD-eT1:"],     // inter-cluster
+    [1, 5, "pD1-pT1:"],
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: {},
+    energy: "D + T -> He-4 + n. R_sep = " + Rsep.toFixed(2) +
+            " a.u. Equal mass m=1, all Bernoulli boundaries free, dynamics on. " +
+            "Watch for: D cluster (3 domains) + T cluster (5 domains) merge -> " +
+            "He-4 (6 domains) + free neutron (2 domains, drifts away). " +
+            "Constituent count 5p + 3e conserved throughout.",
+  };
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

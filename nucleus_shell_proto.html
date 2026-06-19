@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <title>RealQM Nucleus Simulator — Electron + 4 Proton Shells (full symmetric)</title>
+  <style>
+    body { margin: 0; background: #fff; color: #000; font-family: monospace; padding: 8px; }
+    h3 { color: #2196f3; }
+    .desc { max-width: 720px; font-size: 12px; line-height: 1.5; color: #333; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+</head><body>
+
+<h3>RealQM Nucleus Simulator — Full Symmetric Treatment</h3>
+<div class="desc">
+1D radial proton-electron nucleus model. Inner electron domain [0, Me] (charge magnitude Z,
+homogenised into a single wavefunction with reduced self-repulsion (Z−1)/Z) symmetrically
+treated with four outer proton shells P1..P4 (each with its own reduced self-repulsion).
+All five domains have free Bernoulli boundaries that adjust to enforce u continuity. The
+attractive potential between electron and each proton shell is computed self-consistently
+from the converged densities; no static kernel approximation.
+</div>
+
+<script>
+let u = [];
+let K = [];      // attractive Coulomb potential at each i (electron sees protons; protons see electron)
+let P = [];      // repulsive self-Coulomb potential at each i
+
+let Z;        // total electron count (= N_real for doubly-magic N=Z nuclei)
+let Z1 = 2;   // inner electron sub-shell count (closed 1s-like pair)
+let Z2 = 0;   // outer electron sub-shell count (= Z - Z1)
+let Z1red = 0, Z2red = 0;
+let E1, E1red;
+let E2, E2red;
+let E3, E3red;
+let E4, E4red;
+
+let N = 200;     // grid count unchanged
+let Me1 = 3;     // inner electron sub-shell boundary (0.3 a.u., matching toy-model scale)
+let Me  = 5;     // outer electron boundary (0.5 a.u.)
+let M1  = 15;    // 1.5 a.u. (proton shell, matching toy model)
+let M2  = 50;    // 5 a.u.
+let M3  = 100;   // 10 a.u.
+let dt = 1;
+let h;
+let normu_e1 = 0, normu_e2 = 0;
+let normu1 = 0, normu2 = 0, normu3 = 0, normu4 = 0;
+let energy_e1 = 0, energy_e2 = 0;
+let energy1 = 0, energy2 = 0, energy3 = 0, energy4 = 0;
+let E_T = 0;        // total kinetic
+let E_ep = 0;       // total electron-proton attraction (= V_eK in 3D model)
+let E_ee_self = 0;  // electron-electron self-repulsion (reduced)
+let E_ee_cross = 0; // cross-electron repulsion between e-sub-shells
+let E_pp = 0;       // proton-proton repulsion (self + cross-shell)
+
+let slider0, slider1, slider2, slider3, slider4;
+let start;
+let fix = 20;
+let D = 20;      // back to atomic scale → h = D/N = 0.1 a.u. (matches Li-6/Be-8 article geometry)
+let S = 0;
+let diff = 0.001;
+
+// ---- helper: radial Coulomb potential V(r_i) = sum_{j in src} u²[j] r_j² h / max(r_i, r_j) ----
+function coulombPotential(src_lo, src_hi, i) {
+  let V = 0;
+  for (let j = src_lo; j <= src_hi; j++) {
+    if (j <= 0) continue;
+    const r_inv = (j <= i) ? 1 / (i * h) : 1 / (j * h);
+    V += pow(u[j], 2) * pow(j * h, 2) * h * r_inv;
+  }
+  return V;
+}
+
+function setup() {
+  createCanvas(440, 460);
+  slider0 = createSlider(0, 30, 2, 1);    // Z = 2 electrons
+  slider1 = createSlider(0, 16, 4, 1);    // P1 = 4
+  slider2 = createSlider(0, 16, 0, 1);
+  slider3 = createSlider(0, 16, 0, 1);
+  slider4 = createSlider(0, 16, 0, 1);    // total 4 protons in shell 1
+  start = createButton('Start');
+  stop  = createButton('Stop');
+  start.position(380, 320);
+  stop.position(380, 340);
+  start.mousePressed(startsimulation);
+  stop.mousePressed(stopsimulation);
+
+  // Magic-number presets: total proton count = magic number
+  // Z slider (= electron count = N_real for doubly-magic N=Z nuclei) = magic / 2
+  const presets = [
+    { label: 'Magic 2',  Z: 1,  P: [2, 0, 0, 0] },
+    { label: 'Magic 8',  Z: 4,  P: [4, 4, 0, 0] },
+    { label: 'Magic 20', Z: 10, P: [4, 8, 8, 0] },
+    { label: 'Magic 28', Z: 14, P: [4, 8, 8, 8] },
+  ];
+  for (let p = 0; p < presets.length; p++) {
+    const pre = presets[p];
+    const btn = createButton(pre.label);
+    btn.position(380, 30 + p * 24);
+    btn.mousePressed(() => applyPreset(pre.Z, pre.P));
+  }
+  h = D / N;
+  readSliders();
+  dt = 0.5 * pow(h, 2) / Math.max(1, Z);
+
+  // Initialize u as exp decay in all regions (continuous)
+  for (let i = 0; i <= N; i++) {
+    u[i] = exp(-1 * (i * h) * 0.5);
+    P[i] = 0;
+    K[i] = 0;
+  }
+  u[N] = 0;
+  rebuildKandP();
+}
+
+function readSliders() {
+  Z  = slider0.value();
+  E1 = slider1.value();
+  E2 = slider2.value();
+  E3 = slider3.value();
+  E4 = slider4.value();
+  // Electron split: Z1 = 2 (inner closed pair), Z2 = Z - 2 (outer)
+  Z1 = Z >= 2 ? 2 : Z;
+  Z2 = Z - Z1;
+  Z1red = Z1 > 1 ? (Z1 - 1) / Z1 : 0;
+  Z2red = Z2 > 1 ? (Z2 - 1) / Z2 : 0;
+  E1red = E1 > 1 ? (E1 - 1) / E1 : 0;
+  E2red = E2 > 1 ? (E2 - 1) / E2 : 0;
+  E3red = E3 > 1 ? (E3 - 1) / E3 : 0;
+  E4red = E4 > 1 ? (E4 - 1) / E4 : 0;
+}
+
+// Recompute K[i] (attraction) and P[i] (self+cross repulsion) for all five domains.
+// K_electron[i] = sum over proton densities (all 4 shells)
+// K_proton_shell[i] = sum over electron density
+// P_electron[i] = 0.5 * Zred * (electron self-Coulomb)
+// P_proton_k[i] = 0.5 * Ek_red * (shell k self) + 0.5 * (other proton shells, factor 1)
+function rebuildKandP() {
+  // Inner electron sub-shell [1, Me1]
+  for (let i = 1; i <= Me1; i++) {
+    K[i] = coulombPotential(Me + 1, M1, i)
+         + coulombPotential(M1 + 1, M2, i)
+         + coulombPotential(M2 + 1, M3, i)
+         + coulombPotential(M3 + 1, N,  i);
+    P[i] = 0.5 * Z1red * coulombPotential(1, Me1, i)             // own e-sub-shell, reduced
+         + 0.5 * coulombPotential(Me1 + 1, Me, i);                // cross with outer e-sub, full
+  }
+  // Outer electron sub-shell [Me1+1, Me]
+  for (let i = Me1 + 1; i <= Me; i++) {
+    K[i] = coulombPotential(Me + 1, M1, i)
+         + coulombPotential(M1 + 1, M2, i)
+         + coulombPotential(M2 + 1, M3, i)
+         + coulombPotential(M3 + 1, N,  i);
+    P[i] = 0.5 * Z2red * coulombPotential(Me1 + 1, Me, i)        // own e-sub-shell, reduced
+         + 0.5 * coulombPotential(1, Me1, i);                     // cross with inner e-sub, full
+  }
+  // Proton shell 1 [Me+1, M1]
+  for (let i = Me + 1; i <= M1; i++) {
+    K[i] = coulombPotential(1, Me1, i) + coulombPotential(Me1 + 1, Me, i);  // attraction from both e-sub-shells
+    P[i] = 0.5 * E1red * coulombPotential(Me + 1, M1, i)
+         + 0.5 * coulombPotential(M1 + 1, M2, i)
+         + 0.5 * coulombPotential(M2 + 1, M3, i)
+         + 0.5 * coulombPotential(M3 + 1, N,  i);
+  }
+  // Proton shell 2 [M1+1, M2]
+  for (let i = M1 + 1; i <= M2; i++) {
+    K[i] = coulombPotential(1, Me1, i) + coulombPotential(Me1 + 1, Me, i);
+    P[i] = 0.5 * E2red * coulombPotential(M1 + 1, M2, i)
+         + 0.5 * coulombPotential(Me + 1, M1, i)
+         + 0.5 * coulombPotential(M2 + 1, M3, i)
+         + 0.5 * coulombPotential(M3 + 1, N,  i);
+  }
+  // Proton shell 3 [M2+1, M3]
+  for (let i = M2 + 1; i <= M3; i++) {
+    K[i] = coulombPotential(1, Me1, i) + coulombPotential(Me1 + 1, Me, i);
+    P[i] = 0.5 * E3red * coulombPotential(M2 + 1, M3, i)
+         + 0.5 * coulombPotential(Me + 1, M1, i)
+         + 0.5 * coulombPotential(M1 + 1, M2, i)
+         + 0.5 * coulombPotential(M3 + 1, N,  i);
+  }
+  // Proton shell 4 [M3+1, N]
+  for (let i = M3 + 1; i <= N; i++) {
+    K[i] = coulombPotential(1, Me1, i) + coulombPotential(Me1 + 1, Me, i);
+    P[i] = 0.5 * E4red * coulombPotential(M3 + 1, N, i)
+         + 0.5 * coulombPotential(Me + 1, M1, i)
+         + 0.5 * coulombPotential(M1 + 1, M2, i)
+         + 0.5 * coulombPotential(M2 + 1, M3, i);
+  }
+}
+
+function draw() {
+  background(220);
+
+  if (S == 0) {
+    fill(180, 120, 255, 200);
+    circle(220, 200, 340);
+    fill(0, 0, 255, 100);
+    circle(220, 200, 260);
+    fill(0, 255, 0, 255);
+    circle(220, 200, 180);
+    fill(255, 0, 0, 255);
+    circle(220, 200, 90);
+    fill(180, 180, 180, 255);
+    circle(220, 200, 30);
+
+    readSliders();
+
+    noStroke();
+    fill(0);
+    text("e", 215, 204);
+    text("P1", 230, 200);
+    text("P2", 270, 200);
+    text("P3", 310, 200);
+    text("P4", 350, 200);
+    text("RealQM Nucleus Simulator — Electron + 4 Proton Shells", 60, 20);
+    text("Inner electron domain (gray, charge -Z) + 4 proton shells", 60, 40);
+    text("Choose Z, P1-P4 and press Start. All boundaries free.", 60, 60);
+    text("Z=", 10, 395);  text(Z, 25, 395);
+    text("P1=", 50, 395); text(E1, 78, 395);
+    text("P2=", 120, 395); text(E2, 148, 395);
+    text("P3=", 190, 395); text(E3, 218, 395);
+    text("P4=", 260, 395); text(E4, 288, 395);
+  }
+
+  if (S == 1) {
+    // Update free boundaries (continuity) — Me FIXED (calibration parameter), only M1..M3 adjust
+    if (u[M1] > u[M1 + 1] + diff) M1++;
+    if (u[M1] < u[M1 + 1] - diff) M1--;
+    if (u[M2] > u[M2 + 1] + diff) M2++;
+    if (u[M2] < u[M2 + 1] - diff) M2--;
+    if (u[M3] > u[M3 + 1] + diff) M3++;
+    if (u[M3] < u[M3 + 1] - diff) M3--;
+    // Order/safety (Me stays fixed at calibration value)
+    if (M1 <= Me + 2) M1 = Me + 2;
+    if (M1 >= M2 - 2) M1 = M2 - 2;
+    if (M2 >= M3 - 2) M2 = M3 - 2;
+    if (M3 >= N - 2) M3 = N - 2;
+
+    for (let m = 0; m < 5; m++) {
+      E_T = 0; E_ep = 0; E_ee_self = 0; E_ee_cross = 0; E_pp = 0;
+      // Inner electron sub-shell [1, Me1]
+      energy_e1 = 0;
+      u[0]    = u[1];          // Neumann at r=0
+      u[Me1]  = u[Me1 - 1];    // continuity at inner-outer e boundary
+      for (let i = 1; i < Me1; i++) {
+        u[i] = u[i] + 0.5 * dt * (u[i+1] - 2*u[i] + u[i-1]) / pow(h, 2)
+                     + 0.5 * dt * (u[i+1] - u[i-1]) / (h * i * h)
+                     + dt * K[i] * u[i] - dt * 2 * P[i] * u[i];
+        energy_e1 += 0.5 * pow((u[i+1] - u[i-1]) / (2*h), 2) * pow(i*h, 2) * h
+                   - pow(u[i], 2) * K[i] * pow(i*h, 2) * h
+                   + P[i] * pow(u[i], 2) * pow(i*h, 2) * h;
+      }
+      // Outer electron sub-shell [Me1+1, Me]
+      energy_e2 = 0;
+      u[Me1 + 1] = u[Me1 + 2];
+      u[Me]      = u[Me - 1];
+      for (let i = Me1 + 2; i < Me; i++) {
+        u[i] = u[i] + 0.5 * dt * (u[i+1] - 2*u[i] + u[i-1]) / pow(h, 2)
+                     + 0.5 * dt * (u[i+1] - u[i-1]) / (h * i * h)
+                     + dt * K[i] * u[i] - dt * 2 * P[i] * u[i];
+        energy_e2 += 0.5 * pow((u[i+1] - u[i-1]) / (2*h), 2) * pow(i*h, 2) * h
+                   - pow(u[i], 2) * K[i] * pow(i*h, 2) * h
+                   + P[i] * pow(u[i], 2) * pow(i*h, 2) * h;
+      }
+      // Proton shell 1
+      energy1 = 0;
+      u[Me + 1] = u[Me + 2];
+      u[M1]     = u[M1 - 1];
+      for (let i = Me + 2; i < M1; i++) {
+        u[i] = u[i] + 0.5 * dt * (u[i+1] - 2*u[i] + u[i-1]) / pow(h, 2)
+                     + 0.5 * dt * (u[i+1] - u[i-1]) / (h * i * h)
+                     + dt * K[i] * u[i] - dt * 2 * P[i] * u[i];
+        energy1 += 0.5 * pow((u[i+1] - u[i-1]) / (2*h), 2) * pow(i*h, 2) * h
+                 + P[i] * pow(u[i], 2) * pow(i*h, 2) * h;
+        // Note: V_ep already counted in electron energy via -K*u² term; do NOT count it
+        // again here on the proton side.
+      }
+      // Proton shell 2
+      energy2 = 0;
+      u[M1 + 1] = u[M1 + 2];
+      u[M2]     = u[M2 - 1];
+      for (let i = M1 + 2; i < M2; i++) {
+        u[i] = u[i] + 0.5 * dt * (u[i+1] - 2*u[i] + u[i-1]) / pow(h, 2)
+                     + 0.5 * dt * (u[i+1] - u[i-1]) / (h * i * h)
+                     + dt * K[i] * u[i] - dt * 2 * P[i] * u[i];
+        energy2 += 0.5 * pow((u[i+1] - u[i-1]) / (2*h), 2) * pow(i*h, 2) * h
+                 + P[i] * pow(u[i], 2) * pow(i*h, 2) * h;
+      }
+      // Proton shell 3
+      energy3 = 0;
+      u[M2 + 1] = u[M2 + 2];
+      u[M3]     = u[M3 - 1];
+      for (let i = M2 + 2; i < M3; i++) {
+        u[i] = u[i] + 0.5 * dt * (u[i+1] - 2*u[i] + u[i-1]) / pow(h, 2)
+                     + 0.5 * dt * (u[i+1] - u[i-1]) / (h * i * h)
+                     + dt * K[i] * u[i] - dt * 2 * P[i] * u[i];
+        energy3 += 0.5 * pow((u[i+1] - u[i-1]) / (2*h), 2) * pow(i*h, 2) * h
+                 + P[i] * pow(u[i], 2) * pow(i*h, 2) * h;
+      }
+      // Proton shell 4
+      energy4 = 0;
+      u[M3 + 1] = u[M3 + 2];
+      for (let i = M3 + 2; i < N; i++) {
+        u[i] = u[i] + 0.5 * dt * (u[i+1] - 2*u[i] + u[i-1]) / pow(h, 2)
+                     + 0.5 * dt * (u[i+1] - u[i-1]) / (h * i * h)
+                     + dt * K[i] * u[i] - dt * 2 * P[i] * u[i];
+        energy4 += 0.5 * pow((u[i+1] - u[i-1]) / (2*h), 2) * pow(i*h, 2) * h
+                 + P[i] * pow(u[i], 2) * pow(i*h, 2) * h;
+      }
+
+      rebuildKandP();
+
+      // Normalize each domain to its target charge magnitude
+      normu_e1 = 0;
+      for (let i = 1; i <= Me1; i++) normu_e1 += pow(u[i] * (i*h), 2) * h;
+      if (normu_e1 > 1e-12 && Z1 > 0) {
+        const f = sqrt(Z1) / sqrt(normu_e1);
+        for (let i = 1; i <= Me1; i++) u[i] *= f;
+      }
+      normu_e2 = 0;
+      for (let i = Me1 + 1; i <= Me; i++) normu_e2 += pow(u[i] * (i*h), 2) * h;
+      if (normu_e2 > 1e-12 && Z2 > 0) {
+        const f = sqrt(Z2) / sqrt(normu_e2);
+        for (let i = Me1 + 1; i <= Me; i++) u[i] *= f;
+      }
+      normu1 = 0;
+      for (let i = Me + 1; i <= M1; i++) normu1 += pow(u[i] * (i*h), 2) * h;
+      if (normu1 > 1e-12 && E1 > 0) {
+        const f = sqrt(E1) / sqrt(normu1);
+        for (let i = Me + 1; i <= M1; i++) u[i] *= f;
+      }
+      normu2 = 0;
+      for (let i = M1 + 1; i <= M2; i++) normu2 += pow(u[i] * (i*h), 2) * h;
+      if (normu2 > 1e-12 && E2 > 0) {
+        const f = sqrt(E2) / sqrt(normu2);
+        for (let i = M1 + 1; i <= M2; i++) u[i] *= f;
+      }
+      normu3 = 0;
+      for (let i = M2 + 1; i <= M3; i++) normu3 += pow(u[i] * (i*h), 2) * h;
+      if (normu3 > 1e-12 && E3 > 0) {
+        const f = sqrt(E3) / sqrt(normu3);
+        for (let i = M2 + 1; i <= M3; i++) u[i] *= f;
+      }
+      normu4 = 0;
+      for (let i = M3 + 1; i < N; i++) normu4 += pow(u[i] * (i*h), 2) * h;
+      if (normu4 > 1e-12 && E4 > 0) {
+        const f = sqrt(E4) / sqrt(normu4);
+        for (let i = M3 + 1; i < N; i++) u[i] *= f;
+      }
+    }
+
+    // Compute energy breakdown for display
+    E_T = 0; E_ep = 0; E_ee_self = 0;
+    // Direct V_ee computation: full electron-electron Coulomb at converged state
+    // V_ee = 0.5 ∫∫ u_e²(r) u_e²(r') / |r - r'| dr dr', integrated over [1, Me]
+    for (let i = 1; i <= Me; i++) {
+      for (let j = i; j <= Me; j++) {
+        const r_inv = 1 / Math.max(i*h, j*h);
+        const factor = (i === j) ? 0.5 : 1.0;
+        E_ee_self += factor * pow(u[i], 2) * pow(i*h, 2) * h * pow(u[j], 2) * pow(j*h, 2) * h * r_inv;
+      }
+    }
+    // Electron kinetic + V_ep contribution from inner sub-shell
+    for (let i = 1; i < Me1; i++) {
+      E_T  += 0.5 * pow((u[i+1] - u[i-1]) / (2*h), 2) * pow(i*h, 2) * h;
+      E_ep -= pow(u[i], 2) * K[i] * pow(i*h, 2) * h;
+    }
+    // Electron kinetic + V_ep from outer sub-shell
+    for (let i = Me1 + 1; i < Me; i++) {
+      E_T  += 0.5 * pow((u[i+1] - u[i-1]) / (2*h), 2) * pow(i*h, 2) * h;
+      E_ep -= pow(u[i], 2) * K[i] * pow(i*h, 2) * h;
+    }
+    // Proton kinetic for all 4 shells
+    for (let i = Me + 2; i < N; i++) {
+      if (i === Me + 1 || i === M1 || i === M1 + 1 || i === M2 || i === M2 + 1 || i === M3 || i === M3 + 1) continue;
+      E_T += 0.5 * pow((u[i+1] - u[i-1]) / (2*h), 2) * pow(i*h, 2) * h;
+    }
+
+    noStroke();
+    fill(0);
+    text("Nucleus Model — electron + 4 proton shells (full symmetric)", 10, 12);
+    text("V_ep (electron-proton attraction) = " + E_ep.toFixed(3), 10, 26);
+    text("V_ee (electron-electron, radial) = " + E_ee_self.toFixed(3), 10, 40);
+    text("T (total kinetic) = " + E_T.toFixed(3), 10, 54);
+    text("E_e1 (inner) =", 10, 270); text(energy_e1.toFixed(3), 100, 270);
+    text("E_e2 (outer) =", 10, 282); text(energy_e2.toFixed(3), 100, 282);
+    text("E_proton1 =",    10, 294); text(energy1.toFixed(3),   100, 294);
+    text("E_proton2 =",    10, 306); text(energy2.toFixed(3),   100, 306);
+    text("E_proton3 =",    10, 318); text(energy3.toFixed(3),   100, 318);
+    text("E_proton4 =",    10, 330); text(energy4.toFixed(3),   100, 330);
+    const Etot = energy_e1 + energy_e2 + energy1 + energy2 + energy3 + energy4;
+    const A = E1 + E2 + E3 + E4;
+    text("E_total = ", 10, 346);  text(Etot.toFixed(3), 75, 346);
+    text("A = ",        10, 360); text(A, 35, 360);
+    const EperA = A > 0 ? Etot / A : 0;
+    text("E/A (Ha) = ", 70, 360); text(EperA.toFixed(4), 140, 360);
+    text("E/A (MeV, ×2.72) = ", 10, 374); text((EperA * 2.72).toFixed(3), 140, 374);
+
+    text("Me1=", 230, 270); text((Me1*h).toFixed(2), 260, 270);
+    text("Me=",  230, 285); text((Me*h).toFixed(2),  260, 285);
+    text("M1=",  230, 300); text((M1*h).toFixed(2),  260, 300);
+    text("M2=",  230, 315); text((M2*h).toFixed(2),  260, 315);
+    text("M3=",  230, 330); text((M3*h).toFixed(2),  260, 330);
+    text("normu_e1=", 230, 348); text(normu_e1.toFixed(2), 305, 348);
+    text("normu_e2=", 230, 362); text(normu_e2.toFixed(2), 305, 362);
+
+    const xScale = 400 / N;   // scale grid index to canvas pixels (N=200, plot 400 wide)
+    for (let i = 0; i < N + 1; i++) {
+      fill(255, 0, 0, 255);
+      ellipse(i * xScale, 200 - 100 * u[i], 4);
+      fill(0);
+      ellipse(i * xScale, 200, 2);
+    }
+    stroke(150);
+    line(Me1 * xScale, 195, Me1 * xScale, 205);
+    line(Me  * xScale, 195, Me  * xScale, 205);
+    line(M1  * xScale, 195, M1  * xScale, 205);
+    line(M2  * xScale, 195, M2  * xScale, 205);
+    line(M3  * xScale, 195, M3  * xScale, 205);
+    stroke(0);
+    line(5, 0, 5, 200);
+  }
+}
+
+function startsimulation() {
+  readSliders();
+  dt = 0.5 * pow(h, 2) / Math.max(1, Z);
+  S = 1;
+}
+function stopsimulation() { S = 0; }
+function applyPreset(zVal, pVals) {
+  sliderZ_set(zVal);
+  sliderP_set(pVals);
+  S = 0;
+  // Reinitialize wavefunction
+  for (let i = 0; i <= N; i++) {
+    u[i] = exp(-1 * (i * h) * 0.5);
+    P[i] = 0;
+    K[i] = 0;
+  }
+  u[N] = 0;
+  readSliders();
+  rebuildKandP();
+}
+function sliderZ_set(v) { slider0.value(v); }
+function sliderP_set(v) {
+  slider1.value(v[0] || 0);
+  slider2.value(v[1] || 0);
+  slider3.value(v[2] || 0);
+  slider4.value(v[3] || 0);
+}
+</script>
+</body></html>

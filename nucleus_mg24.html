@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// Mg-24 analog: 12 electrons icosahedron + 24 protons (golden-spiral outer shell)
+// For V_ee calibration at Z=12 — the icosahedral case in the hybrid model series.
+(function() {
+  var gridN = 200, scr = 14, N2 = 100;
+  var h = scr / gridN;
+  var atoms = [];
+
+  // 12 electrons at icosahedron vertices, radius Rin
+  // Icosahedron: (0, ±1, ±φ), (±1, ±φ, 0), (±φ, 0, ±1), φ = (1+√5)/2
+  var Rin = 0.35;
+  var phi = (1 + Math.sqrt(5)) / 2;
+  var Lin = Rin / Math.sqrt(1 + phi*phi);
+  var edirs = [
+    [0,+1,+phi],[0,+1,-phi],[0,-1,+phi],[0,-1,-phi],
+    [+1,+phi,0],[+1,-phi,0],[-1,+phi,0],[-1,-phi,0],
+    [+phi,0,+1],[+phi,0,-1],[-phi,0,+1],[-phi,0,-1],
+  ];
+  for (var t = 0; t < 12; t++) {
+    var d = edirs[t];
+    atoms.push({
+      i: Math.round(N2 + Lin*d[0]/h),
+      j: Math.round(N2 + Lin*d[1]/h),
+      k: Math.round(N2 + Lin*d[2]/h),
+      Z: 1, el: 'e',
+    });
+  }
+
+  // 24 protons on outer sphere via golden-spiral distribution
+  var R = 1.20;
+  var phiSpiral = Math.PI * (3 - Math.sqrt(5));
+  for (var p = 0; p < 24; p++) {
+    var y = 1 - (p / (24 - 1)) * 2;
+    var radius = Math.sqrt(1 - y * y);
+    var theta = phiSpiral * p;
+    var px = R * Math.cos(theta) * radius;
+    var py = R * y;
+    var pz = R * Math.sin(theta) * radius;
+    atoms.push({
+      i: Math.round(N2 + px/h),
+      j: Math.round(N2 + py/h),
+      k: Math.round(N2 + pz/h),
+      Z: 1, el: 'P',
+    });
+  }
+
+  var N_TOT = 36;
+  window.USER_NUCLEUS_MODE = false;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  window.CONVERGENCE_THRESHOLD = 0.05;
+  window.NO_AUTO_DYNAMICS = true;
+  window.USER_Z = Array(N_TOT).fill(1);
+  window.USER_Z_NUC = Array(N_TOT).fill(0);
+  window.USER_RC = Array(N_TOT).fill(0.5);
+  window.USER_MASS = Array(N_TOT).fill(1);
+  window.USER_CHARGE = [].concat(Array(12).fill(-1), Array(24).fill(+1));
+  window.USER_SHELL_RADIUS = 0.65;
+  window.USER_SHELL_INNER = Array.from({length: 12}, function(_, i){ return i; });
+  window.USER_SHELL_OUTER = Array.from({length: 24}, function(_, i){ return i + 12; });
+  window.USER_LOCKED_GROUPS = [];
+  for (var i = 0; i < N_TOT; i++) {
+    for (var j = i + 1; j < N_TOT; j++) {
+      window.USER_LOCKED_GROUPS.push([i, j]);
+    }
+  }
+  window.INIT_ZEFF = 1;
+  window.USER_BOND_PAIRS = [
+    [0, 1, "e1-e2:"],
+    [0, 12, "e1-P1:"],
+    [12, 13, "P1-P2:"],
+  ];
+  window.USER_REFERENCE = {
+    bonds: {},
+    energy: "Mg-24 analog: 12 electrons icosahedron + 24 protons spiral. V_ee calibration target.",
+  };
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

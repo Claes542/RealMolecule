@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// Be-8 nucleus analog: 4 electrons inside + 8 protons outside (Z=4, N=4)
+// 4 electrons tetrahedral, 8 protons at cube vertices.
+(function() {
+  var gridN = 200, scr = 10, N2 = 100;
+  var h = scr / gridN;
+  var atoms = [];
+
+  // 4 electrons at tetrahedral vertices, radius Rin
+  var Rin = 0.25;
+  var s_in = Rin / Math.sqrt(3);
+  var edirs = [[+1,+1,+1], [+1,-1,-1], [-1,+1,-1], [-1,-1,+1]];
+  for (var t = 0; t < 4; t++) {
+    var d = edirs[t];
+    atoms.push({
+      i: Math.round(N2 + s_in*d[0]/h),
+      j: Math.round(N2 + s_in*d[1]/h),
+      k: Math.round(N2 + s_in*d[2]/h),
+      Z: 1, el: 'e',
+    });
+  }
+
+  // 8 protons at cube vertices, radius R = 1.04 → adjacent vertex distance 1.20 au
+  // matches Li-6 octahedral spacing so proton crowding doesn't eat the binding.
+  var R = 1.04;
+  var s_p = R / Math.sqrt(3);
+  var pdirs = [
+    [+1,+1,+1], [+1,+1,-1], [+1,-1,+1], [+1,-1,-1],
+    [-1,+1,+1], [-1,+1,-1], [-1,-1,+1], [-1,-1,-1],
+  ];
+  for (var p = 0; p < 8; p++) {
+    var d = pdirs[p];
+    atoms.push({
+      i: Math.round(N2 + s_p*d[0]/h),
+      j: Math.round(N2 + s_p*d[1]/h),
+      k: Math.round(N2 + s_p*d[2]/h),
+      Z: 1, el: 'P',
+    });
+  }
+
+  var N_TOT = 12;
+  window.USER_NUCLEUS_MODE = false;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  window.CONVERGENCE_THRESHOLD = 0.05;
+  window.NO_AUTO_DYNAMICS = true;
+  window.USER_Z = Array(N_TOT).fill(1);
+  window.USER_Z_NUC = Array(N_TOT).fill(0);
+  window.USER_RC = Array(N_TOT).fill(0.5);
+  window.USER_MASS = Array(N_TOT).fill(1);
+  window.USER_CHARGE = [-1,-1,-1,-1, +1,+1,+1,+1, +1,+1,+1,+1];
+  window.USER_SHELL_RADIUS = 0.5;
+  window.USER_SHELL_INNER = [0,1,2,3];
+  window.USER_SHELL_OUTER = [4,5,6,7,8,9,10,11];
+  // Lock all pairs (inner-inner, inner-outer, outer-outer) for stable boundaries.
+  window.USER_LOCKED_GROUPS = [];
+  for (var i = 0; i < 12; i++) {
+    for (var j = i + 1; j < 12; j++) {
+      window.USER_LOCKED_GROUPS.push([i, j]);
+    }
+  }
+  window.INIT_ZEFF = 1;
+  window.USER_BOND_PAIRS = [
+    [0, 1, "e1-e2:"],
+    [0, 4, "e1-P1:"],
+    [4, 5, "P1-P2:"],
+  ];
+  window.USER_REFERENCE = {
+    bonds: {},
+    energy: "Be-8 nucleus analog: 4 electrons tetrahedral + 8 protons cube",
+  };
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

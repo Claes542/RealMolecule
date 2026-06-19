@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// C-12 nucleus analog: 6 electrons inside + 12 protons outside (Z=6, N=6)
+// 6 electrons octahedral, 12 protons at icosahedron vertices.
+(function() {
+  var gridN = 200, scr = 12, N2 = 100;
+  var h = scr / gridN;
+  var atoms = [];
+
+  // 6 electrons at octahedral vertices, radius Rin
+  var Rin = 0.3;
+  var edirs = [[+1,0,0], [-1,0,0], [0,+1,0], [0,-1,0], [0,0,+1], [0,0,-1]];
+  for (var t = 0; t < 6; t++) {
+    var d = edirs[t];
+    atoms.push({
+      i: Math.round(N2 + Rin*d[0]/h),
+      j: Math.round(N2 + Rin*d[1]/h),
+      k: Math.round(N2 + Rin*d[2]/h),
+      Z: 1, el: 'e',
+    });
+  }
+
+  // 12 protons at icosahedron vertices, radius R = 1.15 (adjacent vertex spacing ≈ 1.21 au)
+  // matches the spacing used in Li-6 / Be-8 so proton crowding doesn't suppress binding.
+  // Icosahedron vertices: (0, ±1, ±φ), (±1, ±φ, 0), (±φ, 0, ±1), φ = (1+√5)/2 ≈ 1.618
+  var R = 1.15;
+  var phi = (1 + Math.sqrt(5)) / 2;
+  var L = R / Math.sqrt(1 + phi*phi);
+  var pdirs = [
+    [0, +1, +phi], [0, +1, -phi], [0, -1, +phi], [0, -1, -phi],
+    [+1, +phi, 0], [+1, -phi, 0], [-1, +phi, 0], [-1, -phi, 0],
+    [+phi, 0, +1], [+phi, 0, -1], [-phi, 0, +1], [-phi, 0, -1],
+  ];
+  for (var p = 0; p < 12; p++) {
+    var d = pdirs[p];
+    atoms.push({
+      i: Math.round(N2 + L*d[0]/h),
+      j: Math.round(N2 + L*d[1]/h),
+      k: Math.round(N2 + L*d[2]/h),
+      Z: 1, el: 'P',
+    });
+  }
+
+  var N_TOT = 18;
+  window.USER_NUCLEUS_MODE = false;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  window.CONVERGENCE_THRESHOLD = 0.05;
+  window.NO_AUTO_DYNAMICS = true;
+  window.USER_Z = Array(N_TOT).fill(1);
+  window.USER_Z_NUC = Array(N_TOT).fill(0);
+  window.USER_RC = Array(N_TOT).fill(0.5);
+  window.USER_MASS = Array(N_TOT).fill(1);
+  window.USER_CHARGE = [].concat(Array(6).fill(-1), Array(12).fill(+1));
+  window.USER_SHELL_RADIUS = 0.55;
+  window.USER_SHELL_INNER = [0,1,2,3,4,5];
+  window.USER_SHELL_OUTER = [6,7,8,9,10,11,12,13,14,15,16,17];
+  // Lock all pairs (inner-inner, inner-outer, outer-outer) for stable boundaries.
+  window.USER_LOCKED_GROUPS = [];
+  for (var i = 0; i < 18; i++) {
+    for (var j = i + 1; j < 18; j++) {
+      window.USER_LOCKED_GROUPS.push([i, j]);
+    }
+  }
+  window.INIT_ZEFF = 1;
+  window.USER_BOND_PAIRS = [
+    [0, 1, "e1-e2:"],
+    [0, 6, "e1-P1:"],
+    [6, 7, "P1-P2:"],
+  ];
+  window.USER_REFERENCE = {
+    bonds: {},
+    energy: "C-12 nucleus analog: 6 electrons octahedral + 12 protons icosahedral",
+  };
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

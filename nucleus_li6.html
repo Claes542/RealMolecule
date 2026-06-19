@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// Li-6 nucleus analog: 3 electrons inside + 6 protons outside
+// (Z=3, N=3, total protons = 2Z+N - wait, the model treats N neutrons as N proton-electron pairs
+// so total particles = (Z+N) protons + N electrons = 6 protons + 3 electrons for Li-6.)
+// 3 electrons in a triangle on the equator, 6 protons at octahedral vertices.
+(function() {
+  var gridN = 200, scr = 10, N2 = 100;
+  var h = scr / gridN;
+  var atoms = [];
+
+  // 3 electrons in a triangle (equilateral, equatorial plane), radius Rin
+  var Rin = 0.35;     // increased from 0.25 — gives electron pair-distance 0.61 au
+                      // (vs 0.40 at Rin=0.25) so e-e kernel boundaries stay apart
+  for (var t = 0; t < 3; t++) {
+    var ang = t * 2 * Math.PI / 3;
+    var ex = Rin * Math.cos(ang);
+    var ey = Rin * Math.sin(ang);
+    atoms.push({ i: Math.round(N2 + ex/h), j: Math.round(N2 + ey/h), k: N2, Z: 1, el: 'e' });
+  }
+
+  // 6 protons at octahedral vertices (±x, ±y, ±z) at radius R
+  // R=0.85 keeps adjacent proton kernels ~1.20 au apart (similar to He-4)
+  var R = 0.85;
+  var pdirs = [[+1,0,0], [-1,0,0], [0,+1,0], [0,-1,0], [0,0,+1], [0,0,-1]];
+  for (var p = 0; p < 6; p++) {
+    var d = pdirs[p];
+    atoms.push({
+      i: Math.round(N2 + R*d[0]/h),
+      j: Math.round(N2 + R*d[1]/h),
+      k: Math.round(N2 + R*d[2]/h),
+      Z: 1, el: 'P',
+    });
+  }
+
+  window.USER_NUCLEUS_MODE = false;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;
+  window.CONVERGENCE_THRESHOLD = 0.05;   // stop ITP when |dE| < 0.05 for 3 frames
+                                          // — early stop catches binding minimum
+                                          // before post-minimum drift sets in
+  window.NO_AUTO_DYNAMICS = true;
+  window.USER_Z = [1, 1, 1, 1, 1, 1, 1, 1, 1];
+  window.USER_Z_NUC = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+  window.USER_RC = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5];
+  window.USER_MASS = [1, 1, 1, 1, 1, 1, 1, 1, 1];
+  // electrons at 0,1,2 (inner -1); protons at 3..8 (outer +1)
+  window.USER_CHARGE = [-1, -1, -1, +1, +1, +1, +1, +1, +1];
+  window.USER_SHELL_RADIUS = 0.5;
+  window.USER_SHELL_INNER = [0, 1, 2];
+  window.USER_SHELL_OUTER = [3, 4, 5, 6, 7, 8];
+  // Lock all pair boundaries (inner-inner, inner-outer, outer-outer) to keep
+  // every Bernoulli interface stable. Adjacent same-species domains otherwise
+  // pinch into singular densities once one moves toward the other.
+  window.USER_LOCKED_GROUPS = [];
+  for (var i = 0; i < 9; i++) {
+    for (var j = i + 1; j < 9; j++) {
+      window.USER_LOCKED_GROUPS.push([i, j]);
+    }
+  }
+  window.INIT_ZEFF = 1;
+
+  window.USER_BOND_PAIRS = [
+    [0, 1, "e1-e2:"],
+    [0, 3, "e1-P1:"],
+    [3, 4, "P1-P2:"],
+    [3, 5, "P1-P3:"],
+  ];
+
+  window.USER_REFERENCE = {
+    bonds: {},
+    energy: "Li-6 nucleus analog: 3 electrons triangle + 6 protons octahedral",
+  };
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
