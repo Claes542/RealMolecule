@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// ===========================================================================
+//  RealNucleus  D + D  ->  He-4   : SLAB picture (Johnson)
+// ---------------------------------------------------------------------------
+//  Two deuterons compressed along x, meeting at the x=0 plane.
+//   * the two ELECTRONS (one per D) sit INNER, at the interface -> they merge
+//     into the split 2e core (two halfspaces meeting at x=0);
+//   * the PROTONS are pushed OUTER, depleted from the central plane -> they
+//     form the 4p outer shell (D_left protons split +/-y, D_right +/-z = 4
+//     quarter pieces around the core).
+//  Result: 2e core + 4p shell = the dual-confined alpha.
+//
+//  Key fix vs earlier runs: RADIAL ORDERING. electrons inner (|x|=0.3),
+//  protons outer (|x|=0.9), so the protons stay depleted from the core region.
+//  nmove (electronic steps per nuclear move) raised so the damped dynamics
+//  DESCEND into the well instead of drifting uphill.
+//  URL knobs: ?re=0.3&xp=0.9&s=0.55&nmove=150&damp=0.92
+// ===========================================================================
+(function() {
+  var gridN = 160, scr = 12, N2 = 80, h = scr / gridN;
+  var q = new URLSearchParams(window.location.search);
+  var re = parseFloat(q.get('re')) || 0.30;   // electron half-sep along x (inner core)
+  var xp = parseFloat(q.get('xp')) || 0.90;   // proton x-offset (outer shell)
+  var s  = parseFloat(q.get('s'))  || 0.55;   // proton transverse split
+  var nmove = parseInt(q.get('nmove')) || 150;
+  var damp  = parseFloat(q.get('damp')) || 0.92;
+  function ix(x){ return Math.round(N2 + x / h); }
+
+  var atoms = [];
+  // 2 electrons INNER, on +/-x, meeting at the x=0 plane -> split 2e core
+  atoms.push({ i: ix(-re), j: ix(0), k: ix(0), Z:1, el:'e' });  // 0: e_L
+  atoms.push({ i: ix( re), j: ix(0), k: ix(0), Z:1, el:'e' });  // 1: e_R
+  // 4 protons OUTER (depleted from centre): D_left +/-y, D_right +/-z
+  atoms.push({ i: ix(-xp), j: ix( s), k: ix(0), Z:1, el:'P' }); // 2: p_L1 (+y)
+  atoms.push({ i: ix(-xp), j: ix(-s), k: ix(0), Z:1, el:'P' }); // 3: p_L2 (-y)
+  atoms.push({ i: ix( xp), j: ix(0), k: ix( s), Z:1, el:'P' }); // 4: p_R1 (+z)
+  atoms.push({ i: ix( xp), j: ix(0), k: ix(-s), Z:1, el:'P' }); // 5: p_R2 (-z)
+
+  window.USER_NUCLEUS_MODE = true;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;
+  window.NO_AUTO_DYNAMICS = false;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = damp;
+  window.USER_N_MOVE = nmove;
+  window.CONVERGENCE_THRESHOLD = 0.02;
+
+  window.USER_Z      = [1, 1, 1, 1, 1, 1];
+  window.USER_Z_NUC  = [0, 0, 0, 0, 0, 0];
+  window.USER_RC     = [0, 0, 0, 0, 0, 0];
+  window.USER_MASS   = [1, 1, 1, 1, 1, 1];        // equal-mass charge clouds
+  window.USER_CHARGE = [-1, -1, 1, 1, 1, 1];      // 2 e (inner), 4 p (outer)
+
+  window.USER_SHELL_RADIUS = 0.5;
+  window.USER_SHELL_ZONES = [
+    { rMax: 0.60, atoms: [0, 1] },                // electron core (2 halfspaces)
+    { rMax: 1e9,  atoms: [2, 3, 4, 5] },          // proton shell (4 quarters)
+  ];
+  window.USER_CURV_REG = 0.5;
+  window.USER_DIRICHLET_EP = 'electron';
+  window.USER_LOCKED_GROUPS = [];
+  window.INIT_ZEFF = 1;
+
+  window.USER_BOND_PAIRS = [
+    [0, 1, "e-e CORE:"],     // should stay SMALL (compact split core)
+    [0, 2, "e-P:"],
+    [2, 3, "p-p sameD:"],
+    [2, 4, "p-p crossD:"],
+  ];
+  window.USER_REFERENCE = {
+    energy: "D+D -> He-4 slab: 2 D compressed along x, e's meet at x=0 plane (2e core), " +
+            "protons depleted from centre -> 4p shell. re=" + re + " xp=" + xp +
+            ". alpha optimal E=-27.8 (103% exp); deuteron scale -2.12.",
+  };
+  console.log('RealNucleus D+D slab fusion: re=' + re + ' xp=' + xp + ' nmove=' + nmove + ' damp=' + damp);
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

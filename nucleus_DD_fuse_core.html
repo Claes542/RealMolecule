@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// ===========================================================================
+//  RealNucleus  D + D  ->  He-4   : electrons CONVERGE into the 2e core
+// ---------------------------------------------------------------------------
+//  Fix vs nucleus_DD_fuse_dyn.html (which fell into the "critical" 69% min,
+//  electrons stuck apart as axial halfspaces). Here the 4 protons start as an
+//  OUTER tetrahedral cage (radius rp), and the 2 electrons start inside it,
+//  moderately apart (the two D electrons). The cage's inward Coulomb pull
+//  overcomes e-e repulsion and draws the electrons TOGETHER into the compact
+//  central -2 core (split into halfspaces) -- the optimal alpha (cf. paper,
+//  -27.8 = 103% exp). We log e-e so the convergence is measurable.
+//
+//  "2 deuteron" pairing at the start: e_L(-x) with the two -x protons,
+//  e_R(+x) with the two +x protons; they merge along x.
+// ===========================================================================
+(function() {
+  var gridN = 160, scr = 12, N2 = 80, h = scr / gridN;
+  var params = new URLSearchParams(window.location.search);
+  var rp = parseFloat(params.get('rp')) || 1.1;    // proton cage radius (au)
+  var re = parseFloat(params.get('re')) || 0.55;   // initial electron half-separation (au)
+  var nmove = parseInt(params.get('nmove')) || 50; // electronic steps between nuclear moves
+  var damp  = parseFloat(params.get('damp')) || 0.85;
+  function ix(x){ return Math.round(N2 + x / h); }
+
+  // 4 protons: tetrahedron at radius rp (two with x>0 = D_right, two with x<0 = D_left)
+  var a = rp / Math.sqrt(3);
+  var tet = [[ 1, 1, 1], [ 1,-1,-1], [-1, 1,-1], [-1,-1, 1]];
+  var atoms = [];
+  // 2 electrons first (the two D electrons), split along x -> central 2e core
+  atoms.push({ i: ix(-re), j: ix(0), k: ix(0), Z:1, el:'e' });  // 0: e_L
+  atoms.push({ i: ix( re), j: ix(0), k: ix(0), Z:1, el:'e' });  // 1: e_R
+  // 4 protons outer cage
+  for (var t = 0; t < 4; t++)
+    atoms.push({ i: ix(a*tet[t][0]), j: ix(a*tet[t][1]), k: ix(a*tet[t][2]), Z:1, el:'P' }); // 2..5
+
+  window.USER_NUCLEUS_MODE = true;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;
+  window.NO_AUTO_DYNAMICS = false;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.85;
+  window.USER_N_MOVE = 50;
+  window.CONVERGENCE_THRESHOLD = 0.02;
+
+  window.USER_Z      = [1, 1, 1, 1, 1, 1];
+  window.USER_Z_NUC  = [0, 0, 0, 0, 0, 0];
+  window.USER_RC     = [0, 0, 0, 0, 0, 0];
+  window.USER_MASS   = [1, 1, 1, 1, 1, 1];        // equal-mass charge clouds
+  window.USER_CHARGE = [-1, -1, 1, 1, 1, 1];      // 2 electrons, 4 protons
+
+  window.USER_SHELL_RADIUS = 0.5;
+  // electrons -> inner -2 core (2 halfspaces); protons -> outer shell (4 pieces)
+  window.USER_SHELL_ZONES = [
+    { rMax: 0.70, atoms: [0, 1] },
+    { rMax: 1e9,  atoms: [2, 3, 4, 5] },
+  ];
+  window.USER_CURV_REG = 0.5;
+  window.USER_DIRICHLET_EP = 'electron';
+  window.USER_LOCKED_GROUPS = [];
+  window.INIT_ZEFF = 1;
+
+  window.USER_BOND_PAIRS = [
+    [0, 1, "e-e CORE:"],     // <-- should DECREASE as the 2e core forms
+    [0, 2, "e-P:"],
+    [2, 3, "p-p:"],
+    [2, 5, "p-p opp:"],
+  ];
+  window.USER_REFERENCE = {
+    energy: "D+D -> He-4 optimal: 2 e converge into central -2 core inside a 4p tetra cage " +
+            "(rp=" + rp.toFixed(2) + ", re0=" + re.toFixed(2) + "). Watch e-e CORE shrink. " +
+            "alpha optimal E=-27.8 (103% exp); critical -18.5 (69%); deuteron scale -2.12.",
+  };
+  console.log('RealNucleus D+D -> 2e core: rp=' + rp + ' re0=' + re + ' (watch e-e CORE shrink)');
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
