@@ -23,7 +23,8 @@
   var q = new URLSearchParams(window.location.search);
   var xc = parseFloat(q.get('xc')) || 1.00;   // electron core |x|
   var d  = parseFloat(q.get('d'))  || 0.50;   // proton offset from each core plane
-  var rc = parseFloat(q.get('rc')) || 0.45;   // electron core radius
+  var rc = parseFloat(q.get('rc')) || 0.45;   // electron core radius (shell)
+  var erc = parseFloat(q.get('erc')); if (isNaN(erc)) erc = 0.55;  // per-electron SPHERE radius (USER_RC)
   var dyn = (q.get('dyn') === '0') ? false : true;   // default DYNAMIC (merge)
   var nmove = parseInt(q.get('nmove')) || 150;
   var damp  = parseFloat(q.get('damp')) || 0.92;
@@ -52,7 +53,7 @@
 
   window.USER_Z      = [1, 1, 1, 1, 1, 1];
   window.USER_Z_NUC  = [0, 0, 0, 0, 0, 0];
-  window.USER_RC     = [0, 0, 0, 0, 0, 0];
+  window.USER_RC     = [0, 0, 0, 0, 0, 0];   // PURE model: no atom-specific rc cores
   window.USER_MASS   = [1, 1, 1, 1, 1, 1];        // equal-mass charge clouds
   window.USER_CHARGE = [1, -1, 1, 1, -1, 1];      // p e p p e p
 

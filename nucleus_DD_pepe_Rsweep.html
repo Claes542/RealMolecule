@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="results" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.92);border:1px solid #444;padding:12px;z-index:100;font-size:13px;min-width:440px"></div>
+<script>
+// ===========================================================================
+//  RealNucleus  D + D -> He-4  : static clamped E(R) FUSION SWEEP
+// ---------------------------------------------------------------------------
+//  Two deuteron blocks (each = spherical e core + 2 protons meeting at a plane
+//  through the core), cores clamped at x = +/-R.  p e p p e p layout:
+//      pL_out(-(R+d))  eL(-R)  pL_in(-(R-d)) | pR_in(R-d)  eR(R)  pR_out(R+d)
+//  As R shrinks the inner protons meet at x=0.  At each R the clouds + free
+//  boundaries relax to convergence (USER_DYNAMICS=false) -> a Born-Oppenheimer
+//  E(R): far apart -> ~2 E_D, a Coulomb barrier, then the deep alpha well.
+//  Each R reloads the page; sweep resumes via sessionStorage.  Needs WebGPU.
+// ===========================================================================
+var Rlist = [1.20, 1.05, 0.90, 0.80, 0.70, 0.60, 0.50];   // core |x|, far -> merged
+var d = 0.45;                 // proton offset from each core plane
+var gridN = 160, scr = 12, N2 = 80, h = scr / gridN;
+
+var idx = 0, results = {};
+(function(){ var s = sessionStorage.getItem('ddpepeR');
+  if (s) { var st = JSON.parse(s); idx = st.idx; results = st.results; sessionStorage.removeItem('ddpepeR'); } })();
+function ix(x){ return Math.round(N2 + x / h); }
+
+if (idx < Rlist.length) {
+  var R = Rlist[idx];
+  var atoms = [
+    { i: ix(-(R+d)), j: ix(0), k: ix(0), Z:1, el:'P' },   // 0 pL_out
+    { i: ix(-R),     j: ix(0), k: ix(0), Z:1, el:'e' },   // 1 e_L
+    { i: ix(-(R-d)), j: ix(0), k: ix(0), Z:1, el:'P' },   // 2 pL_in
+    { i: ix( (R-d)), j: ix(0), k: ix(0), Z:1, el:'P' },   // 3 pR_in
+    { i: ix( R),     j: ix(0), k: ix(0), Z:1, el:'e' },   // 4 e_R
+    { i: ix( (R+d)), j: ix(0), k: ix(0), Z:1, el:'P' },   // 5 pR_out
+  ];
+  window.USER_NUCLEUS_MODE = true;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 120000;
+  window.USER_DYNAMICS = false;                 // clamped nuclei -> E(R)
+  window.USER_Z = [1, 1, 1, 1, 1, 1];
+  window.USER_Z_NUC = [0, 0, 0, 0, 0, 0];
+  window.USER_RC = [0, 0, 0, 0, 0, 0];
+  window.USER_MASS = [1, 1, 1, 1, 1, 1];        // equal-mass charge clouds
+  window.USER_CHARGE = [1, -1, 1, 1, -1, 1];    // p e p p e p
+  window.USER_SHELL_RADIUS = 0.45;
+  window.USER_SHELL_INNER = [1, 4];             // two electron cores
+  window.USER_SHELL_OUTER = [0, 2, 3, 5];       // four protons
+  window.USER_CURV_REG = 0.7;
+  window.USER_DIRICHLET_EP = 'electron';
+  window.INIT_ZEFF = 1;
+  window.CONVERGENCE_THRESHOLD = 0.01;          // adaptive stop -> onSweepDone(E)
+  console.log('D+D pepe R-sweep: R=' + R + '  (' + (idx+1) + '/' + Rlist.length + ')');
+}
+
+function render() {
+  var div = document.getElementById('results');
+  // 2 E_D estimated from the largest-R (most separated) point
+  var twoED = results[Rlist[0]];
+  var html = '<b style="color:#0cf">D+D &rarr; He-4 : clamped E(R) fusion sweep</b><br>'
+           + '<span style="color:#888;font-size:11px">cores at x=&plusmn;R (p e p p e p); ref 2E_D = E at R='
+           + Rlist[0].toFixed(2) + '</span><br><br>'
+           + '<table><tr style="color:#0cf"><th style="padding:2px 10px">R</th><th>E (model)</th>'
+           + '<th>E&minus;2E_D</th></tr>';
+  var minE = Infinity, minR = null, maxRel = -Infinity, barR = null;
+  for (var i = 0; i < Rlist.length; i++) {
+    var R = Rlist[i], e = results[R], cur = (Rlist[idx] === R);
+    var rel = (e !== undefined && twoED !== undefined) ? e - twoED : undefined;
+    if (e !== undefined && e < minE) { minE = e; minR = R; }
+    if (rel !== undefined && rel > maxRel) { maxRel = rel; barR = R; }
+    var cls = cur && e === undefined ? ' style="color:#ff0"' : (e === undefined ? ' style="color:#555"' : '');
+    html += '<tr' + cls + '><td style="padding:2px 10px">' + R.toFixed(2) + '</td><td>'
+         + (e !== undefined ? e.toFixed(2) : (cur ? 'running…' : '—')) + '</td><td>'
+         + (rel !== undefined ? (rel >= 0 ? '+' : '') + rel.toFixed(2) : '') + '</td></tr>';
+  }
+  html += '</table>';
+  if (minR !== null && twoED !== undefined) {
+    html += '<br>well: <b style="color:#0f0">E=' + minE.toFixed(2) + '</b> at R=' + minR.toFixed(2)
+          + '<br>&Delta;E<sub>fusion</sub> (2E_D &minus; E_min): <b style="color:#0f0">'
+          + (twoED - minE).toFixed(2) + '</b> model units';
+    if (barR !== null && maxRel > 0.01)
+      html += '<br>Coulomb barrier: <b style="color:#fb0">+' + maxRel.toFixed(2) + '</b> above 2E_D at R='
+            + barR.toFixed(2);
+  }
+  if (idx >= Rlist.length) html += '<br><span style="color:#0f0">Done (see console).</span>';
+  div.innerHTML = html;
+}
+render();
+
+window.onSweepDone = function (E) {
+  results[Rlist[idx]] = E;
+  console.log('R=' + Rlist[idx] + '  E=' + E.toFixed(4));
+  render();
+  idx++;
+  if (idx < Rlist.length) {
+    sessionStorage.setItem('ddpepeR', JSON.stringify({ idx: idx, results: results }));
+    setTimeout(function () { location.reload(); }, 700);
+  } else {
+    console.log('=== D+D pepe sweep done ===', JSON.stringify(results));
+  }
+};
+
+var s = document.createElement('script');
+s.src = 'molecule_nucleus.js?t=' + Date.now();
+s.onload = function () {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

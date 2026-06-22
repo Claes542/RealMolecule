@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<script>
+// ===========================================================================
+//  RealNucleus  D+D  p-e-p-p-e-p  with POSITION-AWARE electron cores
+// ---------------------------------------------------------------------------
+//  Pure solver (molecule_nucleus.js), no atom-specific rc. Each electron core
+//  is a sphere of radius SHELL_RADIUS about ITS OWN centre (USER_SHELL_LOCAL),
+//  so two off-centre electron cores are both spheres; the protons fill the rest
+//  and their mutual boundary lies OUTSIDE the electron spheres.
+//  Static display. URL: ?xc=2&d=0.6&sr=0.55
+// ===========================================================================
+(function(){
+  var gridN = 160, scr = 12, N2 = 80, h = scr / gridN;
+  var q = new URLSearchParams(location.search);
+  var xc = parseFloat(q.get('xc')) || 2.0;
+  var d  = parseFloat(q.get('d'))  || 0.60;
+  var sr = parseFloat(q.get('sr')) || 0.55;
+  function ix(x){ return Math.round(N2 + x / h); }
+
+  var atoms = [
+    { i: ix(-xc-d), j: ix(0), k: ix(0), Z:1, el:'P' },   // 0 pL_out
+    { i: ix(-xc),   j: ix(0), k: ix(0), Z:1, el:'e' },   // 1 e_L core
+    { i: ix(-xc+d), j: ix(0), k: ix(0), Z:1, el:'P' },   // 2 pL_in
+    { i: ix( xc-d), j: ix(0), k: ix(0), Z:1, el:'P' },   // 3 pR_in
+    { i: ix( xc),   j: ix(0), k: ix(0), Z:1, el:'e' },   // 4 e_R core
+    { i: ix( xc+d), j: ix(0), k: ix(0), Z:1, el:'P' },   // 5 pR_out
+  ];
+  window.USER_NUCLEUS_MODE = true;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 120000;
+  window.USER_DYNAMICS = false;
+  window.USER_Z = [1,1,1,1,1,1];
+  window.USER_Z_NUC = [0,0,0,0,0,0];
+  window.USER_RC = [0,0,0,0,0,0];               // PURE: no atom rc
+  window.USER_MASS = [1,1,1,1,1,1];
+  window.USER_CHARGE = [1,-1,1,1,-1,1];         // p e p p e p
+  window.USER_SHELL_RADIUS = sr;                // core radius
+  window.USER_SHELL_LOCAL = true;               // <-- per-electron spheres about their OWN centres
+  window.USER_SHELL_INNER = [1,4];              // electron cores
+  window.USER_SHELL_OUTER = [0,2,3,5];          // protons
+  window.USER_CURV_REG = 0.6;
+  window.USER_DIRICHLET_EP = 'electron';
+  window.INIT_ZEFF = 1;
+  window.CONVERGENCE_THRESHOLD = 0.01;
+  console.log('D+D pepe LOCAL cores: xc=' + xc + ' d=' + d + ' sr=' + sr);
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule_nucleus.js?t=' + Date.now();
+s.onload = function(){
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

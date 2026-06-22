@@ -1506,6 +1506,26 @@ ${(function() {
       return zHeader + '\n' + zBody;
     }
     if (!sr || !si || !so) return '  label[id] = bestN;';
+    // POSITION-AWARE cores: each inner (electron) domain is a sphere of radius sr
+    // about its OWN centre -- the same uniform rule for every core, with no
+    // grid-centre dependence and no atom-specific rc. A grid point joins the
+    // nearest inner atom if within sr of it, else the nearest outer atom.
+    if (window.USER_SHELL_LOCAL) {
+      return `
+  var bestInner: u32 = ${si[0]}u;
+  var bestInnerD: f32 = 1e10;
+  ${si.map((idx, ii) => `{ let li${ii}x = f32(i) - f32(atoms[${idx}u].posI); let li${ii}y = f32(j) - f32(atoms[${idx}u].posJ); let li${ii}z = f32(kk) - f32(atoms[${idx}u].posK); let li${ii}d = sqrt(li${ii}x*li${ii}x+li${ii}y*li${ii}y+li${ii}z*li${ii}z); if (li${ii}d < bestInnerD) { bestInnerD = li${ii}d; bestInner = ${idx}u; } }`).join('\n  ')}
+  var bestOuter: u32 = ${so[0]}u;
+  var bestOuterD: f32 = 1e10;
+  ${so.map((idx, oi) => `{ let lo${oi}x = f32(i) - f32(atoms[${idx}u].posI); let lo${oi}y = f32(j) - f32(atoms[${idx}u].posJ); let lo${oi}z = f32(kk) - f32(atoms[${idx}u].posK); let lo${oi}d = sqrt(lo${oi}x*lo${oi}x+lo${oi}y*lo${oi}y+lo${oi}z*lo${oi}z); if (lo${oi}d < bestOuterD) { bestOuterD = lo${oi}d; bestOuter = ${idx}u; } }`).join('\n  ')}
+  if (bestInnerD < ${sr.toFixed(4)}) {
+    label[id] = bestInner;
+    bestU[id] = exp(bestInnerD) - 1.0;   // 0 at the electron centre, rising to its core radius
+  } else {
+    label[id] = bestOuter;
+    bestU[id] = exp(-bestOuterD);         // exp(-r) from the nearest proton
+  }`;
+    }
     var sm = window.USER_SHELL_MID;        // optional middle-zone domain indices
     var sr2 = window.USER_SHELL_RADIUS2;   // optional second (outer) boundary radius
     var hasMid = sm && sr2;
