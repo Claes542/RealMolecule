@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// ===========================================================================
+//  RealNucleus  DEUTERON building block (Johnson)
+// ---------------------------------------------------------------------------
+//  One deuteron = a SPHERICAL electron core at the centre, surrounded by TWO
+//  protons whose domains MEET AT A PLANE through the sphere.
+//    * electron: central sphere (charge -1)
+//    * 2 protons: at +/-z, filling the space around the core, their mutual free
+//      boundary being the z=0 plane that passes through the electron sphere.
+//  Static relaxation (nuclei fixed, clouds + free boundaries relax) so the
+//  structure shows cleanly. URL: ?d=0.5&rc=0.45&dyn=1
+// ===========================================================================
+(function() {
+  var gridN = 160, scr = 12, N2 = 80, h = scr / gridN;
+  var q = new URLSearchParams(window.location.search);
+  var xc = parseFloat(q.get('xc')) || 1.00;   // electron core centre x (y=z=0)
+  var d  = parseFloat(q.get('d'))  || 0.50;   // proton +/-x offset from the core plane
+  var rc = parseFloat(q.get('rc')) || 0.45;   // electron core radius (core/shell boundary)
+  var dyn = (q.get('dyn') === '1');
+  function ix(x){ return Math.round(N2 + x / h); }
+
+  // electron core sphere centred at (xc,0,0); the two protons straddle the x=xc
+  // plane (one at xc-d, one at xc+d) so their mutual free boundary is the x=xc
+  // plane, which passes through the electron sphere.
+  var atoms = [];
+  atoms.push({ i: ix(xc),   j: ix(0), k: ix(0), Z:1, el:'e' });  // 0: spherical electron core
+  atoms.push({ i: ix(xc+d), j: ix(0), k: ix(0), Z:1, el:'P' });  // 1: proton at xc+d
+  atoms.push({ i: ix(xc-d), j: ix(0), k: ix(0), Z:1, el:'P' });  // 2: proton at xc-d (meet at x=xc plane)
+
+  window.USER_NUCLEUS_MODE = true;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = dyn;
+  window.NO_AUTO_DYNAMICS = false;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;
+  window.USER_N_MOVE = 100;
+  window.CONVERGENCE_THRESHOLD = 0.01;
+
+  window.USER_Z      = [1, 1, 1];
+  window.USER_Z_NUC  = [0, 0, 0];
+  window.USER_RC     = [0, 0, 0];
+  window.USER_MASS   = [1, 1, 1];          // equal-mass charge clouds
+  window.USER_CHARGE = [-1, 1, 1];         // e core, 2 protons
+
+  window.USER_SHELL_RADIUS = rc;           // electron core / proton shell boundary
+  window.USER_SHELL_INNER  = [0];          // spherical electron core (inner)
+  window.USER_SHELL_OUTER  = [1, 2];       // two protons (outer, split at z=0 plane)
+  window.USER_CURV_REG = 0.7;              // round core
+  window.USER_DIRICHLET_EP = 'electron';
+  window.USER_LOCKED_GROUPS = [];
+  window.INIT_ZEFF = 1;
+
+  window.USER_BOND_PAIRS = [
+    [1, 2, "p-p (meet at plane):"],
+    [0, 1, "e-P:"],
+  ];
+  window.USER_REFERENCE = {
+    energy: "Deuteron: spherical -1 electron core + 2 protons meeting at the z=0 plane " +
+            "through the sphere. d=" + d + " rc=" + rc + ". (deuteron scale -2.12)",
+  };
+  console.log('RealNucleus deuteron core: e sphere + 2 p at +/-z meeting at z=0 plane; d=' + d + ' rc=' + rc);
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

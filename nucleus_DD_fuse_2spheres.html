@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// ===========================================================================
+//  RealNucleus  D + D  ->  He-4 : two SPHERICAL electron cores, protons between
+// ---------------------------------------------------------------------------
+//  Johnson topology (space-filling partition):
+//    * 2 electron cores on the x-axis at +/-re -- each a SPHERE, bounded by the
+//      protons, so the two cores DO NOT meet;
+//    * the 4 protons are split PERPENDICULAR to the x-axis and converge to the
+//      x=0 PLANE BETWEEN the two electron cores (the facing protons of the two
+//      deuterons meet there), forming the proton layer that separates them.
+//
+//      along x:   (e core) --- [ 4 p, perpendicular to x, at x=0 ] --- (e core)
+//
+//  6 domains: 2 e (cores) + 4 p (central perpendicular plane).
+// ===========================================================================
+(function() {
+  var gridN = 160, scr = 12, N2 = 80, h = scr / gridN;
+  var q = new URLSearchParams(window.location.search);
+  var re = parseFloat(q.get('re')) || 0.70;   // electron core position on x
+  var xo = parseFloat(q.get('xo')) || 1.15;   // OUTER proton x
+  var xi = parseFloat(q.get('xi')) || 0.22;   // INNER proton x (meet at x=0 plane)
+  var s  = parseFloat(q.get('s'))  || 0.0;    // keep protons ON the x-axis (clean chain)
+  var dyn = (q.get('dyn') === '1');           // default STATIC so the chain shows cleanly
+  var nmove = parseInt(q.get('nmove')) || 150;
+  var damp  = parseFloat(q.get('damp')) || 0.92;
+  function ix(x){ return Math.round(N2 + x / h); }
+
+  // Chain along x:   p   e   p p   e   p
+  // outer-p, e core, inner-p | inner-p, e core, outer-p.  Inner protons meet at
+  // the x=0 plane between the cores; protons given a small perpendicular (+/-y)
+  // split so they are split perpendicular to x; electron cores bounded by a
+  // proton on each side -> spherical, not meeting.
+  var atoms = [];
+  atoms.push({ i: ix(-xo), j: ix( s), k: ix(0), Z:1, el:'P' });  // 0: outer-p  L
+  atoms.push({ i: ix(-re), j: ix(0),  k: ix(0), Z:1, el:'e' });  // 1: e core   L
+  atoms.push({ i: ix(-xi), j: ix(-s), k: ix(0), Z:1, el:'P' });  // 2: inner-p  L
+  atoms.push({ i: ix( xi), j: ix( s), k: ix(0), Z:1, el:'P' });  // 3: inner-p  R
+  atoms.push({ i: ix( re), j: ix(0),  k: ix(0), Z:1, el:'e' });  // 4: e core   R
+  atoms.push({ i: ix( xo), j: ix(-s), k: ix(0), Z:1, el:'P' });  // 5: outer-p  R
+
+  window.USER_NUCLEUS_MODE = true;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = dyn;          // static by default -> chain stays put, clouds relax
+  window.NO_AUTO_DYNAMICS = false;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = damp;
+  window.USER_N_MOVE = nmove;
+  window.CONVERGENCE_THRESHOLD = 0.02;
+
+  window.USER_Z      = [1, 1, 1, 1, 1, 1];
+  window.USER_Z_NUC  = [0, 0, 0, 0, 0, 0];
+  window.USER_RC     = [0, 0, 0, 0, 0, 0];
+  window.USER_MASS   = [1, 1, 1, 1, 1, 1];        // equal-mass charge clouds
+  window.USER_CHARGE = [1, -1, 1, 1, -1, 1];      // p e p p e p
+
+  window.USER_SHELL_RADIUS = 0.5;
+  window.USER_SHELL_INNER = [2, 3];                // inner proton pair (central plane)
+  window.USER_SHELL_OUTER = [0, 5];                // outer protons
+  window.USER_CURV_REG = 0.6;                      // more curvature reg -> rounder cores
+  window.USER_DIRICHLET_EP = 'electron';
+  window.USER_LOCKED_GROUPS = [];
+  window.INIT_ZEFF = 1;
+
+  window.USER_BOND_PAIRS = [
+    [1, 4, "e-e (cores, keep apart):"],
+    [2, 3, "p-p inner (meet at plane):"],
+    [1, 2, "e-P inner:"],
+    [0, 1, "e-P outer:"],
+  ];
+  window.USER_REFERENCE = {
+    energy: "D+D -> He-4: two SPHERICAL e cores on +/-x, separated by a proton plane " +
+            "(4 p split perpendicular to x at x=0). re=" + re + " s=" + s + ".",
+  };
+  console.log('RealNucleus D+D 2-spheres: e cores at +/-' + re + ', 4 p perp-to-x at x=0, s=' + s);
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

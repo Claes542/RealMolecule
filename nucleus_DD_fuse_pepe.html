@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// ===========================================================================
+//  RealNucleus  D + D -> He-4 : two deuteron blocks at x = +/-1
+// ---------------------------------------------------------------------------
+//  Two deuterons (each = spherical electron core + 2 protons meeting at a plane
+//  through the core), placed at x=+1 and x=-1:
+//
+//    along x:   p     (e)     p   p     (e)     p
+//             -xc-d   -xc   -xc+d xc-d   xc    xc+d
+//             pL_out  e_L  pL_in  pR_in  e_R  pR_out
+//
+//  * e_L core at x=-1, its protons (pL_out,pL_in) meet at the x=-1 plane;
+//  * e_R core at x=+1, its protons (pR_in,pR_out) meet at the x=+1 plane;
+//  * the inner protons (pL_in at -0.5, pR_in at +0.5) approach and MEET at x=0
+//    as the deuterons fuse, forming the central proton layer that keeps the two
+//    electron cores SPHERICAL and SEPARATE -> 2e + 4p alpha.
+//  URL: ?xc=1&d=0.5&dyn=1(default dynamic)&nmove=150&damp=0.92&rc=0.45
+// ===========================================================================
+(function() {
+  var gridN = 160, scr = 12, N2 = 80, h = scr / gridN;
+  var q = new URLSearchParams(window.location.search);
+  var xc = parseFloat(q.get('xc')) || 1.00;   // electron core |x|
+  var d  = parseFloat(q.get('d'))  || 0.50;   // proton offset from each core plane
+  var rc = parseFloat(q.get('rc')) || 0.45;   // electron core radius
+  var dyn = (q.get('dyn') === '0') ? false : true;   // default DYNAMIC (merge)
+  var nmove = parseInt(q.get('nmove')) || 150;
+  var damp  = parseFloat(q.get('damp')) || 0.92;
+  function ix(x){ return Math.round(N2 + x / h); }
+
+  var atoms = [];
+  atoms.push({ i: ix(-xc-d), j: ix(0), k: ix(0), Z:1, el:'P' });  // 0: pL_out
+  atoms.push({ i: ix(-xc),   j: ix(0), k: ix(0), Z:1, el:'e' });  // 1: e_L core
+  atoms.push({ i: ix(-xc+d), j: ix(0), k: ix(0), Z:1, el:'P' });  // 2: pL_in
+  atoms.push({ i: ix( xc-d), j: ix(0), k: ix(0), Z:1, el:'P' });  // 3: pR_in
+  atoms.push({ i: ix( xc),   j: ix(0), k: ix(0), Z:1, el:'e' });  // 4: e_R core
+  atoms.push({ i: ix( xc+d), j: ix(0), k: ix(0), Z:1, el:'P' });  // 5: pR_out
+
+  window.USER_NUCLEUS_MODE = true;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = dyn;
+  window.NO_AUTO_DYNAMICS = false;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = damp;
+  window.USER_N_MOVE = nmove;
+  window.CONVERGENCE_THRESHOLD = 0.02;
+
+  window.USER_Z      = [1, 1, 1, 1, 1, 1];
+  window.USER_Z_NUC  = [0, 0, 0, 0, 0, 0];
+  window.USER_RC     = [0, 0, 0, 0, 0, 0];
+  window.USER_MASS   = [1, 1, 1, 1, 1, 1];        // equal-mass charge clouds
+  window.USER_CHARGE = [1, -1, 1, 1, -1, 1];      // p e p p e p
+
+  window.USER_SHELL_RADIUS = rc;
+  window.USER_SHELL_INNER = [1, 4];                // two electron cores (each its own sphere)
+  window.USER_SHELL_OUTER = [0, 2, 3, 5];          // four protons
+  window.USER_CURV_REG = 0.7;
+  window.USER_DIRICHLET_EP = 'electron';
+  window.USER_LOCKED_GROUPS = [];
+  window.INIT_ZEFF = 1;
+
+  window.USER_BOND_PAIRS = [
+    [1, 4, "e-e cores (stay apart):"],
+    [2, 3, "inner p-p (meet at x=0):"],
+    [1, 2, "e-P inner:"],
+    [0, 1, "e-P outer:"],
+  ];
+  window.USER_REFERENCE = {
+    energy: "D+D -> He-4: two deuterons at x=+/-" + xc + " (p e p p e p). Inner protons meet at " +
+            "x=0; two spherical e cores kept apart by the central protons -> 2e+4p alpha. " +
+            "deuteron scale -2.12; alpha optimal -27.8 (103% exp).",
+  };
+  console.log('RealNucleus D+D p-e-p-p-e-p: cores x=+/-' + xc + ', d=' + d + ', dyn=' + dyn);
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
