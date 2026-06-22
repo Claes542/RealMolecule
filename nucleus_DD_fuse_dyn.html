@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// ===========================================================================
+//  RealNucleus  D + D  ->  He-4   DYNAMICAL FUSION (split topology)
+// ---------------------------------------------------------------------------
+//  START : two deuterons, each = 1 electron + 2 SPLIT protons.
+//          electrons on the x-axis (+/-x), so they become the two HALFSPACES;
+//          D_left protons split along +/-y, D_right protons split along +/-z,
+//          so at merge the four protons sit at +/-y, +/-z = four QUARTER pieces.
+//  TARGET: 2 e halfspaces  +  4 p quarter pieces  =  the dual-confined alpha
+//          (cf. nucleus_he4_critical.html).
+//  Started INSIDE the Coulomb barrier (rsep ~ 1.3 au) with dynamics on, so the
+//  two net-+1 clusters fall together into the alpha well instead of recoiling.
+//  6 domains total (2 e + 4 p), exactly the alpha's domain set, merely seeded
+//  as two deuterons. Equal masses (charge clouds), all boundaries free.
+// ===========================================================================
+(function() {
+  var gridN = 160, scr = 12, N2 = 80, h = scr / gridN;
+  var params = new URLSearchParams(window.location.search);
+  var Rsep = parseFloat(params.get('rsep')) || 1.3;   // initial cluster separation (au)
+  var d = Rsep / 2;
+  var s = parseFloat(params.get('split')) || 0.5;     // proton split half-spacing (au)
+  function ix(x){ return Math.round(N2 + x / h); }
+
+  var atoms = [];
+  // D_LEFT at (-d,0,0): electron on -x axis, 2 protons split along +/- y
+  atoms.push({ i: ix(-d), j: ix(0),  k: ix(0),  Z:1, el:'e' }); // 0: e_L  -> -x halfspace
+  atoms.push({ i: ix(-d), j: ix( s), k: ix(0),  Z:1, el:'P' }); // 1: p_L1 -> +y quarter
+  atoms.push({ i: ix(-d), j: ix(-s), k: ix(0),  Z:1, el:'P' }); // 2: p_L2 -> -y quarter
+  // D_RIGHT at (+d,0,0): electron on +x axis, 2 protons split along +/- z
+  atoms.push({ i: ix( d), j: ix(0),  k: ix(0),  Z:1, el:'e' }); // 3: e_R  -> +x halfspace
+  atoms.push({ i: ix( d), j: ix(0),  k: ix( s), Z:1, el:'P' }); // 4: p_R1 -> +z quarter
+  atoms.push({ i: ix( d), j: ix(0),  k: ix(-s), Z:1, el:'P' }); // 5: p_R2 -> -z quarter
+
+  window.USER_NUCLEUS_MODE = true;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;            // centers move under Hellmann-Feynman forces
+  window.NO_AUTO_DYNAMICS = false;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;              // damp so it settles into the well
+  window.USER_N_MOVE = 50;                // electronic steps between nuclear moves
+  window.CONVERGENCE_THRESHOLD = 0.02;
+
+  window.USER_Z      = [1, 1, 1, 1, 1, 1];
+  window.USER_Z_NUC  = [0, 0, 0, 0, 0, 0];
+  window.USER_RC     = [0, 0, 0, 0, 0, 0];
+  window.USER_MASS   = [1, 1, 1, 1, 1, 1];        // equal masses: charge clouds
+  window.USER_CHARGE = [-1, 1, 1, -1, 1, 1];      // e,p,p, e,p,p
+
+  window.USER_SHELL_RADIUS = 0.5;
+  // 2-zone radial partition: 2 electrons -> inner halfspaces, 4 protons -> outer quarters
+  window.USER_SHELL_ZONES = [
+    { rMax: 0.75, atoms: [0, 3] },                // electron core (2 halfspaces)
+    { rMax: 1e9,  atoms: [1, 2, 4, 5] },          // proton shell (4 quarter pieces)
+  ];
+  window.USER_CURV_REG = 0.5;
+  window.USER_DIRICHLET_EP = 'electron';
+  window.USER_LOCKED_GROUPS = [];                 // all boundaries free
+  window.INIT_ZEFF = 1;
+
+  window.USER_BOND_PAIRS = [
+    [0, 3, "e-e (halfspaces):"],
+    [0, 1, "e-P:"],
+    [1, 2, "p-p (intra-D L):"],
+    [1, 4, "p-p (inter-D):"],
+  ];
+  window.USER_REFERENCE = {
+    energy: "D+D -> He-4. Start: 2 D (e + 2 split p) at Rsep=" + Rsep.toFixed(2) +
+            ". Target: 2 e halfspaces + 4 p quarter pieces (alpha). " +
+            "He-4 critical ref E=-18.5 (69% exp), optimal -27.8 (103%); deuteron scale -2.12.",
+  };
+  console.log('RealNucleus D+D dynamical fusion: Rsep=' + Rsep + ' split=' + s +
+              ' -> target 2e-halfspace + 4p-quarter alpha');
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
