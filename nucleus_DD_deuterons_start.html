@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<script>
+// ===========================================================================
+//  RealNucleus : two deuterons at varying distance (starting configurations)
+// ---------------------------------------------------------------------------
+//  Each deuteron = a central electron core SURROUNDED by its two protons, which
+//  split the surrounding space into two HALFSPACES (protons seeded at +/-y, so
+//  the y=0 plane through the core divides upper / lower proton halfspaces).
+//  Two deuterons with cores at x = +/-R (separation 2R) -- vary R via the URL.
+//  Pure solver (molecule_nucleus.js), position-aware cores (USER_SHELL_LOCAL),
+//  no atom rc.  URL: ?R=1.5&s=0.7&sr=0.55  (static; shows the start config)
+// ===========================================================================
+(function(){
+  var gridN = 160, scr = 12, N2 = 80, h = scr / gridN;
+  var q = new URLSearchParams(location.search);
+  var R  = parseFloat(q.get('R'))  || 1.5;    // half-separation of the two cores
+  var s  = parseFloat(q.get('s'))  || 0.70;   // proton +/-x offset (halfspace split along x)
+  var sr = parseFloat(q.get('sr')) || 0.55;   // electron core radius
+  function ix(x){ return Math.round(N2 + x / h); }
+
+  // each deuteron: central e core with its two protons split along X into a
+  // LEFT (x<core) and RIGHT (x>core) halfspace, divided by the plane through
+  // the core perpendicular to x.
+  var atoms = [
+    { i: ix(-R),   j: ix(0), k: ix(0), Z:1, el:'e' },   // 0 e_L core
+    { i: ix(-R-s), j: ix(0), k: ix(0), Z:1, el:'P' },   // 1 pL left halfspace
+    { i: ix(-R+s), j: ix(0), k: ix(0), Z:1, el:'P' },   // 2 pL right halfspace
+    { i: ix( R),   j: ix(0), k: ix(0), Z:1, el:'e' },   // 3 e_R core
+    { i: ix( R-s), j: ix(0), k: ix(0), Z:1, el:'P' },   // 4 pR left halfspace
+    { i: ix( R+s), j: ix(0), k: ix(0), Z:1, el:'P' },   // 5 pR right halfspace
+  ];
+  window.USER_NUCLEUS_MODE = true;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 120000;
+  window.USER_DYNAMICS = false;
+  window.USER_Z = [1,1,1,1,1,1];
+  window.USER_Z_NUC = [0,0,0,0,0,0];
+  window.USER_RC = [0,0,0,0,0,0];               // pure: no atom rc
+  window.USER_MASS = [1,1,1,1,1,1];
+  window.USER_CHARGE = [-1,1,1,-1,1,1];          // e p p  e p p
+  window.USER_SHELL_RADIUS = sr;
+  window.USER_SHELL_LOCAL = true;                // per-electron cores about their own centres
+  window.USER_SHELL_INNER = [0,3];               // two electron cores
+  window.USER_SHELL_OUTER = [1,2,4,5];           // four protons (two halfspaces per deuteron)
+  window.USER_CURV_REG = 0.6;
+  window.USER_DIRICHLET_EP = 'electron';
+  window.INIT_ZEFF = 1;
+  window.CONVERGENCE_THRESHOLD = 0.01;
+  window.USER_BOND_PAIRS = [
+    [0,3,"core-core:"], [0,1,"e-P:"], [1,2,"p-p (halfspaces):"]
+  ];
+  console.log('Two deuterons start config: cores at x=+/-' + R + ', proton y-split s=' + s + ', core r=' + sr);
+})();
+var s = document.createElement('script');
+s.src = 'molecule_nucleus.js?t=' + Date.now();
+s.onload = function(){ var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p); };
+document.body.appendChild(s);
+</script>
+</body></html>

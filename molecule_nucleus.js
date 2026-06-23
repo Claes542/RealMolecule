@@ -1518,12 +1518,14 @@ ${(function() {
   var bestOuter: u32 = ${so[0]}u;
   var bestOuterD: f32 = 1e10;
   ${so.map((idx, oi) => `{ let lo${oi}x = f32(i) - f32(atoms[${idx}u].posI); let lo${oi}y = f32(j) - f32(atoms[${idx}u].posJ); let lo${oi}z = f32(kk) - f32(atoms[${idx}u].posK); let lo${oi}d = sqrt(lo${oi}x*lo${oi}x+lo${oi}y*lo${oi}y+lo${oi}z*lo${oi}z); if (lo${oi}d < bestOuterD) { bestOuterD = lo${oi}d; bestOuter = ${idx}u; } }`).join('\n  ')}
-  if (bestInnerD < ${sr.toFixed(4)}) {
+  let liDist = bestInnerD * p.h;   // grid cells -> au (matches the radial path)
+  let loDist = bestOuterD * p.h;
+  if (liDist < ${sr.toFixed(4)}) {
     label[id] = bestInner;
-    bestU[id] = exp(bestInnerD) - 1.0;   // 0 at the electron centre, rising to its core radius
+    bestU[id] = exp(liDist) - 1.0;   // 0 at the electron centre, rising to its core radius
   } else {
     label[id] = bestOuter;
-    bestU[id] = exp(-bestOuterD);         // exp(-r) from the nearest proton
+    bestU[id] = exp(-loDist);         // exp(-r) from the nearest proton
   }`;
     }
     var sm = window.USER_SHELL_MID;        // optional middle-zone domain indices
