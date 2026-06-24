@@ -1969,7 +1969,7 @@ function fillParamsBuf(pb) {
   const pu = new Uint32Array(pb);
   const pf = new Float32Array(pb);
   pu[0] = NN; pu[1] = S; pu[2] = S2; pu[3] = S3;
-  pu[4] = N2; pf[5] = boundarySpeed; pf[6] = curvReg; pf[7] = 2 * Math.PI;
+  pu[4] = N2; pf[5] = boundarySpeed * (window._bndDamp !== undefined ? window._bndDamp : 1.0); pf[6] = curvReg; pf[7] = 2 * Math.PI;
   pf[8] = hGrid; pf[9] = h2v; pf[10] = 1 / hGrid; pf[11] = 1 / h2v;
   pf[12] = dtv; pf[13] = half_dv; pf[14] = h3v; pu[15] = sliceK;
 }
@@ -2229,6 +2229,7 @@ window.restartWithPositions = async function(newPositions) {
   computing = false;
   gpuError = null;
   window._prevE = undefined;
+  window._bndDamp = 1.0; window._prevEdamp = undefined;
   window._convCount = 0;
 };
 
@@ -4549,6 +4550,38 @@ function draw() {
       computing = false;
       phaseSteps += useLOBPCG ? LOBPCG_ITERS : STEPS_PER_FRAME;
       if (isFinite(E) && E < E_min) E_min = E;
+
+      // Adaptive free-boundary damping: move the boundaries at full speed while the
+      // energy is still descending, but slow them toward a floor as the descent
+      // flattens, so they SETTLE at the minimum instead of overshooting it. This
+      // lets the static relaxation converge and stay at the bound state (no blow-up).
+      if (!dynamicsEnabled && isFinite(E)) {
+        if (window._bndDamp === undefined) window._bndDamp = 1.0;
+        if (window._prevEdamp !== undefined) {
+          const dE = window._prevEdamp - E;                 // > 0 while descending
+          const tol = 0.004 * Math.max(1.0, Math.abs(E));
+          if (dE > tol) window._bndDamp = Math.min(1.0, window._bndDamp * 1.08);   // descending -> recover speed
+          else          window._bndDamp = Math.max(0.04, window._bndDamp * 0.88);  // flattened -> slow to settle
+        }
+        window._prevEdamp = E;
+      } else {
+        window._bndDamp = 1.0; window._prevEdamp = undefined;
+      }
+
+      // Divergence guard: a static relaxation descends into the minimum, then the
+      // discrete free-boundary evolution can overshoot and blow up if left running.
+      // Once we are past a good (bound) minimum and E rises back above E_min by a
+      // margin, HALT at the minimum instead of running on into the instability.
+      // This makes the relaxation stop at the bound state on its own (e.g. 2e+4p),
+      // and makes the sweep report the true E_min directly.
+      if (!dynamicsEnabled && isFinite(E_min) && E_min < 0 && phaseSteps > 200 &&
+          isFinite(E) && E > E_min + Math.max(1.0, 0.1 * Math.abs(E_min))) {
+        console.log("=== STOPPED at minimum step " + phaseSteps + ": E_min=" +
+                    E_min.toFixed(6) + " (E rose to " + E.toFixed(6) +
+                    "; halting before blow-up) ===");
+        phase = 1;
+        if (window.onSweepDone) window.onSweepDone(E_min, phaseSteps, E_T, E_eK, E_ee, E_KK, window._V_on_e||0, window._V_on_p||0, window._V_ee||0);
+      }
 
       // Auto-enable dynamics after convergence (skip if adaptive sweep)
       if (!dynamicsEnabled && !window.CONVERGENCE_THRESHOLD && phaseSteps >= 10000) {

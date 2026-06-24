@@ -93,12 +93,14 @@ for (let i = 0; i <= NN; i++) {
           // Smooth W at shell boundaries: linear ramp over 2 grid cells
           let wVal = 1.0;
           const smoothW = 2 * h;
-          if (Rmin[m] > 0) {
-            const distFromInner = r - Rmin[m];
-            if (distFromInner < smoothW) wVal = Math.min(wVal, distFromInner / smoothW);
+          if (cfg.split !== 'halfspace') {   // halfspace shells have NO radial limit -> no radial W-smoothing
+            if (Rmin[m] > 0) {
+              const distFromInner = r - Rmin[m];
+              if (distFromInner < smoothW) wVal = Math.min(wVal, distFromInner / smoothW);
+            }
+            const distFromOuter = Rmax[m] - r;
+            if (distFromOuter < smoothW) wVal = Math.min(wVal, distFromOuter / smoothW);
           }
-          const distFromOuter = Rmax[m] - r;
-          if (distFromOuter < smoothW) wVal = Math.min(wVal, distFromOuter / smoothW);
           wVal = Math.max(0.01, wVal);  // never fully zero inside
           if (W[m][id] === 0) W[m][id] = wVal;  // don't overwrite midplane W=0.5
         }
