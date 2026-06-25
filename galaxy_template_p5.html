@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Cosmology p5 template — rotating galaxy from 4 dust clouds</title>
+<script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
+<style>body{margin:0;background:#fff}</style>
+</head>
+<body>
+<script>
+//Cosmology: Compressible Flow + Gravitation
+//Conservation of mass, momentum and internal energy
+//Formation of rotating galaxy from four mass clouds
+//periodic boundary conditions
+let vx = [];
+let vy= [];
+//momentum
+let mx=[];
+let my=[];
+//density
+let rho=[];
+//internal energy
+let e=[];
+//pressure
+let p=[];
+let phi=[];
+//particle trace
+let x = [];
+let y = [];
+//external force
+let fx = [];
+let fy = [];
+let N=50;
+let dt;
+let t=0;
+let T=0;
+let h;
+//gas constant
+let gamma =0.1;
+let F=1.1;
+
+
+function setup() {
+  createCanvas(400, 400);
+  for (var i=-1;i<N+1;i++){
+    x[i]=[];
+    y[i]=[];
+    vx[i]=[];
+    vy[i]=[];
+    mx[i]=[];
+    my[i]=[];
+    rho[i]=[];
+    e[i]=[];
+    p[i]=[];
+
+    phi[i]=[];
+    fx[i]=[];
+    fy[i]=[];
+  for (var j=-1;j<N+1;j++){
+    x[i][j]=8*i;
+    y[i][j]=8*j;
+    vx[i][j]=(j-25)+(25-i);
+    vy[i][j]=-(i-25)+(25-j);
+    rho[i][j]=1;
+    e[i][j]=0.1;
+    p[i][j]=0;
+    phi[i][j]=0;
+    mx[i][j]=0;
+    my[i][j]=0;
+  }
+  }
+
+  for (var k=0;k<10;k++){
+  for (var q=0;q<10;q++){
+  rho[10+k][10+q]=F;
+  e[10+k][10+q]=F;
+  rho[30+k][30+q]=F;
+  e[30+k][30+q]=F;
+  rho[30+k][10+q]=F;
+  e[30+k][10+q]=F;
+  rho[10+k][30+q]=F;
+  e[10+k][30+q]=F;
+  }
+  }
+
+  h=1/N;
+  dt=0.01*h;
+}
+
+function draw() {
+  background(255,255,255,50);
+  noStroke();
+  t=t+dt;
+  T=T+dt;
+for (var q=0;q<100;q++){
+for (var i=0;i<N;i++){
+for (var j=0;j<N;j++){
+phi[i][j]=phi[i][j]+0.1*dt*((phi[i+1][j]+phi[i-1][j]-4*phi[i][j]+phi[i][j+1]+phi[i][j-1])/pow(h,2)+10*rho[i][j]);
+}
+}
+}
+//  fill(0);
+  for (var i=0;i<N;i++){
+  for (var j=0;j<N;j++){
+
+vx[i][j]=mx[i][j]/(rho[i][j]+0.01);
+vy[i][j]=my[i][j]/(rho[i][j]+0.01);
+p[i][j]=gamma*e[i][j]+0.5*pow(rho[i][j],2);
+
+mx[i][j]=mx[i][j]+4*dt*(vx[i+1][j]+vx[i-1][j]-4*vx[i][j]+vx[i][j+1]+vx[i][j-1])/h-0.5*dt*(vx[i+1][j]*mx[i+1][j]-vx[i-1][j]*mx[i-1][j])/h-0.5*dt*(vy[i][j+1]*mx[i][j+1]-vy[i][j-1]*mx[i][j-1])/h-dt*gamma*(e[i+1][j]-e[i-1][j])/h+dt*rho[i][j]*(phi[i+1][j]-phi[i-1][j])/h;
+
+my[i][j]=my[i][j]+4*dt*(vy[i+1][j]+vy[i-1][j]-4*vy[i][j]+vy[i][j+1]+vy[i][j-1])/h-0.5*dt*(vx[i+1][j]*my[i+1][j]-vx[i-1][j]*my[i-1][j])/h-0.5*dt*(vy[i][j+1]*my[i][j+1]-vy[i][j-1]*my[i][j-1])/h-dt*gamma*(e[i][j+1]-e[i][j-1])/h+dt*rho[i][j]*(phi[i][j+1]-phi[i][j-1])/h;
+
+rho[i][j]=rho[i][j]+4*dt*(rho[i+1][j]+rho[i-1][j]-4*rho[i][j]+rho[i][j+1]+rho[i][j-1])/h-0.5*dt*(mx[i+1][j]-mx[i-1][j])/h
+-0.5*dt*(my[i][j+1]-my[i][j-1])/h;
+
+e[i][j]=e[i][j]+4*dt*(e[i+1][j]+e[i-1][j]-4*e[i][j]+e[i][j+1]+e[i][j-1])/h-0.5*dt*(vx[i+1][j]*e[i+1][j]-vx[i-1][j]*e[i-1][j])/h-0.5*dt*(vy[i][j+1]*e[i][j+1]-vy[i][j-1]*e[i][j-1])/h-dt*gamma*e[i][j]*(vx[i+1][j]-vx[i-1][j]+vy[i][j+1]-vy[i][j-1])/h + dt*phi[i][j]*(mx[i+1][j]-mx[i-1][j]+my[i][j+1]-my[i][j-1])/h;
+}
+}
+for (var i=0;i<N;i++){
+e[i][-1]=e[i][N-1];
+e[i][N]=e[i][0];
+e[-1][i]=e[N-1][i];
+e[N][i]=e[0][i];
+rho[i][-1]=rho[i][N-1];
+rho[i][N]=rho[i][0];
+rho[-1][i]=rho[N-1][i];
+rho[N][i]=rho[0][i];
+vx[i][-1]=vx[i][N-1];
+vx[i][N]=vx[i][0];
+vx[-1][i]=vx[N-1][i];
+vx[N][i]=vx[0][i];
+vy[i][-1]=vy[i][N-1];
+vy[i][N]=vy[i][0];
+vy[-1][i]=vy[N-1][i];
+vy[N][i]=vy[0][i];
+}
+
+fill(0);
+if (t>0.005){
+for (var i=0;i<N;i++){
+for (var j=0;j<N;j++){
+    x[i][j]=8*i;
+    y[i][j]=8*j;
+}
+}
+t=0;
+background(255,255,255,255);
+}
+for (var i=0;i<N;i++){
+for (var j=0;j<N;j++){
+  x[i][j]=x[i][j]+5000*vx[i][j]*dt;
+  y[i][j]=y[i][j]+5000*vy[i][j]*dt;
+  fill(255,0,0,255);
+  ellipse(x[i][j],y[i][j],2)
+  }
+  }
+for (var i=0;i<N;i++){
+  fill(0,0,255,255);
+  ellipse(8*i,300-100*rho[i][25],4);
+  fill(0,255,0,255);
+  ellipse(8*i,300-100*e[i][25],4);
+  fill(0,255,255,255);
+  ellipse(8*i,300-100*phi[i][25],4);
+}
+  fill(0);
+  text("Cosmology: Compressible Flow + Gravitation",20,30);
+  text("momentum (mx,my), density rho, internal energy e, grav pot phi",20,70);
+  text("Laplacian phi + rho =0",50,90);
+  text("drho/dt + d(mx)/dx + d(my)/dy=0",50,110);
+  text("dmx/dt + d(mx*vx)/dx + d(mx*vy)/dy +dp/dx-rho*dphi/dx = 0",50,130);
+  text("dmy/dt + d(my*vx)/dx + d(my*vy)/dy + dp/dy - rho*dphi/dy = 0",50,150);
+  text("de/dt+d(e*vx)/dx+d(e*vy)/dy+p*(dvx/dx+dvy/dy)-phi*(dmx/dx+dmy/dy) =0",5,170);
+  text("vx=mx/rho, vy=my/rho, p=gamma*e, 0 < gamma < 1.",50,190);
+  text("Conservation of mass, momentum, internal energy:" ,20,50);
+  text("Periodic boundary conditions",50,230);
+  text("Initial data: four galaxies + common rotation",50,250);
+  text("See formation of rotating galaxy from 4 dust clouds",20,360);
+  text("See formation of Spiral Galaxy.",20,380);
+  text("Blue: Deviation (crosscut) from initial density = 1.",20,280);
+  text("Green: Internal energy (crosscut).",20,300);
+  text("Light-Blue: Gravitational Potetintial",20,320)
+  text("Red: Trace of fluid particles (updated).", 20,340);
+}
+</script>
+</body>
+</html>
