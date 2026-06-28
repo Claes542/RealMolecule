@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div style="display:flex;flex-wrap:wrap;align-items:flex-start">
+  <canvas id="plot" width="560" height="380" style="border:1px solid #333;margin:10px"></canvas>
+  <div id="results" style="background:rgba(0,0,0,0.92);border:1px solid #444;padding:12px;margin:10px;font-size:12px;min-width:430px"></div>
+</div>
+<pre id="log" style="margin:0;padding:8px;color:#8cf;font-size:12px">Building equal-mass 2p+1e bistable-electron test...</pre>
+<script>
+// ===========================================================================
+//  BISTABLE-ELECTRON TEST  —  equal-mass 2p + 1e  (RealNucleus free-boundary model)
+// ---------------------------------------------------------------------------
+//  Postulate (Big-Bang idea): protons and electrons have EQUAL mass; a deep well
+//  (two close protons) captures a COMPACT electron -> p-e-p deuteron; a shallow
+//  well captures an EXPANDED electron -> atom. Question: does the equal-mass,
+//  free-boundary system actually have a COMPACT electron branch that plain Coulomb
+//  (which only gives size ~ a0/Z_eff, i.e. ~atomic for 2 protons) does NOT?
+//
+//  Method: 2 protons (+1, mass 1) clamped at separation R + 1 electron (-1, mass 1)
+//  between them; molecule_nucleus.js free-boundary (DIRICHLET_EP='electron').
+//  Scan R from very close to atomic; at each R record total E, kinetic E_T, and a
+//  size proxy 1/sqrt(2 E_T) (exact for hydrogenic: H->1 a0, He+->0.5 a0).
+//  READ-OUT: (a) does E(R) show a 2nd well at small R? (b) does the electron size
+//  drop below atomic as the protons close in, or stall ~a0/2?
+//  HONEST LIMITS: equal mass (the model's postulate, NOT real m_p/m_e=1836);
+//  clamped/BO; grid h~0.03 a0 (~1700 fm) cannot resolve a true fm electron -> this
+//  tests compression BELOW ATOMIC; a positive signal warrants a fine-grid follow-up.
+// ===========================================================================
+var A0_FM = 52917.7;
+var Rlist = [0.30, 0.50, 0.80, 1.20, 1.80, 2.50];   // proton-proton separation, a0
+
+var idx = 0, results = {};
+(function(){ var s = sessionStorage.getItem('em2p1e');
+  if (s){ var st = JSON.parse(s); idx = st.idx; results = st.results; sessionStorage.removeItem('em2p1e'); } })();
+
+if (idx < Rlist.length) {
+  var R = Rlist[idx];
+  var gridN = 128, scr = 7, gN2 = Math.round(gridN/2), h = scr/gridN;   // tractable grid (h~0.055 a0); gN2 avoids molecule.js N2 clash
+  var off = Math.max(1, Math.round((R/2)/h));
+  var atoms = [
+    { i: gN2,      j: gN2, k: gN2, Z: 1, el: 'e' },   // 0: electron (-1, the glue) at centre
+    { i: gN2-off,  j: gN2, k: gN2, Z: 1, el: 'P' },   // 1: proton (+1)
+    { i: gN2+off,  j: gN2, k: gN2, Z: 1, el: 'P' }    // 2: proton (+1)
+  ];
+  window.USER_NUCLEUS_MODE = true;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 6000;                  // hard cap
+  window.USER_DYNAMICS = false;              // clamp nuclei -> E(R)
+  window.USER_Z      = [1, 1, 1];
+  window.USER_Z_NUC  = [0, 0, 0];
+  window.USER_RC     = [0, 0, 0];
+  window.USER_MASS   = [1, 1, 1];            // EQUAL MASS — the postulate
+  window.USER_CHARGE = [-1, 1, 1];           // electron -1, protons +1
+  window.USER_SHELL_RADIUS = Math.max(0.25, R/2);
+  window.USER_SHELL_INNER = [0];             // electron inner (the binding centre)
+  window.USER_SHELL_OUTER = [1, 2];          // protons outer
+  window.USER_DIRICHLET_EP = 'electron';     // free boundary: e matches, p -> psi=0 (the confinement)
+  window.USER_CURV_REG = 0.5;
+  window.INIT_ZEFF = 1;
+  window.USER_BOND_PAIRS = [[1, 2, "P-P:"], [0, 1, "e-P:"]];
+  window.CONVERGENCE_THRESHOLD = 0.02;       // E here is ~tens of Ha; 0.02 abs is tight in relative terms
+  document.getElementById('log').textContent =
+    'equal-mass 2p+1e: R(P-P)=' + R.toFixed(2) + ' a0  (' + (idx+1) + '/' + Rlist.length + ')';
+}
+
+function sizeProxy(ET){ return ET>0 ? 1/Math.sqrt(2*ET) : NaN; }   // a0; exact for hydrogenic
+
+function plot() {
+  var ctx = document.getElementById('plot').getContext('2d');
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,560,380);
+  var Rs = Rlist.filter(function(R){ return results[R]!==undefined; });
+  if (Rs.length<2){ ctx.fillStyle='#888'; ctx.font='13px monospace'; ctx.fillText('running first points...',40,40); return; }
+  var Es = Rs.map(function(R){ return results[R].E; });
+  var rMin=Rlist[0], rMax=Rlist[Rlist.length-1];
+  var eMin=Math.min.apply(null,Es), eMax=Math.max.apply(null,Es), pad=52;
+  function toX(r){ return pad+(r-rMin)/(rMax-rMin)*(560-2*pad); }
+  function toY(e){ return 380-pad-(e-eMin)/(eMax-eMin+1e-10)*(380-2*pad); }
+  ctx.strokeStyle='#555'; ctx.beginPath(); ctx.moveTo(pad,pad); ctx.lineTo(pad,380-pad); ctx.lineTo(560-pad,380-pad); ctx.stroke();
+  ctx.strokeStyle='#4fc3f7'; ctx.lineWidth=2; ctx.beginPath();
+  Rs.forEach(function(R,i){ var x=toX(R),y=toY(results[R].E); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke();
+  ctx.fillStyle='#4fc3f7'; Rs.forEach(function(R){ ctx.beginPath(); ctx.arc(toX(R),toY(results[R].E),3,0,7); ctx.fill(); });
+  var mi=0; for (var i=1;i<Es.length;i++) if (Es[i]<Es[mi]) mi=i;
+  ctx.fillStyle='#0f0'; ctx.beginPath(); ctx.arc(toX(Rs[mi]),toY(Es[mi]),6,0,7); ctx.fill();
+  ctx.fillText('min R='+Rs[mi].toFixed(2)+' a0', toX(Rs[mi])-20, toY(Es[mi])-10);
+  ctx.fillStyle='#aaa'; ctx.font='11px monospace';
+  ctx.fillText('E(R) total energy (Ha)', 40, 20);
+  ctx.fillText('proton-proton separation R (a0)', 200, 375);
+}
+
+function render() {
+  var div = document.getElementById('results');
+  var html = '<b style="color:#4fc3f7">Bistable-electron test &mdash; equal-mass 2p + 1e</b><br>'
+    + '<span style="color:#888;font-size:11px">Does a deep well (close protons) capture a <i>compact</i> electron, '
+    + 'or does it stall at atomic size (~a<sub>0</sub>/2)? size proxy = 1/&radic;(2E<sub>T</sub>).</span><br><br>'
+    + '<table style="border-collapse:collapse"><tr style="color:#4fc3f7">'
+    + '<th style="padding:1px 6px">R (a0)</th><th>E (Ha)</th><th>E<sub>T</sub></th>'
+    + '<th>e size (a0)</th><th>(fm)</th></tr>';
+  for (var i=0;i<Rlist.length;i++){
+    var R=Rlist[i], r=results[R];
+    var run=(idx<Rlist.length && Rlist[idx]===R && r===undefined);
+    var sz = r? sizeProxy(r.ET) : NaN;
+    html += '<tr'+(run?' style="color:#ff0"':'')+'><td style="padding:1px 6px">'+R.toFixed(2)+'</td>'
+      + '<td>'+(r?r.E.toFixed(3):(run?'run&hellip;':'&mdash;'))+'</td>'
+      + '<td>'+(r?r.ET.toFixed(2):'')+'</td>'
+      + '<td style="color:#8cf">'+(r?sz.toFixed(3):'')+'</td>'
+      + '<td style="color:#8cf">'+(r?(sz*A0_FM).toFixed(0):'')+'</td></tr>';
+  }
+  html += '</table>';
+  var Rs = Rlist.filter(function(R){ return results[R]!==undefined; });
+  if (Rs.length >= 4) {
+    // verdict: does electron size drop with R, and is there a 2nd (compact) well?
+    var rSmall=Rs[0], rBig=Rs[Rs.length-1];
+    var szSmall=sizeProxy(results[rSmall].ET), szBig=sizeProxy(results[rBig].ET);
+    var mi=Rs[0]; Rs.forEach(function(R){ if (results[R].E<results[mi].E) mi=R; });
+    var minSize = sizeProxy(results[mi].ET);
+    var compact = minSize < 0.05;   // < ~0.05 a0 (~2600 fm) would hint at sub-atomic capture
+    html += '<br><span style="color:#0f0"><b>Reading so far</b></span><br>'
+      + 'electron size: '+szBig.toFixed(2)+' a0 at R='+rBig.toFixed(1)+'  &rarr;  '+szSmall.toFixed(3)+' a0 at R='+rSmall.toFixed(2)+'<br>'
+      + 'energy minimum at R='+mi.toFixed(2)+' a0, electron there &asymp; <b>'+minSize.toFixed(3)+' a0 ('+(minSize*A0_FM).toFixed(0)+' fm)</b><br>'
+      + '<b style="color:'+(compact?'#0f0':'#ffb74d')+'">'
+      + (compact? 'COMPACT branch seen (sub-atomic) &mdash; warrants fine-grid follow-up'
+                : 'electron stays ATOMIC-scale (~a0) &mdash; no compact branch from Coulomb+free-boundary at this resolution')
+      + '</b><br>'
+      + '<span style="color:#888;font-size:11px">Equal mass (postulate). Clamped/BO. Grid h&asymp;'+(8/240*A0_FM).toFixed(0)
+      + ' fm cannot resolve a true fm electron; this probes compression below atomic. a0/Z law predicts ~'
+      + '0.5 a0 (=a0/2) as the Coulomb floor for 2 protons.</span>';
+  }
+  if (idx>=Rlist.length) html += '<br><span style="color:#0f0">Scan complete.</span>';
+  div.innerHTML = html;
+}
+plot(); render();
+
+window.onSweepDone = function(E, steps, E_T) {
+  results[Rlist[idx]] = { E: E, ET: (E_T||0) };
+  plot(); render();
+  idx++;
+  if (idx < Rlist.length){
+    sessionStorage.setItem('em2p1e', JSON.stringify({idx:idx, results:results}));
+    setTimeout(function(){ location.reload(); }, 500);
+  } else {
+    console.log('=== equal-mass 2p1e scan done ===', JSON.stringify(results));
+  }
+};
+
+if (idx < Rlist.length){
+  var s = document.createElement('script');
+  s.src = 'molecule_nucleus.js?t=' + Date.now();
+  s.onload = function(){
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    document.body.appendChild(p);
+  };
+  document.body.appendChild(s);
+}
+</script>
+</body></html>

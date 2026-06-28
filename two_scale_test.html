@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="results" style="background:rgba(0,0,0,0.95);border:1px solid #444;padding:14px;margin:10px;font-size:13px;max-width:640px"></div>
+<pre id="log" style="margin:0;padding:8px;color:#8cf;font-size:12px">Building two-scale test...</pre>
+<script>
+// ===========================================================================
+//  TWO-SCALE TEST  —  does ONE framework give an ATOMIC (~eV) AND a NUCLEAR (~MeV)
+//  energy in the SAME units?  (the keystone the compact/expanded cosmology needs)
+// ---------------------------------------------------------------------------
+//  Same engine (molecule_nucleus.js, free-boundary DIRICHLET_EP='electron'),
+//  same units (Hartree), equal mass (the Big-Bang postulate). Three configs:
+//    0. p-e        "hydrogen" : electron + 1 proton   (the ATOMIC, expanded case)
+//    1. p-e-p R=0.5 "deuteron close"  : electron + 2 protons (the NUCLEAR case)
+//    2. p-e-p R=1.2 "deuteron relaxed": electron + 2 protons
+//  READ-OUT: ratio |E(nuclear)| / |E(atomic)|.
+//    ~1      -> ONE scale: equal-mass Coulomb+free-boundary is scale-free; the
+//               ~MeV nuclear scale does NOT emerge -> cosmology needs an explicit
+//               scale-setting ingredient (a fixed length / the fm scale).
+//    ~1e6    -> TWO scales: nuclear(MeV) and atomic(eV) from one model -> the
+//               two-phase compact/expanded cosmology has its foundation.
+//  HONEST LIMITS: equal mass (postulate, not real m_p/m_e); clamped/BO; atomic-
+//  scale grid (h~0.08 a0 ~ 4200 fm) cannot resolve a true fm electron, so a
+//  genuinely compact branch (if the model had one) would need a fine-grid run.
+// ===========================================================================
+var HA_EV = 27.2114;
+var configs = [
+  { name: 'p-e  ("hydrogen", atomic)',          n: 1, R: 0.50 },
+  { name: 'p-e-p R=0.5  ("deuteron", close)',   n: 2, R: 0.50 },
+  { name: 'p-e-p R=1.2  ("deuteron", relaxed)', n: 2, R: 1.20 }
+];
+
+var idx = 0, results = {};
+(function(){ var s = sessionStorage.getItem('twoScale');
+  if (s){ var st = JSON.parse(s); idx = st.idx; results = st.results; sessionStorage.removeItem('twoScale'); } })();
+
+if (idx < configs.length) {
+  var cfg = configs[idx];
+  var gridN = 100, scr = 8, gN2 = Math.round(gridN/2), h = scr/gridN;   // gN2 avoids molecule.js N2 clash
+  var atoms = [ { i: gN2, j: gN2, k: gN2, Z: 1, el: 'e' } ];            // 0: electron (-1) inner
+  if (cfg.n === 1) {
+    var o1 = Math.max(1, Math.round(cfg.R/h));
+    atoms.push({ i: gN2+o1, j: gN2, k: gN2, Z: 1, el: 'P' });
+  } else {
+    var off = Math.max(1, Math.round((cfg.R/2)/h));
+    atoms.push({ i: gN2-off, j: gN2, k: gN2, Z: 1, el: 'P' });
+    atoms.push({ i: gN2+off, j: gN2, k: gN2, Z: 1, el: 'P' });
+  }
+  var nA = atoms.length;
+  window.USER_NUCLEUS_MODE = true;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 6000;
+  window.USER_DYNAMICS = false;
+  window.USER_Z      = atoms.map(function(){ return 1; });
+  window.USER_Z_NUC  = atoms.map(function(){ return 0; });
+  window.USER_RC     = atoms.map(function(){ return 0; });
+  window.USER_MASS   = atoms.map(function(){ return 1; });             // EQUAL MASS
+  window.USER_CHARGE = atoms.map(function(a){ return a.el==='e' ? -1 : 1; });
+  window.USER_SHELL_RADIUS = Math.max(0.25, cfg.R/2);
+  window.USER_SHELL_INNER = [0];
+  window.USER_SHELL_OUTER = (cfg.n===1) ? [1] : [1,2];
+  window.USER_DIRICHLET_EP = 'electron';
+  window.USER_CURV_REG = 0.5;
+  window.INIT_ZEFF = 1;
+  window.CONVERGENCE_THRESHOLD = 0.02;
+  document.getElementById('log').textContent =
+    'two-scale test: ' + cfg.name + '  (' + (idx+1) + '/' + configs.length + ')';
+}
+
+function render() {
+  var div = document.getElementById('results');
+  var html = '<b style="color:#4fc3f7">Two-scale test &mdash; one engine, one unit (Hartree), equal mass</b><br>'
+    + '<span style="color:#888;font-size:11px">Does the nuclear (p-e-p) energy come out ~10<sup>6</sup>&times; the atomic (p-e) energy, '
+    + 'or ~the same? That decides whether the compact/expanded two-phase cosmology has two scales to separate.</span><br><br>'
+    + '<table style="border-collapse:collapse"><tr style="color:#4fc3f7">'
+    + '<th style="padding:2px 8px;text-align:left">config</th><th>E (Ha)</th><th>|E| (eV)</th></tr>';
+  for (var i=0;i<configs.length;i++){
+    var c=configs[i], E=results[i];
+    var run=(idx<configs.length && idx===i && E===undefined);
+    html += '<tr'+(run?' style="color:#ff0"':'')+'><td style="padding:2px 8px;text-align:left">'+c.name+'</td>'
+      + '<td style="text-align:right">'+(E!==undefined?E.toFixed(4):(run?'run&hellip;':'&mdash;'))+'</td>'
+      + '<td style="text-align:right;color:#8cf">'+(E!==undefined?(Math.abs(E)*HA_EV).toFixed(1):'')+'</td></tr>';
+  }
+  html += '</table>';
+  if (results[0]!==undefined && (results[1]!==undefined || results[2]!==undefined)) {
+    var Eatom = Math.abs(results[0]);
+    var Enuc = Math.abs(results[1]!==undefined ? results[1] : results[2]);
+    // use the deeper (more bound) p-e-p as the nuclear scale
+    if (results[1]!==undefined && results[2]!==undefined) Enuc = Math.max(Math.abs(results[1]),Math.abs(results[2]));
+    var ratio = Enuc/Eatom;
+    var twoScale = ratio > 1000;
+    html += '<br><span style="color:#0f0"><b>Scale ratio  |E(nuclear)| / |E(atomic)|  = '+ratio.toFixed(2)+'</b></span><br>'
+      + '<b style="color:'+(twoScale?'#0f0':'#ffb74d')+'">'
+      + (twoScale
+          ? 'TWO SCALES: the nuclear energy is ~10<sup>'+Math.round(Math.log10(ratio))+'</sup>&times; the atomic one &mdash; the compact/expanded cosmology has its foundation.'
+          : 'ONE SCALE: nuclear &asymp; atomic (both ~Ha ~ eV). Equal-mass Coulomb+free-boundary is SCALE-FREE &mdash; the ~MeV nuclear scale does NOT emerge from the bare model. The two-phase cosmology needs an explicit scale-setting ingredient (a fixed length / the fm scale), not just equal-mass Coulomb.')
+      + '</b><br>'
+      + '<span style="color:#888;font-size:11px">Real target ratio (deuteron 2.22 MeV / H 13.6 eV) &asymp; 1.6&times;10<sup>5</sup>. '
+      + 'Equal mass (postulate); clamped/BO; grid h&asymp;0.08 a0 (~4200 fm) cannot resolve a true fm electron &mdash; '
+      + 'a fine-grid run would be needed to expose a compact branch if the free-boundary model had one.</span>';
+  }
+  if (idx>=configs.length) html += '<br><span style="color:#0f0">Test complete.</span>';
+  div.innerHTML = html;
+}
+render();
+
+window.onSweepDone = function(E) {
+  results[idx] = E;
+  render();
+  idx++;
+  if (idx < configs.length){
+    sessionStorage.setItem('twoScale', JSON.stringify({idx:idx, results:results}));
+    setTimeout(function(){ location.reload(); }, 500);
+  } else {
+    console.log('=== two-scale test done ===', JSON.stringify(results));
+  }
+};
+
+if (idx < configs.length){
+  var s = document.createElement('script');
+  s.src = 'molecule_nucleus.js?t=' + Date.now();
+  s.onload = function(){
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    document.body.appendChild(p);
+  };
+  document.body.appendChild(s);
+}
+</script>
+</body></html>
