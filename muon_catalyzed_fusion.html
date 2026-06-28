@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div style="display:flex;flex-wrap:wrap;align-items:flex-start">
+  <canvas id="plot" width="600" height="400" style="border:1px solid #333;margin:10px"></canvas>
+  <div id="results" style="background:rgba(0,0,0,0.92);border:1px solid #444;padding:12px;margin:10px;font-size:12px;min-width:430px"></div>
+</div>
+<pre id="log" style="margin:0;padding:8px;color:#8cf;font-size:12px">Building muon-catalyzed-fusion scan...</pre>
+<script>
+// ===========================================================================
+//  MUON-CATALYZED FUSION  —  the muonic molecular ion dd-mu (and dt-mu)
+// ---------------------------------------------------------------------------
+//  A muon (m_mu = 206.77 m_e) bound to TWO deuterons is a hydrogen molecular ion
+//  D2+ with the electron replaced by the muon. Because a point-nucleus bound state
+//  is SCALE-INVARIANT in the lepton mass (substituting r -> r/m maps the muon
+//  problem exactly onto the electron problem), the muonic molecular ion is the
+//  ELECTRONIC D2+ ion rescaled: lengths shrink by 1/m_mu, energies grow by m_mu.
+//
+//  So we let RealQM (molecule.js) do what it does reliably — compute the D2+
+//  binding curve E(R) for ONE electron shared by two bare deuterons (Z=0, Z_nuc=1),
+//  clamped, scanning the internuclear distance R — and then rescale to the muon:
+//     R_mu  = R_e / m_mu     (Born-Oppenheimer, clamped nuclei -> use m_mu, not reduced)
+//     E_mu  = E_e * m_mu
+//  The minimum of the electron curve sits at R_e ~ 2.0 a0 (textbook H2+); rescaled
+//  that is ~512 fm — a ~200x compression of the two deuterons vs the ~74 pm D2 bond.
+//  THAT compression is the mechanism of muon-catalyzed (cold) fusion: the muon
+//  screens the nuclei into tunnelling range.
+//
+//  HONEST SCOPE: clamped-nucleus / Born-Oppenheimer (no quantum nuclear motion,
+//  so no vibrational level — BO overestimates binding vs the real loosely-bound
+//  dd-mu state used in muCF resonance). Non-relativistic, no QED. The number that
+//  matters here is the ~200x geometric compression, reproduced from first principles.
+// ===========================================================================
+var A0_FM = 52917.7;        // fm per Bohr radius
+var HA_EV = 27.2114;        // eV per Hartree
+var M_MU  = 206.768;        // muon / electron mass ratio
+var PM_D2 = 74.0;           // D2 (H2) bond length, pm  (= 74000 fm)
+
+var Rlist = [1.4, 1.7, 2.0, 2.4, 3.0, 4.0];   // internuclear R for the electron D2+ scan, a0
+
+var idx = 0, results = {};
+(function(){ var s = sessionStorage.getItem('mcfScan');
+  if (s){ var st = JSON.parse(s); idx = st.idx; results = st.results; sessionStorage.removeItem('mcfScan'); } })();
+
+if (idx < Rlist.length) {
+  var R = Rlist[idx];
+  var gridN = 220, scr = 20, gN2 = Math.round(gridN/2), h = scr/gridN;   // finer grid (h~0.09 a0) for a better 1s cusp; gN2 avoids clobbering molecule.js global N2
+  var off = Math.round((R/2)/h);
+  // H2+ / D2+ : TWO deuterons (each Z_nuc=+1); ONE of them carries the single shared lepton
+  // (Z=1). A separate Z=1 atom would be read as a THIRD nucleus, so the electron must ride
+  // on a nucleus entry. The single lepton then delocalises into the bonding orbital over both.
+  var atoms = [
+    { i: gN2-off, j: gN2, k: gN2, Z: 1, el: 'd' },   // deuteron A + the shared lepton
+    { i: gN2+off, j: gN2, k: gN2, Z: 0, el: 'd' }    // deuteron B (bare nucleus)
+  ];
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 20000;                 // hard cap: fallback onSweepDone
+  window.USER_DYNAMICS = false;              // clamp nuclei -> E(R)
+  window.USER_Z      = [1, 0];
+  window.USER_Z_NUC  = [1, 1];               // both deuterons are +1 point charges
+  window.USER_RC     = [0, 0];
+  window.USER_BOND_PAIRS = [[0, 1, "d-d:"]];
+  window.USER_REFERENCE = { energy: "Muonic molecular ion dd-mu via D2+ scaling (muon-catalyzed fusion)" };
+  window.CONVERGENCE_THRESHOLD = 0.0008;     // tight: well depth is small, keep noise << well (else cap)
+  document.getElementById('log').textContent =
+    'Muon-catalyzed fusion scan (D2+ electronic curve, rescaled to muon): R=' + R.toFixed(2)
+    + ' a0  (' + (idx+1) + '/' + Rlist.length + ')';
+}
+
+function plot() {
+  var ctx = document.getElementById('plot').getContext('2d');
+  ctx.fillStyle = '#000'; ctx.fillRect(0,0,600,400);
+  var Rs = Rlist.filter(function(R){ return results[R]!==undefined; });
+  if (Rs.length < 2) { ctx.fillStyle='#888'; ctx.font='13px monospace'; ctx.fillText('running first points...',40,40); return; }
+  var Es = Rs.map(function(R){ return results[R]; });
+  var rMin = Rlist[0], rMax = Rlist[Rlist.length-1];
+  var eMin = Math.min.apply(null,Es), eMax = Math.max.apply(null,Es);
+  var pad = 55;
+  function toX(r){ return pad + (r-rMin)/(rMax-rMin)*(600-2*pad); }
+  function toY(e){ return 400-pad - (e-eMin)/(eMax-eMin+1e-10)*(400-2*pad); }
+  ctx.strokeStyle='#555'; ctx.beginPath(); ctx.moveTo(pad,pad); ctx.lineTo(pad,400-pad); ctx.lineTo(600-pad,400-pad); ctx.stroke();
+  ctx.strokeStyle='#4fc3f7'; ctx.lineWidth=2; ctx.beginPath();
+  Rs.forEach(function(R,i){ var x=toX(R),y=toY(results[R]); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke();
+  ctx.fillStyle='#4fc3f7'; Rs.forEach(function(R){ ctx.beginPath(); ctx.arc(toX(R),toY(results[R]),3,0,7); ctx.fill(); });
+  // mark minimum
+  var mi=0; for (var i=1;i<Es.length;i++) if (Es[i]<Es[mi]) mi=i;
+  ctx.fillStyle='#0f0'; ctx.beginPath(); ctx.arc(toX(Rs[mi]),toY(Es[mi]),6,0,7); ctx.fill();
+  ctx.fillText('min R='+Rs[mi].toFixed(2)+' a0  ('+(Rs[mi]/M_MU*A0_FM).toFixed(0)+' fm for mu)', toX(Rs[mi])-30, toY(Es[mi])-12);
+  ctx.fillStyle='#aaa'; ctx.font='11px monospace';
+  ctx.fillText('E(R) of the D2+ electronic ion  (Ha)', 40, 20);
+  ctx.fillText('R (a0)  [muon: x'+(A0_FM/M_MU).toFixed(0)+' fm]', 250, 395);
+  ctx.fillText(eMax.toFixed(3), 4, pad+4); ctx.fillText(eMin.toFixed(3), 4, 400-pad+4);
+}
+
+function render() {
+  var div = document.getElementById('results');
+  var done = Object.keys(results).length;
+  var html = '<b style="color:#4fc3f7">Muon-catalyzed fusion &mdash; muonic molecular ion dd&mu;</b><br>'
+    + '<span style="color:#888;font-size:11px">RealQM computes the D<sub>2</sub><sup>+</sup> electronic binding curve; '
+    + 'the muon is that ion rescaled by m<sub>&mu;</sub>=206.8 (point-nucleus scale invariance).</span><br><br>'
+    + '<table style="border-collapse:collapse"><tr style="color:#4fc3f7">'
+    + '<th style="padding:1px 6px">R (a0)</th><th>E (Ha)</th><th>R&mu; (fm)</th></tr>';
+  for (var i=0;i<Rlist.length;i++){
+    var R=Rlist[i], E=results[R];
+    var run = (idx<Rlist.length && Rlist[idx]===R && E===undefined);
+    html += '<tr'+(run?' style="color:#ff0"':'')+'><td style="padding:1px 6px">'+R.toFixed(2)+'</td>'
+      + '<td>'+(E!==undefined?E.toFixed(4):(run?'run&hellip;':'&mdash;'))+'</td>'
+      + '<td style="color:#8cf">'+(R/M_MU*A0_FM).toFixed(0)+'</td></tr>';
+  }
+  html += '</table>';
+  // analysis once we have a clear minimum
+  var Rs = Rlist.filter(function(R){ return results[R]!==undefined; });
+  if (Rs.length >= 3) {
+    var mi=Rs[0]; Rs.forEach(function(R){ if (results[R]<results[mi]) mi=R; });
+    var Emin = results[mi];
+    var Rmax = Rs[Rs.length-1], Ediss = results[Rmax];   // most-separated computed point = dissociation ref
+    var well = Ediss - Emin;                  // computed well depth (self-consistent, grid-limited)
+    var Rmu_fm = mi/M_MU*A0_FM;              // muonic equilibrium, fm
+    var well_mu_eV = well*M_MU*HA_EV;        // muonic well depth, eV (BO scaling)
+    var compress = (PM_D2*1000)/Rmu_fm;     // vs D2 bond 74 pm = 74000 fm
+    html += '<br><span style="color:#0f0"><b>Equilibrium (D<sub>2</sub><sup>+</sup> electronic ion)</b></span><br>'
+      + 'R<sub>e</sub> = <b>'+mi.toFixed(2)+' a0</b> ('+(mi*0.529).toFixed(3)+' &Aring;)  '
+      + '<span style="color:#888">[textbook H<sub>2</sub><sup>+</sup>: 2.00 a0]</span><br>'
+      + 'well depth (R='+Rmax.toFixed(1)+'&rarr;min) = '+well.toFixed(3)+' Ha '
+      + '<span style="color:#888">[grid-limited; exact D<sub>e</sub>=0.103 Ha]</span><br>'
+      + '<br><span style="color:#ff0"><b>&rarr; muon dd&mu; (&times;'+M_MU.toFixed(0)+' mass scaling)</b></span><br>'
+      + 'R<sub>&mu;</sub> = <b style="color:#ff0">'+Rmu_fm.toFixed(0)+' fm</b>, well &asymp; '+well_mu_eV.toFixed(0)+' eV<br>'
+      + '<span style="color:#0f0"><b>compression vs D<sub>2</sub> bond (74 pm): &asymp; '+compress.toFixed(0)+'&times;</b></span><br>'
+      + '<span style="color:#888;font-size:11px">The muon screens the deuterons to ~'+Rmu_fm.toFixed(0)+' fm &mdash; tunnelling range '
+      + '&mdash; which is the muon-catalyzed-fusion mechanism. Born-Oppenheimer (clamped nuclei, no vibrational '
+      + 'level), non-relativistic, no QED; absolute energies grid-limited, the ~200&times; compression is the robust result.</span>';
+  }
+  if (idx>=Rlist.length) html += '<br><span style="color:#0f0">Scan complete.</span>';
+  div.innerHTML = html;
+}
+plot(); render();
+
+window.onSweepDone = function(E) {
+  results[Rlist[idx]] = E;
+  plot(); render();
+  idx++;
+  if (idx < Rlist.length){
+    sessionStorage.setItem('mcfScan', JSON.stringify({idx:idx, results:results}));
+    setTimeout(function(){ location.reload(); }, 500);
+  } else {
+    console.log('=== muon-catalyzed fusion scan done ===', JSON.stringify(results));
+  }
+};
+
+if (idx < Rlist.length){
+  var s = document.createElement('script');
+  s.src = 'molecule.js?t=' + Date.now();
+  s.onload = function(){
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    document.body.appendChild(p);
+  };
+  document.body.appendChild(s);
+}
+</script>
+</body></html>
