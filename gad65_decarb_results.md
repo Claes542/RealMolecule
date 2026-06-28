@@ -96,7 +96,48 @@ between the two; the only difference is the presence of the sink.
   hand-built geometry. This is a mechanism demonstration on the active-site electronics, not a
   structural model of the enzyme.
 
-## 5. Relevance to GAD65 / T1D, and where this can go
+## 5. Relation to DFT / first-principles QM studies
+
+The PLP electron-sink / quinonoid mechanism this run reproduces is *not* new physics — it is what
+mainstream quantum chemistry has established for PLP-dependent decarboxylases over the past two decades.
+
+**What DFT and QM/MM have done.** The standard tools are (i) **QM-cluster** models — the active site
+(PLP + substrate + key first-shell residues, ~100–300 atoms) optimized with a DFT functional (commonly
+B3LYP / ωB97X-D + dispersion) in implicit solvent — and (ii) hybrid **QM/MM**, that DFT region embedded
+in a classical protein + water environment, sampled by MD/metadynamics. Applied to PLP decarboxylases
+(e.g. histidine decarboxylase; the group-II decarboxylase family, anchored by crystallographic snapshots
+of the Dunathan and quinonoid intermediates) and decarboxylase benchmarks (LigW 5-carboxyvanillate, OMP
+decarboxylase), these deliver: full potential-/free-energy profiles with **transition states**;
+**calibrated barriers/energies in kcal/mol** validated against rates; and a quantified account of
+pyridine protonation, Dunathan alignment and quinonoid charge delocalization (the electron sink). I.e.
+DFT/QM-MM already does — quantitatively and *with kinetics* — what this scan does only qualitatively and
+thermodynamically. On the established step, mature QM/MM is the gold standard and this run does not
+compete with it.
+
+**What RealQM adds, and where it is weaker.**
+
+| | DFT / QM-MM (state of the art) | RealQM (this run) |
+|---|---|---|
+| Energies | calibrated kcal/mol, benchmarked | uncalibrated model units; sign/trend only |
+| Kinetics | transition states, barriers, rates | none (thermodynamic, single coordinate) |
+| Environment | protein electrostatics + solvent | gas-phase reduced core |
+| Basis/functional | basis set + XC functional (main error source; functional choice can change answers) | none — real-space grid, no basis, no functional |
+| Parameters | empirical dispersion/corrections common | parameter-free |
+| Control | sink role inferred from full landscape | identical-substrate free-vs-conjugated control **by construction** |
+| Cost | substantial; HPC | commodity GPU, in-browser, scannable |
+
+RealQM's value here is **not** a better number on a solved problem: (1) a **methodological cross-check** —
+a formalism with no basis set and no exchange-correlation functional (DFT's principal systematic-error
+source) independently recovers the same electron-sink physics; (2) a **clean internal control** (free
+amino acid = same molecule minus the ring, so the sink is a direct difference); (3) **throughput** — cheap
+enough to *scan*, enabling the planned holo-vs-apo and embedding sweeps.
+
+**The gap both leave open.** DFT/QM-MM characterizes the *generic* PLP-decarboxylase mechanism well, but
+GAD65 *specifically* — and the apo↔holo cofactor-loss state tied to its autoantigenicity — is largely
+unaddressed computationally. That gap, not the textbook step, is the target; calibrating RealQM against
+high-level DFT/QM-MM on the catalytic step (Aim 1) earns the right to take it into the apo/epitope regime.
+
+## 6. Relevance to GAD65 / T1D, and where this can go
 
 This establishes that a parameter-free method captures the **central electronic event of GAD65
 catalysis** correctly and from first principles. That is the foundation needed before the more

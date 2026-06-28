@@ -77,6 +77,16 @@ interface energetics.
 3. **A first-principles bridge from catalysis to autoimmunity.** No prior work connects GAD65's
    cofactor electronics to its epitope landscape at the electronic-structure level.
 
+**Relation to prior computational work.** PLP decarboxylation has been characterized by DFT QM-cluster
+and QM/MM studies (e.g. histidine decarboxylase; the group-II decarboxylase family, anchored by
+crystallographic Dunathan/quinonoid snapshots; LigW and OMP-decarboxylase benchmarks), which yield
+calibrated kcal/mol barriers and transition states for the *generic* mechanism. We do not aim to
+re-derive that step. We use it as a **calibration anchor** — Aim 1 benchmarks RealQM against high-level
+DFT/QM-MM on the catalytic coordinate — and then extend, with a parameter-free method carrying no basis
+set and no exchange-correlation functional (DFT's principal systematic-error source) and cheap enough to
+*scan*, into the GAD65-specific apo/holo and conformational-epitope regime that the DFT/QM-MM literature
+has left largely unaddressed.
+
 ## Preliminary data
 
 A reduced gas-phase model of the GAD65/PLP active site (pyridinium electron-sink mimic + 3-OH +
