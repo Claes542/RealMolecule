@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<pre id="log">Building GAD65 PLP active-site 3D viewer...</pre>
+<script>
+var log = document.getElementById('log');
+window.onerror = function(m,u,l){ log.textContent += '\nERROR: '+m+' (line '+l+')'; };
+
+// GAD65 ACTIVE-SITE CHEMISTRY (reduced, all-atom RealQM) -- the glutamate -> GABA + CO2 step.
+// GAD65 decarboxylates glutamate via the PLP (pyridoxal-5'-phosphate) cofactor:
+//   external aldimine  PLP=N-CH(COO-)-CH2CH2COOH  ->  loses CO2  ->  PLP=N-CH2-CH2CH2COOH (GABA).
+// The PLP pyridine ring is the ELECTRON SINK that stabilises the carbanion left when CO2 departs;
+// by Dunathan's rule the breaking Cα-COO bond is set PERPENDICULAR to the ring plane (along +z)
+// for maximal overlap with the imine pi-system.
+//
+// REDUCED MODEL (hand-built geometry -- read as EXPLORATORY, not validated):
+//   * PLP -> a minimal mimic: protonated pyridine (pyridinium N1-H, the electron sink) with a
+//     3-OH and the 4'-imine; the 5'-phosphate and 2'-methyl are omitted (anchors, not chemically
+//     central to the C-CO2 cleavage). The catalytic Lys396 is implicit (already displaced to the
+//     external aldimine). No protein environment, no water -- gas-phase active-site core only.
+//   * Substrate = glutamate, its alpha-carboxylate (the CO2 to leave) aligned along +z (Dunathan).
+// Solver: molecule.js (RealQM, reactive chemistry). USER_DYNAMICS lets the geometry relax; watch
+// whether the alpha-COO departs as CO2 while the imine/ring soak up the charge.
+(function() {
+  var gridN = 280, scr = 46;
+  var h = scr / gridN, N2 = Math.round(gridN/2), A = 1.8897;
+
+  // [element, x, y, z]  in Angstrom.  Pyridine ring in the xy-plane (z=0); alpha-COO along +z.
+  var coords = [
+    // --- PLP pyridine ring (electron sink) ---
+    ['N',  0.000,  1.390, 0.000],   // N1 (pyridinium)
+    ['C', -1.204,  0.695, 0.000],   // C2
+    ['C', -1.204, -0.695, 0.000],   // C3 (bears 3-OH)
+    ['C',  0.000, -1.390, 0.000],   // C4 (bears 4'-imine)
+    ['C',  1.204, -0.695, 0.000],   // C5
+    ['C',  1.204,  0.695, 0.000],   // C6
+    ['H',  0.000,  2.390, 0.000],   // N1-H  (protonated -> electron sink)
+    ['H', -2.139,  1.235, 0.000],   // C2-H
+    ['H',  2.139, -1.235, 0.000],   // C5-H
+    ['H',  2.139,  1.235, 0.000],   // C6-H
+    // --- 3-OH (H-bonds the imine N) ---
+    ['O', -2.382, -1.375, 0.000],   // O3
+    ['H', -1.887, -2.209, 0.000],   // O3-H pointing toward imine N
+    // --- 4'-imine  C4'=N7 ---
+    ['C',  0.000, -2.890, 0.000],   // C4'  (imine carbon)
+    ['H',  0.940, -3.400, 0.000],   // C4'-H
+    ['N', -1.070, -3.590, 0.000],   // N7   (=C4', external-aldimine nitrogen)
+    // --- glutamate Calpha ---
+    ['C', -2.299, -4.394, 0.000],   // Ca
+    ['H', -2.299, -4.394,-1.090],   // Ca-H (along -z)
+    // alpha-carboxylate along +z (Dunathan): the CO2 that should leave
+    ['C', -2.299, -4.394, 1.530],   // C(=O)O  carboxyl carbon
+    ['O', -2.299, -3.344, 2.210],   // O1
+    ['O', -2.299, -5.444, 2.210],   // O2
+    // glutamate side chain  -CH2-CH2-COOH  (spectator for the decarboxylation)
+    ['C', -3.40,  -5.40,  0.000],   // Cb
+    ['H', -3.90,  -5.00,  0.800],
+    ['H', -3.90,  -5.00, -0.800],
+    ['C', -3.10,  -6.78,  0.000],   // Cg
+    ['H', -2.60,  -7.10,  0.800],
+    ['H', -2.60,  -7.10, -0.800],
+    ['C', -4.10,  -7.78,  0.000],   // Cd (side carboxyl)
+    ['O', -5.20,  -7.50,  0.000],   // Oe1
+    ['O', -4.00,  -9.00,  0.000],   // Oe2
+    ['H', -4.20,  -9.70,  0.000],   // Oe2-H (side -COOH protonated)
+  ];
+
+  var Zof = { H:1, C:4, N:3, O:2 };
+  var RCof = { H:0, C:0.3, N:0.3, O:0.8 };
+  var atoms = [], zList = [], rcList = [];
+  for (var n=0; n<coords.length; n++) {
+    var el = coords[n][0];
+    var gi = Math.max(3, Math.min(gridN-3, Math.round(N2 + coords[n][1]*A/h)));
+    var gj = Math.max(3, Math.min(gridN-3, Math.round(N2 + coords[n][2]*A/h)));
+    var gk = Math.max(3, Math.min(gridN-3, Math.round(N2 + coords[n][3]*A/h)));
+    atoms.push({ i:gi, j:gj, k:gk, Z:Zof[el], el:el });
+    zList.push(Zof[el]); rcList.push(RCof[el]);
+  }
+
+  log.textContent = 'GAD65 PLP active site (reduced): pyridinium electron sink + 3-OH + 4\'-imine + glutamate';
+  log.textContent += '\n' + atoms.length + ' atoms on ' + gridN + '^3 grid (' + scr + ' au box). Gas-phase, hand-built geometry.';
+  log.textContent += '\nalpha-COO is Dunathan-aligned (+z, perpendicular to ring): watch for CO2 departure.';
+  log.textContent += '\nEXPLORATORY reduced model -- no phosphate, no protein, no water.';
+
+  // distance readouts: the breaking bond + the imine + the 3-OH H-bond
+  window.USER_BOND_PAIRS = [
+    [15, 17, "Ca-CO2:"],   // the bond that should break (Ca -> carboxyl C)
+    [12, 14, "C4'=N:"],    // imine
+    [11, 14, "3OH..N:"],   // catalytic H-bond
+  ];
+  window.USER_REFERENCE = {
+    energy: "GAD65: PLP-assisted decarboxylation glutamate -> GABA + CO2 (electron-sink carbanion stabilisation)",
+    binding: "Does the Dunathan-aligned alpha-COO leave as CO2, the charge soaked up by the pyridinium ring?"
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = false;     // 3D STRUCTURE VIEWER: frozen geometry (relax electrons only, nuclei held)
+  window.USER_GRADP_FORCE = true;
+  window.USER_FORCE_SCALE = 100.0;
+  window.USER_ARROW_SCALE = 0.2;
+  window.USER_N_MOVE = 15;
+  window.USER_DAMPING = 0.9;
+  window.USER_Z = zList;
+  window.USER_RC = rcList;
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p5s.onload = function(){ setTimeout(function(){ window._view3D = true; }, 2500); };  // auto 3D (single load, safe); '3' toggles, arrows rotate
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

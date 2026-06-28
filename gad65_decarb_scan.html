@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="results" style="position:fixed;bottom:8px;left:8px;background:rgba(0,0,0,0.85);border:1px solid #444;padding:6px 8px;z-index:100;font-size:10px;line-height:1.25;max-width:340px"></div>
+<pre id="log" style="margin:0;padding:8px;color:#8cf">Building GAD65 decarboxylation scan...</pre>
+<script>
+// ===========================================================================
+//  GAD65 / PLP decarboxylation : ELECTRON-SINK scan  (clamped E vs Ca-CO2 distance)
+// ---------------------------------------------------------------------------
+//  Drives the breaking Ca-COO bond outward (the CO2 that leaves) in fixed steps and
+//  records the RealQM total energy at each step, for TWO electronic environments:
+//    * 'PLP'  : glutamate as the PLP external aldimine -- conjugated pyridinium imine
+//               (the electron sink that can soak up the carbanion left when CO2 goes);
+//    * 'free' : the SAME glutamate as a free amino acid (-NH3+), NO conjugation/sink.
+//  Each (variant,R) clamps all nuclei (USER_DYNAMICS=false), relaxes the electron
+//  density to convergence -> onSweepDone(E), then reloads for the next point.
+//  READ-OUT: the energy RISE dE(R)=E(R)-E(R0) for each variant. If the PLP rise is
+//  shallower than the free rise, that gap is the electron-sink stabilisation -- PLP's
+//  job -- quantified, even though neither case spontaneously reacts in gas phase.
+//  EXPLORATORY: hand-built geometry, gas-phase, no protein/phosphate/water.
+// ===========================================================================
+var variants = ['PLP', 'free'];
+var Rlist = [1.55, 2.00, 2.60, 3.30, 4.20, 5.00, 6.00];   // Ca-CO2 distance (Angstrom)  [7 pts -> 14 runs; reaches separation to see the sink saturate]
+var A = 1.8897;
+
+var vIdx = 0, rIdx = 0, results = { PLP:{}, free:{} };
+(function(){ var s = sessionStorage.getItem('gadScan');
+  if (s){ var st = JSON.parse(s); vIdx=st.vIdx; rIdx=st.rIdx; results=st.results; sessionStorage.removeItem('gadScan'); } })();
+
+function buildAtoms(withPLP, R) {
+  // [el, x, y, z] Angstrom.  glutamate core + CO2 unit at z=R; PLP ring (sink) in xy-plane.
+  var c = [
+    ['C', -2.299, -4.394, 0.000],   // 0 Ca
+    ['H', -2.299, -4.394,-1.090],   //   Ca-H
+    ['C', -2.299, -4.394, R],        //   Ccoo  (the CO2 carbon, at distance R along +z)
+    ['O', -2.299, -3.344, R+0.68],   //   O1
+    ['O', -2.299, -5.444, R+0.68],   //   O2
+    ['C', -3.40,  -5.40,  0.000],   //   Cb methyl  (substrate truncated to ALANINE: the glutamate
+    ['H', -4.00,  -5.00,  0.800],   //   side chain is a spectator for the Ca-COO cleavage; cut for speed)
+    ['H', -4.00,  -5.00, -0.800],
+    ['H', -3.60,  -6.40,  0.000],
+  ];
+  if (withPLP) {
+    c = c.concat([
+      ['N',  0.000,  1.390, 0.000],  // pyridinium ring (electron sink)
+      ['C', -1.204,  0.695, 0.000],
+      ['C', -1.204, -0.695, 0.000],
+      ['C',  0.000, -1.390, 0.000],
+      ['C',  1.204, -0.695, 0.000],
+      ['C',  1.204,  0.695, 0.000],
+      ['H',  0.000,  2.390, 0.000],  // N1-H (protonated -> sink)
+      ['H', -2.139,  1.235, 0.000],
+      ['H',  2.139, -1.235, 0.000],
+      ['H',  2.139,  1.235, 0.000],
+      ['O', -2.382, -1.375, 0.000],  // 3-OH
+      ['H', -1.887, -2.209, 0.000],
+      ['C',  0.000, -2.890, 0.000],  // C4' imine carbon
+      ['H',  0.940, -3.400, 0.000],
+      ['N', -1.070, -3.590, 0.000],  // N7 (=C4', bonded to Ca)
+    ]);
+  } else {
+    c = c.concat([
+      ['N', -1.20, -3.50, 0.000],    // free -NH3+ on Ca (no conjugation/sink)
+      ['H', -0.50, -3.10, 0.300],
+      ['H', -0.90, -4.30,-0.300],
+      ['H', -1.95, -3.10,-0.300],
+    ]);
+  }
+  return c;
+}
+
+if (vIdx < variants.length) {
+  var variant = variants[vIdx], R = Rlist[rIdx];
+  var coords = buildAtoms(variant === 'PLP', R);
+  var gridN = 160, scr = 38, gN2 = Math.round(gridN/2), h = scr/gridN;   // coarser grid (160^3) + tighter box -> faster  (gN2: avoid clobbering molecule.js global N2)
+  var Zof = { H:1, C:4, N:3, O:2 }, RCof = { H:0, C:0.3, N:0.3, O:0.8 };
+  var atoms = [], zList = [], rcList = [];
+  for (var n=0; n<coords.length; n++) {
+    var el = coords[n][0];
+    var gi = Math.max(3, Math.min(gridN-3, Math.round(gN2 + coords[n][1]*A/h)));
+    var gj = Math.max(3, Math.min(gridN-3, Math.round(gN2 + coords[n][2]*A/h)));
+    var gk = Math.max(3, Math.min(gridN-3, Math.round(gN2 + coords[n][3]*A/h)));
+    atoms.push({ i:gi, j:gj, k:gk, Z:Zof[el], el:el });
+    zList.push(Zof[el]); rcList.push(RCof[el]);
+  }
+  document.getElementById('log').textContent =
+    'GAD65 decarb scan: variant=' + variant + '  R(Ca-CO2)=' + R.toFixed(2) + ' A  ('
+    + (vIdx*Rlist.length + rIdx + 1) + '/' + (variants.length*Rlist.length) + ')  ' + atoms.length + ' atoms';
+
+  window.USER_BOND_PAIRS = [[0, 2, "Ca-CO2:"]];
+  window.USER_REFERENCE = { energy: "GAD65 PLP decarboxylation electron-sink scan (clamped E vs Ca-CO2)" };
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 6000;                     // HARD CAP: fallback onSweepDone at 6000 steps (room for slow points to converge before cap)
+  window.USER_DYNAMICS = false;                 // clamp nuclei -> E(R)
+  window.USER_Z = zList;
+  window.USER_RC = rcList;
+  window.CONVERGENCE_THRESHOLD = 0.01;          // looser: 3 consecutive frames within this -> done (else cap above fires)
+}
+
+function render() {
+  var div = document.getElementById('results');
+  function rise(v){ var e0 = results[v][Rlist[0]]; if (e0===undefined) return null;
+    return Rlist.map(function(R){ var e=results[v][R]; return e===undefined?undefined:e-e0; }); }
+  var rP = rise('PLP'), rF = rise('free');
+  var html = '<b style="color:#0cf">GAD65 / PLP decarboxylation &mdash; electron-sink scan</b><br>'
+    + '<span style="color:#888;font-size:11px">reaction energy &Delta;E(R)=E(R)&minus;E(R<sub>0</sub>) of CO<sub>2</sub> departure (negative = downhill/exothermic); '
+    + 'sink = free&minus;PLP = extra stabilisation from the pyridinium ring</span><br><br>'
+    + '<table style="border-collapse:collapse"><tr style="color:#0cf"><th style="padding:1px 6px">R (&Aring;)</th>'
+    + '<th>&Delta;E free</th><th>&Delta;E PLP</th><th>sink (free&minus;PLP)</th></tr>';
+  var cur = (vIdx<variants.length) ? {v:variants[vIdx], R:Rlist[rIdx]} : null;
+  for (var i=0;i<Rlist.length;i++){
+    var R=Rlist[i];
+    var df = rF?rF[i]:undefined, dp = rP?rP[i]:undefined;
+    var sink = (df!==undefined && dp!==undefined) ? df-dp : undefined;
+    var running = cur && cur.R===R && (results[cur.v][R]===undefined);
+    html += '<tr'+(running?' style="color:#ff0"':'')+'><td style="padding:1px 6px">'+R.toFixed(2)+'</td>'
+      + '<td>'+(df!==undefined?df.toFixed(3):(running&&cur.v==='free'?'run…':'—'))+'</td>'
+      + '<td>'+(dp!==undefined?dp.toFixed(3):(running&&cur.v==='PLP'?'run…':'—'))+'</td>'
+      + '<td style="color:#0f0">'+(sink!==undefined?(sink>=0?'+':'')+sink.toFixed(3):'')+'</td></tr>';
+  }
+  html += '</table>';
+  if (rP && rF && rP[Rlist.length-1]!==undefined && rF[Rlist.length-1]!==undefined){
+    var dF = rF[Rlist.length-1], dP = rP[Rlist.length-1], s = dF - dP;
+    function word(d){ return d<0 ? 'releases '+(-d).toFixed(3) : 'costs '+d.toFixed(3); }
+    html += '<br>At R='+Rlist[Rlist.length-1].toFixed(2)+' &Aring; (CO<sub>2</sub> departure): free '+word(dF)
+      +', PLP '+word(dP)+' &rarr; '
+      + '<b style="color:'+(s>0?'#0f0':'#f55')+'">'+(s>0?'PLP adds '+s.toFixed(3)+' extra stabilisation (electron sink)':'no sink benefit ('+s.toFixed(3)+')')+'</b>'
+      + ' <span style="color:#888">(Ha, model units &mdash; sign/trend only, not calibrated)</span>';
+  }
+  if (vIdx>=variants.length) html += '<br><span style="color:#0f0">Done.</span>';
+  div.innerHTML = html;
+}
+render();
+
+window.onSweepDone = function(E){
+  results[variants[vIdx]][Rlist[rIdx]] = E;
+  render();
+  rIdx++; if (rIdx>=Rlist.length){ rIdx=0; vIdx++; }
+  if (vIdx < variants.length){
+    sessionStorage.setItem('gadScan', JSON.stringify({vIdx:vIdx, rIdx:rIdx, results:results}));
+    setTimeout(function(){ location.reload(); }, 600);
+  } else {
+    console.log('=== GAD65 decarb scan done ===', JSON.stringify(results));
+  }
+};
+
+if (vIdx < variants.length){
+  var s = document.createElement('script');
+  s.src = 'molecule.js?t=' + Date.now();
+  s.onload = function(){
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    document.body.appendChild(p);
+  };
+  document.body.appendChild(s);
+}
+</script>
+</body></html>
