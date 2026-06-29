@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Primordial helium fraction from compact/free electron freeze-out</title>
+<style>
+  body{background:#0a0a0a;color:#e0e0e0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;margin:0}
+  .wrap{max-width:860px;margin:0 auto;padding:28px 20px 70px}
+  h1{font-size:21px;color:#80d8ff;line-height:1.3}
+  .sub{color:#8aa;font-size:13px;font-style:italic;margin-bottom:18px}
+  a{color:#4fc3f7;text-decoration:none}a:hover{text-decoration:underline}
+  .row{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start}
+  canvas{background:#070707;border:1px solid #222;border-radius:6px}
+  .panel{background:rgba(0,0,0,.9);border:1px solid #333;border-radius:6px;padding:14px;font-size:13px;min-width:300px}
+  .ctrl{margin:8px 0}
+  input[type=range]{width:170px;vertical-align:middle}
+  code{background:#161616;padding:1px 5px;border-radius:3px;color:#a5d6a7;font-size:12.5px}
+  b{color:#fff}
+  .big{font-size:22px;font-weight:bold}
+  .note{background:#0e1016;border:1px solid #243049;border-radius:6px;padding:10px 14px;margin-top:16px;font-size:12.5px;color:#bcd}
+  .back{color:#80cbc4;font-size:13px}
+</style></head>
+<body><div class="wrap">
+<a class="back" href="gallery.html">&larr; Gallery</a> &nbsp;&middot;&nbsp; <a class="back" href="real_cosmology.html">Real Cosmology</a>
+<h1>Primordial helium fraction from compact/free&ndash;electron freeze-out</h1>
+<div class="sub">Real Cosmology, &sect;6: the He mass fraction Y predicted from a single scale &mdash; the compactification energy gap E* (= the model's T*).</div>
+
+<div class="row">
+  <canvas id="plot" width="500" height="360"></canvas>
+  <div class="panel">
+    <div class="ctrl">E* (compactification gap, MeV): <b id="vE">1.293</b><br>
+      <input id="sE" type="range" min="0.4" max="3.0" step="0.001" value="1.293"></div>
+    <div class="ctrl">T<sub>f</sub> (freeze-out temp, MeV): <b id="vT">0.80</b><br>
+      <input id="sT" type="range" min="0.2" max="2.0" step="0.01" value="0.80"></div>
+    <div class="ctrl">neutron-decay factor d=e<sup>&minus;&Delta;t/&tau;</sup>: <b id="vD">0.74</b><br>
+      <input id="sD" type="range" min="0.5" max="1.0" step="0.01" value="0.74"></div>
+    <hr style="border-color:#333">
+    <div>equilibrium (n/p)<sub>f</sub> = e<sup>&minus;E*/kT<sub>f</sub></sup> = <b id="oNPf">&mdash;</b></div>
+    <div>after decay (n/p)<sub>nuc</sub> = <b id="oNPn">&mdash;</b></div>
+    <div style="margin-top:8px">He-4 mass fraction<br><span class="big" id="oY">&mdash;</span>
+      <span id="oVerdict" style="font-size:12px"></span></div>
+    <div style="color:#888;font-size:12px;margin-top:6px">observed: Y &asymp; 0.245&ndash;0.25</div>
+  </div>
+</div>
+
+<div class="note">
+<b>Model.</b> In Real Cosmology a neutron is a proton with a <i>compact</i> electron, so the cosmic
+neutron/proton ratio is the <b>compact/free electron ratio</b> at freeze-out:
+<code>(n/p)<sub>f</sub> = exp(&minus;E*/kT<sub>f</sub>)</code>, with E* the compactification energy gap
+(the model's T*) playing the role of the n&ndash;p mass difference (1.293 MeV in standard physics). Free
+neutrons (compact electrons) then partly expand back (&beta;-decay) before nucleosynthesis, factor d, and
+essentially all surviving neutrons end in He-4: <code>Y = 2(n/p)<sub>nuc</sub> / (1 + (n/p)<sub>nuc</sub>)</code>.
+<b>Result:</b> the defaults (E*&asymp;1.3 MeV, T<sub>f</sub>&asymp;0.8 MeV &rArr; T*&sim;10<sup>10</sup> K)
+give Y&asymp;0.245 &mdash; the observed primordial helium &mdash; from the model's single MeV-scale handle.
+<i>Honest note:</i> T<sub>f</sub> is, in standard BBN, derived from weak-rate vs. expansion (~0.8 MeV); here
+it is a second input, so the genuine prediction is the inequality E*/kT<sub>f</sub> &asymp; 1.6 with E*&sim;1.3 MeV.
+</div>
+</div>
+<script>
+var sE=document.getElementById('sE'),sT=document.getElementById('sT'),sD=document.getElementById('sD');
+function calc(){
+  var E=+sE.value, T=+sT.value, d=+sD.value;
+  document.getElementById('vE').textContent=E.toFixed(3);
+  document.getElementById('vT').textContent=T.toFixed(2);
+  document.getElementById('vD').textContent=d.toFixed(2);
+  var npf=Math.exp(-E/T);
+  // decay: n -> n*d, p -> p + n*(1-d)  => (n/p)_nuc = npf*d/(1+npf*(1-d))
+  var npn=npf*d/(1+npf*(1-d));
+  var Y=2*npn/(1+npn);
+  document.getElementById('oNPf').textContent=npf.toFixed(3);
+  document.getElementById('oNPn').textContent=npn.toFixed(3);
+  document.getElementById('oY').textContent=Y.toFixed(3)+' ('+(Y*100).toFixed(1)+'%)';
+  var ok=Y>0.235&&Y<0.255;
+  var v=document.getElementById('oVerdict');
+  v.textContent=ok?'  ✓ matches observed':'  ('+(Y>0.255?'too high':'too low')+')';
+  v.style.color=ok?'#66bb6a':'#ffb74d';
+  plot(E,d,T,Y);
+}
+function plot(E,d,Tcur,Ycur){
+  var c=document.getElementById('plot'),g=c.getContext('2d'),W=c.width,H=c.height,pad=52;
+  g.fillStyle='#070707';g.fillRect(0,0,W,H);
+  var Tmin=0.2,Tmax=2.0,Ymin=0,Ymax=1;
+  function X(T){return pad+(T-Tmin)/(Tmax-Tmin)*(W-pad-16)}
+  function Yc(y){return H-pad-(y-Ymin)/(Ymax-Ymin)*(H-pad-20)}
+  // observed band 0.24-0.25
+  g.fillStyle='rgba(102,187,106,.18)';g.fillRect(pad,Yc(0.25),W-pad-16,Yc(0.24)-Yc(0.25));
+  g.fillStyle='#66bb6a';g.font='10px monospace';g.fillText('observed Y≈0.245',pad+8,Yc(0.25)-4);
+  // axes
+  g.strokeStyle='#444';g.beginPath();g.moveTo(pad,Yc(1)-0);g.lineTo(pad,H-pad);g.lineTo(W-16,H-pad);g.stroke();
+  g.fillStyle='#888';
+  for(var y=0;y<=1.0001;y+=0.25){g.fillText(y.toFixed(2),6,Yc(y)+3);g.strokeStyle='#1b1b1b';g.beginPath();g.moveTo(pad,Yc(y));g.lineTo(W-16,Yc(y));g.stroke();}
+  for(var t=0.5;t<=2.0;t+=0.5){g.fillText(t.toFixed(1),X(t)-6,H-pad+15);}
+  g.fillText('T_f (MeV)',W/2-20,H-12);
+  g.save();g.translate(14,H/2+20);g.rotate(-Math.PI/2);g.fillText('He-4 mass fraction Y',0,0);g.restore();
+  // Y(T_f) curve for current E,d
+  g.strokeStyle='#4fc3f7';g.lineWidth=2;g.beginPath();var first=true;
+  for(var T=Tmin;T<=Tmax;T+=0.01){var npf=Math.exp(-E/T);var npn=npf*d/(1+npf*(1-d));var Y=2*npn/(1+npn);var x=X(T),yy=Yc(Y);first?g.moveTo(x,yy):g.lineTo(x,yy);first=false;}
+  g.stroke();
+  // current point
+  g.fillStyle='#ff0';g.beginPath();g.arc(X(Tcur),Yc(Ycur),5,0,7);g.fill();
+  g.fillStyle='#ddd';g.fillText('E*='+E.toFixed(2)+' MeV',W-150,30);
+}
+[sE,sT,sD].forEach(function(s){s.addEventListener('input',calc)});
+calc();
+</script>
+</body></html>
