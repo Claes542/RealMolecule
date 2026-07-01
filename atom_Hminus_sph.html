@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<pre id="log">H- (hydride) - SPHERICAL 1s^2 (shared shell, two hemispheres) - atom.js</pre>
+<script>
+// H-  =  +1 kernel (one proton) + 2 electrons in ONE shared spherical shell (1s^2),
+// split into two hemispheres (halfspace) at the SAME radial extent -> total density
+// spherically symmetric.  This is the true H- ground state (cf. He at -2.904 exact).
+// Exact H- total energy = -0.5277 Ha (H = -0.5; 2nd electron binds by 0.0277 Ha = 0.754 eV).
+window.USER_Z_KERNEL = 1;
+window.USER_SHELLS = [
+  { ne: 1, Rmax: 6.0, Zeff: 0.80, split: 'halfspace', halfIndex: 0, fixedW: true },
+  { ne: 1, Rmax: 6.0, Zeff: 0.80, split: 'halfspace', halfIndex: 1, fixedW: true }
+];
+window.USER_NN = 100;
+window.USER_SCREEN = 16;
+window.USER_D = 0.15;
+window.USER_STEPS = 9000;
+</script>
+<script src="atom.js"></script>
+<script>
+const log = document.getElementById('log');
+const a = window._atom;
+let step = 0, lastE = 0, prevE = 0, conv = 0;
+function iterate() {
+  const res = a.physicsStep(); step++; lastE = res.E;
+  if (step % 200 === 0) {
+    console.log('Hminus_sph Step ' + step + ': E=' + res.E.toFixed(6) +
+      ' T=' + res.E_T.toFixed(4) + ' V_eK=' + res.E_eK.toFixed(4) + ' V_ee=' + res.E_ee.toFixed(4));
+    if (Math.abs(res.E - prevE) < 0.0003) { conv++; } else { conv = 0; }
+    prevE = res.E;
+    if (conv >= 3) { console.log('=== Hminus_sph CONVERGED: E=' + lastE.toFixed(6) + ' Ha (exact -0.5277; H=-0.5) ==='); return; }
+  }
+  if (step < window.USER_STEPS) requestAnimationFrame(iterate);
+  else console.log('=== Hminus_sph DONE (cap): E=' + lastE.toFixed(6) + ' Ha (exact -0.5277) ===');
+}
+requestAnimationFrame(iterate);
+</script>
+</body></html>
