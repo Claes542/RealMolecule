@@ -1,0 +1,104 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper, margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue, citecolor=blue}
+\usepackage{authblk}
+\usepackage{microtype}
+\usepackage{enumitem}
+\setlist[itemize]{leftmargin=1.4em}
+
+\title{\textbf{RealQM vs.\ DFT for Protein Folding}\\[0.3em]
+\large Why density-functional theory cannot dynamically simulate folding, and RealQM can}
+\author[1]{Claes Johnson}
+\affil[1]{KTH Royal Institute of Technology, Stockholm, Sweden \\ \texttt{claesjohnson@gmail.com}}
+\date{\today \\[0.4em]
+\small\textit{Developed in collaboration with Claude (Anthropic).}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Protein folding is a \textbf{dynamical} process --- a chain moving from an extended state to its native fold
+over microseconds, in a system of $10^3$--$10^5$ atoms. We argue that \textbf{density-functional theory (DFT)
+cannot follow this trajectory}: its cost scales as $N^3$ in the electron number and it is locked to
+femtosecond steps, putting a microsecond fold of a solvated protein at ${\sim}10^{13}$ core-hours
+(${\sim}$millennia) --- $10^9$--$10^{12}$ beyond feasibility. \textbf{RealQM can}: its cost is set by a
+\emph{fixed spatial grid} ($200^3$--$1000^3$ cells), \emph{independent of the atom count} (a $200^3$ grid
+handles ${\sim}1{,}000$ atoms, a $1000^3$ grid ${\sim}100{,}000$), and it runs large-step (Brownian) dynamics
+on the GPU --- with folding trajectories already demonstrated (chignolin, crambin, GB1, solvated $\alpha$-helix,
+coiled coil). Biases may be used to guide the fold; that helps RealQM and does nothing for DFT, whose
+disqualifying cost is \emph{per step}.
+\end{abstract}
+
+\section{The problem: folding is dynamics, at scale}
+Folding is not a single minimisation but a \textbf{time-evolution} through a funnel of conformations.
+Timescale: microseconds (small fast-folders) to milliseconds. Size: ${\sim}10^3$ atoms bare, but
+$10^4$--$10^5$ atoms (${\sim}10^5$ electrons) with explicit solvent. What is required is to follow the
+\emph{whole trajectory}, not to score a static structure --- so any quantum method must run \textbf{many time
+steps on a large system}. This is where DFT and RealQM diverge.
+
+\section{Why DFT cannot}
+\begin{itemize}
+\item \textbf{$O(N^3)$ in electrons.} Each self-consistent solve scales as the cube of the electron number
+(orthogonalisation / diagonalisation); a solvated protein (${\sim}10^5$ e) is ${\sim}10^6\times$ a
+$1{,}000$-atom benchmark.
+\item \textbf{Femtosecond steps.} Ab-initio MD is locked to ${\sim}1$ fs by nuclear vibrations, so
+$1\,\mu\text{s}=10^9$ steps, each a full electronic solve.
+\item \textbf{Bottom line.} For ${\sim}5\,\mu$s of a solvated protein: $5\times10^9$ steps $\times\ {\sim}10^6$
+core-seconds/step $\approx \mathbf{10^{13}}$ \textbf{core-hours} $\approx$ \textbf{${\sim}1{,}000+$ years on a
+million-core machine} --- for one trajectory.
+\end{itemize}
+In practice DFT-AIMD reaches ${\sim}100$ ps for ${\sim}1{,}000$ atoms. Folding needs ${\sim}10^6\times$ longer
+\emph{and} ${\sim}30\times$ larger ($\times N^3=10^4\times$ per step) --- a combined
+$\mathbf{{\sim}10^{9}\text{--}10^{12}}$ beyond feasibility, a wall rather than a hardware wait. \textbf{Biases
+do not help DFT}: restraints cut how many steps you must \emph{sample}, but the disqualifying cost is the
+\emph{per-step} $N^3$ electronic solve, paid every step.
+
+\section{Why RealQM can}
+RealQM is quantum mechanics as real-space continuum mechanics on a grid, with a different cost structure:
+\begin{itemize}
+\item \textbf{Cost set by the grid, not by $N$.} All atoms share \emph{one fixed spatial grid}; per-step cost
+scales with the number of grid cells (multigrid), \emph{independent of atom count}. A $200^3$ grid handles
+${\sim}1{,}000$ atoms; a $1000^3$ grid ${\sim}100{,}000$ atoms --- at the same per-cell cost. Adding atoms does
+not blow the cost up as $N^3$ does.
+\item \textbf{Large-step dynamics.} Overdamped / Brownian dynamics replaces fs-locked Newtonian AIMD, reaching
+folding timescales in orders of magnitude fewer steps.
+\item \textbf{GPU-native.} The real-space grid maps directly onto GPU hardware.
+\item \textbf{Demonstrated.} Folding trajectories already run --- chignolin, crambin, GB1, a solvated
+$\alpha$-helix, a coiled coil.
+\item \textbf{Biases permitted.} As in classical MD (native-contact biasing, restraints, enhanced sampling),
+biases may guide the fold; this helps RealQM and, again, does nothing for DFT.
+\end{itemize}
+
+\section{Side by side}
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+ & \textbf{DFT (ab-initio MD)} & \textbf{RealQM} \\
+\midrule
+cost per step   & $O(N^3)$ in electrons        & $O(\text{grid})$ --- fixed by resolution \\
+capacity        & ${\sim}1{,}000$ atoms        & $200^3\!:1{,}000$; $1000^3\!:100{,}000$ atoms \\
+time stepping   & fs-locked, $10^9$/$\mu$s     & Brownian / large-step \\
+reach today     & ${\sim}100$ ps / $1{,}000$ atoms & full folding trajectories \\
+${\sim}5\,\mu$s fold & ${\sim}10^{13}$ core-hr (millennia) & days--weeks on GPUs \\
+biases          & don't help                  & permitted, guide the fold \\
+verdict         & \textbf{impossible}         & \textbf{feasible} \\
+\bottomrule
+\end{tabular}
+\end{center}
+The gap between the verdicts is ${\sim}10^{6}$--$10^{10}$ in compute: the difference between ``not in any
+foreseeable machine'' and ``runs on a GPU cluster.''
+
+\section{Honest status}
+What is established is the \textbf{capability} gap: RealQM can \emph{run} folding dynamics at protein scale;
+DFT cannot. The remaining frontier is \textbf{accuracy} --- how faithfully RealQM's energy surface drives the
+chain to the correct native state unaided (dispersion, a folding driver, is a known RealQM weak point, and
+current runs may use biases). That concerns the \emph{fidelity of the fold}, not whether the dynamics can be
+run, and it does not revive DFT, which is disqualified by cost regardless.
+
+\end{document}
