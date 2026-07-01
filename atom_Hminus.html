@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<pre id="log">H- (hydride) ground state - atom.js - TWO radial electron shells</pre>
+<script>
+// H-  =  +1 kernel (one proton) surrounded by TWO electrons in TWO nested radial shells.
+// The ATOM model (RealQM), mirror of the deuteron (electron caged by two proton shells).
+//   inner shell : 0 < r < 2    (electron 1, sees ~full proton, Zeff~1)
+//   outer shell : 2 < r < 8    (electron 2, screened, weakly bound, Zeff~0.4)
+// Exact total energy E = -0.5277 Ha  (H is -0.5; 2nd electron binds by 0.0277 Ha = 0.754 eV).
+window.USER_Z_KERNEL = 1;
+window.USER_SHELLS = [
+  { ne: 1, Rmax: 2.0, Zeff: 1.0 },
+  { ne: 1, Rmax: 8.0, Zeff: 0.45 }
+];
+window.USER_NN = 80;
+window.USER_SCREEN = 18;
+window.USER_D = 0.15;
+window.USER_STEPS = 8000;
+</script>
+<script src="atom.js"></script>
+<script>
+const log = document.getElementById('log');
+const a = window._atom;
+let step = 0, lastE = 0, prevE = 0, conv = 0;
+function iterate() {
+  const res = a.physicsStep(); step++; lastE = res.E;
+  if (step % 200 === 0) {
+    console.log('Hminus Step ' + step + ': E=' + res.E.toFixed(6) +
+      ' T=' + res.E_T.toFixed(4) + ' V_eK=' + res.E_eK.toFixed(4) + ' V_ee=' + res.E_ee.toFixed(4));
+    if (Math.abs(res.E - prevE) < 0.0005) { conv++; } else { conv = 0; }
+    prevE = res.E;
+    if (conv >= 3) { console.log('=== Hminus CONVERGED: E=' + lastE.toFixed(6) + ' Ha (exact -0.5277) ==='); return; }
+  }
+  if (step < window.USER_STEPS) requestAnimationFrame(iterate);
+  else console.log('=== Hminus DONE (cap): E=' + lastE.toFixed(6) + ' Ha (exact -0.5277) ===');
+}
+requestAnimationFrame(iterate);
+</script>
+</body></html>
