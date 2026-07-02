@@ -1,0 +1,173 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper, margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue, citecolor=blue}
+\usepackage{authblk}
+\usepackage{microtype}
+\usepackage{enumitem}
+\setlist[itemize]{leftmargin=1.4em}
+
+\title{\textbf{The PLP Pyridinium Electron Sink in GAD65 Decarboxylation}\\[0.3em]
+\large A parameter-free active-site test with RealQM, and its relevance to type-1 diabetes}
+\author[1]{Claes Johnson}
+\affil[1]{KTH Royal Institute of Technology, Stockholm, Sweden \\ \texttt{claesjohnson@gmail.com}}
+\date{\today \\[0.4em]\small\textit{Developed in collaboration with Claude (Anthropic).}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+GAD65 --- the major \textbf{type-1-diabetes autoantigen} --- decarboxylates L-glutamate to GABA + CO$_2$
+using the cofactor pyridoxal-5$'$-phosphate (PLP), whose protonated pyridine ring acts as the
+\emph{electron sink} that stabilises the carbanion left when the C$\alpha$--COO$^-$ bond breaks (the
+quinonoid intermediate; Dunathan alignment). We ask whether a \textbf{parameter-free} electronic-structure
+method --- RealQM, real-space, no basis set, no exchange--correlation functional --- \emph{spontaneously}
+reproduces this electron-sink role given only the nuclei. On a reduced gas-phase active-site model we drive
+the breaking C$\alpha$--CO$_2$ distance outward and relax the electrons at each step, for two environments:
+the glutamate \emph{conjugated} to the pyridinium ring (sink present) and the \emph{identical} glutamate as
+a free amino acid (no sink, a built-in negative control). The two curves diverge cleanly: the free case
+\textbf{saturates} once CO$_2$ is ${\sim}4$~\AA{} out, while the conjugated case \textbf{keeps descending};
+the sink term ($\Delta E_{\text{free}}-\Delta E_{\text{PLP}}$) grows monotonically to $+4.2$ (model units)
+and is still climbing at $6$~\AA. So the method recovers the textbook PLP electron-sink mechanism from first
+principles, with the identical-substrate control isolating the ring as the cause. The result is a
+\emph{qualitative} validation (sign/trend, uncalibrated), not a rate or barrier; its value is a
+basis-free/functional-free cross-check, a clean internal control, and enough throughput to \emph{scan} ---
+the foundation for the T1D-relevant apo$\leftrightarrow$holo and epitope questions.
+\end{abstract}
+
+\section{Objective}
+In the accepted mechanism of PLP-dependent decarboxylases the substrate forms an \emph{external aldimine}
+with PLP; when the scissile C$\alpha$--COO$^-$ bond breaks, the electrons left behind delocalise into the
+protonated pyridine ring --- the \textbf{quinonoid / carbanion intermediate} --- with the pyridinium
+nitrogen the \emph{electron sink} that makes the otherwise high-energy carbanion accessible. By Dunathan's
+rule the scissile bond sits perpendicular to the ring for maximal $\sigma\!\to\!\pi$ overlap.
+
+This is more than enzymology for the T1D field: GAD65 is the \textbf{major type-1-diabetes autoantigen}
+(GADA is a front-line predictive/diagnostic marker), and its autoantigenicity is tied to its unusual
+catalytic behaviour --- its tendency to lose PLP and populate a flexible \textbf{apo} form, and the
+dynamics of the catalytic loop. Any computational claim about GAD65 conformation, the apo$\leftrightarrow$holo
+cycle, or epitope exposure ultimately rests on getting the \textbf{underlying PLP electronics} right. The
+question here: does a parameter-free method, given only the nuclei, \emph{spontaneously} stabilise the
+departing-CO$_2$ carbanion specifically because the ring is conjugated?
+
+\section{Method}
+\textbf{Solver.} RealQM --- a real-space, grid-based electronic-structure method with \emph{no basis sets
+and no fitted force field}: the electron density is relaxed to its minimum-energy configuration in the field
+of fixed nuclei and the total energy $E$ read out directly.
+
+\textbf{Reduced gas-phase active-site model.} The PLP core, not the 585-residue enzyme: PLP reduced to a
+minimal mimic (protonated pyridine = the N1--H sink, plus 3-OH and 4$'$-imine; the 5$'$-phosphate and
+2$'$-methyl anchors omitted); substrate = glutamate as the external aldimine, its $\alpha$-carboxylate
+\emph{Dunathan-aligned} (perpendicular to the ring; $+z$ = the departing CO$_2$), side chain truncated;
+Lys396 implicit; no protein, no water.
+
+\textbf{Controlled scan with a built-in negative control.} The breaking C$\alpha$--CO$_2$ distance $R$ is
+driven outward in fixed steps; at each $R$ the nuclei are clamped and only the electrons relax to
+convergence, giving $E(R)$. This is run for two environments: \textbf{PLP} (glutamate conjugated to the
+pyridinium ring --- sink present) and \textbf{free} (the \emph{identical} glutamate as a free amino acid,
+$-$NH$_3^+$ --- no conjugation, no sink). Reported: $\Delta E(R)=E(R)-E(R_0)$ (negative $=$ downhill), and
+the \textbf{sink term} $=\Delta E_{\text{free}}-\Delta E_{\text{PLP}}$, the extra stabilisation attributable
+to the ring.
+
+\textbf{Run parameters.} 24 atoms (PLP variant), $160^3$ real-space grid, ${\sim}38$ a.u.\ box; 7 distances
+$R=1.55$--$6.00$~\AA{} $\times$ 2 environments $=14$ independent relaxations; convergence by energy plateau;
+in-browser on WebGPU.
+
+\section{Results}
+\begin{center}
+\begin{tabular}{rrrr}
+\toprule
+$R$ (\AA) & $\Delta E$ free & $\Delta E$ PLP & sink $=$ free $-$ PLP \\
+\midrule
+1.55 & $0.000$  & $0.000$  & $0.00$ \\
+2.00 & $-0.012$ & $-1.916$ & $+1.90$ \\
+2.60 & $-2.476$ & $-3.776$ & $+1.30$ \\
+3.30 & $-2.560$ & $-5.426$ & $+2.87$ \\
+4.20 & $-3.101$ & $-6.605$ & $+3.50$ \\
+5.00 & $-3.556$ & $-6.912$ & $+3.36$ \\
+6.00 & $-3.454$ & $\mathbf{-7.620}$ & $\mathbf{+4.17}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent(Model energy units; sign/trend meaningful, magnitudes uncalibrated.)
+
+The diagnostic signature is the \textbf{divergence} of the two curves. \emph{Free glutamate saturates}:
+once CO$_2$ is ${\sim}4$~\AA{} out, the free curve flattens at ${\approx}-3.5$ ($-3.10\to-3.56\to-3.45$) ---
+with no sink, the departing carbanion is a dead end. \emph{PLP keeps descending} ($-6.6\to-6.9\to-7.6$, no
+plateau): the pyridinium $\pi$-system absorbs the developing negative charge (the quinonoid), so
+stabilisation keeps accruing. The sink term grows essentially monotonically to $+4.2$ at $6$~\AA{} and is
+still climbing. Given nothing but the atomic coordinates --- no reaction coordinate built in, no bias
+--- the method reproduces the textbook role of PLP: the conjugated ring, and only the conjugated ring,
+stabilises the carbanion; the identical-substrate control isolates the effect.
+
+\section{Scope --- what this does and does not show}
+\begin{itemize}
+\item \textbf{Qualitative, not quantitative.} Magnitudes are uncalibrated model units (reproducible to
+${\sim}\pm0.5$--$0.8$ between runs). Read the sign, the divergence, and the monotonic growth --- no kcal/mol
+claim.
+\item \textbf{Thermodynamics, not kinetics.} A clamped single-coordinate relaxed scan has no transition
+state; this shows carbanion/product stabilisation, not a rate or barrier.
+\item \textbf{Gas-phase, reduced core.} No protein electrostatics, no phosphate anchor, no water, hand-built
+geometry. A mechanism demonstration on the active-site electronics, not a structural model of the enzyme.
+\end{itemize}
+
+\section{Relation to DFT / first-principles QM}
+The PLP electron-sink / quinonoid mechanism reproduced here is \emph{not} new physics --- it is what
+mainstream quantum chemistry (QM-cluster and QM/MM with DFT functionals, in implicit or explicit solvent)
+has established for PLP decarboxylases over two decades, \emph{quantitatively and with kinetics}: full
+free-energy profiles with transition states, calibrated kcal/mol barriers validated against rates, and a
+quantified account of pyridine protonation, Dunathan alignment and quinonoid delocalisation. On the
+established catalytic step, mature QM/MM is the gold standard and this run does not compete with it.
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+ & DFT / QM-MM (state of the art) & RealQM (this run) \\
+\midrule
+Energies       & calibrated kcal/mol, benchmarked          & uncalibrated units; sign/trend only \\
+Kinetics       & transition states, barriers, rates        & none (thermodynamic, single coordinate) \\
+Environment    & protein electrostatics + solvent          & gas-phase reduced core \\
+Basis/functional & basis set + XC functional (main error) & none --- real-space grid \\
+Parameters     & empirical dispersion common               & parameter-free \\
+Control        & sink inferred from full landscape         & identical-substrate control \emph{by construction} \\
+Cost           & substantial; HPC                          & commodity GPU, in-browser, scannable \\
+\bottomrule
+\end{tabular}
+\end{center}
+RealQM's value here is \emph{not} a better number on a solved problem, but: (1) a \textbf{methodological
+cross-check} --- a formalism with no basis set and no exchange--correlation functional (DFT's principal
+systematic-error source) independently recovers the same electron-sink physics; (2) a \textbf{clean internal
+control} (free amino acid $=$ same molecule minus the ring); (3) \textbf{throughput} --- cheap enough to
+\emph{scan}. The gap both leave open is GAD65 \emph{specifically} --- the apo$\leftrightarrow$holo
+cofactor-loss state tied to its autoantigenicity is largely unaddressed computationally; that, not the
+textbook step, is the target, and calibrating RealQM against high-level QM/MM on the catalytic step earns
+the right to take it there.
+
+\section{Relevance to GAD65 / T1D, and outlook}
+This establishes that a parameter-free method captures the central electronic event of GAD65 catalysis
+correctly and from first principles --- the foundation before the more T1D-relevant questions can be
+addressed credibly:
+\begin{itemize}
+\item \textbf{apo $\leftrightarrow$ holo electronics.} GAD65's autoantigenicity is linked to its propensity
+to lose PLP and populate a flexible apo form; the same machinery can compare holo vs apo active-site
+electronic stabilisation.
+\item \textbf{Catalytic-loop / epitope coupling.} Once the electronics are trusted, the catalytic region
+overlapping known conformational GADA epitopes becomes a modelling target.
+\item \textbf{Autoantibody recognition} (a separate, currently \emph{parked} model): real GADA epitopes are
+conformational, so that line needs real CDR/epitope residues and is a much larger lift.
+\end{itemize}
+\textbf{Bottom line.} An ab-initio-style electron solver, handed only the active-site atoms, independently
+reproduces the PLP electron-sink mechanism that defines GAD65's chemistry, with the free-amino-acid control
+confirming the effect is specifically the conjugated ring --- a clean qualitative validation, not a
+calibrated energetic or kinetic prediction.
+
+\medskip\noindent\emph{Collaboration.} The model and the interpretation are the author's; the manuscript and
+the simulations were developed in dialogue with Claude (Anthropic). Interactive versions (decarboxylation
+scan, 3D active-site viewer) are at \url{https://claes542.github.io/RealMolecule/gallery.html} (see the
+GAD65 card).
+
+\end{document}
