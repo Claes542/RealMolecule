@@ -1,0 +1,159 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper, margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue, citecolor=blue}
+\usepackage{authblk}
+\usepackage{microtype}
+\usepackage{enumitem}
+\setlist[itemize]{leftmargin=1.4em}
+
+\title{\textbf{RealQM and the GAD65 Autoantigen in Type-1 Diabetes}\\[0.3em]
+\large From first-principles PLP electronics to the apo--holo transition and autoimmunity}
+
+\author[1]{Claes Johnson}
+\author[2]{\r{A}ke Lernmark}
+\affil[1]{KTH Royal Institute of Technology, Stockholm, Sweden}
+\affil[2]{Lund University Diabetes Centre, Department of Clinical Sciences, Lund University, Malm\"o, Sweden}
+\date{\today \\[0.5em]
+\small\fbox{\parbox{0.86\textwidth}{\centering \textbf{DRAFT for co-author review.} The type-1-diabetes
+clinical and autoimmunity content is written from the established literature and is to be finalised and
+verified by the co-author; the computational (RealQM) results are the present author's. Prepared in dialogue
+with Claude (Anthropic).}}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Glutamic acid decarboxylase GAD65 is both an enzyme --- it makes the inhibitory neurotransmitter GABA from
+L-glutamate using the cofactor pyridoxal-5$'$-phosphate (PLP) --- and the \textbf{major autoantigen of
+type-1 diabetes (T1D)}: autoantibodies to GAD65 (GADA) are a front-line predictive and diagnostic marker.
+GAD65's autoantigenicity is linked to its unusual catalytic behaviour: unlike its stable paralogue GAD67 it
+readily \emph{loses PLP} and populates a flexible \textbf{apo} form, and its mobile catalytic loop overlaps
+conformational GADA epitopes. Any mechanistic account of this chemistry--immunology link needs the underlying
+PLP electronics right. We bring to bear \textbf{RealQM}, a parameter-free, real-space electronic-structure
+method (no basis set, no exchange--correlation functional) cheap enough to \emph{scan}. We show that RealQM,
+given only the active-site nuclei, \emph{spontaneously} reproduces the PLP \textbf{electron-sink} mechanism
+that defines GAD65 catalysis --- with an identical-substrate control isolating the conjugated ring as the
+cause --- and we propose a joint program that carries this first-principles handle from the catalytic step to
+the \textbf{holo$\leftrightarrow$apo} transition and the catalytic-loop/epitope region, i.e.\ toward a
+computational account of \emph{why GAD65 is the autoantigen}. This is a proposal and a first result, not a
+finished clinical claim.
+\end{abstract}
+
+\section{GAD65: enzyme and type-1-diabetes autoantigen}
+Type-1 diabetes is a T-cell-mediated autoimmune destruction of the insulin-producing pancreatic $\beta$-cells,
+preceded for months to years by circulating islet autoantibodies. Among these, autoantibodies to the 65-kDa
+isoform of glutamic acid decarboxylase --- \textbf{GADA} --- are one of the earliest and most informative:
+GAD65 was identified as the ``64K'' islet autoantigen of insulin-dependent diabetes~\cite{Baekkeskov1990}, and
+GADA is now a standard marker for risk prediction, staging, and classification (including LADA in
+adults)~\cite{Lernmark_review}. Enzymatically, GAD65 is a PLP-dependent decarboxylase that converts
+L-glutamate to GABA + CO$_2$.
+
+Two features make GAD65, rather than the closely related and more catalytically stable GAD67, the dominant
+autoantigen. First, GAD65 undergoes \textbf{autoinactivation}: it releases its PLP cofactor and cycles between
+a catalytically competent \emph{holo} form and a flexible, apo form; the structural basis is a mobile
+``catalytic loop'' region resolved crystallographically~\cite{Fenalti2007}. Second, the principal GADA
+epitopes are \textbf{conformational} and cluster in the middle/C-terminal regions whose flexibility is tied to
+this apo$\leftrightarrow$holo cycling. The prevailing view therefore connects GAD65's \emph{chemistry} (PLP
+handling, conformational dynamics) to its \emph{immunogenicity} (epitope exposure). Testing that connection
+mechanistically is the target of this collaboration.
+
+\section{The autoantigenicity puzzle, and where computation can help}
+The chemistry--immunology link above is qualitative. A quantitative, first-principles account would need to
+answer: how does the active-site electronic structure differ between holo and apo GAD65? Does PLP loss (or an
+altered PLP electronic state) drive the loop conformational changes that expose conformational epitopes? Why
+GAD65 and not GAD67? These are electronic-structure questions at heart, but at a scale (the full flexible
+enzyme, many conformations) that the standard first-principles tools reach only with difficulty. We propose
+that a \emph{cheap, parameter-free} electronic-structure method, validated first on the catalytic step, is the
+right instrument to open this regime.
+
+\section{RealQM: a parameter-free electronic handle}
+RealQM formulates quantum mechanics as real-space, grid-based continuum mechanics: unit-charge electron
+densities relax to minimum Coulomb energy in the field of fixed nuclei, with \textbf{no basis set and no
+exchange--correlation functional}~\cite{realqm}. Two properties matter here. (i) It is \emph{parameter-free}
+--- there is no functional whose choice can change the answer, DFT's principal systematic-error source. (ii)
+Its cost is set by the grid rather than by $N^3$ in the electron number, so it is cheap enough to \emph{scan}
+many configurations on commodity hardware --- the throughput a holo-vs-apo and loop-conformation study
+requires. Its accuracy is qualitative on absolute energies but good on relative, structural observables (it
+reproduces, e.g., the water dipole to ${\sim}99\%$); the appropriate use here is trend and mechanism, not
+calibrated barriers, for which mature QM/MM remains the reference.
+
+\section{Result: the PLP electron sink from first principles}
+In PLP decarboxylases the scissile C$\alpha$--COO$^-$ bond breaks with the departing electrons delocalising
+into the protonated pyridine ring --- the quinonoid intermediate --- with the pyridinium N the
+\textbf{electron sink}. We tested whether RealQM reproduces this given only nuclei, on a reduced gas-phase
+active-site model (protonated pyridine sink + 3-OH + 4$'$-imine; glutamate external aldimine, Dunathan-aligned).
+The breaking C$\alpha$--CO$_2$ distance $R$ was driven outward, electrons relaxed at each step, for two
+environments: glutamate \textbf{conjugated} to the ring (sink present) and the \emph{identical} glutamate as a
+free amino acid (no sink --- a built-in control). The sink term is $\Delta E_{\text{free}}-\Delta E_{\text{PLP}}$.
+\begin{center}
+\begin{tabular}{rrrr}
+\toprule
+$R$ (\AA) & $\Delta E$ free & $\Delta E$ PLP & sink \\
+\midrule
+1.55 & $0.000$ & $0.000$ & $0.00$ \\
+2.60 & $-2.476$ & $-3.776$ & $+1.30$ \\
+4.20 & $-3.101$ & $-6.605$ & $+3.50$ \\
+6.00 & $-3.454$ & $\mathbf{-7.620}$ & $\mathbf{+4.17}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+The two curves diverge: free glutamate \emph{saturates} (${\approx}-3.5$ once CO$_2$ is ${\sim}4$~\AA{} out ---
+no sink, a dead end), while the conjugated case \emph{keeps descending} (no plateau); the sink term grows
+monotonically to $+4.2$ (model units) and is still climbing at $6$~\AA. With no reaction coordinate built in,
+RealQM recovers the textbook role of PLP: the conjugated ring, and only it, stabilises the carbanion. This is
+a \emph{qualitative} validation (sign/trend, uncalibrated; thermodynamic, not a barrier), but it establishes
+that the method captures the central electronic event of GAD65 catalysis from first principles --- the
+prerequisite for the harder questions.
+
+\section{The joint program: from catalytic electronics to autoantigenicity}
+We propose the following staged program, combining RealQM computation (Johnson) with GAD65/T1D expertise
+(Lernmark):
+\begin{itemize}
+\item \textbf{Aim 1 --- calibrate.} Benchmark RealQM against high-level QM/MM on the GAD65 catalytic step
+(quinonoid formation), establishing the trends it can be trusted on.
+\item \textbf{Aim 2 --- holo vs apo electronics.} Compare the active-site electronic stabilisation of the
+PLP-bound (holo) and cofactor-free (apo) states; test whether the electronic change accompanies/drives the
+catalytic-loop rearrangement.
+\item \textbf{Aim 3 --- loop/epitope coupling.} Map the electronic and conformational state of the catalytic
+region that overlaps conformational GADA epitopes; ask whether apo-state features correlate with epitope
+exposure --- and why GAD65 differs from the stable GAD67.
+\item \textbf{Aim 4 --- recognition (longer term).} Model GADA--epitope recognition with real, conformational
+epitope and CDR residues (a substantial lift beyond the current placeholder docking model).
+\end{itemize}
+The value is throughput and a functional-free cross-check on a regime --- GAD65 \emph{specifically}, and its
+apo/autoantigenic state --- that generic PLP-decarboxylase QM/MM has largely left open.
+
+\section{Clinical relevance and outlook}
+If the apo-state electronics/conformation can be connected computationally to conformational-epitope exposure,
+the payoff is mechanistic: a first-principles rationale for why GAD65 (not GAD67) is the T1D autoantigen, and
+a route toward understanding and perhaps predicting GADA epitope specificity --- of direct interest for risk
+stratification and for antigen-specific interventions. The present paper contributes the computational
+foundation (a parameter-free method that gets GAD65's central chemistry right) and the joint plan; the clinical
+and immunological interpretation is to be developed with the co-author.
+
+\section*{Author contributions}
+C.J.\ developed the RealQM methodology and performed the computations. \r{A}.L.\ [to be completed] contributes
+the GAD65/type-1-diabetes autoimmunity expertise and clinical interpretation. Both authors will finalise the
+manuscript.
+
+\begin{thebibliography}{9}
+\bibitem{Baekkeskov1990} S.\ Baekkeskov, H.-J.\ Aanstoot, S.\ Christgau, \emph{et al.} (incl.\ \r{A}.\
+Lernmark), \emph{Identification of the 64K autoantigen in insulin-dependent diabetes as the GABA-synthesizing
+enzyme glutamic acid decarboxylase}, Nature \textbf{347}, 151--156 (1990).
+\bibitem{Fenalti2007} G.\ Fenalti \emph{et al.}, \emph{GABA production by glutamic acid decarboxylase is
+regulated by a dynamic catalytic loop}, Nat.\ Struct.\ Mol.\ Biol.\ \textbf{14}, 280--286 (2007).
+\bibitem{Lernmark_review} \r{A}.\ Lernmark \emph{et al.}, reviews on GAD65 autoantibodies (GADA) as
+predictive and diagnostic markers in type-1 diabetes and LADA. [to be completed with the co-author's preferred
+references.]
+\bibitem{realqm} C.\ Johnson, \emph{RealQM: Quantum Mechanics as Multiphase 3D Continuum Mechanics} (arXiv
+article and interactive gallery), \url{https://claes542.github.io/RealMolecule/}. Companion single-author
+paper on the GAD65 electron-sink test therein.
+\end{thebibliography}
+
+\end{document}
