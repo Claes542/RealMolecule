@@ -18,11 +18,14 @@
 //  hand-built, qualitative (sign/trend only).
 // ===========================================================================
 var variants = ['acid','neutral'];
-var Rlist = [3.50, 2.80, 2.20, 1.75, 1.50];   // NH3-N ... C2 distance, Angstrom
+// R0=5.50 is a FAR reference: at a +1 cation, ion-dipole attraction reaches well past 3.5 A,
+// so dE normalized to 3.5 understated the acid's incremental drop (biased drive negative).
+// Referencing to 5.50 (both variants ~unbound there) removes that bias.
+var Rlist = [5.50, 3.50, 2.80, 2.20, 1.75, 1.50];   // NH3-N ... C2 distance, Angstrom (Rlist[0]=far ref)
 var A = 1.8897;
 var vIdx=0, rIdx=0, results={ acid:{}, neutral:{} };
-(function(){ var s=sessionStorage.getItem('omzMin');
-  if(s){ var st=JSON.parse(s); vIdx=st.vIdx; rIdx=st.rIdx; results=st.results; sessionStorage.removeItem('omzMin'); } })();
+(function(){ var s=sessionStorage.getItem('omzMinR0');
+  if(s){ var st=JSON.parse(s); vIdx=st.vIdx; rIdx=st.rIdx; results=st.results; sessionStorage.removeItem('omzMinR0'); } })();
 
 function buildAtoms(acid, R){
   var c=[];
@@ -104,7 +107,7 @@ render();
 window.onSweepDone=function(E){
   results[variants[vIdx]][Rlist[rIdx]]=E; render();
   rIdx++; if(rIdx>=Rlist.length){ rIdx=0; vIdx++; }
-  if(vIdx<variants.length){ sessionStorage.setItem('omzMin',JSON.stringify({vIdx:vIdx,rIdx:rIdx,results:results}));
+  if(vIdx<variants.length){ sessionStorage.setItem('omzMinR0',JSON.stringify({vIdx:vIdx,rIdx:rIdx,results:results}));
     setTimeout(function(){ location.reload(); },400);
   } else { console.log('=== minimal activation scan done ===', JSON.stringify(results)); }
 };

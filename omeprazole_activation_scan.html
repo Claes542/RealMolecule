@@ -20,11 +20,13 @@
 //  omitted), hand-built gas-phase geometry, qualitative (sign/trend only).
 // ===========================================================================
 var variants = ['acid','neutral'];
-var Rlist = [3.80, 3.00, 2.40, 1.90, 1.55];   // forming N(pyr)...C2 distance, Angstrom
+// R0=5.50 far reference: both variants ~unbound there, so dE removes the cation's
+// long-range ion-dipole pull on the nucleophile (which biased a 3.8-referenced drive).
+var Rlist = [5.50, 3.80, 3.00, 2.40, 1.90, 1.55];   // forming N(pyr)...C2 distance, Angstrom (Rlist[0]=far ref)
 var A = 1.8897;
 var vIdx = 0, rIdx = 0, results = { acid:{}, neutral:{} };
-(function(){ var s = sessionStorage.getItem('omzScan');
-  if (s){ var st=JSON.parse(s); vIdx=st.vIdx; rIdx=st.rIdx; results=st.results; sessionStorage.removeItem('omzScan'); } })();
+(function(){ var s = sessionStorage.getItem('omzScanR0');
+  if (s){ var st=JSON.parse(s); vIdx=st.vIdx; rIdx=st.rIdx; results=st.results; sessionStorage.removeItem('omzScanR0'); } })();
 
 function buildAtoms(acid, R) {
   var c = [];
@@ -120,7 +122,7 @@ render();
 window.onSweepDone=function(E){
   results[variants[vIdx]][Rlist[rIdx]]=E; render();
   rIdx++; if(rIdx>=Rlist.length){ rIdx=0; vIdx++; }
-  if(vIdx<variants.length){ sessionStorage.setItem('omzScan',JSON.stringify({vIdx:vIdx,rIdx:rIdx,results:results}));
+  if(vIdx<variants.length){ sessionStorage.setItem('omzScanR0',JSON.stringify({vIdx:vIdx,rIdx:rIdx,results:results}));
     setTimeout(function(){ location.reload(); },500);
   } else { console.log('=== omeprazole activation scan done ===', JSON.stringify(results)); }
 };

@@ -74,11 +74,16 @@ footer a { color: #4fc3f7; text-decoration: none; }
     <b style="color:#4fc3f7">Molecule</b> ·
     <a href="#mol-overview" style="color:#80cbc4">Molecules (H<sub>2</sub>, H<sub>2</sub>O, hydrides, dimers)</a> ·
     <a href="#mol-ions" style="color:#80cbc4">Ions &amp; solvation</a> ·
-    <a href="#mol-reactions" style="color:#80cbc4">Chemical reactions</a> ·
-    <a href="#gad65" style="color:#ffca28">GAD65 decarboxylation (PLP / T1D)</a> ·
     <a href="#mol-s66" style="color:#80cbc4">S66 geometry benchmark</a> ·
     <a href="#mol-kernel" style="color:#80cbc4">Kernel splitting</a> ·
     <a href="#forces" style="color:#80cbc4">Molecular dynamics / Forces vs energy</a><br>
+
+    <b style="color:#ff7043">Chemical reactions</b> ·
+    <a href="#mol-reactions" style="color:#ff7043">Proton transfer, ion formation, salt dissolution, enzyme catalysis, bond breaking</a><br>
+
+    <b style="color:#26c6da">Medicine</b> ·
+    <a href="#gad65" style="color:#ffca28">GAD65 decarboxylation (PLP / T1D)</a> ·
+    <a href="#omeprazole" style="color:#26c6da">Omeprazole acid activation (PPI prodrug)</a><br>
 
     <b style="color:#ce93d8">Protein</b> ·
     <a href="#prot-folding" style="color:#80cbc4">Protein folding</a> ·
@@ -2130,6 +2135,37 @@ P_j += dt&middot;(&Delta;P_j + 2&pi;&middot;u_{1&minus;j}&sup2;)              <s
         <a href="gad65_decarb.pdf" style="color:#ffca28">&#128196; PDF paper</a>
       </div>
       <span class="tag tag-small">enzyme catalysis</span>
+    </div>
+    <div id="omeprazole" class="card" style="border-color:#26c6da;background:#08161a;grid-column:1/-1">
+      <h3 style="font-size:16px;color:#26c6da">Omeprazole &middot; acid activation of a proton-pump-inhibitor prodrug</h3>
+      <div class="desc" style="font-size:13px;margin-top:6px;line-height:1.6;color:#ccc">
+        Omeprazole is a <b>prodrug</b>: neutral and membrane-permeable, it concentrates where the body is most
+        acidic (pH~1, the gastric parietal cell), <b>protonates</b>, and rearranges to a cyclic sulfenamide that
+        <b>covalently blocks the H<sup>+</sup>/K<sup>+</sup>-ATPase</b> (the acid pump). The defining step is the
+        intramolecular <b>pyridine-N &rarr; benzimidazole-C2</b> bond formation: protonation makes C2 electrophilic
+        (the +1 drains density from the carbon flanked by two ring nitrogens), so the pyridine lone pair attacks it.
+        A RealQM scan drives the N&middot;&middot;C2 distance inward for <b>acid</b> (protonated, +1) vs
+        <b>neutral</b>; drive = &Delta;E(neutral) &minus; &Delta;E(acid).<br>
+        <b style="color:#26c6da">Convergence fix:</b> the +1 cation first refused to converge &mdash; the bare
+        proton carved a Dirichlet exclusion hole whose sharp rim two ring-N electron domains fought over,
+        oscillating the energy indefinitely. Treating the proton as a <b>pure +1 potential term
+        (no hole, r<sub>c</sub>=0)</b> &mdash; the neighbouring domain simply covers it &mdash; fixed it, and now
+        lets RealQM handle <b>any molecular cation / protonation site</b>.<br>
+        <b style="color:#66bb6a">Result:</b> the drive is <b>positive at every separation</b>, peaking
+        <b>~+0.8</b> (model units) for the full conjugated core &mdash; <b>~8&times; the stripped amidinium
+        model</b> &mdash; so protonation <b>electronically activates C2 and drives the cyclization</b>,
+        reproducing the drug&rsquo;s acid trigger from first principles. Qualitative (sign/trend): the raw
+        &Delta;E is dominated by a rigid-geometry steric wall (read the <i>drive</i>, which cancels it);
+        gas-phase, reduced-valence, no geometry relaxation.
+      </div>
+      <div style="margin:10px 0 4px">
+        <a href="omeprazole_activation_scan.html" style="display:inline-block;padding:8px 18px;background:#26c6da;color:#000;text-decoration:none;font-weight:bold;border-radius:4px">&#9654; Launch activation scan (imidazole + pyridine)</a>
+        <span style="margin-left:12px;color:#888;font-size:11px">12 runs &middot; 160³ grid &middot; WebGPU/Chrome</span>
+      </div>
+      <div style="margin-top:6px">
+        <a href="omeprazole_minimal_scan.html" style="color:#26c6da">&#9654; Minimal core scan (amidinium + NH<sub>3</sub>)</a>
+      </div>
+      <span class="tag tag-small">acid activation &middot; prodrug</span>
     </div>
   </div>
 </div>
