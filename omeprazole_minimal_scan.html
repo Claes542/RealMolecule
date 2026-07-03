@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="results" style="position:fixed;bottom:8px;left:8px;background:rgba(0,0,0,0.9);border:1px solid #444;padding:6px 8px;z-index:100;font-size:10px;line-height:1.25;max-width:380px"></div>
+<pre id="log" style="margin:0;padding:8px;color:#8cf;font-size:12px">Building minimal acid-activation scan...</pre>
+<script>
+// ===========================================================================
+//  OMEPRAZOLE acid activation -- MINIMAL reactive model (~11 atoms, fast)
+// ---------------------------------------------------------------------------
+//  Strip the reactive step to its essence: the electrophilic carbon flanked by
+//  two nitrogens (the benzimidazole C2) as formamidine (neutral) / amidinium
+//  (protonated, +1 = the acid trigger), attacked by a minimal nucleophile (NH3).
+//  Drive the NH3-N ... C2 distance R inward; record RealQM energy for:
+//    * 'acid'    : amidinium (extra softened proton on N1, +1) -> C2 electrophilic
+//    * 'neutral' : formamidine, no extra proton
+//  drive = dE(neutral) - dE(acid).  >0 (growing as R shrinks) => protonation
+//  DRIVES the nucleophilic attack -- the acid activation, from RealQM forces.
+//  EXPLORATORY: minimal gas-phase core (rings replaced by C(=N)N + NH3),
+//  hand-built, qualitative (sign/trend only).
+// ===========================================================================
+var variants = ['acid','neutral'];
+var Rlist = [3.50, 2.80, 2.20, 1.75, 1.50];   // NH3-N ... C2 distance, Angstrom
+var A = 1.8897;
+var vIdx=0, rIdx=0, results={ acid:{}, neutral:{} };
+(function(){ var s=sessionStorage.getItem('omzMin');
+  if(s){ var st=JSON.parse(s); vIdx=st.vIdx; rIdx=st.rIdx; results=st.results; sessionStorage.removeItem('omzMin'); } })();
+
+function buildAtoms(acid, R){
+  var c=[];
+  // formamidine/amidinium electrophile in xy-plane; central C2 at origin
+  c.push(['C', 0, 0, 0]);             // 0  C2 (electrophile)
+  c.push(['N', -1.108, 0.64, 0]);     // 1  N1 (imine; protonated in acid)
+  c.push(['N',  1.108, 0.64, 0]);     // 2  N3 (amine)
+  c.push(['H', 0, -1.09, 0]);         // 3  C2-H (away from the two N)
+  c.push(['H', -2.05, 1.18, 0]);      // 4  N1-H
+  c.push(['H',  2.05, 1.18, 0]);      // 5  N3-H
+  c.push(['H',  1.108, 1.69, 0]);     // 6  N3-H
+  // minimal nucleophile NH3, N at (0,0,R) approaching C2 perpendicular (+z)
+  c.push(['N', 0, 0, R]);             // 7  N(nuc)
+  c.push(['H',  0.94, 0,    R+0.33]); // 8
+  c.push(['H', -0.47, 0.81, R+0.33]); // 9
+  c.push(['H', -0.47,-0.81, R+0.33]); //10
+  if(acid) c.push(['Hp', -1.108, 1.69, 0]); // 11 softened proton on N1 -> amidinium (+1)
+  return c;
+}
+
+if(vIdx<variants.length){
+  var variant=variants[vIdx], R=Rlist[rIdx];
+  var coords=buildAtoms(variant==='acid', R);
+  var gridN=160, scr=26, gN2=Math.round(gridN/2), h=scr/gridN;   // h~0.16 A; gN2 avoids molecule.js N2 clash
+  // FIX: proton rc=0 -> add the +1 as a pure potential term (Z_nuc=1) with NO Dirichlet
+  // exclusion hole. The hole's sharp rim (rc>0) was contested by the two ring-N electron
+  // domains, oscillating every NORM_INTERVAL so E never converged at fine grid. rc=0 lets
+  // the neighbouring electron domain simply cover the proton (softened at R_SING=2h).
+  var Zof={H:1,C:4,N:3,O:2,Hp:0}, ZNof={H:1,C:4,N:3,O:2,Hp:1}, RCof={H:0,C:0.3,N:0.3,O:0.8,Hp:0};
+  var atoms=[], zList=[], znList=[], rcList=[];
+  for(var n=0;n<coords.length;n++){
+    var el=coords[n][0];
+    var gi=Math.max(3,Math.min(gridN-3,Math.round(gN2+coords[n][1]*A/h)));
+    var gj=Math.max(3,Math.min(gridN-3,Math.round(gN2+coords[n][2]*A/h)));
+    var gk=Math.max(3,Math.min(gridN-3,Math.round(gN2+coords[n][3]*A/h)));
+    atoms.push({i:gi,j:gj,k:gk,Z:Zof[el],el:(el==='Hp'?'H':el)});
+    zList.push(Zof[el]); znList.push(ZNof[el]); rcList.push(RCof[el]);
+  }
+  document.getElementById('log').textContent='minimal activation: '+variant+'  R(N..C2)='+R.toFixed(2)+' A  ('+(vIdx*Rlist.length+rIdx+1)+'/'+(variants.length*Rlist.length)+')  '+atoms.length+' atoms';
+  window.USER_BOND_PAIRS=[[0,7,"N..C2:"]];
+  window.USER_REFERENCE={ energy:"Minimal acid activation: NH3 -> amidinium/formamidine C2 (acid vs neutral)" };
+  window.USER_NN=gridN; window.USER_ATOMS=atoms; window.USER_SCREEN=scr;
+  window.USER_STEPS=5000; window.USER_DV=0.05; window.USER_DYNAMICS=false;
+  window.USER_Z=zList; window.USER_Z_NUC=znList; window.USER_RC=rcList;
+  window.CONVERGENCE_THRESHOLD=0.02;
+  // Fine-grid insurance (enable if 160^3 still oscillates around the proton): freeze the
+  // domain partition during early relaxation, then unlock. Applied equally to acid+neutral,
+  // so any partition bias cancels in the drive = dE(neutral) - dE(acid).
+  // window.FREEZE_BOUNDARY=true; window.UNLOCK_AT_STEP=1500;
+}
+
+function render(){
+  var div=document.getElementById('results');
+  function rise(v){ var e0=results[v][Rlist[0]]; if(e0===undefined) return null;
+    return Rlist.map(function(R){ var e=results[v][R]; return e===undefined?undefined:e-e0; }); }
+  var rA=rise('acid'), rN=rise('neutral');
+  var html='<b style="color:#0cf">Omeprazole (minimal) &mdash; acid activation</b><br>'
+    +'<span style="color:#888">&Delta;E(R)=E(R)&minus;E(R<sub>0</sub>); drive = neutral&minus;acid (acid favours attack if &gt;0)</span><br><br>'
+    +'<table style="border-collapse:collapse"><tr style="color:#0cf"><th style="padding:1px 6px">R(&Aring;)</th><th>&Delta;E acid</th><th>&Delta;E neutral</th><th>drive</th></tr>';
+  var cur=(vIdx<variants.length)?{v:variants[vIdx],R:Rlist[rIdx]}:null;
+  for(var i=0;i<Rlist.length;i++){ var R=Rlist[i];
+    var da=rA?rA[i]:undefined, dn=rN?rN[i]:undefined, drive=(da!==undefined&&dn!==undefined)?dn-da:undefined;
+    var run=cur&&cur.R===R&&results[cur.v][R]===undefined;
+    html+='<tr'+(run?' style="color:#ff0"':'')+'><td style="padding:1px 6px">'+R.toFixed(2)+'</td>'
+      +'<td>'+(da!==undefined?da.toFixed(3):(run&&cur.v==='acid'?'run&hellip;':'&mdash;'))+'</td>'
+      +'<td>'+(dn!==undefined?dn.toFixed(3):(run&&cur.v==='neutral'?'run&hellip;':'&mdash;'))+'</td>'
+      +'<td style="color:#0f0">'+(drive!==undefined?(drive>=0?'+':'')+drive.toFixed(3):'')+'</td></tr>'; }
+  html+='</table>';
+  if(rA&&rN){ var last=Rlist.length-1;
+    if(rA[last]!==undefined&&rN[last]!==undefined){ var s=rN[last]-rA[last];
+      html+='<br>At R='+Rlist[last].toFixed(2)+': &Delta;E '+rN[last].toFixed(3)+' neutral vs '+rA[last].toFixed(3)
+        +' acid &rarr; <b style="color:'+(s>0?'#0f0':'#f55')+'">'+(s>0?'acid drives attack by '+s.toFixed(3):'no acid drive ('+s.toFixed(3)+')')
+        +'</b> <span style="color:#888">(Ha, model units; sign/trend)</span>'; } }
+  if(vIdx>=variants.length) html+='<br><span style="color:#0f0">Done.</span>';
+  div.innerHTML=html;
+}
+render();
+
+window.onSweepDone=function(E){
+  results[variants[vIdx]][Rlist[rIdx]]=E; render();
+  rIdx++; if(rIdx>=Rlist.length){ rIdx=0; vIdx++; }
+  if(vIdx<variants.length){ sessionStorage.setItem('omzMin',JSON.stringify({vIdx:vIdx,rIdx:rIdx,results:results}));
+    setTimeout(function(){ location.reload(); },400);
+  } else { console.log('=== minimal activation scan done ===', JSON.stringify(results)); }
+};
+
+if(vIdx<variants.length){
+  var s=document.createElement('script'); s.src='molecule.js?t='+Date.now();
+  s.onload=function(){ var p=document.createElement('script'); p.src='https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js'; document.body.appendChild(p); };
+  document.body.appendChild(s);
+}
+</script>
+</body></html>
