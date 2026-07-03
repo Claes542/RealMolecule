@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RealQM vs the State of the Art — An Honest Assessment</title>
+<style>
+  body { background:#0a0a0a; color:#e0e0e0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; line-height:1.7; margin:0; }
+  .wrap { max-width:820px; margin:0 auto; padding:34px 22px 90px; }
+  h1 { font-size:25px; color:#80d8ff; line-height:1.25; margin-bottom:6px; }
+  .sub { color:#8aa; font-size:14px; font-style:italic; margin-bottom:18px; }
+  .status { background:#1a1407; border:1px solid #5a4a1a; border-radius:6px; padding:10px 14px; font-size:12.5px; color:#e8d9a8; margin-bottom:26px; }
+  h2 { font-size:19px; color:#fff; margin-top:34px; padding-bottom:6px; border-bottom:1px solid #222; }
+  p, li { font-size:14.5px; color:#ccc; }
+  b { color:#fff; }
+  a { color:#4fc3f7; text-decoration:none; } a:hover { text-decoration:underline; }
+  code { background:#161616; padding:1px 5px; border-radius:3px; color:#a5d6a7; font-size:13px; }
+  table { border-collapse:collapse; margin:14px 0; font-size:13px; width:100%; }
+  th, td { padding:6px 12px; border:1px solid #222; text-align:left; vertical-align:top; }
+  th { color:#4fc3f7; background:#0f0f0f; }
+  .ok { color:#66bb6a; } .no { color:#ef5350; } .open { color:#ffb74d; }
+  .note { background:#0e1016; border:1px solid #243049; border-radius:6px; padding:12px 16px; margin:18px 0; font-size:13.5px; }
+  .back { color:#80cbc4; font-size:13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<a class="back" href="gallery.html">&larr; Gallery</a>
+
+<h1>RealQM vs the State of the Art — An Honest Assessment</h1>
+<div class="sub">What RealQM can and cannot do, and where the mainstream is more &mdash; and less &mdash; reliable than it looks. Deliberately unflattering to both sides.</div>
+
+<div class="status"><b>Purpose.</b> This is a candid self-assessment, not a sales pitch. Its aim is credibility:
+to state exactly where RealQM has something to offer, where it does not, and where the incumbent methods are
+oversold. Overselling is what gets a non-standard method dismissed on sight; honesty is the more defensible
+position.</div>
+
+<h2>Keep two questions apart</h2>
+<p>Most arguments about &ldquo;does quantum chemistry work&rdquo; conflate two very different questions. Both
+the mainstream and its critics stumble here.</p>
+<ul>
+  <li><b>(a) Does quantum chemistry have <i>any</i> reliable, validated methods?</b> &mdash; a question about
+      foundations.</li>
+  <li><b>(b) Do standard methods reliably fill the <i>applied</i> need</b> (for drugs: will this molecule bind,
+      how tightly, is it active)? &mdash; a question about practice at scale.</li>
+</ul>
+<p>The answers are different: <b>(a) yes</b>, <b>(b) much less than advertised</b>.</p>
+
+<h2>1. What the mainstream does reliably &mdash; do not compete here</h2>
+<p>For <b>small molecules</b> the wavefunction hierarchy is genuinely convergent and validated:</p>
+<p style="text-align:center;color:#aaa">HF &rarr; MP2 &rarr; CCSD &rarr; <b style="color:#66bb6a">CCSD(T)</b> &rarr; FCI</p>
+<p>CCSD(T) is a real gold standard &mdash; sub-kcal/mol agreement with experiment on thermochemistry, and a
+systematic way to <i>improve</i> and estimate error. Geometries, vibrational frequencies, and qualitative
+electronic structure are largely solved. <b>This is not a myth</b>, and RealQM has nothing to add here. Any
+honest case for RealQM must concede this first.</p>
+
+<h2>2. Where the mainstream is oversold &mdash; the actual opening</h2>
+<p>The reliability collapses precisely where the validated methods <b>do not scale</b> &mdash; the systems that
+matter for applications. There you fall back on approximations whose reputation outruns their prospective
+performance:</p>
+<ul>
+  <li><b>DFT.</b> The exchange&ndash;correlation functional is <i>not derived</i>; there are hundreds of
+      functionals; results depend on the choice; dispersion is bolted on empirically; and there is <b>no
+      rigorous error bar and no systematic way to improve within DFT</b>. It is an uncontrolled approximation
+      presented as first-principles.</li>
+  <li><b>Docking / scoring.</b> Decent at <i>pose</i> (where a ligand sits), <b>poor at <i>affinity</i></b>
+      &mdash; score-vs-experiment correlations are notoriously weak. &ldquo;Docking power &raquo; scoring
+      power&rdquo; is a standing embarrassment.</li>
+  <li><b>FEP / alchemical free energy.</b> The lead-optimisation gold standard, and it does deliver ~1&nbsp;kcal/mol
+      &mdash; <b>but only in a narrow regime</b> (congeneric series, no large conformational change, no
+      protonation/tautomer shift, no metals, converged sampling). Prospective performance trails the
+      retrospective benchmarks.</li>
+  <li><b>The scaling wall.</b> The one method with real error bars (CCSD(T)) is exponentially expensive and
+      never reaches a drug&ndash;protein complex. So at application scale there is <i>no</i> exact-but-slow
+      option actually in use &mdash; everything running is an uncontrolled approximation.</li>
+</ul>
+<div class="note"><b>The honest summary of applied practice:</b> in real drug discovery, computation is
+<b>triage, not prediction</b> &mdash; used because it is cheap and it is what is available, not because it
+robustly works. Discovery remains overwhelmingly experimental; attrition stays brutal. The reputation of the
+computational stack is inflated relative to its <i>prospective</i> reliability. That gap is real &mdash; and it
+is the only honest opening for an alternative.</div>
+
+<h2>3. What RealQM is</h2>
+<p>RealQM recasts quantum mechanics as <b>multiphase 3D continuum mechanics</b>: unit-charge electron densities
+on <b>non-overlapping domains</b> separated by free boundaries, minimising the Coulomb energy directly in real
+space. <b>No basis set, no exchange&ndash;correlation functional, no antisymmetry postulate</b> (spatial
+exclusion replaces Pauli), and forces come <b>directly from the charge potentials</b>. Cost scales with grid
+resolution (fixed), not steeply with electron count.</p>
+
+<h2>4. What RealQM does within its regime</h2>
+<table>
+  <tr><th>works cleanly</th><th>partial</th><th>outside regime</th></tr>
+  <tr>
+    <td>H-bonds; ion solvation; <b>reactive / covalent mechanism</b>; <b>protonation-state reactivity</b>;
+        atoms &amp; nuclei unified by a size (not charge) asymmetry</td>
+    <td>peptides with bond constraints; qualitative reaction drives (sign/trend)</td>
+    <td>folding; anions (under-bind); dispersion; heavy (d-block) metals; quantitative energetics</td>
+  </tr>
+</table>
+<p>Proofs of concept, all giving the <b>right qualitative sign</b> from first principles:
+<a href="omeprazole_activation_scan.html">omeprazole acid activation</a> (protonation activates C2),
+<a href="gad65_decarb_scan.html">GAD65 / PLP electron sink</a>,
+<a href="beta_lactam_scan.html">&beta;-lactam strain activation</a>, and the
+<a href="real_cosmology.html">nucleus/atom size picture</a>. These are <b>mechanistic</b> results &mdash; how a
+bond forms and what activates it &mdash; not affinities.</p>
+
+<h2>5. What RealQM cannot do &mdash; stated first, not buried</h2>
+<ul>
+  <li><b>No binding affinity.</b> Reversible-ligand binding is dominated by <b>dispersion</b> and solvation
+      entropy; RealQM has no dispersion and runs gas-phase. It <b>cannot rank affinities</b>. This is a
+      fundamental gap, not a tuning issue.</li>
+  <li><b>No quantitative energetics.</b> Present results are model-only (reduced valence, coarse grid, rigid
+      geometry) &mdash; sign/trend, not barriers or &Delta;G.</li>
+  <li><b>Anions, heavy metals, whole proteins/folding</b> &mdash; outside the regime.</li>
+  <li><b>Not validated.</b> The demonstrations are exploratory, hand-built, gas-phase. There is no systematic
+      benchmark against experiment yet. RealQM is a <b>research program, not a finished tool</b>.</li>
+</ul>
+
+<h2>6. The honest positioning</h2>
+<p>The incumbent being <i>oversold</i> does <b>not</b> make RealQM ready &mdash; RealQM cannot do affinity or
+dispersion either. &ldquo;Their method is a myth&rdquo; is not evidence that &ldquo;ours works.&rdquo; The trap
+catches both sides.</p>
+<p>So the defensible move is <b>not</b> &ldquo;we cover what they can&rsquo;t.&rdquo; It is: find the narrow
+thing the standard stack does <i>unreliably</i> &mdash; <b>covalent-mechanism activation, protonation-dependent
+reactivity, a force-based real-space account of the reactive step</b>, exactly where DFT&rsquo;s
+functional-dependence and gas-phase FEP struggle &mdash; and show RealQM does <i>that</i> reliably and
+reproducibly. RealQM is then <b>complementary</b> to the mainstream (use CCSD(T)/FEP for energetics and
+affinity; RealQM for the force/mechanism picture), not a competitor on affinity.</p>
+
+<h2>7. Validation is a ratio, not a decimal &mdash; the honest scoreboard by scope</h2>
+<p>Validation is <b>not</b> &ldquo;match one case to ten decimals&rdquo; &mdash; that is consistent with
+<i>tuning</i>. It is <b>untuned generality</b>: a <b>ratio</b> of <i>independent</i> predictions to <i>free
+inputs</i>, over a stated <b>problem scope</b>. QED is validated not by g&minus;2&rsquo;s twelve figures but by
+<b>many</b> independent high-precision predictions from a <b>handful</b> of constants; a fitted functional that
+matches one number has ratio ~1 and validates nothing. The <i>same</i> yardstick, applied honestly to both
+methods, gives this scoreboard &mdash; and it must be read by problem scope, because &ldquo;is quantum chemistry
+validated?&rdquo; has no single answer:</p>
+<table>
+ <tr><th>problem scope</th><th>StdQM &mdash; validated?</th><th>RealQM &mdash; validated?</th></tr>
+ <tr><td><b>Few-body</b> (H atom, electron g&minus;2)</td>
+     <td class="ok">Excellent &mdash; untuned breadth (QED). But narrow, and via non-rigorous renormalisation.</td>
+     <td>&mdash; (not its target)</td></tr>
+ <tr><td><b>Atoms &mdash; the periodic table</b> (energies, IE)</td>
+     <td class="open">Precise but a per-block <i>patchwork</i> (relativity, multireference, ECPs); IEs mostly <b>experimental</b>. High local precision, <b>low meta-level ratio</b> (a method chosen per element).</td>
+     <td class="open"><b>One untuned code, ~3 inputs, whole PT in minutes</b> (~1&ndash;2%). Discriminating win: <b>IE periodicity</b> &mdash; right trend/ordering across dozens of elements from one scheme. Untuned breadth; d-block weaker (as is StdQM).</td></tr>
+ <tr><td><b>Small molecules</b> (~&le;30 atoms)</td>
+     <td class="ok">Strong &mdash; CCSD(T), one untuned scheme, sub-kcal across thousands. Fails for strong correlation.</td>
+     <td class="open">Fragment &mdash; H-bonds, ion solvation qualitatively right from one scheme.</td></tr>
+ <tr><td><b>Many-body / real systems</b> (drugs, materials)</td>
+     <td class="no">Weak &mdash; DFT (fitted functionals, no error bars), force fields. &ldquo;On average,&rdquo; case-dependent.</td>
+     <td class="no">Untested at scale (the grid-fixed-cost architecture <i>aims</i> here).</td></tr>
+ <tr><td><b>Reactions / covalent mechanism</b></td>
+     <td class="open">Moderate &mdash; QM/MM, but functional-dependent, few error bars.</td>
+     <td class="open">Proof-of-concept &mdash; right sign/ordering (omeprazole, &beta;-lactam, GAD65), qualitative.</td></tr>
+ <tr><td><b>Binding affinity</b> (the applied prize)</td>
+     <td class="no">Poor &mdash; docking scoring weak, FEP narrow-regime. Triage, not prediction.</td>
+     <td class="no">Cannot &mdash; no dispersion.</td></tr>
+ <tr><td><b>Nuclei</b></td>
+     <td>&mdash; (separate strong-force models, heavily fitted)</td>
+     <td class="open">Proof-of-concept &mdash; He-4/deuteron binding ratio 13.1 vs 12.7, Coulomb only.</td></tr>
+</table>
+<p><b>Reading the scoreboard honestly:</b> StdQM is <b>validated narrowly and genuinely</b> (few-body, small
+molecules) and <b>weakly where it is actually used</b> (DFT-scale, affinity) &mdash; its reputation is
+<i>credibility laundered</i> from the validated corner onto the fudged workhorse it cannot replace at scale.
+RealQM has only <b>a few untuned-breadth fragments</b> &mdash; but spread across an unusually <b>wide scope</b>
+(atoms, reactions, nuclei) from <b>very few inputs</b>, which is a bid for a high prediction-to-input ratio. The
+fragments are sparse, mostly qualitative, and <b>not yet independently replicated</b>. So: <b>StdQM is far ahead
+in the validated corners; RealQM is a wide-but-thin sketch</b> &mdash; both judged by the same ratio, over the
+same honest scope.</p>
+
+<h2>8. A potential user: pharma &mdash; an honest side-by-side</h2>
+<p>Take a drug company as one concrete user. Its question is narrow: <i>does this help make a better drug
+faster, or cut attrition?</i> &mdash; through <b>binding affinity</b> (the prize) or <b>mechanism</b>. Here is
+what each method honestly offers, and the validation each would actually put on the table.</p>
+<table>
+ <tr><th>pharma need</th><th>StdQM offers</th><th>RealQM offers</th></tr>
+ <tr><td><b>Binding affinity</b> (the prize)</td>
+     <td class="open">FEP ~1&nbsp;kcal/mol in a <i>narrow</i> congeneric regime; docking for triage</td>
+     <td class="no"><b>Cannot</b> &mdash; no dispersion, gas-phase</td></tr>
+ <tr><td><b>Target structure</b></td>
+     <td class="ok">AlphaFold (strong)</td><td>&mdash;</td></tr>
+ <tr><td><b>Covalent / reactive mechanism</b></td>
+     <td class="open">QM/MM &mdash; but functional-dependent, few error bars</td>
+     <td class="open">Force-based, real-space; <b>right sign/ordering</b> (omeprazole, &beta;-lactam, GAD65), qualitative</td></tr>
+ <tr><td><b>Protonation-state reactivity</b></td>
+     <td class="open">pKa predictors (empirical/QM), variable</td>
+     <td class="open">Direct (the +1-cation fix); proof-of-concept</td></tr>
+ <tr><td><b>Validation on offer</b></td>
+     <td>Narrow-regime FEP + <b>decades of pipeline use</b> (institutional / revealed)</td>
+     <td>Untuned periodic-table breadth + right-sign reactive drives (<b>proof-of-concept, unbenchmarked, unreplicated</b>)</td></tr>
+</table>
+<p><b>The honest matchup.</b> Today only StdQM touches the <i>core</i> pharma need &mdash; affinity &mdash; via
+FEP-in-regime plus institutional embedding; <b>RealQM cannot compete there and should not pretend to.</b>
+RealQM&rsquo;s <i>only</i> honest pharma pitch is the <b>narrow niche</b>: a force-based mechanistic account of
+covalent and protonation-driven reactivity, exactly where StdQM is itself weakest (functional-dependent, few
+error bars) &mdash; offered as a <b>complementary</b> tool, contingent on a real validation (right sign <i>and</i>
+ordering across a known covalent series). The realistic ask is a <b>pilot on one series, not adoption</b>.</p>
+<div class="note"><b>The double standard, stated plainly.</b> Pharma would demand of RealQM exactly the
+prospective, benchmarked validation that StdQM is largely <i>grandfathered</i> past &mdash; StdQM <i>inherited</i>
+its authority (mostly from few-body QED, which does not touch affinity); RealQM must <i>earn</i> it from scratch.
+The incumbent&rsquo;s applied validation is real but narrow (FEP) plus inertia; the challenger&rsquo;s is a wide-but-thin
+sketch. Neither wears the halo honestly &mdash; one has just worn it longer.</div>
+
+<h2>9. The bar &mdash; the same for everyone</h2>
+<p><b>Prospective, validated reliability on <i>something</i>.</b> That is the test the mainstream partly passes
+(CCSD(T) for small molecules; FEP in its narrow regime) and largely fails (drug-scale affinity). It is the test
+RealQM must also pass, and <b>has not yet</b>. The next real step is not another claim but a <b>validation</b>:
+a geometry-relaxed reactive profile, and right sign <i>and</i> right ordering across a series of known covalent
+mechanisms. Until then, the honest status is: <b>a promising, differently-founded method with mechanistic
+proofs-of-concept &mdash; and everything still to prove.</b></p>
+
+<div class="note"><b>Why publish an unflattering assessment?</b> Because it is the credible one. A method that
+states its own limits first, concedes the incumbent&rsquo;s real successes, and points only at the incumbent&rsquo;s
+<i>genuine</i> weak spots is far harder to dismiss than one that claims to do everything. The honesty is the
+argument.</div>
+
+<p style="margin-top:26px"><a class="back" href="gallery.html">&larr; Back to the Gallery</a> &middot;
+<a href="realqm_vs_dft_folding.html" style="color:#80cbc4">Companion: RealQM vs DFT for protein folding</a></p>
+
+</div>
+</body>
+</html>
