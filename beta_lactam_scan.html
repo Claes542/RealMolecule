@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="results" style="position:fixed;bottom:8px;left:8px;background:rgba(0,0,0,0.9);border:1px solid #444;padding:6px 8px;z-index:100;font-size:10px;line-height:1.25;max-width:380px"></div>
+<pre id="log" style="margin:0;padding:8px;color:#8cf;font-size:12px">Building beta-lactam acylation scan...</pre>
+<script>
+// ===========================================================================
+//  BETA-LACTAM (penicillin) acylation -- strain-activated acyl substitution
+// ---------------------------------------------------------------------------
+//  Penicillin kills bacteria by ACYLATING the transpeptidase catalytic serine:
+//  the strained 4-membered beta-lactam carbonyl is attacked, the C-N ring bond
+//  breaks, and the enzyme is covalently, irreversibly blocked. The STRAIN is the
+//  activation -- a 4-ring amide is far more electrophilic than a normal amide.
+//  We model the reactive step with a generic amine nucleophile (NH3) attacking
+//  the lactam carbonyl C, and compare:
+//    * 'beta'  : 4-membered beta-lactam (STRAINED)  -- penicillin-like
+//    * 'gamma' : 5-membered gamma-lactam (relaxed)   -- the low-strain control
+//  drive = dE(gamma) - dE(beta).  >0 (growing as R shrinks) => ring strain
+//  DRIVES the nucleophilic acylation -- from RealQM forces.
+//  EXPLORATORY: reduced cyclic-amide cores + NH3, hand-built gas-phase, qualitative.
+// ===========================================================================
+var variants = ['beta','gamma'];
+// R0=5.00 far reference (both ~unbound there) removes long-range dipole bias in dE.
+var Rlist = [5.00, 3.50, 2.80, 2.20, 1.75, 1.50];   // NH3-N ... carbonyl-C distance, Angstrom (Rlist[0]=far ref)
+var A = 1.8897;
+var vIdx=0, rIdx=0, results={ beta:{}, gamma:{} };
+(function(){ var s=sessionStorage.getItem('lactamScan');
+  if(s){ var st=JSON.parse(s); vIdx=st.vIdx; rIdx=st.rIdx; results=st.results; sessionStorage.removeItem('lactamScan'); } })();
+
+function buildAtoms(kind, R){
+  var c=[];
+  var n = (kind==='beta') ? 4 : 5;                       // ring size (4=beta strained, 5=gamma relaxed)
+  var bond = 1.47, r = bond/(2*Math.sin(Math.PI/n));     // ring radius, ring centred at origin (xy-plane)
+  var ang=[]; for(var k=0;k<n;k++) ang.push(90 - k*360/n);
+  var ring = ang.map(function(a){ var t=a*Math.PI/180; return [r*Math.cos(t), r*Math.sin(t), 0]; });
+  function outward(p,d){ var nn=Math.hypot(p[0],p[1]); return [p[0]+d*p[0]/nn, p[1]+d*p[1]/nn, 0]; }
+  var C2=ring[0], N1=ring[1];
+  c.push(['C', C2[0], C2[1], 0]);                          // 0  C2 carbonyl / attack site (top of ring)
+  var O=outward(C2,1.21); c.push(['O', O[0], O[1], 0]);    // 1  =O (radially outward)
+  c.push(['N', N1[0], N1[1], 0]);                          // 2  N1 (amide N)
+  var nH=outward(N1,1.0); c.push(['H', nH[0], nH[1], 0]);  // 3  N1-H
+  for(var k=2;k<n;k++){ var P=ring[k];                     //    ring CH2 carbons + 2 out-of-plane H each
+    c.push(['C', P[0], P[1], 0]);
+    var ho=outward(P,0.55);
+    c.push(['H', ho[0], ho[1],  0.9]);
+    c.push(['H', ho[0], ho[1], -0.9]);
+  }
+  // nucleophile NH3: N approaches C2 perpendicular to the ring (+z) at distance R
+  c.push(['N', C2[0], C2[1], R]);                          //    N(nuc)
+  c.push(['H', C2[0]+0.94, C2[1],      R+0.33]);
+  c.push(['H', C2[0]-0.47, C2[1]+0.81, R+0.33]);
+  c.push(['H', C2[0]-0.47, C2[1]-0.81, R+0.33]);
+  return c;
+}
+
+if(vIdx<variants.length){
+  var variant=variants[vIdx], R=Rlist[rIdx];
+  var coords=buildAtoms(variant, R);
+  var gridN=160, scr=28, gN2=Math.round(gridN/2), h=scr/gridN;
+  var Zof={H:1,C:4,N:3,O:2}, ZNof={H:1,C:4,N:3,O:2}, RCof={H:0,C:0.3,N:0.3,O:0.8};
+  var atoms=[], zList=[], znList=[], rcList=[];
+  for(var i2=0;i2<coords.length;i2++){ var el=coords[i2][0];
+    var gi=Math.max(3,Math.min(gridN-3,Math.round(gN2+coords[i2][1]*A/h)));
+    var gj=Math.max(3,Math.min(gridN-3,Math.round(gN2+coords[i2][2]*A/h)));
+    var gk=Math.max(3,Math.min(gridN-3,Math.round(gN2+coords[i2][3]*A/h)));
+    atoms.push({i:gi,j:gj,k:gk,Z:Zof[el],el:el});
+    zList.push(Zof[el]); znList.push(ZNof[el]); rcList.push(RCof[el]); }
+  document.getElementById('log').textContent='beta-lactam acylation: '+variant+'  R(N..C)='+R.toFixed(2)+' A  ('+(vIdx*Rlist.length+rIdx+1)+'/'+(variants.length*Rlist.length)+')  '+atoms.length+' atoms';
+  window.USER_BOND_PAIRS=[[0, coords.length-4, "N..C:"]];
+  window.USER_REFERENCE={ energy:"Beta-lactam acylation: NH3 -> lactam carbonyl (strained beta vs relaxed gamma)" };
+  window.USER_NN=gridN; window.USER_ATOMS=atoms; window.USER_SCREEN=scr;
+  window.USER_STEPS=5000; window.USER_DV=0.05; window.USER_DYNAMICS=false;
+  window.USER_Z=zList; window.USER_Z_NUC=znList; window.USER_RC=rcList;
+  window.CONVERGENCE_THRESHOLD=0.02;
+}
+
+function render(){
+  var div=document.getElementById('results');
+  function rise(v){ var e0=results[v][Rlist[0]]; if(e0===undefined) return null;
+    return Rlist.map(function(R){ var e=results[v][R]; return e===undefined?undefined:e-e0; }); }
+  var rB=rise('beta'), rG=rise('gamma');
+  var html='<b style="color:#ef5350">Beta-lactam acylation &mdash; strain activation</b><br>'
+    +'<span style="color:#888">&Delta;E(R)=E(R)&minus;E(R<sub>0</sub>); drive = &gamma;&minus;&beta; (strain favours attack if &gt;0)</span><br><br>'
+    +'<table style="border-collapse:collapse"><tr style="color:#ef5350"><th style="padding:1px 6px">R(&Aring;)</th><th>&Delta;E &beta;(strained)</th><th>&Delta;E &gamma;(relaxed)</th><th>drive</th></tr>';
+  var cur=(vIdx<variants.length)?{v:variants[vIdx],R:Rlist[rIdx]}:null;
+  for(var i=0;i<Rlist.length;i++){ var R=Rlist[i];
+    var db=rB?rB[i]:undefined, dg=rG?rG[i]:undefined, drive=(db!==undefined&&dg!==undefined)?dg-db:undefined;
+    var run=cur&&cur.R===R&&results[cur.v][R]===undefined;
+    html+='<tr'+(run?' style="color:#ff0"':'')+'><td style="padding:1px 6px">'+R.toFixed(2)+'</td>'
+      +'<td>'+(db!==undefined?db.toFixed(3):(run&&cur.v==='beta'?'run&hellip;':'&mdash;'))+'</td>'
+      +'<td>'+(dg!==undefined?dg.toFixed(3):(run&&cur.v==='gamma'?'run&hellip;':'&mdash;'))+'</td>'
+      +'<td style="color:#0f0">'+(drive!==undefined?(drive>=0?'+':'')+drive.toFixed(3):'')+'</td></tr>'; }
+  html+='</table>';
+  if(rB&&rG){ var last=Rlist.length-1;
+    if(rB[last]!==undefined&&rG[last]!==undefined){ var s=rG[last]-rB[last];
+      html+='<br>At R='+Rlist[last].toFixed(2)+': &Delta;E '+rB[last].toFixed(3)+' &beta; vs '+rG[last].toFixed(3)
+        +' &gamma; &rarr; <b style="color:'+(s>0?'#0f0':'#f55')+'">'+(s>0?'strain drives acylation by '+s.toFixed(3):'no strain drive ('+s.toFixed(3)+')')
+        +'</b> <span style="color:#888">(Ha, model units; sign/trend)</span>'; } }
+  if(vIdx>=variants.length) html+='<br><span style="color:#0f0">Done.</span>';
+  div.innerHTML=html;
+}
+render();
+
+window.onSweepDone=function(E){
+  results[variants[vIdx]][Rlist[rIdx]]=E; render();
+  rIdx++; if(rIdx>=Rlist.length){ rIdx=0; vIdx++; }
+  if(vIdx<variants.length){ sessionStorage.setItem('lactamScan',JSON.stringify({vIdx:vIdx,rIdx:rIdx,results:results}));
+    setTimeout(function(){ location.reload(); },400);
+  } else { console.log('=== beta-lactam acylation scan done ===', JSON.stringify(results)); }
+};
+
+if(vIdx<variants.length){
+  var s=document.createElement('script'); s.src='molecule.js?t='+Date.now();
+  s.onload=function(){ var p=document.createElement('script'); p.src='https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js'; document.body.appendChild(p); };
+  document.body.appendChild(s);
+}
+</script>
+</body></html>
