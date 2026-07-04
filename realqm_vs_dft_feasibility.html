@@ -90,6 +90,23 @@ because the grid, not the electron count, sets the cost:</p>
 <p>Same fixed grid, 85 vs 190 atoms, same cost &mdash; that is the whole feasibility story in two numbers. This
 is a place DFT <b>categorically cannot go</b>, and RealQM does.</p>
 
+<h2>Why the large step &mdash; and why hydrogen need <i>not</i> be dropped</h2>
+<p>The reason ordinary molecular dynamics is chained to <b>femtosecond steps</b> is that explicit Newtonian
+integration goes unstable above the fastest oscillation &mdash; the <b>X&ndash;H bond stretches</b> (~10&nbsp;fs
+period). Those vibrations are thermal jitter, irrelevant to the slow fold, yet they dictate the step for the
+whole system.</p>
+<p>RealQM moves the nuclei by <b>overdamped Brownian dynamics</b> &mdash; no inertia, hence <b>no fast
+oscillations</b> to resolve; the step is limited only by the slow, collective motion one actually wants. This
+removes the fs&ndash;oscillation lock <b>regardless of whether hydrogens are present</b>. So
+<b>hydrogen need not be dropped</b> to reach long timescales: the earlier reduced runs left out H (and water)
+only to <b>halve the atom count and simplify</b>, not out of necessity. The hydrogens &mdash; and explicit
+water &mdash; can be <b>carried</b>, restoring the physics that actually drives folding (backbone
+<b>N&ndash;H&middot;&middot;&middot;O=C hydrogen bonds</b> and the water-driven <b>hydrophobic effect</b>),
+with the same overdamped dynamics still taking large diffusive steps. This is exactly what standard Newtonian
+MD <i>cannot</i> do &mdash; keep the hydrogens and still step past the fs wall.</p>
+<p>The price is honest and unchanged: overdamped dynamics captures the slow <b>pathway and thermodynamics</b>,
+not the real-time <b>kinetics</b> (the &ldquo;time&rdquo; is diffusive/model time, not a calibrated clock).</p>
+
 <h2>The honesty guard &mdash; feasibility is not validated accuracy</h2>
 <p>Running is not the same as being right, and this must not be conflated:</p>
 <ul>
