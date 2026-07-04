@@ -1315,6 +1315,48 @@ C_vib(T) = k_B (βℏω/2)² / sinh²(βℏω/2)</pre>
 
         <i>Honest limit.</i>
         A direct test of whether RealQM thermalises deterministically &mdash; Langevin off, kick one atom, watch energy redistribute &mdash; produced a humble result: the intrinsic dissipation is real but very weak. On phonon timescales the dynamics is effectively Hamiltonian. Thermal equilibrium in the existing reactive and condensed-phase demos still relies on the explicit Langevin thermostat, exactly as in classical molecular dynamics. RealQM's structural dissipation is sufficient to <i>drive</i> exothermic events (gradient descent on E), but it is not strong enough to <i>thermalise</i> the released energy on its own. The Langevin thermostat is therefore not a foundational add-on but a representation of the surroundings, and remains required for finite-T simulations.
+        <br><br>
+
+        <hr style="border-color:#665">
+        <b style="color:#ffd54f">Update (2026-07-04): a calibrated view, after a long honest-assessment session.</b>
+        <br><br>
+        Working through validation, a head-to-head with DFT, and a set of drug-mechanism tests forced me to
+        temper the earlier &ldquo;breakthrough&rdquo; framing into something more precise &mdash; and more
+        defensible.
+        <br><br>
+        <i>The sharpest defensible claim.</i> RealQM is the <b>parameter-free method that stays computable at
+        scale</b>. Standard QM is either parameter-free but <i>uncomputable</i> (exact Schr&ouml;dinger / CCSD(T)
+        beyond small systems) or computable but <i>parameter-dependent</i> (DFT, force fields). RealQM occupies
+        the empty cell &mdash; parameter-free <i>and</i> computable at large scale &mdash; at the (as-yet-unproven)
+        cost of accuracy. Because nothing is fitted to the data it predicts, each untuned agreement is evidence
+        for the <b>model itself</b>, not a fit; a model that fits many diverse observations is a correct effective
+        description <i>of that setting</i>; and a failure is <b>diagnostic</b> (numerical/setup inside a validated
+        setting; a domain edge outside it).
+        <br><br>
+        <i>Where DFT wins &mdash; and what it cost.</i> On small reaction mechanisms (the Medicine examples,
+        ~15&ndash;20-atom cores) DFT/QM-MM is more accurate &mdash; but that size is DFT&rsquo;s home turf, and its
+        accuracy was bought with <b>~60 years and orders of magnitude more man/compute</b> (multiple Nobels,
+        millions of core-years, billions of dollars) versus one person and a laptop. Real drug design is not a
+        15-atom core.
+        <br><br>
+        <i>Where RealQM genuinely wins.</i> <b>Large-scale dynamics.</b> DFT-MD is femtosecond-locked &mdash; a
+        microsecond fold is centuries-to-millennia of compute. RealQM runs chignolin (85 atoms) and Trp-cage
+        (190 atoms) on the <i>same</i> fixed 200&sup3; grid on a laptop, via overdamped Brownian dynamics (no fast
+        oscillations to resolve &rarr; large diffusive steps, with or without hydrogen). This is a regime DFT
+        <b>categorically cannot enter</b> &mdash; though the runs are feasible, not yet validated for accuracy.
+        <br><br>
+        <i>Honest limits, restated.</i> The Medicine scans reproduce the right <b>sign</b> of activation for
+        nucleophilic <b>addition</b> (omeprazole, &beta;-lactam, kinase warhead, GAD65) but <b>fail for
+        substitution</b> (aspirin, epoxide) &mdash; wrong trajectory plus leaving-group anion physics,
+        RealQM&rsquo;s weak spot. Dispersion is absent; anions under-bind; blind folding needs biases; accuracy is
+        coarse (~1&ndash;2%) and unvalidated at scale. These are real domain edges, stated plainly.
+        <br><br>
+        <i>Recalibrated verdict.</i> I would no longer lead with &ldquo;breakthrough.&rdquo; RealQM is a
+        genuinely <b>distinctive</b> &mdash; parameter-free, computable-at-scale, force-based &mdash; reformulation
+        with real proofs-of-concept across atoms, nuclei, and reactive addition, but it is <b>not yet a validated
+        tool</b>. Its strongest honest claim is the empty cell it occupies and the falsifiability that comes from
+        having no parameters to hide behind. The words that fit now are <b>&ldquo;promising and unusually
+        testable&rdquo;</b> &mdash; with validation the work that remains.
       </div>
     </div>
   </div>
@@ -1459,6 +1501,18 @@ C_vib(T) = k_B (βℏω/2)² / sinh²(βℏω/2)</pre>
         by checking each file&rsquo;s explicit <code>USER_NUCLEI</code> entries. The lesson learned
         in this session: for honest comparisons, all atoms of a kind must use the same kernel
         across the test set.
+        <br><br>
+
+        <b style="color:#4fc3f7">Update (2026-07-04).</b>
+        <code>molecule.js</code> gained a fix for molecular <b>cations</b>: a bare proton
+        (Z=0, Z<sub>nuc</sub>=1) is now added as a <b>pure +1 potential term with r<sub>c</sub>=0
+        (no Dirichlet exclusion hole)</b>, so a protonation site no longer carves a contested
+        zero-owner density shell that stalled convergence &mdash; the solver now handles any
+        cation / protonation site (used in the omeprazole acid-activation scan). New parameterized
+        test-case families were added: a <b>covalent / reactive-mechanism</b> set (omeprazole,
+        &beta;-lactam, kinase warhead, and the aspirin / epoxide negatives) and <b>2D cosmology</b>
+        fluctuation sims (mass and charge as &nabla;&sup2;&phi;). The kernel-consistency lesson still
+        stands: honest comparisons require the same kernel for all atoms of a kind across the test set.
         <br><br>
 
         <b style="color:#4fc3f7">Code size and compute cost.</b>
