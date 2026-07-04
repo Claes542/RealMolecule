@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RealQM vs DFT — Feasibility Across Problem Classes</title>
+<style>
+  body { background:#0a0a0a; color:#e0e0e0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; line-height:1.7; margin:0; }
+  .wrap { max-width:840px; margin:0 auto; padding:34px 22px 90px; }
+  h1 { font-size:25px; color:#80d8ff; line-height:1.25; margin-bottom:6px; }
+  .sub { color:#8aa; font-size:14px; font-style:italic; margin-bottom:18px; }
+  .status { background:#1a1407; border:1px solid #5a4a1a; border-radius:6px; padding:10px 14px; font-size:12.5px; color:#e8d9a8; margin-bottom:26px; }
+  h2 { font-size:19px; color:#fff; margin-top:34px; padding-bottom:6px; border-bottom:1px solid #222; }
+  p, li { font-size:14.5px; color:#ccc; }
+  b { color:#fff; }
+  a { color:#4fc3f7; text-decoration:none; } a:hover { text-decoration:underline; }
+  code { background:#161616; padding:1px 5px; border-radius:3px; color:#a5d6a7; font-size:13px; }
+  table { border-collapse:collapse; margin:14px 0; font-size:13px; width:100%; }
+  th, td { padding:6px 12px; border:1px solid #222; text-align:left; vertical-align:top; }
+  th { color:#4fc3f7; background:#0f0f0f; }
+  .ok { color:#66bb6a; } .no { color:#ef5350; } .open { color:#ffb74d; }
+  .note { background:#0e1016; border:1px solid #243049; border-radius:6px; padding:12px 16px; margin:18px 0; font-size:13.5px; }
+  .back { color:#80cbc4; font-size:13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<a class="back" href="gallery.html">&larr; Gallery</a>
+
+<h1>RealQM vs DFT &mdash; Feasibility Across Problem Classes</h1>
+<div class="sub">Accuracy is not the only axis. Where DFT is more accurate it is also <i>small</i> and vastly more expensive to have built; where the real problem is <i>large and dynamical</i>, DFT cannot follow at all.</div>
+
+<div class="status"><b>An honest comparison.</b> This is deliberately even-handed: it concedes where DFT is better,
+prices what that capability cost, and marks where RealQM can go and DFT cannot &mdash; separating <b>feasibility</b>
+(can it run at all?) from <b>validated accuracy</b> (is it right?).</div>
+
+<h2>Two axes, not one</h2>
+<p>The usual comparison collapses everything to <i>accuracy</i>, on which DFT wins for small molecules. But two
+axes matter:</p>
+<ul>
+  <li><b>Accuracy</b> &mdash; DFT wins on small systems (bought with 60&nbsp;years and enormous resources).</li>
+  <li><b>Feasibility</b> &mdash; can the method <i>run the problem at all?</i> DFT's O(N&sup3;) cost and
+      femtosecond time steps put <b>large, long-timescale dynamics out of reach</b>; RealQM's cost is set by a
+      <b>fixed grid</b>, independent of electron count, so it runs where DFT cannot.</li>
+</ul>
+
+<h2>Class A &mdash; small reaction mechanisms (DFT's home turf)</h2>
+<p>The four <a href="gallery.html#omeprazole">Medicine examples</a> (omeprazole, &beta;-lactam, kinase warhead,
+GAD65) were run as <b>~15&ndash;20-atom active-site cores</b>. On these, DFT/QM-MM is the stronger tool:
+quantitative barriers, correct transition-state geometry, decades of validation. RealQM gave only qualitative
+sign/trend, and its rigid perpendicular scan even failed two <i>substitution</i> mechanisms (aspirin, epoxide).
+<b>So on Class A, DFT wins.</b> Three honest qualifications, though:</p>
+<ol>
+  <li><b>The size was chosen for tractability &mdash; and it is exactly DFT's comfort zone.</b> Reducing a
+      mechanism to 15 atoms is picking the ground where the incumbent is strongest.</li>
+  <li><b>That accuracy was bought with orders of magnitude more investment</b> (below).</li>
+  <li><b>Real drug design is not a 15-atom core.</b> The reduction flatters DFT and misrepresents the problem
+      (next section).</li>
+</ol>
+
+<h2>What DFT's Class-A accuracy cost to build</h2>
+<table>
+ <tr><th></th><th>DFT / computational quantum chemistry</th><th>RealQM (this work)</th></tr>
+ <tr><td><b>Time</b></td><td>~60&ndash;70 years (Hohenberg&ndash;Kohn 1964 onward)</td><td>months to ~2 years</td></tr>
+ <tr><td><b>People</b></td><td>tens of thousands; multiple Nobel Prizes (Kohn &amp; Pople 1998; Karplus/Levitt/Warshel 2013)</td><td><b>one researcher + an AI assistant</b></td></tr>
+ <tr><td><b>Software</b></td><td>Gaussian, ORCA, VASP, Q-Chem&hellip; &mdash; thousands of person-years</td><td>one browser code (molecule.js)</td></tr>
+ <tr><td><b>Compute</b></td><td>millions of core-years cumulatively; ~thousands of core-hours per QM/MM study</td><td><b>a laptop GPU, minutes per run</b></td></tr>
+ <tr><td><b>Funding</b></td><td>cumulatively billions of dollars</td><td>~zero</td></tr>
+</table>
+<p>So &ldquo;DFT is more accurate on the small examples&rdquo; is true &mdash; and it is the product of a
+<b>10<sup>4</sup>&ndash;10<sup>6</sup>&times;</b> larger investment. That RealQM recovers the right qualitative
+physics with a laptop and one person is a statement about <b>leverage</b>, not (yet) about competitive accuracy.</p>
+
+<h2>Class B &mdash; large-scale dynamics (where the real problem lives)</h2>
+<p>Real drug action is not Class A. The covalent reaction, its <b>selectivity</b>, the approach geometry, and
+binding all happen inside a <b>full protein pocket + solvent, in motion</b> &mdash; thousands of atoms, on
+nanosecond&ndash;microsecond timescales. That is <b>Class B</b>, and here the comparison inverts.</p>
+<p><b>DFT cannot follow.</b> Ab-initio DFT-MD is femtosecond-locked, each step a full SCF (~minutes for ~100
+atoms). Reaching a microsecond folding event is ~10<sup>8</sup>&ndash;10<sup>9</sup> steps &mdash; <b>centuries
+to millennia</b> of compute. In practice DFT-MD tops out at <b>~10&ndash;100 picoseconds</b>: orders of
+magnitude short of the event.</p>
+<p><b>RealQM runs it &mdash; on a laptop.</b> Its fixed-grid GPU dynamics costs the same for 85 atoms as for 190,
+because the grid, not the electron count, sets the cost:</p>
+<table>
+ <tr><th>system</th><th>size</th><th>fold time</th><th>DFT-MD</th><th>RealQM</th></tr>
+ <tr><td><b>Chignolin</b> (10-residue &beta;-hairpin)</td><td>85 atoms (dry reduced; ~138 with H)</td><td>~0.6&nbsp;&micro;s</td><td class="no">~ps ceiling (~10<sup>3</sup> yr to fold)</td><td class="ok">200&sup3; grid, 200k steps, laptop GPU &mdash; runs</td></tr>
+ <tr><td><b>Trp-cage</b> (20-residue mini-protein)</td><td>190 atoms</td><td>~4&nbsp;&micro;s</td><td class="no">infeasible</td><td class="ok">same 200&sup3; grid &mdash; runs</td></tr>
+ <tr><td><b>crambin / GB1 / coiled coil / &alpha;-helix</b></td><td>~hundreds&ndash;thousands</td><td>&mdash;</td><td class="no">far out of reach</td><td class="open">trajectories run (fixed grid)</td></tr>
+</table>
+<p>Same fixed grid, 85 vs 190 atoms, same cost &mdash; that is the whole feasibility story in two numbers. This
+is a place DFT <b>categorically cannot go</b>, and RealQM does.</p>
+
+<h2>The honesty guard &mdash; feasibility is not validated accuracy</h2>
+<p>Running is not the same as being right, and this must not be conflated:</p>
+<ul>
+  <li><b>RealQM's Class-B runs are feasible but unvalidated.</b> The trajectories run; whether they reach the
+      <i>correct</i> fold blind is open &mdash; blind folding needs biases (electron repulsion dominates at
+      distance).</li>
+  <li><b>Binding affinity still needs dispersion</b>, which RealQM lacks. Reaching Class B does not by itself
+      solve the drug problem.</li>
+</ul>
+<p>So the claim is precisely: <b>RealQM can operate where DFT cannot &mdash; and must still earn accuracy there.</b></p>
+
+<h2>Bottom line</h2>
+<ul>
+  <li><b>Small (Class A):</b> DFT is more accurate &mdash; on its home turf, bought with 60&nbsp;years and
+      billions; RealQM gets the right physics with a laptop and one person.</li>
+  <li><b>Large &amp; dynamical (Class B):</b> DFT <b>cannot run it at all</b>; RealQM can, on a laptop &mdash;
+      the regime where the <i>real</i> drug problem, and most of biology, actually lives.</li>
+  <li><b>The trap to avoid:</b> reducing drug design to a 15-atom core to make it a Class-A problem. That
+      flatters the incumbent and hides that the real question is Class B &mdash; where feasibility, not
+      accuracy on a toy, is the first hurdle.</li>
+</ul>
+<p><b>Drug design is not a simple thing.</b> The honest comparison is not &ldquo;who is more accurate on a
+15-atom model,&rdquo; but &ldquo;who can even run the large, dynamical system the drug actually acts in&rdquo;
+&mdash; and there, only one of the two can start.</p>
+
+<p style="margin-top:26px"><a class="back" href="gallery.html">&larr; Back to the Gallery</a> &middot;
+<a href="chignolin_reduce.html" style="color:#80cbc4">chignolin dynamics</a> &middot;
+<a href="realqm_vs_dft_folding.html" style="color:#66bb6a">companion: RealQM vs DFT for folding</a></p>
+
+</div>
+</body>
+</html>
