@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="results" style="position:fixed;bottom:8px;left:8px;background:rgba(0,0,0,0.9);border:1px solid #444;padding:6px 8px;z-index:100;font-size:10px;line-height:1.25;max-width:390px"></div>
+<pre id="log" style="margin:0;padding:8px;color:#8cf;font-size:12px">Building covalent-warhead scan...</pre>
+<script>
+// ===========================================================================
+//  COVALENT KINASE INHIBITOR -- acrylamide warhead (Michael acceptor)
+// ---------------------------------------------------------------------------
+//  Covalent kinase drugs (ibrutinib, osimertinib, afatinib) carry an ACRYLAMIDE
+//  warhead: a Michael acceptor whose terminal (beta) carbon is made electrophilic
+//  by conjugation to the carbonyl, so a cysteine nucleophile adds to it, forming a
+//  covalent C-X bond that irreversibly blocks the kinase. The activation is the
+//  CONJUGATED CARBONYL. We model the reactive step with a generic amine nucleophile
+//  (NH3, an aza-Michael model of the Cys attack) onto the beta-carbon, and compare:
+//    * 'acceptor' : acrylamide CH2=CH-C(=O)NH2  (Michael acceptor, ACTIVATED)
+//    * 'alkene'   : propene    CH2=CH-CH3        (plain alkene, control)
+//  drive = dE(alkene) - dE(acceptor).  >0 (growing as R shrinks) => the conjugated
+//  carbonyl ACTIVATES the beta-carbon and drives the addition -- from RealQM forces.
+//  EXPLORATORY: reduced planar cores + NH3, hand-built gas-phase, qualitative.
+// ===========================================================================
+var variants = ['acceptor','alkene'];
+// R0=5.00 far reference (both ~unbound there) removes long-range dipole bias in dE.
+var Rlist = [5.00, 3.50, 2.80, 2.20, 1.75, 1.50];   // NH3-N ... beta-carbon distance, Angstrom (Rlist[0]=far ref)
+var A = 1.8897;
+var vIdx=0, rIdx=0, results={ acceptor:{}, alkene:{} };
+(function(){ var s=sessionStorage.getItem('warheadScan2');
+  if(s){ var st=JSON.parse(s); vIdx=st.vIdx; rIdx=st.rIdx; results=st.results; sessionStorage.removeItem('warheadScan2'); } })();
+
+function buildAtoms(kind, R){
+  var c=[];
+  // conjugated backbone in xy-plane; C1 = terminal (beta) carbon = attack site at origin
+  c.push(['C', 0.00, 0.00, 0]);      // 0 C1 (=CH2, beta-carbon, attack site)
+  c.push(['C', 1.33, 0.00, 0]);      // 1 C2 (=CH-)
+  c.push(['H',-0.55, 0.92, 0]);      // 2 C1-Ha
+  c.push(['H',-0.55,-0.92, 0]);      // 3 C1-Hb
+  c.push(['H', 1.88,-0.95, 0]);      // 4 C2-H
+  if(kind==='acceptor'){             // acrylamide: -C(=O)NH2 (the drug warhead)
+    c.push(['C', 2.00, 1.24, 0]);    // 5 C3 carbonyl C
+    c.push(['O', 1.42, 2.34, 0]);    // 6 =O
+    c.push(['N', 3.35, 1.30, 0]);    // 7 amide N
+    c.push(['H', 3.88, 2.12, 0]);    // 8 N-Ha
+    c.push(['H', 3.85, 0.45, 0]);    // 9 N-Hb
+  } else {                           // propene control: -CH3 (no carbonyl)
+    c.push(['C', 2.00, 1.24, 0]);    // 5 C3 methyl C
+    c.push(['H', 2.62, 2.10, 0]);    // 6 methyl H
+    c.push(['H', 2.55, 1.10, 0.86]); // 7 methyl H
+    c.push(['H', 2.55, 1.10,-0.86]); // 8 methyl H
+  }
+  // nucleophile NH3: N approaches the beta-carbon C1 perpendicular (+z) at distance R
+  c.push(['N', 0.00, 0.00, R]);
+  c.push(['H', 0.94, 0.00, R+0.33]);
+  c.push(['H',-0.47, 0.81, R+0.33]);
+  c.push(['H',-0.47,-0.81, R+0.33]);
+  return c;
+}
+
+if(vIdx<variants.length){
+  var variant=variants[vIdx], R=Rlist[rIdx];
+  var coords=buildAtoms(variant, R);
+  var gridN=160, scr=28, gN2=Math.round(gridN/2), h=scr/gridN;
+  var Zof={H:1,C:4,N:3,O:2}, ZNof={H:1,C:4,N:3,O:2}, RCof={H:0,C:0.3,N:0.3,O:0.8};
+  var atoms=[], zList=[], znList=[], rcList=[];
+  for(var i2=0;i2<coords.length;i2++){ var el=coords[i2][0];
+    var gi=Math.max(3,Math.min(gridN-3,Math.round(gN2+coords[i2][1]*A/h)));
+    var gj=Math.max(3,Math.min(gridN-3,Math.round(gN2+coords[i2][2]*A/h)));
+    var gk=Math.max(3,Math.min(gridN-3,Math.round(gN2+coords[i2][3]*A/h)));
+    atoms.push({i:gi,j:gj,k:gk,Z:Zof[el],el:el});
+    zList.push(Zof[el]); znList.push(ZNof[el]); rcList.push(RCof[el]); }
+  document.getElementById('log').textContent='covalent warhead: '+variant+'  R(N..Cb)='+R.toFixed(2)+' A  ('+(vIdx*Rlist.length+rIdx+1)+'/'+(variants.length*Rlist.length)+')  '+atoms.length+' atoms';
+  window.USER_BOND_PAIRS=[[0, coords.length-4, "N..Cb:"]];
+  window.USER_REFERENCE={ energy:"Covalent warhead: NH3 -> beta-carbon (acrylamide Michael acceptor vs plain alkene)" };
+  window.USER_NN=gridN; window.USER_ATOMS=atoms; window.USER_SCREEN=scr;
+  window.USER_STEPS=5000; window.USER_DV=0.05; window.USER_DYNAMICS=false;
+  window.USER_Z=zList; window.USER_Z_NUC=znList; window.USER_RC=rcList;
+  window.CONVERGENCE_THRESHOLD=0.02;
+}
+
+function render(){
+  var div=document.getElementById('results');
+  function rise(v){ var e0=results[v][Rlist[0]]; if(e0===undefined) return null;
+    return Rlist.map(function(R){ var e=results[v][R]; return e===undefined?undefined:e-e0; }); }
+  var rA=rise('acceptor'), rL=rise('alkene');
+  var html='<b style="color:#ba68c8">Covalent kinase warhead &mdash; Michael-acceptor activation</b><br>'
+    +'<span style="color:#888">&Delta;E(R)=E(R)&minus;E(R<sub>0</sub>); drive = alkene&minus;acceptor (conjugation activates if &gt;0)</span><br><br>'
+    +'<table style="border-collapse:collapse"><tr style="color:#ba68c8"><th style="padding:1px 6px">R(&Aring;)</th><th>&Delta;E acceptor</th><th>&Delta;E alkene</th><th>drive</th></tr>';
+  var cur=(vIdx<variants.length)?{v:variants[vIdx],R:Rlist[rIdx]}:null;
+  for(var i=0;i<Rlist.length;i++){ var R=Rlist[i];
+    var da=rA?rA[i]:undefined, dl=rL?rL[i]:undefined, drive=(da!==undefined&&dl!==undefined)?dl-da:undefined;
+    var run=cur&&cur.R===R&&results[cur.v][R]===undefined;
+    html+='<tr'+(run?' style="color:#ff0"':'')+'><td style="padding:1px 6px">'+R.toFixed(2)+'</td>'
+      +'<td>'+(da!==undefined?da.toFixed(3):(run&&cur.v==='acceptor'?'run&hellip;':'&mdash;'))+'</td>'
+      +'<td>'+(dl!==undefined?dl.toFixed(3):(run&&cur.v==='alkene'?'run&hellip;':'&mdash;'))+'</td>'
+      +'<td style="color:#0f0">'+(drive!==undefined?(drive>=0?'+':'')+drive.toFixed(3):'')+'</td></tr>'; }
+  html+='</table>';
+  if(rA&&rL){ var last=Rlist.length-1;
+    if(rA[last]!==undefined&&rL[last]!==undefined){ var s=rL[last]-rA[last];
+      html+='<br>At R='+Rlist[last].toFixed(2)+': &Delta;E '+rA[last].toFixed(3)+' acceptor vs '+rL[last].toFixed(3)
+        +' alkene &rarr; <b style="color:'+(s>0?'#0f0':'#f55')+'">'+(s>0?'conjugation drives addition by '+s.toFixed(3):'no activation ('+s.toFixed(3)+')')
+        +'</b> <span style="color:#888">(Ha, model units; sign/trend)</span>'; } }
+  if(vIdx>=variants.length) html+='<br><span style="color:#0f0">Done.</span>';
+  div.innerHTML=html;
+}
+render();
+
+window.onSweepDone=function(E){
+  results[variants[vIdx]][Rlist[rIdx]]=E; render();
+  rIdx++; if(rIdx>=Rlist.length){ rIdx=0; vIdx++; }
+  if(vIdx<variants.length){ sessionStorage.setItem('warheadScan2',JSON.stringify({vIdx:vIdx,rIdx:rIdx,results:results}));
+    setTimeout(function(){ location.reload(); },400);
+  } else { console.log('=== covalent warhead scan done ===', JSON.stringify(results)); }
+};
+
+if(vIdx<variants.length){
+  var s=document.createElement('script'); s.src='molecule.js?t='+Date.now();
+  s.onload=function(){ var p=document.createElement('script'); p.src='https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js'; document.body.appendChild(p); };
+  document.body.appendChild(s);
+}
+</script>
+</body></html>
