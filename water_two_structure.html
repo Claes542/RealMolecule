@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Two structures of liquid water — RealQM probe</title></head>
+<body style="margin:0;background:#000;color:#ddd;font-family:-apple-system,Segoe UI,Roboto,monospace">
+<!-- ===========================================================================
+  TWO STRUCTURES OF LIQUID WATER  (LDL / HDL) — a parameter-free RealQM probe
+  ---------------------------------------------------------------------------
+  Recent interest (Phys.org, 25 Jun) revives the two-state picture of liquid
+  water: a low-density, tetrahedral, well-hydrogen-bonded local structure (LDL)
+  coexisting with a high-density, disordered, interstitial structure (HDL).
+  The usual evidence comes from EMPIRICAL water models (ST2, TIP4P/2005, ...)
+  tuned to reproduce water — so a two-state signal can be a property one built
+  in. RealQM has NO water parameters: every O and H is an explicit nucleus with
+  explicit electron density and free-boundary H-bonds. If a two-structure
+  signature appears here, nothing about "two structures" was put in by hand.
+
+  PROBE. For every interior oxygen we compute two standard local-structure
+  order parameters from the running O positions:
+    * tetrahedral order  q = 1 - (3/8) Σ_{j<k}(cosθ_jk + 1/3)^2  over its 4
+      nearest O-neighbours.  q → 1 perfect tetrahedron (LDL), q → 0 disordered.
+    * d5 = distance to the 5th-nearest oxygen (Å).  An interstitial (HDL)
+      molecule pulls a 5th neighbour in close (~3.2-3.4 Å); a tetrahedral (LDL)
+      molecule pushes it out (~3.5+ Å).
+  Histogrammed over molecules and time, a BIMODAL distribution = two structures.
+  A temperature control lets us cool/heat and watch the tetrahedral (LDL)
+  fraction grow on cooling — the two-state prediction.
+
+  HONEST CAVEATS (also on screen): RealQM geometry is coarse (~5%); the box is
+  small (64 waters, free surface — we analyse only an interior core); the
+  Brownian dynamics gives model/diffusive time, not calibrated kinetics; and
+  absolute q/d5 thresholds are indicative, not calibrated. This is an
+  exploratory, qualitative probe of WHETHER the signature emerges unbidden.
+=========================================================================== -->
+<script>
+(function() {
+  var gridN = 200, scr = 30, N2 = 100;
+  var h = scr / gridN;
+  var A = 1.8897;                      // Å -> bohr
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    var gi = Math.round(N2 + x / h), gj = Math.round(N2 + y / h), gk = Math.round(N2 + z / h);
+    gi = Math.max(3, Math.min(gridN - 3, gi));
+    gj = Math.max(3, Math.min(gridN - 3, gj));
+    gk = Math.max(3, Math.min(gridN - 3, gk));
+    atoms.push({ i: gi, j: gj, k: gk, Z: Z, el: el });
+  }
+
+  // Box sized to REAL liquid-water density (1 g/cm^3 = 0.03336 molecules/Å^3):
+  //   V = 64 / 0.03336 = 1918 Å^3  ->  side 12.42 Å  ->  half-box 11.73 au.
+  // (Density is the whole point of the LDL/HDL question, so we set it honestly.)
+  var boxAu = 11.73;                   // half-box, au
+  var bOH = 0.96 * A, angHOH = 104.5 * Math.PI / 180;
+  var nMol = 64;
+
+  var seed = 12345;
+  function rand() { seed = (seed * 16807 + 7) % 2147483647; return seed / 2147483647; }
+
+  var oPositions = [];
+  var minDist = 2.5 * A;               // reject O-O closer than 2.5 Å
+  var attempts = 0;
+  while (oPositions.length < nMol && attempts < 200000) {
+    var x = (rand() - 0.5) * 2 * boxAu, y = (rand() - 0.5) * 2 * boxAu, z = (rand() - 0.5) * 2 * boxAu;
+    var ok = true;
+    for (var i = 0; i < oPositions.length; i++) {
+      var dx = x - oPositions[i][0], dy = y - oPositions[i][1], dz = z - oPositions[i][2];
+      if (Math.sqrt(dx*dx + dy*dy + dz*dz) < minDist) { ok = false; break; }
+    }
+    if (ok) oPositions.push([x, y, z]);
+    attempts++;
+  }
+
+  var oxyIdx = [];                     // atom/electron indices of the oxygens
+  for (var i = 0; i < oPositions.length; i++) {
+    var ox = oPositions[i][0], oy = oPositions[i][1], oz = oPositions[i][2];
+    oxyIdx.push(atoms.length);
+    addAtom(ox, oy, oz, 2, 'O');
+    var theta = rand() * Math.PI, phi = rand() * 2 * Math.PI;
+    addAtom(ox + bOH*Math.sin(theta)*Math.cos(phi), oy + bOH*Math.sin(theta)*Math.sin(phi), oz + bOH*Math.cos(theta), 1, 'H');
+    var t2 = theta + angHOH;
+    addAtom(ox + bOH*Math.sin(t2)*Math.cos(phi), oy + bOH*Math.sin(t2)*Math.sin(phi), oz + bOH*Math.cos(t2), 1, 'H');
+  }
+
+  console.log('Two-structure water: ' + oPositions.length + ' molecules, ' + atoms.length + ' atoms');
+
+  // grid units -> Å  and  centroid of oxygens (for interior-core selection)
+  window.TWOSTRUCT = {
+    oxyIdx: oxyIdx,
+    gridToAng: h / A,                  // one grid cell in Å
+    N2: N2,
+    boxHalfGrid: boxAu / h,            // half-box in grid units
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_TEMPERATURE_K = 300;
+  // Overdamped Brownian (diffusive) dynamics — no inertia, so molecules DIFFUSE and
+  // swap H-bond partners, sampling many local environments over time. This is what
+  // turns a near-static glass (Andersen thermostat) into a genuine liquid ensemble,
+  // so the q / d5 histograms reflect a distribution, not one frozen configuration.
+  window.USER_BROWNIAN = true;
+  window.USER_BROWNIAN_GAMMA = 1.0;
+  window.USER_LANGEVIN_GAMMA = 0.1;
+  window.USER_THERMAL_KICK = 0;
+  window.USER_N_MOVE = 30;
+  window.USER_ROT_SPEED = 0.005;
+  window.USER_DAMPING = 0.95;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) { return a.el === 'O' ? 0.8 : 0; });
+  window.INIT_ZEFF = 2;
+})();
+</script>
+
+<!-- ===== analysis overlay ===== -->
+<div id="panel" style="position:fixed;top:0;right:0;width:360px;background:rgba(8,10,16,0.94);border-left:1px solid #223;padding:10px 12px;font-size:11.5px;line-height:1.45;z-index:50;height:100vh;overflow:auto;box-sizing:border-box">
+  <div style="font-size:14px;color:#80d8ff;font-weight:600;margin-bottom:2px">Two structures of liquid water</div>
+  <div style="color:#889;font-style:italic;margin-bottom:8px">Parameter-free RealQM probe — LDL vs HDL, 64 waters</div>
+
+  <div style="margin-bottom:6px">
+    <span style="color:#9ab">Temperature:</span>
+    <button data-t="230" style="margin:1px">230 K</button>
+    <button data-t="270" style="margin:1px">270 K</button>
+    <button data-t="300" class="on" style="margin:1px">300 K</button>
+    <button data-t="340" style="margin:1px">340 K</button>
+    <button data-t="380" style="margin:1px">380 K</button>
+  </div>
+  <div style="margin-bottom:8px">
+    <button id="resetHist" style="margin:1px">Reset histogram</button>
+    <label style="color:#9ab;font-size:10.5px;margin-left:4px"><input type="checkbox" id="wallChk" checked style="vertical-align:middle"> confine to liquid density</label>
+    <span id="stat" style="color:#8c8"></span>
+  </div>
+
+  <canvas id="cv" width="336" height="200" style="background:#0b0d13;border:1px solid #223;display:block"></canvas>
+  <div id="qsum" style="margin:5px 0 10px;color:#bcd"></div>
+  <canvas id="cv2" width="336" height="200" style="background:#0b0d13;border:1px solid #223;display:block"></canvas>
+  <div id="dsum" style="margin:5px 0 10px;color:#bcd"></div>
+
+  <div style="border-top:1px solid #223;padding-top:8px;margin-bottom:6px">
+    <button id="sweepBtn" style="margin:1px">▶ Auto cool-sweep 380→220 K</button>
+    <button id="stopBtn" style="margin:1px">■ stop</button>
+    <span id="sweepStat" style="color:#8c8"></span>
+  </div>
+  <canvas id="cv3" width="336" height="190" style="background:#0b0d13;border:1px solid #223;display:block"></canvas>
+  <div id="csum" style="margin:5px 0 10px;color:#889;font-size:10.5px">
+    LDL fraction &amp; mean&nbsp;q vs temperature — the two-state prediction is that the
+    tetrahedral (LDL) side <b>grows as water cools</b>.
+  </div>
+
+  <div style="color:#889;font-size:10.5px;border-top:1px solid #223;padding-top:7px">
+    <b style="color:#9ab">How to read it.</b> Two peaks in <b>q</b> (tetrahedral order) or in <b>d5</b>
+    (5th-neighbour distance) = two coexisting local structures. Cooling should grow the
+    high-q / large-d5 (LDL) side.<br><br>
+    <b style="color:#c96">Caveats.</b> Coarse geometry (~5%); only interior-core oxygens analysed
+    (free surface excluded); Brownian model-time, not real kinetics; 64 waters is small for
+    statistics; q/d5 thresholds indicative.<br>
+    <b style="color:#c96">Confinement.</b> The unconfined vacuum droplet <i>disperses</i>
+    (coordination → 0), so a disclosed soft <b>spherical wall</b> holds it near liquid density.
+    It imposes only the <i>average</i> density, not local structure — so the two-structures
+    question stays fair. Watch the density check: with the wall on, nearest O–O should recover
+    toward ~2.8 Å and coordination toward ~4. Exploratory throughout.
+  </div>
+</div>
+
+<script>
+(function() {
+  var TS = window.TWOSTRUCT;
+  var NBINS_Q = 24, NBINS_D = 24;
+  var QMIN = 0.0, QMAX = 1.0;
+  var DMIN = 2.8, DMAX = 4.4;          // Å window for d5
+  var histQ = new Float64Array(NBINS_Q), histD = new Float64Array(NBINS_D);
+  var nSample = 0, sumQ = 0, nQ = 0, sumD = 0, nD = 0, nLDL = 0;
+  var sumD1 = 0, sumCoord = 0, nDens = 0;   // nearest O-O distance & coordination (density check)
+
+  function resetHist() {
+    histQ.fill(0); histD.fill(0);
+    nSample = 0; sumQ = 0; nQ = 0; sumD = 0; nD = 0; nLDL = 0;
+    sumD1 = 0; sumCoord = 0; nDens = 0;
+  }
+
+  // per-frame sampler
+  function sample() {
+    var np = window._nucPos;
+    if (!np) return 0;
+    var g2a = TS.gridToAng, N2 = TS.N2, idx = TS.oxyIdx;
+    // oxygen positions in Å (centred at box centre)
+    var O = [];
+    for (var m = 0; m < idx.length; m++) {
+      var p = np[idx[m]];
+      if (!p) continue;
+      O.push([(p[0]-N2)*g2a, (p[1]-N2)*g2a, (p[2]-N2)*g2a]);
+    }
+    var n = O.length;
+    if (n < 8) return 0;
+    // centroid
+    var cx=0, cy=0, cz=0;
+    for (var i=0;i<n;i++){ cx+=O[i][0]; cy+=O[i][1]; cz+=O[i][2]; }
+    cx/=n; cy/=n; cz/=n;
+    // Adaptive interior core: rank oxygens by distance to centroid and analyse the
+    // inner 55% BY COUNT. This tracks the droplet as it breathes/expands (no periodic
+    // box), so the analysed count stays stable instead of emptying a fixed radius.
+    var dc = new Float64Array(n);
+    for (var a=0;a<n;a++){ var ex=O[a][0]-cx, ey=O[a][1]-cy, ez=O[a][2]-cz; dc[a]=Math.sqrt(ex*ex+ey*ey+ez*ez); }
+    var sorted = Array.prototype.slice.call(dc).sort(function(u,v){ return u-v; });
+    var coreCut = sorted[Math.max(0, Math.floor(0.55*n)-1)];   // 55th-percentile distance
+    var used = 0;
+    for (var a = 0; a < n; a++) {
+      if (dc[a] > coreCut) continue;   // outer-shell (surface) molecule -> skip
+      // neighbour distances
+      var nb = [];
+      for (var b = 0; b < n; b++) {
+        if (b === a) continue;
+        var dx=O[b][0]-O[a][0], dy=O[b][1]-O[a][1], dz=O[b][2]-O[a][2];
+        nb.push([Math.sqrt(dx*dx+dy*dy+dz*dz), dx, dy, dz]);
+      }
+      nb.sort(function(u,v){ return u[0]-v[0]; });
+      if (nb.length < 5) continue;
+      // tetrahedral q over 4 nearest
+      var q = 0;
+      for (var j = 0; j < 4; j++) for (var k = j+1; k < 4; k++) {
+        var rj = nb[j][0], rk = nb[k][0];
+        var dot = nb[j][1]*nb[k][1] + nb[j][2]*nb[k][2] + nb[j][3]*nb[k][3];
+        var cs = dot / (rj*rk);
+        q += (cs + 1/3) * (cs + 1/3);
+      }
+      q = 1 - (3/8) * q;
+      var d5 = nb[4][0];               // 5th-nearest distance, Å
+      // density check: nearest O-O distance and coordination within 3.5 Å
+      var d1 = nb[0][0], coord = 0;
+      for (var c = 0; c < nb.length; c++) { if (nb[c][0] < 3.5) coord++; else break; }
+      sumD1 += d1; sumCoord += coord; nDens++;
+      // accumulate
+      var bq = Math.floor((q - QMIN)/(QMAX-QMIN) * NBINS_Q);
+      if (bq >= 0 && bq < NBINS_Q) { histQ[bq]++; sumQ += q; nQ++; if (q > 0.5) nLDL++; }
+      var bd = Math.floor((d5 - DMIN)/(DMAX-DMIN) * NBINS_D);
+      if (bd >= 0 && bd < NBINS_D) { histD[bd]++; sumD += d5; nD++; }
+      used++;
+    }
+    if (used > 0) nSample++;
+    return used;
+  }
+
+  function drawHist(cv, hist, nbins, lo, hi, label, color, guides) {
+    var ctx = cv.getContext('2d'), W = cv.width, H = cv.height;
+    ctx.clearRect(0,0,W,H);
+    var pad = 26, gw = W - pad - 8, gh = H - pad - 16;
+    var mx = 1; for (var i=0;i<nbins;i++) if (hist[i] > mx) mx = hist[i];
+    // guide lines (LDL/HDL reference marks)
+    (guides||[]).forEach(function(g){
+      var gx = pad + (g.v - lo)/(hi-lo) * gw;
+      ctx.strokeStyle = g.c; ctx.setLineDash([3,3]); ctx.beginPath();
+      ctx.moveTo(gx, 6); ctx.lineTo(gx, H-16); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = g.c; ctx.font = '9px monospace'; ctx.fillText(g.t, gx-8, 12);
+    });
+    // bars
+    var bw = gw / nbins;
+    ctx.fillStyle = color;
+    for (var i=0;i<nbins;i++) {
+      var bh = (hist[i]/mx) * gh;
+      ctx.fillRect(pad + i*bw + 0.5, (H-16) - bh, bw - 1, bh);
+    }
+    // axes labels
+    ctx.fillStyle = '#889'; ctx.font = '10px monospace';
+    ctx.fillText(lo.toFixed(1), pad-6, H-4);
+    ctx.fillText(hi.toFixed(1), W-24, H-4);
+    ctx.fillStyle = '#bcd'; ctx.font = '11px monospace';
+    ctx.fillText(label, pad+70, H-4);
+  }
+
+  function redraw() {
+    drawHist(document.getElementById('cv'), histQ, NBINS_Q, QMIN, QMAX,
+      'tetrahedral order q', '#64b5f6',
+      [{v:0.8,c:'#4caf50',t:'LDL'},{v:0.25,c:'#e57373',t:'HDL'}]);
+    drawHist(document.getElementById('cv2'), histD, NBINS_D, DMIN, DMAX,
+      '5th-neighbour d5 (Å)', '#ba68c8',
+      [{v:3.5,c:'#4caf50',t:'LDL'},{v:3.25,c:'#e57373',t:'HDL'}]);
+    var mq = nQ ? sumQ/nQ : 0, md = nD ? sumD/nD : 0, fld = nQ ? nLDL/nQ : 0;
+    document.getElementById('qsum').innerHTML =
+      'mean q = <b style="color:#fff">' + mq.toFixed(3) + '</b> &nbsp; '
+      + 'tetrahedral (q&gt;0.5) fraction = <b style="color:#8f8">' + (100*fld).toFixed(0) + '%</b>';
+    var md1 = nDens ? sumD1/nDens : 0, mco = nDens ? sumCoord/nDens : 0;
+    var d1ok = (md1 > 2.6 && md1 < 3.1);
+    document.getElementById('dsum').innerHTML =
+      'mean d5 = <b style="color:#fff">' + md.toFixed(2) + ' Å</b><br>'
+      + '<span style="color:#889">density check &mdash; nearest O&ndash;O d1 = </span>'
+      + '<b style="color:' + (d1ok?'#8f8':'#f80') + '">' + md1.toFixed(2) + ' Å</b>'
+      + '<span style="color:#889"> (liquid ≈ 2.8), coordination &lt;3.5Å = </span>'
+      + '<b style="color:#fff">' + mco.toFixed(1) + '</b><span style="color:#889"> (liquid ≈ 4)</span>';
+    document.getElementById('stat').innerHTML =
+      ' samples: ' + nSample + ' (' + nQ + ' obs) &nbsp; '
+      + '<span style="color:#9cf">droplet R: mean ' + wallInfo.rmean.toFixed(1)
+      + ' / max ' + wallInfo.rmax.toFixed(1) + ' Å, wall pushing ' + wallInfo.pushed + '</span>';
+  }
+
+  function setTemp(T) {
+    if ('langevinKT' in window) window.langevinKT = T / 315775.0;
+    document.querySelectorAll('#panel button[data-t]').forEach(function(b){
+      b.className = (+b.getAttribute('data-t') === T) ? 'on' : '';
+    });
+  }
+
+  // ---- automatic cool-sweep: dwell (warm-up + collect) at each T, record mean-q vs T ----
+  var SWEEP_T = [300, 280, 260, 240, 220, 200];   // cool from the cohesive 300 K down
+                                                  // (hot end evaporates the vacuum droplet)
+  var WARM_MS = 7000, COLLECT_MS = 11000;          // dwell per T (warm-up then collect)
+  var curve = [];                                  // committed points [{T, meanQ, meanD, fLDL}]
+  var sweep = null;                                // {ti, phase, phaseT0}
+
+  function startSweep() {
+    curve = []; sweep = { ti: 0, phase: 'warm', phaseT0: performance.now() };
+    setTemp(SWEEP_T[0]); resetHist();
+    console.log('sweep started: ' + SWEEP_T.join(',') + ' K');
+    drawCurve();
+  }
+  function stopSweep() { sweep = null; document.getElementById('sweepStat').textContent = ' stopped'; }
+
+  function tickSweep(now) {
+    var T = SWEEP_T[sweep.ti], el = now - sweep.phaseT0;
+    if (sweep.phase === 'warm') {
+      document.getElementById('sweepStat').textContent =
+        ' ' + T + ' K — equilibrating ' + Math.ceil((WARM_MS-el)/1000) + 's';
+      // still sample during warm-up so the LIVE point moves (not committed)
+      sample();
+      drawCurve({ T: T, meanQ: nQ?sumQ/nQ:0, fLDL: nQ?nLDL/nQ:0 });
+      if (el >= WARM_MS) { sweep.phase = 'collect'; sweep.phaseT0 = now; resetHist(); }
+    } else {
+      sample();
+      document.getElementById('sweepStat').textContent =
+        ' ' + T + ' K — collecting ' + Math.ceil((COLLECT_MS-el)/1000) + 's  (' + nQ + ' obs)';
+      drawCurve({ T: T, meanQ: nQ?sumQ/nQ:0, fLDL: nQ?nLDL/nQ:0 });   // live in-progress point
+      if (el >= COLLECT_MS) {
+        var pt = { T: T, meanQ: nQ?sumQ/nQ:0, meanD: nD?sumD/nD:0, fLDL: nQ?nLDL/nQ:0 };
+        curve.push(pt); drawCurve();
+        console.log('sweep point: T=' + T + ' meanQ=' + pt.meanQ.toFixed(3) + ' fLDL=' + pt.fLDL.toFixed(3) + ' obs=' + nQ);
+        sweep.ti++;
+        if (sweep.ti >= SWEEP_T.length) {
+          sweep = null;
+          document.getElementById('sweepStat').textContent = ' done';
+          console.log('=== water two-structure sweep ===', JSON.stringify(curve));
+        } else {
+          setTemp(SWEEP_T[sweep.ti]); sweep.phase = 'warm'; sweep.phaseT0 = now; resetHist();
+        }
+      }
+    }
+  }
+
+  function drawCurve(live) {
+    var cv = document.getElementById('cv3'), ctx = cv.getContext('2d'), W = cv.width, H = cv.height;
+    ctx.clearRect(0,0,W,H);
+    var padL = 30, padB = 20, padT = 8, padR = 8;
+    var gw = W - padL - padR, gh = H - padB - padT;
+    var Tmin = 190, Tmax = 310;
+    function X(T){ return padL + (T - Tmin)/(Tmax - Tmin) * gw; }
+    function Y(v){ return padT + (1 - v) * gh; }                 // v in 0..1
+    // frame + y grid
+    ctx.strokeStyle = '#223'; ctx.lineWidth = 1;
+    [0,0.25,0.5,0.75,1].forEach(function(v){
+      ctx.beginPath(); ctx.moveTo(padL, Y(v)); ctx.lineTo(W-padR, Y(v)); ctx.stroke();
+      ctx.fillStyle = '#667'; ctx.font = '9px monospace'; ctx.fillText(v.toFixed(2), 4, Y(v)+3);
+    });
+    ctx.fillStyle = '#889'; ctx.font = '9px monospace';
+    ctx.fillText('200', X(200)-8, H-6); ctx.fillText('250', X(250)-8, H-6); ctx.fillText('300', X(300)-8, H-6);
+    ctx.fillText('T (K) — cold ← → warm', padL+70, H-6);
+    // sort by T for a clean left-to-right line
+    var pts = curve.slice().sort(function(a,b){ return a.T-b.T; });
+    function plot(key, color) {
+      ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
+      pts.forEach(function(p,i){ var x=X(p.T), y=Y(p[key]); if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y); });
+      ctx.stroke();
+      pts.forEach(function(p){ ctx.beginPath(); ctx.arc(X(p.T), Y(p[key]), 2.5, 0, 7); ctx.fill(); });
+    }
+    plot('fLDL', '#4caf50');       // tetrahedral (LDL) fraction
+    plot('meanQ', '#64b5f6');      // mean q
+    // live in-progress point (hollow markers) so output appears immediately
+    if (live) {
+      [['fLDL','#4caf50'],['meanQ','#64b5f6']].forEach(function(kc){
+        ctx.strokeStyle = kc[1]; ctx.lineWidth = 1.5; ctx.beginPath();
+        ctx.arc(X(live.T), Y(live[kc[0]]||0), 3.5, 0, 7); ctx.stroke();
+      });
+      ctx.fillStyle = '#ff0'; ctx.font = '9px monospace';
+      ctx.fillText('● '+live.T+'K now', W-92, padT+10);
+    }
+    // legend
+    ctx.font = '9px monospace';
+    ctx.fillStyle = '#4caf50'; ctx.fillText('■ LDL fraction (q>0.5)', padL+2, padT+10);
+    ctx.fillStyle = '#64b5f6'; ctx.fillText('■ mean q', padL+2, padT+22);
+  }
+
+  // ---- soft spherical confining wall (droplet-in-a-sphere) ----------------
+  // The unconfined vacuum droplet disperses (coordination -> ~0), so we hold it
+  // at ~liquid density with a one-sided harmonic wall centred on the moving O
+  // centroid. R_WALL sized for 64 waters at ~liquid density. DISCLOSED modeling
+  // choice: it imposes the average density; it does NOT impose local structure,
+  // so the q / d5 question (two structures AT liquid density) stays meaningful.
+  // R_WALL=13.2 au (6.98 Å) holds 64 waters at ~real liquid density (d1≈2.8), inside
+  // the grid boundary (14.25 au). NOTE: R=12 over-compressed to d1≈2.56 (~1.3× density),
+  // which forces HDL and suppresses the low-density LDL structure — so we test at the
+  // relaxed, honest density. Strong/high-cap wall to overcome the dispersed start.
+  var A_AU = 1.8897, R_WALL = 13.2, K_WALL = 0.25, F_CAP = 0.8;   // au / Ha·bohr units
+  var nAtoms = window.USER_ATOMS.length;
+  var extF = []; for (var i=0;i<nAtoms;i++) extF.push([0,0,0]);
+  window.USER_EXTERNAL_FORCE = extF;
+  var wallOn = true;
+  var wallInfo = { rmean: 0, rmax: 0, pushed: 0 };
+
+  function applyWall() {
+    var np = window._nucPos; if (!np) return;
+    for (var i=0;i<nAtoms;i++){ extF[i][0]=0; extF[i][1]=0; extF[i][2]=0; }
+    var hAu = TS.gridToAng * A_AU, idx = TS.oxyIdx;
+    var cx=0,cy=0,cz=0,nn=0;
+    for (var m=0;m<idx.length;m++){ var p=np[idx[m]]; if(!p)continue; cx+=p[0];cy+=p[1];cz+=p[2];nn++; }
+    if (!nn) return; cx/=nn; cy/=nn; cz/=nn;
+    var rsum=0, rmax=0, pushed=0;
+    for (var m=0;m<idx.length;m++){
+      var oi=idx[m], p=np[oi]; if(!p) continue;
+      var x=(p[0]-cx)*hAu, y=(p[1]-cy)*hAu, z=(p[2]-cz)*hAu;
+      var r=Math.sqrt(x*x+y*y+z*z);
+      var rA = r/A_AU; rsum += rA; if (rA>rmax) rmax=rA;   // droplet radius in Å
+      if (wallOn && r>R_WALL && r>1e-6){
+        var f=-K_WALL*(r-R_WALL); if(f<-F_CAP)f=-F_CAP;
+        var fx=f*x/r, fy=f*y/r, fz=f*z/r;
+        for (var d=0; d<3; d++){ var a2=oi+d; if(a2<nAtoms){ extF[a2][0]=fx; extF[a2][1]=fy; extF[a2][2]=fz; } }
+        pushed++;
+      }
+    }
+    wallInfo.rmean = nn?rsum/nn:0; wallInfo.rmax = rmax; wallInfo.pushed = pushed;
+  }
+
+  var t0 = performance.now();
+  setInterval(function() {
+    if (!window._nucPos) return;
+    applyWall();
+    var now = performance.now();
+    if (sweep) { tickSweep(now); redraw(); return; }
+    if (now - t0 >= 6000) sample();   // ~6 s warm-up before manual accumulation
+    redraw();                          // always redraw so droplet-radius reads live
+  }, 300);
+
+  // manual temperature buttons -> live langevinKT
+  document.querySelectorAll('#panel button[data-t]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      if (sweep) stopSweep();
+      var T = +btn.getAttribute('data-t');
+      setTemp(T);
+      resetHist(); redraw();
+      console.log('Temperature set to ' + T + ' K; histogram reset.');
+    });
+  });
+  document.getElementById('resetHist').addEventListener('click', function(){ resetHist(); redraw(); });
+  document.getElementById('sweepBtn').addEventListener('click', startSweep);
+  document.getElementById('stopBtn').addEventListener('click', stopSweep);
+  document.getElementById('wallChk').addEventListener('change', function(){
+    wallOn = this.checked; resetHist(); redraw();
+    console.log('confining wall ' + (wallOn?'ON':'OFF'));
+  });
+
+  var style = document.createElement('style');
+  style.textContent = '#panel button{background:#1a2233;color:#cde;border:1px solid #345;border-radius:4px;padding:2px 6px;font-size:10.5px;cursor:pointer}'
+    + '#panel button.on{background:#2b6cb0;color:#fff;border-color:#4fc3f7}';
+  document.head.appendChild(style);
+  redraw();
+  drawCurve();
+})();
+</script>
+
+<script>
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

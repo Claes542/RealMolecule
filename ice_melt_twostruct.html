@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="controls" style="position:fixed;bottom:10px;left:10px;z-index:100;background:rgba(0,0,0,0.8);padding:12px 16px;border-radius:8px;border:1px solid #333">
+  <div style="font-size:14px;color:#26c6da;margin-bottom:8px">Ice Melting — Temperature</div>
+  <input type="range" id="tempSlider" min="0" max="2000" step="50" value="0" style="width:250px">
+  <span id="tempLabel" style="margin-left:10px;font-size:16px;color:#4fc3f7">0 K</span>
+  <div id="status" style="font-size:11px;color:#888;margin-top:4px"></div>
+  <div style="font-size:13px;color:#00e5ff;margin-top:10px">Shear rate</div>
+  <input type="range" id="shearSlider" min="0" max="100" step="1" value="0" style="width:250px">
+  <span id="shearLabel" style="margin-left:10px;font-size:14px;color:#00e5ff">0</span>
+  <div style="font-size:13px;color:#ffb3ff;margin-top:10px">Thermostat:
+    <label style="margin-left:8px;cursor:pointer"><input type="radio" name="thermo" value="andersen" checked> Andersen</label>
+    <label style="margin-left:8px;cursor:pointer"><input type="radio" name="thermo" value="brownian"> Brownian</label>
+    <span id="thermoStatus" style="margin-left:10px;color:#aaa;font-size:11px">(γ=1.0)</span>
+  </div>
+</div>
+<script>
+(function() {
+  var _sheRdy = setInterval(function() {
+    var sh = document.getElementById('shearSlider');
+    if (!sh) return;
+    clearInterval(_sheRdy);
+    var lbl = document.getElementById('shearLabel');
+    // Map slider 0..100 → shear rate 0..1e-4 (log-linear-ish)
+    function sliderToRate(v) { return v === 0 ? 0 : Math.pow(10, (v - 100) / 25) * 1e-4; }
+    sh.addEventListener('input', function() {
+      var v = parseInt(this.value);
+      var r = sliderToRate(v);
+      window.USER_SHEAR_RATE = r;
+      lbl.textContent = r === 0 ? '0' : r.toExponential(2);
+    });
+  }, 100);
+  // Thermostat radio: live-toggle Andersen ↔ Brownian
+  var _thReady = setInterval(function() {
+    var radios = document.querySelectorAll('input[name="thermo"]');
+    if (radios.length === 0) return;
+    clearInterval(_thReady);
+    var stat = document.getElementById('thermoStatus');
+    radios.forEach(function(r) {
+      r.addEventListener('change', function() {
+        if (this.value === 'brownian') {
+          window.USER_BROWNIAN = true;
+          window.USER_BROWNIAN_GAMMA = window.USER_BROWNIAN_GAMMA || 1.0;
+          stat.textContent = '(BD γ=' + window.USER_BROWNIAN_GAMMA + ')';
+          stat.style.color = '#ffb3ff';
+        } else {
+          window.USER_BROWNIAN = false;
+          stat.textContent = '(Andersen)';
+          stat.style.color = '#aaa';
+        }
+        console.log('Thermostat → ' + this.value);
+      });
+    });
+  }, 100);
+})();
+</script>
+<script>
+// Temperature slider — updates langevinKT at runtime
+var _sliderReady = setInterval(function() {
+  var slider = document.getElementById('tempSlider');
+  if (!slider) return;
+  clearInterval(_sliderReady);
+  var label = document.getElementById('tempLabel');
+  var statusEl = document.getElementById('status');
+  slider.addEventListener('input', function() {
+    var T = parseInt(this.value);
+    label.textContent = T + ' K';
+    window.USER_TEMPERATURE_K = T;
+    if (typeof window.langevinKT !== 'undefined') {
+      window.langevinKT = T / 315775.0;
+    }
+    // Scale position kicks with temperature — needed to break H-bonds
+    window.USER_THERMAL_KICK = T > 100 ? 0.3 * T / 1000 : 0;
+    if (T < 200) label.style.color = '#4fc3f7';
+    else if (T < 273) label.style.color = '#26c6da';
+    else if (T < 500) label.style.color = '#ff0';
+    else label.style.color = '#ff8800';
+    var note = '';
+    if (T > 273) note = ' (above melting 273 K)';
+    if (T > 373) note = ' (above boiling 373 K)';
+    statusEl.textContent = 'T=' + T + ' K' + note;
+  });
+  setInterval(function() {
+    if (typeof nucVel === 'undefined' || typeof Z === 'undefined') return;
+    var ke = 0, nActive = 0;
+    var frozen = window.USER_FROZEN_ATOMS || [];
+    for (var a = 0; a < nucVel.length; a++) {
+      if (typeof Z[a] === 'undefined' || Z[a] === 0) continue;
+      if (frozen.indexOf(a) >= 0) continue;
+      var mass = (Z[a] === 2 ? 16 : 1) * 1836;
+      var v2 = nucVel[a][0]*nucVel[a][0] + nucVel[a][1]*nucVel[a][1] + nucVel[a][2]*nucVel[a][2];
+      ke += 0.5 * mass * v2;
+      nActive++;
+    }
+    if (nActive === 0) return;
+    var T_meas = (2 * ke / (3 * nActive)) * 315775.0;
+    statusEl.textContent = 'T_target=' + slider.value + ' K, T_measured=' + T_meas.toFixed(0) + ' K, ' + nActive + ' free';
+  }, 2000);
+}, 100);
+</script>
+<script>
+// Ice melting simulation
+// Start from Ice Ic diamond cubic, add thermal energy → watch crystal disorder
+// Smaller system (2×2×2) with thermal kick on all atoms
+(function() {
+  var gridN = 150, scr = 50, N2 = 75;
+  var h = scr / gridN;
+  var A = 1.8897;
+  var atoms = [];
+
+  function addAtom(x, y, z, Z, el) {
+    atoms.push({
+      i: Math.round(N2 + x / h),
+      j: Math.round(N2 + y / h),
+      k: Math.round(N2 + z / h),
+      Z: Z, el: el
+    });
+  }
+
+  // Ice Ic: diamond cubic, a = 6.36 Å, O-O = 2.75 Å
+  var aCube = 6.36 * A;
+  var dOO = aCube * Math.sqrt(3) / 4;
+  var bOH = 0.96 * A;
+
+  var basis = [
+    [0, 0, 0], [0, 0.5, 0.5], [0.5, 0, 0.5], [0.5, 0.5, 0],
+    [0.25, 0.25, 0.25], [0.25, 0.75, 0.75], [0.75, 0.25, 0.75], [0.75, 0.75, 0.25]
+  ];
+
+  var oPositions = [];
+  var nc = 3;  // 3×3×3 = 216 O atoms
+
+  var x0 = -(nc * aCube) / 2;
+  var y0 = -(nc * aCube) / 2;
+  var z0 = -(nc * aCube) / 2;
+
+  for (var iz = 0; iz < nc; iz++) {
+    for (var iy = 0; iy < nc; iy++) {
+      for (var ix = 0; ix < nc; ix++) {
+        for (var b = 0; b < basis.length; b++) {
+          oPositions.push([
+            x0 + (ix + basis[b][0]) * aCube,
+            y0 + (iy + basis[b][1]) * aCube,
+            z0 + (iz + basis[b][2]) * aCube
+          ]);
+        }
+      }
+    }
+  }
+
+  // Center
+  var cx = 0, cy = 0, cz = 0;
+  for (var i = 0; i < oPositions.length; i++) {
+    cx += oPositions[i][0]; cy += oPositions[i][1]; cz += oPositions[i][2];
+  }
+  cx /= oPositions.length; cy /= oPositions.length; cz /= oPositions.length;
+  for (var i = 0; i < oPositions.length; i++) {
+    oPositions[i][0] -= cx; oPositions[i][1] -= cy; oPositions[i][2] -= cz;
+  }
+
+  // Remove O atoms outside box
+  var halfScr = scr / 2 - 3 * h;
+  var validO = oPositions.filter(function(p) {
+    return Math.abs(p[0]) < halfScr && Math.abs(p[1]) < halfScr && Math.abs(p[2]) < halfScr;
+  });
+
+  // Place O atoms
+  var oIndices = [];
+  for (var i = 0; i < validO.length; i++) {
+    oIndices.push(atoms.length);
+    addAtom(validO[i][0], validO[i][1], validO[i][2], 2, 'O');
+  }
+
+  // Track which H's belong to which O (for H-O-H triplet identification)
+  var hIndicesPerO = validO.map(function() { return []; });
+  // Place H toward 2 nearest O neighbors (ice rules)
+  for (var i = 0; i < validO.length; i++) {
+    var dists = [];
+    for (var j = 0; j < validO.length; j++) {
+      if (j === i) continue;
+      var dx = validO[j][0] - validO[i][0];
+      var dy = validO[j][1] - validO[i][1];
+      var dz = validO[j][2] - validO[i][2];
+      var d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      dists.push({ j: j, d: d, dx: dx, dy: dy, dz: dz });
+    }
+    dists.sort(function(a, b) { return a.d - b.d; });
+
+    var nH = 0;
+    for (var k = 0; k < dists.length && nH < 2; k++) {
+      if (dists[k].d > dOO * 1.2) break;
+      if (dists[k].j > i) {
+        var scale = bOH / dists[k].d;
+        hIndicesPerO[i].push(atoms.length);
+        addAtom(validO[i][0] + dists[k].dx * scale,
+                validO[i][1] + dists[k].dy * scale,
+                validO[i][2] + dists[k].dz * scale, 1, 'H');
+        nH++;
+      }
+    }
+    for (var k = 0; k < dists.length && nH < 2; k++) {
+      if (dists[k].d > dOO * 1.2) break;
+      if (dists[k].j <= i) {
+        var scale = bOH / dists[k].d;
+        hIndicesPerO[i].push(atoms.length);
+        addAtom(validO[i][0] + dists[k].dx * scale,
+                validO[i][1] + dists[k].dy * scale,
+                validO[i][2] + dists[k].dz * scale, 1, 'H');
+        nH++;
+      }
+    }
+  }
+
+  var nWater = validO.length;
+  console.log('Ice melt: ' + nWater + ' water molecules, ' + atoms.length + ' atoms');
+
+  // Count neighbors for each O
+  var nNeighbors = [];
+  for (var i = 0; i < validO.length; i++) {
+    var nn = 0;
+    for (var j = 0; j < validO.length; j++) {
+      if (j === i) continue;
+      var dx = validO[j][0]-validO[i][0], dy = validO[j][1]-validO[i][1], dz = validO[j][2]-validO[i][2];
+      if (Math.sqrt(dx*dx+dy*dy+dz*dz) < dOO * 1.2) nn++;
+    }
+    nNeighbors.push(nn);
+  }
+
+  // Only freeze corner atoms (1 or 2 neighbors) to contain the system
+  // Let surface atoms (3 neighbors) be free — they melt first
+  var frozen = [];
+  for (var i = 0; i < validO.length; i++) {
+    if (nNeighbors[i] <= 2) {
+      frozen.push(oIndices[i]);
+      for (var a = oIndices[i]+1; a < (oIndices[i+1] || atoms.length); a++) {
+        if (atoms[a].Z === 1) frozen.push(a);
+      }
+    }
+  }
+  window.USER_FROZEN_ATOMS = frozen;
+
+  var nFree = atoms.length - frozen.length;
+  console.log('Frozen: ' + frozen.length + ' corner atoms, ' + nFree + ' free (will melt)');
+
+  // No initial kick — Langevin thermostat will equilibrate to target T
+
+  // Monitor several O-O distances across the crystal
+  var bondPairs = [];
+  // Find inner O-O pairs (both with 4 neighbors)
+  var innerO = [];
+  for (var i = 0; i < validO.length; i++) {
+    if (nNeighbors[i] >= 4) innerO.push(i);
+  }
+  // Sample up to 4 inner O-O pairs
+  var nPairs = 0;
+  for (var i = 0; i < innerO.length && nPairs < 4; i++) {
+    for (var j = i + 1; j < innerO.length && nPairs < 4; j++) {
+      var dx = validO[innerO[j]][0]-validO[innerO[i]][0];
+      var dy = validO[innerO[j]][1]-validO[innerO[i]][1];
+      var dz = validO[innerO[j]][2]-validO[innerO[i]][2];
+      var d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      if (d < dOO * 1.2) {
+        bondPairs.push([oIndices[innerO[i]], oIndices[innerO[j]], "O-O(" + nPairs + "):"]);
+        nPairs++;
+      }
+    }
+  }
+  // Also some surface O-O pairs
+  var surfO = [];
+  for (var i = 0; i < validO.length; i++) {
+    if (nNeighbors[i] === 3) surfO.push(i);
+  }
+  var nSurf = 0;
+  for (var i = 0; i < surfO.length && nSurf < 2; i++) {
+    for (var j = i + 1; j < surfO.length && nSurf < 2; j++) {
+      var dx = validO[surfO[j]][0]-validO[surfO[i]][0];
+      var dy = validO[surfO[j]][1]-validO[surfO[i]][1];
+      var dz = validO[surfO[j]][2]-validO[surfO[i]][2];
+      var d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      if (d < dOO * 1.2) {
+        bondPairs.push([oIndices[surfO[i]], oIndices[surfO[j]], "surf-OO(" + nSurf + "):"]);
+        nSurf++;
+      }
+    }
+  }
+
+  window.USER_BOND_PAIRS = bondPairs;
+  window.USER_REFERENCE = {
+    bonds: { "O-O": "2.76 (ice)", "O-O(liquid)": "2.8-3.5 (disordered)" },
+    energy: "Ice melting: crystal → liquid",
+    binding: "Do O-O distances increase and disorder as thermal energy breaks H-bonds?"
+  };
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;   // start with dynamics ON
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 20.0;
+  window.USER_TEMPERATURE_K = 0;  // start cold, sweep up with slider
+  window.USER_LANGEVIN_GAMMA = 0.2;  // Andersen collision rate
+  window.USER_NUC_SUBSTEPS = 10;
+  window.USER_N_MOVE = 30;
+  // Gentle disorder: small kicks for many steps, then relax
+  window.USER_THERMAL_KICK = 0.3;
+  var _kickPhase = setInterval(function() {
+    if (typeof nucStepCount !== 'undefined' && nucStepCount > 50 && window.USER_THERMAL_KICK > 0) {
+      window.USER_THERMAL_KICK = 0;
+      console.log("=== KICKS OFF at step " + nucStepCount + " — E=" + E + " — relaxing ===");
+      clearInterval(_kickPhase);
+    }
+  }, 500);
+  // Build water triplets for H-O-H angle tracking using the per-O H index list recorded during placement.
+  var waterTriplets = [];
+  for (var wi = 0; wi < oIndices.length; wi++) {
+    if (hIndicesPerO[wi].length === 2) {
+      waterTriplets.push([oIndices[wi], hIndicesPerO[wi][0], hIndicesPerO[wi][1]]);
+    }
+  }
+  console.log('Water triplets: ' + waterTriplets.length);
+  window.USER_WATER_TRIPLETS = waterTriplets;
+
+  // Expose O indices + grid scale for the two-structure probe (q / d5 / coordination).
+  window.ICE = { oxyIdx: oIndices, gridToAng: h / A, N2: N2 };
+  // Start a monitor that reports H-O-H angle stats every 2s.
+  setInterval(function() {
+    if (typeof nucPos === 'undefined') return;
+    var angles = [];
+    for (var t = 0; t < waterTriplets.length; t++) {
+      var o = waterTriplets[t][0], h1 = waterTriplets[t][1], h2 = waterTriplets[t][2];
+      if (!nucPos[o] || !nucPos[h1] || !nucPos[h2]) continue;
+      var a1x = nucPos[h1][0] - nucPos[o][0], a1y = nucPos[h1][1] - nucPos[o][1], a1z = nucPos[h1][2] - nucPos[o][2];
+      var a2x = nucPos[h2][0] - nucPos[o][0], a2y = nucPos[h2][1] - nucPos[o][1], a2z = nucPos[h2][2] - nucPos[o][2];
+      var dot = a1x*a2x + a1y*a2y + a1z*a2z;
+      var m1 = Math.sqrt(a1x*a1x + a1y*a1y + a1z*a1z);
+      var m2 = Math.sqrt(a2x*a2x + a2y*a2y + a2z*a2z);
+      if (m1 > 0 && m2 > 0) angles.push(Math.acos(Math.max(-1, Math.min(1, dot / (m1 * m2)))) * 180 / Math.PI);
+    }
+    if (angles.length === 0) return;
+    angles.sort(function(a,b) { return a-b; });
+    var mean = angles.reduce(function(s,a) {return s+a;}, 0) / angles.length;
+    var med = angles[Math.floor(angles.length/2)];
+    window._hohStats = 'H-O-H: min=' + angles[0].toFixed(1) + '° med=' + med.toFixed(1) + '° mean=' + mean.toFixed(1) + '° max=' + angles[angles.length-1].toFixed(1) + '° (n=' + angles.length + ')';
+    console.log(window._hohStats);
+  }, 2000);
+
+  // H-bond counter: average # H-bonded neighbors per water + flux (breaks/forms per second)
+  var prevBonded = new Set();
+  var lastCheckTime = Date.now();
+  setInterval(function() {
+    if (typeof nucPos === 'undefined') return;
+    var oIdxs = waterTriplets.map(function(t) { return t[0]; });
+    var nW = oIdxs.length;
+    if (nW < 2) return;
+    var hbCutoffAu = 3.5 * 1.8897;  // 3.5 Å in au
+    var c2 = hbCutoffAu * hbCutoffAu;
+    var currentBonded = new Set();
+    var totalHB = 0;
+    for (var i = 0; i < nW; i++) {
+      var o1 = oIdxs[i];
+      if (!nucPos[o1]) continue;
+      for (var j = i + 1; j < nW; j++) {
+        var o2 = oIdxs[j];
+        if (!nucPos[o2]) continue;
+        var dx = (nucPos[o1][0] - nucPos[o2][0]) * h;
+        var dy = (nucPos[o1][1] - nucPos[o2][1]) * h;
+        var dz = (nucPos[o1][2] - nucPos[o2][2]) * h;
+        if (dx*dx + dy*dy + dz*dz < c2) {
+          currentBonded.add(i + ',' + j);
+          totalHB += 2;
+        }
+      }
+    }
+    var nHB = totalHB / nW;
+    var breaks = 0, forms = 0;
+    prevBonded.forEach(function(p) { if (!currentBonded.has(p)) breaks++; });
+    currentBonded.forEach(function(p) { if (!prevBonded.has(p)) forms++; });
+    var dt = (Date.now() - lastCheckTime) / 1000;
+    var brkRate = breaks / dt, fmRate = forms / dt;
+    prevBonded = currentBonded;
+    lastCheckTime = Date.now();
+    window._hbStats = 'n_HB = ' + nHB.toFixed(2) + ' (ice 4.0 / liq ~3.4) | breaks/s = ' + brkRate.toFixed(1) + '  forms/s = ' + fmRate.toFixed(1);
+  }, 1000);
+  window._hbStats = 'n_HB = ... (computing)';
+
+  // Shear body force: F_x = m · shearRate · (y - y_center), applied by molecule.js each step.
+  // URL ?shear=0.001 (units: 1/au-time²). Default 0 = no shear.
+  var urlShear = parseFloat(new URLSearchParams(location.search).get('shear'));
+  window.USER_SHEAR_RATE = isFinite(urlShear) ? urlShear : 0;
+  if (window.USER_SHEAR_RATE !== 0) console.log('Shear body force: rate=' + window.USER_SHEAR_RATE);
+  window.USER_ROT_SPEED = 0.005;
+  window.USER_GRADP_FORCE = true;
+  window.USER_Z = atoms.map(function(a) { return a.Z; });
+  window.USER_RC = atoms.map(function(a) {
+    if (a.el === 'H') return 0;
+    if (a.el === 'O') return 0.8;
+    return 0;
+  });
+  window.INIT_ZEFF = 2;
+})();
+</script>
+
+<!-- ===== two-structure probe overlay (reads ICE O positions) ===== -->
+<div id="panel" style="position:fixed;top:0;right:0;width:360px;background:rgba(8,10,16,0.94);border-left:1px solid #223;padding:10px 12px;font-size:11.5px;line-height:1.45;z-index:50;height:100vh;overflow:auto;box-sizing:border-box;color:#ddd;font-family:-apple-system,Segoe UI,monospace">
+  <div style="font-size:14px;color:#80d8ff;font-weight:600;margin-bottom:2px">Melt-ice two-structure probe</div>
+  <div style="color:#889;font-style:italic;margin-bottom:8px">Start tetrahedral (ice/LDL) → melt → does it collapse to HDL?</div>
+  <div style="margin-bottom:6px">
+    <span style="color:#9ab">Temperature (model units — melts ≈1300 K):</span>
+    <button data-t="200" class="on" style="margin:1px">200</button>
+    <button data-t="800" style="margin:1px">800</button>
+    <button data-t="1300" style="margin:1px">1300</button>
+    <button data-t="1800" style="margin:1px">1800</button>
+  </div>
+  <div style="margin-bottom:8px">
+    <button id="resetHist" style="margin:1px">Reset</button>
+    <button id="sweepBtn" style="margin:1px">▶ Melt-sweep 200→2000 K</button>
+    <span id="sweepStat" style="color:#8c8"></span>
+  </div>
+  <canvas id="cv" width="336" height="180" style="background:#0b0d13;border:1px solid #223;display:block"></canvas>
+  <div id="qsum" style="margin:5px 0 8px;color:#bcd"></div>
+  <canvas id="cv2" width="336" height="180" style="background:#0b0d13;border:1px solid #223;display:block"></canvas>
+  <div id="dsum" style="margin:5px 0 10px;color:#bcd"></div>
+  <canvas id="cv3" width="336" height="180" style="background:#0b0d13;border:1px solid #223;display:block"></canvas>
+  <div style="margin:5px 0 8px;color:#889;font-size:10.5px">mean&nbsp;q (blue) &amp; coordination/6 (green) vs T. Ice/LDL = high q, coord≈4; HDL = low q, coord≈5, d5 pulls in.</div>
+  <div style="color:#889;font-size:10.5px;border-top:1px solid #223;padding-top:7px">
+    <b style="color:#9ab">Reading it.</b> Cold, unmelted: is <b>q high (~0.7–0.9) and coordination ≈4</b>?
+    → the isotropic Z=2 water <i>holds</i> the imposed tetrahedron. On heating: q falls, and if a
+    5th neighbour pulls in (<b>d5 → ~3.2, coordination → ~5</b>) that's the collapse to HDL.
+    Two well-separated states along the melt = the two structures, captured in one run.<br>
+    <span style="color:#c96">Caveats:</span> coarse grid (h≈0.18 Å); frozen corners; interior-core only; Andersen model-time.
+  </div>
+</div>
+<script>
+(function() {
+  function boot() {
+    var TS = window.ICE;
+    if (!TS) { setTimeout(boot, 200); return; }
+    var NBQ = 24, NBD = 24, QMIN = 0, QMAX = 1, DMIN = 2.8, DMAX = 5.0, A_AU = 1.8897;
+    var histQ = new Float64Array(NBQ), histD = new Float64Array(NBD);
+    var nS = 0, sumQ = 0, nQ = 0, sumD = 0, nD = 0, nLDL = 0, sumD1 = 0, sumCo = 0, nDens = 0;
+    function reset() { histQ.fill(0); histD.fill(0); nS = sumQ = nQ = sumD = nD = nLDL = sumD1 = sumCo = nDens = 0; }
+
+    function sample() {
+      var np = window._nucPos; if (!np) return 0;
+      var g2a = TS.gridToAng, N2 = TS.N2, idx = TS.oxyIdx, O = [];
+      for (var m = 0; m < idx.length; m++) { var p = np[idx[m]]; if (p) O.push([(p[0]-N2)*g2a,(p[1]-N2)*g2a,(p[2]-N2)*g2a]); }
+      var n = O.length; if (n < 8) return 0;
+      var cx=0,cy=0,cz=0; for (var i=0;i<n;i++){cx+=O[i][0];cy+=O[i][1];cz+=O[i][2];} cx/=n;cy/=n;cz/=n;
+      var dc=new Float64Array(n); for (var a=0;a<n;a++){var ex=O[a][0]-cx,ey=O[a][1]-cy,ez=O[a][2]-cz;dc[a]=Math.sqrt(ex*ex+ey*ey+ez*ez);}
+      var sorted=Array.prototype.slice.call(dc).sort(function(u,v){return u-v;});
+      var cut=sorted[Math.max(0,Math.floor(0.55*n)-1)], used=0;
+      for (var a=0;a<n;a++){
+        if (dc[a]>cut) continue;
+        var nb=[];
+        for (var b=0;b<n;b++){ if(b===a)continue; var dx=O[b][0]-O[a][0],dy=O[b][1]-O[a][1],dz=O[b][2]-O[a][2]; nb.push([Math.sqrt(dx*dx+dy*dy+dz*dz),dx,dy,dz]); }
+        nb.sort(function(u,v){return u[0]-v[0];}); if (nb.length<5) continue;
+        var q=0;
+        for (var j=0;j<4;j++) for (var k=j+1;k<4;k++){ var rj=nb[j][0],rk=nb[k][0]; var dot=nb[j][1]*nb[k][1]+nb[j][2]*nb[k][2]+nb[j][3]*nb[k][3]; var cs=dot/(rj*rk); q+=(cs+1/3)*(cs+1/3); }
+        q=1-(3/8)*q; var d5=nb[4][0], d1=nb[0][0], co=0;
+        for (var c=0;c<nb.length;c++){ if(nb[c][0]<3.5)co++; else break; }
+        sumD1+=d1; sumCo+=co; nDens++;
+        var bq=Math.floor((q-QMIN)/(QMAX-QMIN)*NBQ); if(bq>=0&&bq<NBQ){histQ[bq]++;sumQ+=q;nQ++;if(q>0.5)nLDL++;}
+        var bd=Math.floor((d5-DMIN)/(DMAX-DMIN)*NBD); if(bd>=0&&bd<NBD){histD[bd]++;sumD+=d5;nD++;}
+        used++;
+      }
+      if (used>0) nS++;
+      return used;
+    }
+
+    function hist(cv, H, nb, lo, hi, color, guides, label) {
+      var x=cv.getContext('2d'),W=cv.width,Ht=cv.height; x.clearRect(0,0,W,Ht);
+      var pad=26,gw=W-pad-8,gh=Ht-42,mx=1; for(var i=0;i<nb;i++)if(H[i]>mx)mx=H[i];
+      (guides||[]).forEach(function(g){ var gx=pad+(g.v-lo)/(hi-lo)*gw; x.strokeStyle=g.c;x.setLineDash([3,3]);x.beginPath();x.moveTo(gx,6);x.lineTo(gx,Ht-16);x.stroke();x.setLineDash([]); x.fillStyle=g.c;x.font='9px monospace';x.fillText(g.t,gx-8,12); });
+      var bw=gw/nb; x.fillStyle=color; for(var i=0;i<nb;i++){var bh=(H[i]/mx)*gh;x.fillRect(pad+i*bw+0.5,(Ht-16)-bh,bw-1,bh);}
+      x.fillStyle='#889';x.font='10px monospace';x.fillText(lo.toFixed(1),pad-6,Ht-3);x.fillText(hi.toFixed(1),W-24,Ht-3);
+      x.fillStyle='#bcd';x.font='11px monospace';x.fillText(label,pad+60,Ht-3);
+    }
+
+    var curve = [];
+    function drawCurve(live) {
+      var cv=document.getElementById('cv3'),x=cv.getContext('2d'),W=cv.width,H=cv.height; x.clearRect(0,0,W,H);
+      var pL=30,pB=18,pT=8,pR=8,gw=W-pL-pR,gh=H-pB-pT,Tmin=100,Tmax=2050;
+      function X(T){return pL+(T-Tmin)/(Tmax-Tmin)*gw;} function Y(v){return pT+(1-v)*gh;}
+      x.strokeStyle='#223';[0,.25,.5,.75,1].forEach(function(v){x.beginPath();x.moveTo(pL,Y(v));x.lineTo(W-pR,Y(v));x.stroke();x.fillStyle='#667';x.font='9px monospace';x.fillText(v.toFixed(2),4,Y(v)+3);});
+      x.fillStyle='#889';x.font='9px monospace';x.fillText('200',X(200)-8,H-5);x.fillText('1300',X(1300)-12,H-5);x.fillText('2000',X(2000)-14,H-5);
+      var pts=curve.slice().sort(function(a,b){return a.T-b.T;});
+      function plot(key,sc,color){x.strokeStyle=color;x.fillStyle=color;x.lineWidth=1.5;x.beginPath();pts.forEach(function(p,i){var xx=X(p.T),yy=Y(p[key]*sc);if(i===0)x.moveTo(xx,yy);else x.lineTo(xx,yy);});x.stroke();pts.forEach(function(p){x.beginPath();x.arc(X(p.T),Y(p[key]*sc),2.5,0,7);x.fill();});}
+      plot('coord',1/6,'#4caf50'); plot('meanQ',1,'#64b5f6');
+      if(live){x.fillStyle='#ff0';x.font='9px monospace';x.fillText('● '+live.T+'K',W-70,pT+10);}
+    }
+
+    function redraw() {
+      hist(document.getElementById('cv'),histQ,NBQ,QMIN,QMAX,'#64b5f6',[{v:0.8,c:'#4caf50',t:'tetra'},{v:0.25,c:'#e57373',t:'disord'}],'tetrahedral q');
+      hist(document.getElementById('cv2'),histD,NBD,DMIN,DMAX,'#ba68c8',[{v:4.5,c:'#4caf50',t:'ice'},{v:3.25,c:'#e57373',t:'HDL'}],'d5 (Å)');
+      var mq=nQ?sumQ/nQ:0, md=nD?sumD/nD:0, md1=nDens?sumD1/nDens:0, mco=nDens?sumCo/nDens:0, fl=nQ?nLDL/nQ:0;
+      document.getElementById('qsum').innerHTML='mean q = <b style="color:#fff">'+mq.toFixed(3)+'</b> &nbsp; tetra(q&gt;0.5) = <b style="color:#8f8">'+(100*fl).toFixed(0)+'%</b>';
+      document.getElementById('dsum').innerHTML='mean d5 = <b style="color:#fff">'+md.toFixed(2)+' Å</b> &nbsp; d1 = <b style="color:#fff">'+md1.toFixed(2)+'</b> &nbsp; coord&lt;3.5Å = <b style="color:#fff">'+mco.toFixed(1)+'</b> <span style="color:#889">(ice≈4, HDL≈5)</span>';
+    }
+
+    function setT(T){ if('langevinKT' in window) window.langevinKT=T/315775; document.querySelectorAll('#panel button[data-t]').forEach(function(b){b.className=(+b.getAttribute('data-t')===T)?'on':'';}); }
+
+    var SWEEP=[200,700,1100,1300,1500,2000], WARM=9000, COLL=12000, sweep=null;
+    function tick(now){ var T=SWEEP[sweep.ti],el=now-sweep.t0;
+      if(sweep.ph==='warm'){ sample(); drawCurve({T:T,meanQ:nQ?sumQ/nQ:0,coord:nDens?sumCo/nDens:0}); document.getElementById('sweepStat').textContent=' '+T+'K eq '+Math.ceil((WARM-el)/1000)+'s'; if(el>=WARM){sweep.ph='coll';sweep.t0=now;reset();} }
+      else { sample(); drawCurve({T:T,meanQ:nQ?sumQ/nQ:0,coord:nDens?sumCo/nDens:0}); document.getElementById('sweepStat').textContent=' '+T+'K rec '+Math.ceil((COLL-el)/1000)+'s ('+nQ+')';
+        if(el>=COLL){ curve.push({T:T,meanQ:nQ?sumQ/nQ:0,coord:nDens?sumCo/nDens:0,d5:nD?sumD/nD:0}); drawCurve(); console.log('ice pt',T,'q',(nQ?sumQ/nQ:0).toFixed(3),'coord',(nDens?sumCo/nDens:0).toFixed(2)); sweep.ti++;
+          if(sweep.ti>=SWEEP.length){sweep=null;document.getElementById('sweepStat').textContent=' done';console.log('=== ice melt sweep ===',JSON.stringify(curve));}
+          else{setT(SWEEP[sweep.ti]);sweep.ph='warm';sweep.t0=now;reset();} } }
+    }
+
+    setInterval(function(){ if(!window._nucPos)return; var now=performance.now(); if(sweep){tick(now);redraw();return;} sample(); redraw(); }, 500);
+    document.querySelectorAll('#panel button[data-t]').forEach(function(b){ b.addEventListener('click',function(){ if(sweep)sweep=null; setT(+b.getAttribute('data-t')); reset(); redraw(); }); });
+    document.getElementById('resetHist').addEventListener('click',function(){reset();redraw();});
+    document.getElementById('sweepBtn').addEventListener('click',function(){ curve=[]; sweep={ti:0,ph:'warm',t0:performance.now()}; setT(SWEEP[0]); reset(); });
+    var st=document.createElement('style'); st.textContent='#panel button{background:#1a2233;color:#cde;border:1px solid #345;border-radius:4px;padding:2px 6px;font-size:10.5px;cursor:pointer}#panel button.on{background:#2b6cb0;color:#fff;border-color:#4fc3f7}'; document.head.appendChild(st);
+    redraw(); drawCurve();
+  }
+  boot();
+})();
+</script>
+
+<script>
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

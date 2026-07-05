@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<div id="note" style="position:fixed;left:8px;bottom:8px;max-width:450px;color:#bcd;background:rgba(6,8,14,.86);
+  border:1px solid #234;border-radius:6px;padding:9px 11px;font:11.5px/1.45 -apple-system,monospace;z-index:60">
+  <b style="color:#8cf">CONTROL: plain reduced Z=2 water dimer.</b><br>
+  This is the model we KNOW H-bonds (spherical 2-e O, rc=0.8, no split). Same geometry, same
+  bond/angle springs, same damped relaxation as the split tests. <b>If OO settles ~2.8&nbsp;Å →
+  the harness is good and the split models are the problem. If OO grows here too → the harness/
+  geometry is wrong and my earlier "growing" results were artifacts.</b> Watch <b>OO:</b>.
+</div>
+<script>
+(function() {
+  var gridN = 160, scr = 16, N2 = 80;
+  var h = scr / gridN, A = 1.8897;
+  var b = 0.96 * A, dOO = 3.0 * A;
+
+  var atoms = [], zList = [], znList = [], rcList = [], zeff = [];
+  var triplets = [], bondCon = [];
+
+  function clampG(v) { return Math.max(3, Math.min(gridN - 3, Math.round(N2 + v / h))); }
+  function pushAtom(x, y, z, el, Z, zn, rc, ze) {
+    atoms.push({ i: clampG(x), j: clampG(y), k: clampG(z), Z: Z, el: el });
+    zList.push(Z); znList.push(zn); rcList.push(rc); zeff.push(ze);
+  }
+  function addWater(ox, oy, oz, hdirs) {
+    var base = atoms.length;
+    pushAtom(ox, oy, oz, 'O', 2, 2, 0.8, 2);
+    pushAtom(ox + b*hdirs[0][0], oy + b*hdirs[0][1], oz + b*hdirs[0][2], 'H', 1, 1, 0, 1);
+    pushAtom(ox + b*hdirs[1][0], oy + b*hdirs[1][1], oz + b*hdirs[1][2], 'H', 1, 1, 0, 1);
+    triplets.push([base, base+1, base+2]);
+    bondCon.push([base, base+1, b, 2.0]); bondCon.push([base, base+2, b, 2.0]);
+    return base;
+  }
+
+  var c = 52.25 * Math.PI / 180, cs = Math.cos(c), sn = Math.sin(c);
+  addWater(0, 0, 0, [[-cs, sn, 0], [-cs, -sn, 0]]);        // acceptor A (H's on −x)
+  addWater(dOO, 0, 0, [[-1, 0, 0], [cs, sn, 0]]);          // donor B (one H points −x at A)
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;
+  window.USER_N_MOVE = 20;
+  window.USER_Z = zList;
+  window.USER_Z_NUC = znList;
+  window.USER_RC = rcList;
+  window.USER_INIT_ZEFF = zeff;
+  window.USER_WATER_TRIPLETS = triplets;
+  window.USER_BOND_CONSTRAINTS = bondCon;
+  window.USER_BOND_PAIRS = [[0, 3, "OO:"]]; // O_A (0) … O_B (3)
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

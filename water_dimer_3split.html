@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<div id="note" style="position:fixed;left:8px;bottom:8px;max-width:440px;color:#bcd;background:rgba(6,8,14,.86);
+  border:1px solid #234;border-radius:6px;padding:9px 11px;font:11.5px/1.45 -apple-system,monospace;z-index:60">
+  <b style="color:#8cf">3-split water DIMER — does the lone pair accept an H-bond?</b><br>
+  Acceptor water A (left): lone-pair lobe points <b>+x</b> toward B. Donor water B (right): one
+  O&ndash;H points <b>&minus;x</b> back at A's lone pair (linear H-bond). Damped relaxation, no
+  wall, no noise &mdash; if the lone pair works, <b>O&ndash;O settles near 2.8&ndash;3.0&nbsp;Å and
+  holds</b>. If it drifts apart, the acceptor isn't attracting. Watch the <b>OO:</b> readout.
+</div>
+<script>
+(function() {
+  var gridN = 160, scr = 16, N2 = 80;
+  var h = scr / gridN, A = 1.8897;              // h ≈ 0.1 au/cell
+  var b = 0.96 * A;                              // O-H bond, au
+  var dOO = 3.0 * A;                             // start O-O at 3.0 Å (au)
+
+  var atoms = [], zList = [], znList = [], rcList = [], zeff = [];
+  var stype = [], sidx = [], saxis = [], srot = [];
+  var splitGroups = [], coincGroups = [];
+
+  function clampG(v) { return Math.max(3, Math.min(gridN - 3, Math.round(N2 + v / h))); }
+  var O_RC = 0.6;   // core cutoff to screen the +3 O kernel (soften O–O repulsion)
+  function pushAtom(x, y, z, el, ze, st, si) {
+    atoms.push({ i: clampG(x), j: clampG(y), k: clampG(z), Z: 1, el: el });
+    zList.push(1); znList.push(1); rcList.push(el === 'O' ? O_RC : 0); zeff.push(ze);
+    stype.push(st); sidx.push(si); saxis.push([0, 0, 1]); srot.push(0);
+  }
+  function addWater(ox, oy, oz, hdirs) {   // hdirs = [[ux,uy,uz],[...]] unit dirs for the 2 H
+    var base = atoms.length;
+    pushAtom(ox, oy, oz, 'O', 3, 'third', 0);
+    pushAtom(ox, oy, oz, 'O', 3, 'third', 1);
+    pushAtom(ox, oy, oz, 'O', 3, 'third', 2);   // lone pair
+    for (var q = 0; q < 2; q++) {
+      var u = hdirs[q];
+      pushAtom(ox + b*u[0], oy + b*u[1], oz + b*u[2], 'H', 1, 'sphere', 0);
+    }
+    splitGroups.push({ o: [base, base+1, base+2], h: [base+3, base+4] });
+    coincGroups.push([base, base+1, base+2]);
+    return base;
+  }
+
+  var c = 52.25 * Math.PI / 180, cs = Math.cos(c), sn = Math.sin(c);
+  // Acceptor A at origin: both H's in the −x hemisphere → bisector −x → lone pair (+x) toward B.
+  addWater(0, 0, 0, [[-cs, sn, 0], [-cs, -sn, 0]]);
+  // Donor B at +x: one H points −x (toward A's lone pair); the other splayed away.
+  addWater(dOO, 0, 0, [[-1, 0, 0], [cs, sn, 0]]);
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;          // relax geometry
+  // No USER_BROWNIAN, no USER_TEMPERATURE_K → langevinKT=0 → pure damping to the minimum.
+  window.USER_N_MOVE = 20;
+  window.USER_Z = zList;
+  window.USER_Z_NUC = znList;
+  window.USER_RC = rcList;
+  window.USER_INIT_ZEFF = zeff;
+  window.USER_SPLIT_TYPE = stype;
+  window.USER_SPLIT_IDX = sidx;
+  window.USER_SPLIT_AXIS = saxis;
+  window.USER_SPLIT_ROT = srot;
+  window.USER_SPLIT_GROUPS = splitGroups;
+  window.USER_COINCIDENT_GROUPS = coincGroups;
+  window.USER_BOND_PAIRS = [[0, 5, "OO:"]];   // O_A (base 0) … O_B (base 5)
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

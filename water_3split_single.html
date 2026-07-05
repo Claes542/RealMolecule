@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<div id="note" style="position:fixed;left:8px;bottom:8px;max-width:440px;color:#bcd;background:rgba(6,8,14,.86);
+  border:1px solid #234;border-radius:6px;padding:9px 11px;font:11.5px/1.45 -apple-system,monospace;z-index:60">
+  <b style="color:#8cf">3-split water on molecule.js (Stage-1 port test).</b> O is <b>3 third-split
+  siblings</b> sharing one +3 nucleus: sector 0 → bond to H1, sector 1 → bond to H2,
+  <b>sector 2 = lone pair</b> (no H, points away from both H's). This is the split mechanism
+  ported from mol_fast.js into the label-based box solver. If the lone-pair lobe appears and
+  the 3 O-domains stay as 3 distinct wedges, the port works &mdash; then Stage 2 puts it in the
+  moving liquid.
+</div>
+<script>
+// Single 3-split water, static (dynamics off) — validates the split port in molecule.js.
+(function() {
+  var gridN = 200, scr = 12, N2 = 100;
+  var h = scr / gridN;                 // 0.06 au/cell
+  var bond = 1.814, ang = 104.5 * Math.PI / 180;
+  var hx = bond * Math.sin(ang / 2), hy = bond * Math.cos(ang / 2);
+  var dX = Math.round(hx / h), dY = Math.round(hy / h);
+
+  // O at centre: 3 third-split siblings (each 1 electron, +1 kernel → +3 total).
+  // H1 at (+x,+y) → sector 0; H2 at (-x,+y) → sector 1; lone pair = sector 2 (−y side).
+  var atoms = [
+    { i: N2, j: N2, k: N2, Z: 1, el: 'O' },       // 0  O sector0 (bond→H1)
+    { i: N2, j: N2, k: N2, Z: 1, el: 'O' },       // 1  O sector1 (bond→H2)
+    { i: N2, j: N2, k: N2, Z: 1, el: 'O' },       // 2  O sector2 (LONE PAIR)
+    { i: N2 + dX, j: N2 + dY, k: N2, Z: 1, el: 'H' }, // 3  H1
+    { i: N2 - dX, j: N2 + dY, k: N2, Z: 1, el: 'H' }, // 4  H2
+  ];
+  var AX = [0, 0, 1], ROT = Math.PI / 3;   // C2 axis = z; rot puts H's in sectors 0,1
+
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 100000;
+  window.USER_DYNAMICS = false;            // static electronic solve (nuclei fixed)
+  window.USER_Z      = [1, 1, 1, 1, 1];
+  window.USER_Z_NUC  = [1, 1, 1, 1, 1];    // O kernel = 3×(+1) at shared site; H = +1
+  window.USER_RC     = [0, 0, 0, 0, 0];    // no core cutoff (pseudo +3), matches mol_fast 3-split
+  window.USER_INIT_ZEFF = [3, 3, 3, 1, 1]; // O lobes peaked (exp(-3r)); H diffuse
+  window.USER_SPLIT_TYPE = ['third', 'third', 'third', 'sphere', 'sphere'];
+  window.USER_SPLIT_IDX  = [0, 1, 2, 0, 0];
+  window.USER_SPLIT_AXIS = [AX, AX, AX, [0,0,1], [0,0,1]];
+  window.USER_SPLIT_ROT  = [ROT, ROT, ROT, 0, 0];
+  window.USER_ANGLE_ATOMS = [0, 3, 4];     // O, H1, H2
+})();
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

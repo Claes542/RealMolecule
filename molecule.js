@@ -23,6 +23,13 @@ while (r_cut.length < MAX_ATOMS) r_cut.push(0);
 // Allows bare protons (Z=0 no electron, Z_nuc=1 contributes to K)
 const Z_nuc = window.USER_Z_NUC || _uz.map(z => z);
 while (Z_nuc.length < MAX_ATOMS) Z_nuc.push(0);
+// Per-atom shell-split (optional). Defaults = sphere (no angular restriction).
+// USER_SPLIT_TYPE[n] ∈ 'sphere'|'hemi'|'third'; USER_SPLIT_IDX[n] = sector index;
+// USER_SPLIT_AXIS[n] = [x,y,z]; USER_SPLIT_ROT[n] = angular offset (rad).
+const SPLIT_TYPE = window.USER_SPLIT_TYPE || [];
+const SPLIT_IDX  = window.USER_SPLIT_IDX  || [];
+const SPLIT_AXIS = window.USER_SPLIT_AXIS || [];
+const SPLIT_ROT  = window.USER_SPLIT_ROT  || [];
 let R_out = 0.5;   // au, unused legacy
 let curvReg = (window.USER_CURV_REG !== undefined) ? window.USER_CURV_REG : 0.15;  // curvature regularization for free boundary
 let Z = [..._uz];
@@ -173,13 +180,49 @@ struct P {
   dt: f32, half_d: f32, h3: f32, sliceK: u32,
 }`;
 
-const ATOM_STRIDE = 8; // 8 f32s per atom (posI, posJ, posK, Z, rc, Z_nuc, initZeff, initRcut)
+const ATOM_STRIDE = 14; // 8 base + 6 split (splitType, splitIdx, splitAxX/Y/Z, splitRot)
 const ATOM_BUF_BYTES = MAX_ATOMS * ATOM_STRIDE * 4;
 const atomStructWGSL = `
 struct Atom {
   posI: u32, posJ: u32, posK: u32, Z: f32,
   rc: f32, Z_nuc: f32, initZeff: f32, initRcut: f32,
+  splitType: u32, splitIdx: u32, splitAxX: f32, splitAxY: f32,
+  splitAxZ: f32, splitRot: f32,
 }`;
+
+// Angular shell-split test (ported from mol_fast.js). A split sibling only owns
+// grid cells inside its angular sector around its (shared) nucleus. Requires an
+// `atoms` storage binding in the including shader. splitType: 0/1=sphere(none),
+// 2=hemi, 3=third(120° sectors). dx,dy,dz = cell − nucleus (au); r = |d|.
+const inSplitWGSL = `
+fn inSplitAtom(dx: f32, dy: f32, dz: f32, r: f32, n: u32) -> bool {
+  let st = atoms[n].splitType;
+  if (st <= 1u || r < 1e-6) { return true; }
+  let axL = max(sqrt(atoms[n].splitAxX*atoms[n].splitAxX + atoms[n].splitAxY*atoms[n].splitAxY + atoms[n].splitAxZ*atoms[n].splitAxZ), 1e-12);
+  let a0 = atoms[n].splitAxX/axL; let a1 = atoms[n].splitAxY/axL; let a2 = atoms[n].splitAxZ/axL;
+  let dotp = dx*a0 + dy*a1 + dz*a2;
+  if (st == 2u) {
+    if (atoms[n].splitIdx == 0u) { return dotp < 0.0; }
+    return dotp >= 0.0;
+  }
+  if (st == 3u) {
+    let px = dx - dotp*a0; let py = dy - dotp*a1; let pz = dz - dotp*a2;
+    var e1x: f32; var e1y: f32; var e1z: f32;
+    if (abs(a2) < 0.9) { e1x = a1; e1y = -a0; e1z = 0.0; } else { e1x = 0.0; e1y = a2; e1z = -a1; }
+    let e1L = max(sqrt(e1x*e1x+e1y*e1y+e1z*e1z), 1e-12);
+    e1x = e1x/e1L; e1y = e1y/e1L; e1z = e1z/e1L;
+    let e2x = a1*e1z - a2*e1y; let e2y = a2*e1x - a0*e1z; let e2z = a0*e1y - a1*e1x;
+    let pe1 = px*e1x + py*e1y + pz*e1z;
+    let pe2 = px*e2x + py*e2y + pz*e2z;
+    var th = atan2(pe2, pe1) - atoms[n].splitRot;
+    if (th < -3.14159265) { th = th + 6.28318530; }
+    if (th >  3.14159265) { th = th - 6.28318530; }
+    let sector = u32(floor((th + 3.14159265) / 2.09439510)) % 3u;
+    return sector == atoms[n].splitIdx;
+  }
+  return true;
+}
+`;
 
 // U update — label-based domains, Neumann BC at domain boundaries and r_c surfaces
 const updateU_WGSL = `
@@ -382,13 +425,22 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 // W > 0 means "I belong here", W < 0 means "neighbor density dominates, should flip"
 const evolveBoundaryWGSL = `
 ${paramStructWGSL}
+${atomStructWGSL}
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read> labelIn: array<u32>;
 @group(0) @binding(2) var<storage, read_write> labelOut: array<u32>;
 @group(0) @binding(3) var<storage, read> U: array<f32>;
 @group(0) @binding(4) var<storage, read_write> W: array<f32>;
+@group(0) @binding(5) var<storage, read> atoms: array<Atom>;
 
 ${cellIdxWGSL}
+${inSplitWGSL}
+fn cellSectorOK(i: u32, j: u32, k: u32, n: u32) -> bool {
+  let dx = (f32(i) - f32(atoms[n].posI)) * p.h;
+  let dy = (f32(j) - f32(atoms[n].posJ)) * p.h;
+  let dz = (f32(k) - f32(atoms[n].posK)) * p.h;
+  return inSplitAtom(dx, dy, dz, sqrt(dx*dx + dy*dy + dz*dz), n);
+}
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let NM = p.NN - 1u;
@@ -464,6 +516,22 @@ ${(function() {
     // Flip to best neighbor domain
     newL = bestOtherL;
     w = 0.1;  // reset W slightly positive in new domain
+  }
+
+  // --- shell-split sector enforcement (no-op unless a split atom is involved) ---
+  // A split sibling owns ONLY cells inside its angular sector around its nucleus.
+  let myOK = cellSectorOK(i, j, k, myL);       // does my domain still own this cell's sector?
+  if (!cellSectorOK(i, j, k, newL)) {
+    // Target sector excludes this cell: cancel the flip.
+    newL = myL; w = max(w, 0.1);
+    // If my own domain also no longer owns the sector (molecule moved/rotated),
+    // hand the cell to the best neighbor whose sector DOES contain it.
+    if (!myOK && bestOtherL != myL && cellSectorOK(i, j, k, bestOtherL)) {
+      newL = bestOtherL; w = 0.1;
+    }
+  } else if (!myOK && newL == myL) {
+    // Stayed put but drifted out of my sector: release toward best neighbor if it fits.
+    if (bestOtherL != myL && cellSectorOK(i, j, k, bestOtherL)) { newL = bestOtherL; w = 0.1; }
   }
 
   W[id] = w;
@@ -1318,6 +1386,7 @@ struct Range { start: u32, count: u32, _p0: u32, _p1: u32 }
 @group(0) @binding(5) var<uniform> range: Range;
 
 ${cellIdxWGSL}
+${inSplitWGSL}
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let id = cellIdx(gid);
@@ -1352,7 +1421,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let Ze = atoms[n].initZeff;
     let rReal = sqrt(r2);
     let rCutInit = atoms[n].initRcut;
-    let uTrial = select(Ze * Ze * ${(1/Math.sqrt(Math.PI)).toFixed(10)} * exp(-Ze * r), 0.0, rReal > rCutInit || Za <= 0.0);
+    let okSplit = inSplitAtom(dx, dy, dz, rReal, n);
+    let uTrial = select(Ze * Ze * ${(1/Math.sqrt(Math.PI)).toFixed(10)} * exp(-Ze * r), 0.0, rReal > rCutInit || Za <= 0.0 || !okSplit);
     if (uTrial > bU) { bU = uTrial; bestN = n; }
   }
 
@@ -1765,7 +1835,45 @@ function fillParamsBuf(pb) {
   pf[12] = dtv; pf[13] = half_dv; pf[14] = h3v; pu[15] = sliceK;
 }
 
+// Recompute each split-water's sector frame from its current H positions, so the
+// 3 O-sectors (2 bonds + 1 lone pair) rotate/translate with the molecule.
+// USER_SPLIT_GROUPS = [{ o:[i0,i1,i2], h:[ih1,ih2] }, ...]. axis = molecular-plane
+// normal; rot chosen so the two H's fall in sectors 0,1 and the lone pair in sector 2.
+function updateSplitFrames() {
+  const groups = window.USER_SPLIT_GROUPS;
+  if (!groups) return;
+  const P3 = Math.PI / 3;
+  for (const g of groups) {
+    const o = nucPos[g.o[0]], h1 = nucPos[g.h[0]], h2 = nucPos[g.h[1]];
+    let u1x = h1[0]-o[0], u1y = h1[1]-o[1], u1z = h1[2]-o[2];
+    let u2x = h2[0]-o[0], u2y = h2[1]-o[1], u2z = h2[2]-o[2];
+    const n1 = Math.hypot(u1x,u1y,u1z) || 1, n2 = Math.hypot(u2x,u2y,u2z) || 1;
+    u1x/=n1; u1y/=n1; u1z/=n1; u2x/=n2; u2y/=n2; u2z/=n2;
+    let ax = u1y*u2z - u1z*u2y, ay = u1z*u2x - u1x*u2z, az = u1x*u2y - u1y*u2x;
+    let na = Math.hypot(ax,ay,az);
+    if (na < 1e-4) { ax=0; ay=0; az=1; na=1; }   // collinear fallback
+    ax/=na; ay/=na; az/=na;
+    let bx = u1x+u2x, by = u1y+u2y, bz = u1z+u2z;
+    const nb = Math.hypot(bx,by,bz) || 1; bx/=nb; by/=nb; bz/=nb;
+    // hemi split: axis = H-bisector (splits bond-side from acceptor-side hemisphere)
+    if (g.type === 'hemi') {
+      const axis = [bx, by, bz];
+      for (const idx of g.o) { SPLIT_AXIS[idx] = axis; SPLIT_ROT[idx] = 0; }
+      continue;
+    }
+    let e1x, e1y, e1z;
+    if (Math.abs(az) < 0.9) { e1x=ay; e1y=-ax; e1z=0; } else { e1x=0; e1y=az; e1z=-ay; }
+    const ne1 = Math.hypot(e1x,e1y,e1z) || 1; e1x/=ne1; e1y/=ne1; e1z/=ne1;
+    const e2x = ay*e1z - az*e1y, e2y = az*e1x - ax*e1z, e2z = ax*e1y - ay*e1x;
+    const be1 = bx*e1x + by*e1y + bz*e1z, be2 = bx*e2x + by*e2y + bz*e2z;
+    const rot = Math.atan2(be2, be1) + P3;
+    const axis = [ax, ay, az];
+    for (const idx of g.o) { SPLIT_AXIS[idx] = axis; SPLIT_ROT[idx] = rot; }
+  }
+}
+
 function fillAtomBuf() {
+  updateSplitFrames();
   const ab = new ArrayBuffer(ATOM_BUF_BYTES);
   const au = new Uint32Array(ab);
   const af = new Float32Array(ab);
@@ -1782,6 +1890,14 @@ function fillAtomBuf() {
     const perRcut = window.USER_INIT_RCUT;
     af[off + 6] = perZeff ? perZeff[n] || Z[n] : (window.INIT_ZEFF || Z[n]);
     af[off + 7] = perRcut ? perRcut[n] || 1e6 : (window.INIT_RCUT || 1e6);
+    // Shell split (optional): splitType 0/1=sphere, 2=hemi, 3=third; sector idx; axis; rot
+    const stCode = { sphere: 0, hemi: 2, third: 3, tetra: 4 };
+    const stv = SPLIT_TYPE[n];
+    au[off + 8] = (typeof stv === 'string') ? (stCode[stv] || 0) : (stv || 0);
+    au[off + 9] = SPLIT_IDX[n] || 0;
+    const ax = SPLIT_AXIS[n] || [0, 0, 1];
+    af[off + 10] = ax[0]; af[off + 11] = ax[1]; af[off + 12] = ax[2];
+    af[off + 13] = SPLIT_ROT[n] || 0;
   }
   device.queue.writeBuffer(atomBuf, 0, ab);
 }
@@ -2386,6 +2502,7 @@ async function initGPU() {
         { binding: 2, resource: { buffer: label2Buf } },
         { binding: 3, resource: { buffer: U_buf[u] } },
         { binding: 4, resource: { buffer: W_buf } },
+        { binding: 5, resource: { buffer: atomBuf } },
       ]});
       // fixBoundaryU no longer needed — U stays continuous, normalization handles ∫U²=Z_eff
     }
@@ -3038,6 +3155,9 @@ async function doSteps(n) {
     dip_z -= sumsData[5];
     dipole_au = Math.sqrt(dip_x * dip_x + dip_y * dip_y + dip_z * dip_z);
     dipole_D = dipole_au * 2.5417;  // au to Debye
+    window._dip_x = dip_x;
+    window._dip_y = dip_y;
+    window._dip_z = dip_z;
   }
 
   await sliceReadBuf.mapAsync(GPUMapMode.READ);
@@ -3067,6 +3187,13 @@ async function doSteps(n) {
   window._E = E;
   window._E_bind = E_bind;
   window._E_atoms_sum = E_atoms_sum;
+  window._E_T = E_T;
+  window._E_eK = E_eK;
+  window._E_ee = E_ee;
+  window._E_KK = E_KK;
+  window._dipole_au = dipole_au;
+  window._dipole_D = dipole_D;
+  // (window._dip_x/y/z already set inside the dipole block above)
 
   if (!isFinite(E)) {
     gpuError = "Numerical instability at step " + tStep;
@@ -3569,6 +3696,9 @@ async function doLOBPCGStep() {
     dip_x -= sumsData[3]; dip_y -= sumsData[4]; dip_z -= sumsData[5];
     dipole_au = Math.sqrt(dip_x*dip_x + dip_y*dip_y + dip_z*dip_z);
     dipole_D = dipole_au * 2.5417;
+    window._dip_x = dip_x;
+    window._dip_y = dip_y;
+    window._dip_z = dip_z;
   }
 
   await sliceReadBuf.mapAsync(GPUMapMode.READ);
@@ -3598,6 +3728,12 @@ async function doLOBPCGStep() {
   window._E = E;
   window._E_bind = E_bind;
   window._E_atoms_sum = E_atoms_sum;
+  window._E_T = E_T;
+  window._E_eK = E_eK;
+  window._E_ee = E_ee;
+  window._E_KK = E_KK;
+  window._dipole_au = dipole_au;
+  window._dipole_D = dipole_D;
 
   if (!isFinite(E)) { gpuError = "LOBPCG instability"; return; }
   console.log("LOBPCG step " + tStep + ": E=" + E.toFixed(6) + " (" + lastMs.toFixed(0) + "ms)");
@@ -4254,6 +4390,23 @@ async function moveNuclei(gpuForces) {
     }
   }
 
+  // Coincident groups (split siblings sharing one nucleus): sum member forces onto
+  // the first member so the shared site feels the total force; others are snapped
+  // back to it after integration. No-op unless USER_COINCIDENT_GROUPS is set.
+  const coincGroups = window.USER_COINCIDENT_GROUPS;
+  if (coincGroups) {
+    for (const grp of coincGroups) {
+      const g0 = grp[0];
+      for (let gi = 1; gi < grp.length; gi++) {
+        const gm = grp[gi];
+        nucForce[g0][0] += nucForce[gm][0];
+        nucForce[g0][1] += nucForce[gm][1];
+        nucForce[g0][2] += nucForce[gm][2];
+        nucForce[gm][0] = 0; nucForce[gm][1] = 0; nucForce[gm][2] = 0;
+      }
+    }
+  }
+
   for (let sub = 0; sub < NUC_SUBSTEPS; sub++) {
     if (rigidGroups) {
       // Rigid group dynamics: average force over group, move all atoms together
@@ -4366,6 +4519,19 @@ async function moveNuclei(gpuForces) {
             nucPos[a][2] = Math.max(5, Math.min(NN - 5, nucPos[a][2]));
           }
         }
+      }
+    }
+  }
+
+  // Snap coincident-group members back onto the shared site after integration.
+  if (coincGroups) {
+    for (const grp of coincGroups) {
+      const g0 = grp[0];
+      for (let gi = 1; gi < grp.length; gi++) {
+        const gm = grp[gi];
+        nucPos[gm][0] = nucPos[g0][0];
+        nucPos[gm][1] = nucPos[g0][1];
+        nucPos[gm][2] = nucPos[g0][2];
       }
     }
   }
