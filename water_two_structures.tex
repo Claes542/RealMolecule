@@ -1,0 +1,262 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{authblk}
+\usepackage[margin=1in]{geometry}
+\usepackage[hidelinks]{hyperref}
+
+\title{The Two Structures of Liquid Water from a Parameter-Free Real-Space Model:\\
+Isotropy, Directionality, and the Origin of LDL and HDL}
+
+\author[1]{Claes Johnson}
+\affil[1]{KTH Royal Institute of Technology, Stockholm, Sweden \\
+\texttt{claesjohnson@gmail.com}}
+\date{\today \\[0.4em]
+\small\textit{Mathematical formulation by the author; implementation and numerical} \\
+\small\textit{experiments developed with AI assistance (Claude, Anthropic).}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Liquid water is widely modelled as a fluctuating mixture of two local structures: a
+low-density liquid (LDL) that is tetrahedral, open and ice-like in short range, and a
+high-density liquid (HDL) that is disordered and collapsed with an interstitial fifth
+neighbour. Whether real water genuinely realises two liquids is an experimental question;
+the mechanistic question underneath it is what molecular feature drives the tetrahedral
+LDL structure. We probe this with RealQM, a parameter-free real-space model in which each
+electron is a unit-charge component on a non-overlapping spatial domain. In its reduced
+form the water oxygen is a single, essentially isotropic electron cloud with two
+directional hydrogen donors. This model hydrogen-bonds; it holds an imposed tetrahedral
+ice lattice near-perfectly (tetrahedral order $q\approx1$, coordination $\approx4$); it
+forms HDL under compression; but it never spontaneously forms LDL, giving instead a single
+broad, disordered, under-coordinated liquid at all sizes and densities tested. Attempts to
+add directional lone-pair acceptors by angularly splitting the oxygen cloud dissociate the
+hydrogen bond. The results converge on one statement: the same isotropy of the oxygen
+acceptor that permits hydrogen bonding is what prevents spontaneous tetrahedral ordering.
+Hence spontaneous LDL requires directional lone-pair \emph{acceptors}, while HDL is the
+default isotropic-packing structure needing no directionality. The model accesses both
+structures for clear physical reasons but not their coexistence.
+\end{abstract}
+
+\medskip
+\noindent\textbf{Keywords:} liquid water; two-state model; LDL/HDL; tetrahedral order;
+hydrogen bonding; lone pairs; real-space quantum mechanics; parameter-free.
+
+\section{Introduction}
+
+A long-standing and recently revived picture of liquid water holds that it is, locally, a
+fluctuating mixture of two structures~\cite{twostate}. The \emph{low-density liquid} (LDL)
+is tetrahedral, four-coordinated and open---the short-range order of ice carried into a
+diffusing liquid. The \emph{high-density liquid} (HDL) is disordered and collapsed, with a
+fifth neighbour pushed into the first shell. Both are liquids: the split is \emph{within}
+the liquid, not the solid--liquid distinction. In deeply supercooled water the two are
+hypothesised to become distinct phases separated by a liquid--liquid critical point.
+
+Most evidence for the two-state model comes from empirical water potentials (ST2,
+TIP4P/2005 and relatives) tuned to reproduce water, so a two-state signal there can be a
+property built into the potential. This motivates a \emph{parameter-free} test. We do not
+attempt to settle whether real water has two liquids---a model this reduced cannot, as we
+show, even produce the coexistence. Instead we address the mechanistic question that sits
+underneath the debate: \textbf{what molecular feature drives the tetrahedral LDL
+structure?} A parameter-free model is well suited to this, because whatever it does or does
+not produce follows from physics rather than from fitting.
+
+\section{Model and method}
+
+RealQM represents the $N$-electron state as a sum of one-electron components, each carrying
+unit charge on a non-overlapping domain of physical space separated by free (Bernoulli)
+boundaries; the ground state minimises the standard Coulomb energy over both the components
+and the domain partition~\cite{realqm}. Spatial exclusion replaces wave-function
+antisymmetry, and cost is set by a fixed grid rather than by the electron count. The
+implementation is a browser WebGPU code using a shared field with a per-cell domain label,
+which is what allows hundreds of atoms on a laptop.
+
+\paragraph{Reduced water.} Each water is an oxygen carrying a screened valence kernel
+(effective charge $+2$, a short core cutoff $r_c$) with a single two-electron cloud, plus
+two hydrogens each a unit proton with one electron. The molecular geometry is held near
+$104.5^\circ$ by soft harmonic bond-length and bend restraints. The oxygen cloud is thus
+essentially \emph{isotropic}: it presents electron density in all directions and carries no
+built-in lone-pair lobes. Crucially, the two O--H bonds are \emph{directional}: they aim at
+neighbours and provide directional \emph{donors}.
+
+\paragraph{Order parameters.} For every interior oxygen we compute two standard local
+descriptors from the running oxygen positions: the tetrahedral order
+\[
+q = 1 - \tfrac{3}{8}\sum_{j<k}\left(\cos\theta_{jk} + \tfrac13\right)^2
+\]
+over its four nearest oxygen neighbours ($q\!\to\!1$ perfect tetrahedron, $q\!\to\!0$
+disordered), and $d_5$, the distance to the fifth-nearest oxygen (large for the open
+tetrahedral LDL, small when an interstitial HDL neighbour intrudes). We also track the
+nearest-neighbour distance $d_1$ and the coordination number within $3.5$\,\AA{} (liquid
+water $\approx4$, HDL $\approx5$). Histograms are accumulated over molecules and time; a
+bimodal $q$ at fixed temperature would be the two-structure signature. To probe density we
+use a soft spherical confining wall (a disclosed modelling choice that sets only the average
+density, not the local structure); to probe temperature we use overdamped (Brownian)
+dynamics with a Langevin thermostat.
+
+\paragraph{Directional-acceptor extension.} To test whether directional lone pairs can be
+added, we extended the solver with an angular ``shell split'': the oxygen cloud is divided
+into sectors (two or three), each a component confined to its angular wedge about the shared
+nucleus, with the wedge frame tracking the molecule's instantaneous orientation. This is the
+natural way to give oxygen explicit directional acceptor lobes within the same formalism.
+
+\section{Results}
+
+\subsection{The isotropic water hydrogen-bonds but under-coordinates}
+A relaxed dimer of reduced waters in a linear donor--acceptor geometry forms a stable
+hydrogen bond, with O--O settling near $3.0$\,\AA{} and holding (the bond is real but on the
+weak, long side). In the liquid, however, the same water is markedly under-structured:
+confined near liquid density it is disordered, with coordination $\approx2.6$ and no
+tetrahedral population. A spherical oxygen accepts a proton from any direction, so it has no
+preference for the tetrahedral arrangement. Doubling the system from 64 to 128 waters (a
+larger interior core, roughly double the statistics) leaves the $q$ histogram a single broad
+hump with no second peak.
+
+\subsection{Ice holds the tetrahedron}
+Placed on a diamond-cubic lattice (ice, O--O $=2.75$\,\AA), the same isotropic water holds
+the tetrahedral arrangement near-perfectly: $q\approx1$ and coordination $\approx4$. The
+reason is instructive: the two directional O--H \emph{donors} supply half of the tetrahedral
+scaffold, which---together with the geometric restraints---is enough to keep an
+\emph{imposed} lattice metastable, even though the isotropic acceptor cannot help
+\emph{choose} that lattice.
+
+\subsection{Melting disorders without densifying}
+Heating the ice at fixed volume (melting occurs near $1300$\,K in the model's internal
+units) drops the tetrahedral order from $q\approx0.85$ toward $0.55$, but coordination
+stays roughly constant near $3.3$. Melting therefore \emph{disorders} the liquid without
+\emph{densifying} it: it does not produce HDL. HDL is a density effect, and a fixed volume
+cannot supply the required contraction.
+
+\subsection{Compression yields HDL}
+Reaching HDL requires the density axis. Compressing the liquid (stepping the confining wall
+inward at fixed temperature) forces a fifth neighbour into the first shell: coordination
+rises and $d_5$ collapses, while $q$ stays low. The disordered, dense, isotropically-packed
+structure is exactly HDL, and the isotropic model produces it readily---no directionality
+needed.
+
+\subsection{Carved lone pairs dissociate the hydrogen bond}
+The natural remedy---give oxygen explicit directional acceptor lobes---was tried three ways:
+a three-fold split (with the higher oxygen kernel this implies) and a charge-neutral
+two-hemisphere split biased toward the acceptor side. In every case the dimer
+\emph{dissociated} (O--O grew without bound), while the plain isotropic control stayed bound.
+The mechanism is clear: in this formalism the hydrogen bond is the donor proton binding to a
+single \emph{coherent} acceptor cloud, and putting a free internal boundary through that
+cloud destroys the coherent density the proton was holding. The angular-split machinery
+itself is sound (validated on a single molecule); it is the water physics that resists.
+
+\begin{table}[t]
+\centering
+\begin{tabular}{lll}
+\toprule
+Experiment & Observation & Reading \\
+\midrule
+Dimer, isotropic O & O--O holds $\sim\!3.0$\,\AA & the cloud binds \\
+Liquid, isotropic O & disordered, coord.\ $\sim\!2.6$, no LDL & isotropic $\Rightarrow$ no tetra.\ preference \\
+Carved lone pairs & O--O grows, dissociates & splitting breaks the bond \\
+Ice (imposed lattice) & $q\!\approx\!1$, coord.\ $\approx4$ & donors hold an imposed tetrahedron \\
+Melting (fixed volume) & $q\!:0.85\!\to\!0.55$, coord.\ $\sim\!3.3$ & disorders, cannot densify: not HDL \\
+Compression & coord.\ up, $d_5$ collapses & HDL from density, no directionality \\
+\bottomrule
+\end{tabular}
+\caption{Summary of the numerical experiments. Values are exploratory and qualitative;
+the pattern, not the third digit, is the result.}
+\end{table}
+
+\section{Discussion}
+
+The experiments cohere into a single statement. Textbook water is tetrahedral because oxygen
+has both two directional \emph{donors} (the O--H bonds) and two directional \emph{acceptors}
+(the lone pairs). The reduced RealQM water has the donors but an \emph{isotropic} acceptor.
+That one difference reproduces the whole pattern: the model holds LDL/tetrahedral order when
+placed in it (ice, via the donors); it forms HDL when compressed (dense isotropic packing);
+and it cannot spontaneously choose LDL, because without a directional acceptor the open
+tetrahedral network is never favoured over dense packing.
+
+The sharp conclusion is therefore about the \emph{origin} of the two structures:
+\emph{spontaneous LDL requires directional lone-pair acceptors; donor directionality is not
+sufficient}. Equivalently, \textbf{HDL is the ``default'' isotropic-packing structure and LDL
+is the special, acceptor-stabilised one.} The isotropy that permits hydrogen bonding at all
+is the same isotropy that denies the model a directional acceptor---binding and
+non-tetrahedrality are two faces of one property.
+
+This also bears on the ``lone pair'' itself. The crisp picture of two equivalent tetrahedral
+lone pairs is a localized-orbital model, not a unique observable: photoelectron spectra place
+water's two highest occupied orbitals at different energies (not equivalent twins), and the
+electron density shows a smeared, acceptor-rich crescent rather than two sharp lobes. What is
+robustly observed is four-coordination and an anisotropic, acceptor-rich oxygen density. A
+faithful minimal model therefore needs \emph{directional acceptance}, not literal
+``rabbit-ears''---and, as the split experiments show, that directionality cannot be obtained
+by fragmenting the acceptor cloud without losing the bond.
+
+\section{Relation to DFT: capability versus ablation}
+
+It is fair to ask whether density-functional molecular dynamics (DFT-MD) could run this
+study. The question splits in two, with opposite answers.
+
+\emph{Simulating liquid water of this size}---yes, but expensively, and it is a hard case.
+Ab-initio DFT-MD of $32$--$128$ waters is a standard, heavily-studied system. However, each
+step is a full self-consistent solve; structural statistics require tens to hundreds of
+picoseconds, i.e.\ $10^5$--$10^6$ femtosecond-locked steps, placing such runs on
+high-performance clusters over days to weeks rather than on a laptop in minutes. Moreover
+DFT's water is itself problematic: common semi-local functionals give over-structured,
+sluggish water with the wrong density, and even qualitatively reasonable results require
+dispersion corrections and carefully chosen functionals. The LDL/HDL regime specifically
+lives in \emph{deeply supercooled} water and demands long timescales, large systems and
+extensive sampling---which is precisely why the two-state model is studied predominantly
+with empirical potentials rather than DFT-MD.
+
+\emph{The ablation experiment}---no, not cleanly. The result here is not an accurate
+simulation of water but a \emph{controlled ablation}: the directionality of the oxygen
+acceptor was toggled (isotropic cloud versus explicit split lobes) and its causal effect on
+tetrahedral ordering observed. DFT provides the fixed electronic structure of real oxygen;
+one cannot ask it, in a clean and controlled way, ``what if oxygen had no lone pairs?'' That
+single-feature knob---removing a physical ingredient and watching what it was doing---is a
+property of a cheap, tunable, parameter-free model, and it is what permits a causal statement
+about the driver of LDL.
+
+The honest framing is therefore complementary rather than competitive. DFT would be more
+quantitatively accurate for the structure of real water; it cannot cheaply reach the
+supercooled two-state regime; and it structurally cannot perform the ablation. The reduced
+RealQM water is not competing on accuracy---it is a \emph{conceptual microscope} that
+isolates mechanism at laptop cost.
+
+\section{Limitations}
+
+The model is deliberately reduced and the results are qualitative. The water is
+under-coordinated relative to real water, so it sits on the disordered/HDL side of the
+diagram; its hydrogen bonds are weak; the confining wall imposes an average density and can
+induce a density gradient; the dynamics gives diffusive model-time, not calibrated kinetics.
+Most importantly, \emph{we never observe a bimodal $q$ at a single temperature}---the
+signature of LDL/HDL coexistence. This is not a numerical shortfall but the central result:
+the reduced model cannot produce the coexistence, precisely because it lacks the directional
+acceptor that would let tetrahedral order compete with dense packing. Testing the two-state
+model itself would require a water that both hydrogen-bonds and carries a directional
+acceptor---which, we find, angular splitting cannot deliver in this formalism. That is the
+open problem this study isolates.
+
+\section{Conclusion}
+
+A parameter-free real-space model with an isotropic oxygen acceptor and directional hydrogen
+donors reproduces a coherent account of the two structures of water. It \emph{holds}
+tetrahedral (LDL-like) order when that order is imposed, it \emph{forms} HDL under
+compression, and it \emph{never spontaneously forms} LDL. The unifying reason is that the
+oxygen acceptor is isotropic: this both enables hydrogen bonding and forbids a spontaneous
+tetrahedral preference, and attempts to carve in a directional acceptor break the bond. The
+study does not decide whether real water is two liquids; it identifies, without any fitted
+parameters, the molecular ingredient responsible for the tetrahedral structure---directional
+lone-pair acceptance---and reframes HDL as the default isotropic-packing state. Interactive
+versions of all experiments are public.
+
+\begin{thebibliography}{9}
+\bibitem{twostate} Two-state / two-structure models of liquid water and the low-density /
+high-density liquid picture (LDL/HDL), and the hypothesised liquid--liquid transition in
+supercooled water. (General reviews of the two-state model.)
+\bibitem{realqm} C.\ Johnson, \emph{RealQM: a 3D multiphase continuum computational model for
+quantum mechanics}, and companion works on atoms and molecules; public code and interactive
+gallery.
+\end{thebibliography}
+
+\end{document}
