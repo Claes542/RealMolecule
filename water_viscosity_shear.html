@@ -164,6 +164,30 @@
     return { slope: slopeE };
   }
 
+  // ---- instantaneous shear modulus G_∞ from stress fluctuations ----
+  // Configurational shear stress σ_xy = (1/V) Σ_i (x_i−x_c)·F_yi (interparticle forces),
+  // and G_∞ = (V/kT)·Var(σ_xy). Large G_∞ ⇒ stiff network; small ⇒ soft. Then η = G_∞·τ
+  // tells us WHICH kind of small viscosity we have: stiff-but-fast (water) or soft (simple).
+  var gMeanS = 0, gMeanS2 = 0, GEMA = 0.05, GinfE = 0;
+  function measureG() {
+    var np = window._nucPos, fe = window._nucForceElec, fn = window._nucForceNuc;
+    if (!np || !fe || !fn) return GinfE;
+    var hAu = TS.gridToAng * 1.8897, cx=0, cnt=0;
+    for (var i=0;i<nAtoms;i++){ if(np[i]){ cx+=np[i][0]; cnt++; } }
+    if (!cnt) return GinfE; cx/=cnt;
+    var sxy = 0;
+    for (var i=0;i<nAtoms;i++){ if(!np[i]||!fe[i]||!fn[i]) continue;
+      sxy += (np[i][0]-cx)*hAu * (fe[i][1] + fn[i][1]);      // (x−xc)·F_y, au
+    }
+    var R = R_WALL, V = (4/3)*Math.PI*R*R*R, sigma = sxy/V;  // Ha/au^3
+    gMeanS  = (1-GEMA)*gMeanS  + GEMA*sigma;
+    gMeanS2 = (1-GEMA)*gMeanS2 + GEMA*sigma*sigma;
+    var variance = Math.max(0, gMeanS2 - gMeanS*gMeanS);
+    var kT = window.langevinKT || (1700/315775);
+    GinfE = V/kT * variance;
+    return GinfE;
+  }
+
   function setT(T){ if('langevinKT' in window) window.langevinKT = T/315775;
     document.querySelectorAll('#panel button[data-t]').forEach(function(b){ b.className=(+b.getAttribute('data-t')===T)?'on':''; }); }
 
@@ -192,33 +216,36 @@
     x.fillStyle='#667'; x.fillText('blue=measured v_x(y), dashed=linear', pL, H-3);
   }
 
-  function etaProxy(){ return window.USER_SHEAR_RATE / Math.max(Math.abs(slopeE), 1e-5); }  // η ∝ (applied γ)/(shear rate)
+  function etaProxy(){ return window.USER_SHEAR_RATE / Math.max(Math.abs(slopeE), 1e-5); }  // η ∝ γ/(shear rate)
+  var curTau = 0, curGinf = 0;
 
   var SWEEP=[1300,1700,2100,2500], WARM=9000, COLL=13000, sweep=null;   // model liquid range
   function tick(now){ var T=SWEEP[sweep.ti], el=now-sweep.t0;
     if(sweep.ph==='warm'){ document.getElementById('stat').textContent=' '+T+' settle '+Math.ceil((WARM-el)/1000)+'s';
-      if(el>=WARM){sweep.ph='coll';sweep.t0=now;sweep.acc=0;sweep.n=0;} }
-    else { sweep.acc+=etaProxy(); sweep.n++; document.getElementById('stat').textContent=' '+T+' record '+Math.ceil((COLL-el)/1000)+'s';
-      if(el>=COLL){ var e=sweep.n?sweep.acc/sweep.n:etaProxy(); curve.push({T:T,eta:e});
-        console.log('visc pt T='+T+' etaProxy='+e.toExponential(3)+' slope='+slopeE.toExponential(3));
+      if(el>=WARM){sweep.ph='coll';sweep.t0=now;sweep.ae=0;sweep.ag=0;sweep.at=0;sweep.n=0;} }
+    else { sweep.ae+=etaProxy(); sweep.ag+=curGinf; sweep.at+=curTau; sweep.n++;
+      document.getElementById('stat').textContent=' '+T+' record '+Math.ceil((COLL-el)/1000)+'s';
+      if(el>=COLL){ var n=sweep.n||1, e=sweep.ae/n, g=sweep.ag/n, t=sweep.at/n; curve.push({T:T,eta:e,Ginf:g,tau:t});
+        console.log('pt T='+T+' eta='+e.toExponential(2)+' Ginf='+g.toExponential(2)+' tau='+t.toFixed(2));
         sweep.ti++;
         if(sweep.ti>=SWEEP.length){ sweep=null;
-          document.getElementById('stat').textContent=' done: '+curve.map(function(p){return p.T+'→'+p.eta.toExponential(1);}).join('  ');
-          console.log('=== eta(T) ===',JSON.stringify(curve)); }
+          document.getElementById('stat').textContent=' done — η,G∞,τ(T) in console';
+          console.log('=== eta, Ginf, tau vs T ===',JSON.stringify(curve)); }
         else{ setT(SWEEP[sweep.ti]); sweep.ph='warm'; sweep.t0=now; } } }
   }
 
   setInterval(function(){ if(!window._nucPos) return; applyWall();
     measureProfile();                                       // updates slopeE + profile bins
-    var hb = measureHB(); var diss = measure();
+    var hb = measureHB(); curGinf = measureG(); var diss = measure();
+    curTau = hb.flux>1e-6 ? hb.nHB/hb.flux : 0;             // relaxation time (samples)
     var now = performance.now();
     if (sweep) tick(now);
     draw();
     document.getElementById('live').innerHTML =
-      'η proxy = γ/slope = <b style="color:#fff">'+etaProxy().toExponential(2)+'</b> '
-      +'<span style="color:#889">(shear rate dv_x/dy = '+slopeE.toExponential(2)+')</span><br>'
-      +'n_HB = <b style="color:#8cf">'+hb.nHB.toFixed(1)+'</b>, turnover = <b style="color:#8cf">'+hb.flux.toFixed(2)+'</b>, dissip = '+diss.toExponential(1)+'<br>'
-      +'<span style="color:#889">profile shape: linear ⇒ thermostat-limited; curved ⇒ viscous</span>';
+      'η (shear) = <b style="color:#fff">'+etaProxy().toExponential(2)+'</b> &nbsp; '
+      +'G∞·τ = <b style="color:#8f8">'+(curGinf*curTau).toExponential(2)+'</b> <span style="color:#889">(indep. est.)</span><br>'
+      +'G∞ (stiffness) = <b style="color:#8cf">'+curGinf.toExponential(2)+'</b>, τ (relax) = <b style="color:#8cf">'+curTau.toFixed(1)+'</b><br>'
+      +'<span style="color:#889">small η via small G∞ = soft; via small τ = fast (water-like)</span>';
   }, 500);
 
   document.querySelectorAll('#panel button[data-t]').forEach(function(b){ b.addEventListener('click',function(){ if(sweep)sweep=null; setT(+b.getAttribute('data-t')); }); });
