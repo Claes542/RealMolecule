@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Water incompressibility — bulk modulus (RealQM)</title></head>
+<body style="margin:0;background:#000;color:#ddd;font-family:-apple-system,Segoe UI,monospace">
+<!-- =========================================================================
+  WATER INCOMPRESSIBILITY / BULK MODULUS  K = ρ dP/dρ = −V dP/dV.
+  Reduced Z=2 water, confined by a wall stepped inward (density up). At each
+  density we measure the VIRIAL PRESSURE P = N kT/V + (1/3V) Σ_i (r_i−r_c)·F_i
+  (interparticle forces), average it, and read K from the slope of P(ρ).
+  KEY: pressure is energy/volume = Ha/au^3 = REAL Pa (no time calibration), so
+  K comes out in REAL GPa — directly comparable to water's ~2.2 GPa. This is the
+  static, equilibrium measurement that DODGES the thermostat/time problems that
+  broke the viscosity study. Also tests the "water is STIFF" half of "stiff-but-
+  fast": high K ⇒ stiff (incompressible). Needs Chrome/WebGPU.
+========================================================================= -->
+<script>
+(function() {
+  var gridN = 200, scr = 30, N2 = 100;
+  var h = scr / gridN, A = 1.8897;
+  var atoms = [];
+  function addAtom(x,y,z,Z,el){ var gi=Math.max(3,Math.min(gridN-3,Math.round(N2+x/h))),
+    gj=Math.max(3,Math.min(gridN-3,Math.round(N2+y/h))), gk=Math.max(3,Math.min(gridN-3,Math.round(N2+z/h)));
+    atoms.push({i:gi,j:gj,k:gk,Z:Z,el:el}); }
+  var boxAu=11.0, bOH=0.96*A, angHOH=104.5*Math.PI/180, nMol=64;
+  var seed=12345; function rand(){ seed=(seed*16807+7)%2147483647; return seed/2147483647; }
+  var oPos=[], minDist=2.5*A, att=0;
+  while(oPos.length<nMol && att<200000){ var x=(rand()-0.5)*2*boxAu,y=(rand()-0.5)*2*boxAu,z=(rand()-0.5)*2*boxAu,ok=true;
+    for(var i=0;i<oPos.length;i++){ var dx=x-oPos[i][0],dy=y-oPos[i][1],dz=z-oPos[i][2]; if(Math.sqrt(dx*dx+dy*dy+dz*dz)<minDist){ok=false;break;} }
+    if(ok)oPos.push([x,y,z]); att++; }
+  var oxyIdx=[];
+  for(var i=0;i<oPos.length;i++){ var ox=oPos[i][0],oy=oPos[i][1],oz=oPos[i][2];
+    oxyIdx.push(atoms.length); addAtom(ox,oy,oz,2,'O');
+    var th=rand()*Math.PI, ph=rand()*2*Math.PI;
+    addAtom(ox+bOH*Math.sin(th)*Math.cos(ph),oy+bOH*Math.sin(th)*Math.sin(ph),oz+bOH*Math.cos(th),1,'H');
+    var t2=th+angHOH;
+    addAtom(ox+bOH*Math.sin(t2)*Math.cos(ph),oy+bOH*Math.sin(t2)*Math.sin(ph),oz+bOH*Math.cos(t2),1,'H'); }
+  window.INC={ oxyIdx:oxyIdx, gridToAng:h/A, N2:N2, nMol:nMol };
+  window.USER_NN=gridN; window.USER_ATOMS=atoms; window.USER_SCREEN=scr; window.USER_STEPS=1000000;
+  window.USER_DYNAMICS=true; window.USER_BROWNIAN=true; window.USER_BROWNIAN_GAMMA=1.0;
+  window.USER_TEMPERATURE_K=600; window.USER_N_MOVE=30;
+  window.USER_Z=atoms.map(function(a){return a.Z;});
+  window.USER_RC=atoms.map(function(a){return a.el==='O'?0.8:0;});
+  window.INIT_ZEFF=2;
+})();
+</script>
+
+<div id="panel" style="position:fixed;top:0;right:0;width:360px;background:rgba(8,10,16,0.94);border-left:1px solid #223;padding:10px 12px;font-size:11.5px;line-height:1.45;z-index:50;height:100vh;overflow:auto;box-sizing:border-box">
+  <div style="font-size:14px;color:#80d8ff;font-weight:600;margin-bottom:2px">Water incompressibility — bulk modulus K</div>
+  <div style="color:#889;font-style:italic;margin-bottom:8px">P(ρ) from the virial → K = ρ dP/dρ, in REAL GPa</div>
+  <div style="margin-bottom:8px">
+    <button id="sweepBtn" style="margin:1px">▶ Compress &amp; measure P(ρ)</button>
+    <span id="stat" style="color:#8c8"></span>
+  </div>
+  <div id="live" style="margin:4px 0 8px;color:#bcd"></div>
+  <canvas id="cv" width="336" height="200" style="background:#0b0d13;border:1px solid #223;display:block"></canvas>
+  <div id="ksum" style="margin:6px 0 10px;color:#bcd"></div>
+  <div style="color:#889;font-size:10.5px;border-top:1px solid #223;padding-top:7px">
+    P (blue) vs density ρ. The <b>slope</b> gives the bulk modulus <b>K = ρ dP/dρ</b>, converted to GPa
+    (1 Ha/au³ = 29422 GPa). <b>Water K ≈ 2.2 GPa</b> (nearly incompressible). Steep P(ρ) = stiff.<br>
+    <span style="color:#c96">Caveats:</span> confined droplet (some surface effect); reduced/under-bonded water;
+    in RealQM much of the stiffness is <i>electron exclusion</i> (excluded volume), not H-bonding — an interesting distinction.
+  </div>
+</div>
+
+<script>
+(function(){
+  var TS=window.INC, A_AU=1.8897, nAtoms=window.USER_ATOMS.length;
+  var R_WALL=14.0, K_WALL=0.3, F_CAP=1.0, wallOn=true;
+  var extF=[]; for(var i=0;i<nAtoms;i++)extF.push([0,0,0]); window.USER_EXTERNAL_FORCE=extF;
+  var HA_AU3_TO_GPA=29421.9;
+
+  function applyWall(){ var np=window._nucPos; if(!np)return;
+    for(var i=0;i<nAtoms;i++){extF[i][0]=0;extF[i][1]=0;extF[i][2]=0;}
+    var hAu=TS.gridToAng*A_AU, idx=TS.oxyIdx, cx=0,cy=0,cz=0,nn=0;
+    for(var m=0;m<idx.length;m++){var p=np[idx[m]];if(!p)continue;cx+=p[0];cy+=p[1];cz+=p[2];nn++;}
+    if(!nn)return; cx/=nn;cy/=nn;cz/=nn;
+    for(var m=0;m<idx.length;m++){var oi=idx[m],p=np[oi];if(!p)continue;
+      var x=(p[0]-cx)*hAu,y=(p[1]-cy)*hAu,z=(p[2]-cz)*hAu,r=Math.sqrt(x*x+y*y+z*z);
+      if(wallOn&&r>R_WALL&&r>1e-6){var f=-K_WALL*(r-R_WALL);if(f<-F_CAP)f=-F_CAP;
+        var fx=f*x/r,fy=f*y/r,fz=f*z/r,push=[oi,oi+1,oi+2];
+        for(var d=0;d<push.length;d++){var a2=push[d];if(a2<nAtoms){extF[a2][0]=fx;extF[a2][1]=fy;extF[a2][2]=fz;}} } }
+  }
+
+  // virial pressure P = N kT/V + (1/3V) Σ (r−rc)·F_internal   [Ha/au^3]
+  var Pema=0, PEMA=0.06;
+  function measureP(){ var np=window._nucPos, fe=window._nucForceElec, fn=window._nucForceNuc;
+    if(!np||!fe||!fn) return Pema;
+    var hAu=TS.gridToAng*A_AU, cx=0,cy=0,cz=0,cnt=0;
+    for(var i=0;i<nAtoms;i++){ if(np[i]){cx+=np[i][0];cy+=np[i][1];cz+=np[i][2];cnt++;} } if(!cnt)return Pema; cx/=cnt;cy/=cnt;cz/=cnt;
+    var vir=0;
+    for(var i=0;i<nAtoms;i++){ if(!np[i]||!fe[i]||!fn[i])continue;
+      var rx=(np[i][0]-cx)*hAu, ry=(np[i][1]-cy)*hAu, rz=(np[i][2]-cz)*hAu;
+      vir += rx*(fe[i][0]+fn[i][0]) + ry*(fe[i][1]+fn[i][1]) + rz*(fe[i][2]+fn[i][2]); }
+    var V=(4/3)*Math.PI*R_WALL*R_WALL*R_WALL, kT=window.langevinKT||(600/315775);
+    var P = TS.nMol*kT/V + vir/(3*V);   // Ha/au^3
+    Pema=(1-PEMA)*Pema+PEMA*P; return Pema;
+  }
+  function densAt(R){ var rA=R/A_AU; return TS.nMol/((4/3)*Math.PI*rA*rA*rA); }  // mol/Å^3
+
+  var curve=[];   // [{rho, P}]
+  function draw(live){ var cv=document.getElementById('cv'),x=cv.getContext('2d'),W=cv.width,H=cv.height; x.clearRect(0,0,W,H);
+    var pL=44,pR=10,pT=10,pB=18,gw=W-pL-pR,gh=H-pT-pB;
+    var Dmin=0.02,Dmax=0.11, Pmax=1e-9,Pmin=1e9;
+    curve.forEach(function(p){ if(p.P>Pmax)Pmax=p.P; if(p.P<Pmin)Pmin=p.P; }); if(live){if(live.P>Pmax)Pmax=live.P; if(live.P<Pmin)Pmin=live.P;}
+    if(Pmax<=Pmin)Pmax=Pmin+1e-6; var span=Pmax-Pmin;
+    function X(d){return pL+(d-Dmin)/(Dmax-Dmin)*gw;} function Y(p){return pT+(1-(p-Pmin)/span)*gh;}
+    x.strokeStyle='#223';[0,.5,1].forEach(function(fr){var yy=pT+(1-fr)*gh;x.beginPath();x.moveTo(pL,yy);x.lineTo(W-pR,yy);x.stroke();
+      x.fillStyle='#667';x.font='9px monospace';x.fillText(((Pmin+fr*span)*29421.9).toFixed(1),2,yy+3);});
+    x.fillStyle='#889';x.font='9px monospace';x.fillText('0.03',X(0.03)-8,H-5);x.fillText('0.08',X(0.08)-8,H-5);x.fillText('ρ (mol/Å³) →',pL+70,H-5);
+    x.save();x.translate(10,pT+gh/2);x.rotate(-Math.PI/2);x.fillText('P (GPa)',0,0);x.restore();
+    var pts=curve.slice().sort(function(a,b){return a.rho-b.rho;});
+    x.strokeStyle='#4fc3f7';x.fillStyle='#4fc3f7';x.lineWidth=1.5;x.beginPath();
+    pts.forEach(function(p,i){var xx=X(p.rho),yy=Y(p.P);if(i===0)x.moveTo(xx,yy);else x.lineTo(xx,yy);});x.stroke();
+    pts.forEach(function(p){x.beginPath();x.arc(X(p.rho),Y(p.P),2.5,0,7);x.fill();});
+    if(live){x.fillStyle='#ff0';x.beginPath();x.arc(X(live.rho),Y(live.P),3,0,7);x.fill();}
+  }
+
+  function computeK(){ // K = ρ dP/dρ from the two densest committed points
+    if(curve.length<2) return null;
+    var s=curve.slice().sort(function(a,b){return a.rho-b.rho;});
+    var a=s[s.length-2], b=s[s.length-1];
+    var dPdrho=(b.P-a.P)/(b.rho-a.rho), rho=0.5*(a.rho+b.rho);
+    return rho*dPdrho*HA_AU3_TO_GPA;   // careful: P is Ha/au^3, rho is 1/Å^3 — see note
+  }
+
+  var SWEEP_R=[14.0,12.5,11.0,10.0], WARM=8000, COLL=12000, sweep=null;
+  function tick(now){ var R=SWEEP_R[sweep.ti], el=now-sweep.t0;
+    if(sweep.ph==='warm'){ document.getElementById('stat').textContent=' R='+R.toFixed(1)+' settle '+Math.ceil((WARM-el)/1000)+'s';
+      if(el>=WARM){sweep.ph='coll';sweep.t0=now;sweep.acc=0;sweep.n=0;} }
+    else { sweep.acc+=measureP(); sweep.n++; document.getElementById('stat').textContent=' R='+R.toFixed(1)+' record '+Math.ceil((COLL-el)/1000)+'s';
+      if(el>=COLL){ var P=sweep.n?sweep.acc/sweep.n:measureP(); curve.push({rho:densAt(R),P:P});
+        console.log('P pt R='+R+' rho='+densAt(R).toFixed(4)+' P='+P.toExponential(3)+' Ha/au3 = '+(P*HA_AU3_TO_GPA).toFixed(2)+' GPa');
+        sweep.ti++;
+        if(sweep.ti>=SWEEP_R.length){ sweep=null; document.getElementById('stat').textContent=' done';
+          console.log('=== P(rho) ===',JSON.stringify(curve)); }
+        else{ R_WALL=SWEEP_R[sweep.ti]; sweep.ph='warm'; sweep.t0=now; } } }
+  }
+
+  setInterval(function(){ if(!window._nucPos)return; applyWall(); var P=measureP(); var now=performance.now();
+    if(sweep) tick(now); draw(sweep?{rho:densAt(SWEEP_R[sweep.ti]),P:P}:null);
+    var K=computeK();
+    document.getElementById('live').innerHTML='P = <b style="color:#fff">'+(P*HA_AU3_TO_GPA).toFixed(2)+' GPa</b> '
+      +'<span style="color:#889">('+P.toExponential(2)+' Ha/au³), R_wall='+R_WALL.toFixed(1)+' au</span>';
+    document.getElementById('ksum').innerHTML = K!=null
+      ? 'bulk modulus K ≈ <b style="color:'+(K>0.5&&K<8?'#8f8':'#fc8')+'">'+K.toFixed(2)+' GPa</b> '
+        +'<span style="color:#889">(water ≈ 2.2 GPa) — steep P(ρ) = stiff/incompressible</span>'
+      : '<span style="color:#889">K appears once ≥2 density points are recorded</span>';
+  },500);
+
+  document.getElementById('sweepBtn').addEventListener('click',function(){ curve=[]; sweep={ti:0,ph:'warm',t0:performance.now(),acc:0,n:0}; R_WALL=SWEEP_R[0]; });
+  var st=document.createElement('style'); st.textContent='#panel button{background:#1a2233;color:#cde;border:1px solid #345;border-radius:4px;padding:2px 6px;font-size:10.5px;cursor:pointer}'; document.head.appendChild(st);
+  draw();
+})();
+</script>
+
+<script>
+var s=document.createElement('script'); s.src='molecule.js?t='+Date.now();
+s.onload=function(){ var p=document.createElement('script'); p.src='https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js'; document.body.appendChild(p); };
+document.body.appendChild(s);
+</script>
+</body></html>
