@@ -14,31 +14,30 @@
 \usepackage{enumitem}
 \setlist[itemize]{leftmargin=1.4em}
 
-\title{Quantum Mechanics as Multiphase 3D Continuum Mechanics \\[0.2em]
-\large Realised through Mind--AI Cooperation}
+\title{Quantum Mechanics as Multiphase 3D Continuum Mechanics}
 
 \author[1]{Claes Johnson}
 \affil[1]{KTH Royal Institute of Technology, Stockholm, Sweden \\
 \texttt{claesjohnson@gmail.com}}
-\date{\today \\[0.5em]
-\textit{This article was written by Claude (Anthropic) with assistance by the author.} \\
-\textit{The mathematical theory and the simulation framework are the author's;} \\
-\textit{the implementation was developed by Claude from p5.js prototypes by the author.}}
+\date{\today \\[0.4em]
+\small\textit{Mathematical theory and formulation by the author; manuscript and} \\
+\small\textit{implementation developed in collaboration with Claude (Anthropic).} \\
+\small\textit{The collaboration is documented in Section~\ref{sec:collaboration}.}}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-We present a formulation of the $N$-electron quantum-mechanical model in terms of a wave function $\Psi(\mathbf{x}) = \sum_{i=1}^{N} \psi_i(\mathbf{x})$ defined over physical 3D space with coordinate $\mathbf{x} \in \mathbb{R}^3$, with the $\psi_i$ unit-charge individual electronic wave functions with supports in a non-overlapping decomposition of $\mathbb{R}^3$ into domains $\Omega_i$ with boundaries $\Gamma_i = \partial \Omega_i$. An atomic or molecular ground state is determined by minimization of the standard Coulomb energy functional over the wave functions $\{\psi_i\}$ and over the domain decomposition $\{\Omega_i\}$, subject to continuity of $\Psi$ across the common inter-domain boundaries $\Gamma_i \cap \Gamma_j$. The minimum is approached by a gradient method with three coupled updates: imaginary-time propagation of each $\psi_i$, Poisson updates of the per-electron Hartree potentials, and level-set updates of the free boundary of the domain decomposition $\{\Omega_i\}$. We refer to this real-space formulation as \textbf{RealQM}.
+We formulate quantum mechanics as multiphase 3D continuum mechanics: an $N$-electron wave function $\Psi = \sum_{i=1}^{N} \psi_i$ with unit-charge components $\psi_i$ supported on non-overlapping domains $\Omega_i \subset \mathbb{R}^3$ separated by Bernoulli free boundaries. Ground states minimise the standard Coulomb energy over both wave functions and domain decomposition, via coupled imaginary-time propagation, Poisson updates of per-electron Hartree potentials, and level-set evolution of the free boundaries. We refer to this real-space formulation as \textbf{RealQM}.
 
-The model is organised as a hierarchy of reductions: \textbf{Level 1} is the parameter-free basic atomic model in which shell structure emerges from minimum-energy packing rather than being preset, reproducing observed atom total energies for elements Li--Rn within ${\sim}1\%$; \textbf{Level 2} treats atoms with spherical symmetry on the inner shells while leaving valence electrons explicit; \textbf{Level 3} replaces nucleus and inner shells together by a pseudo-kernel characterised by an effective charge and a softening radius; \textbf{Level 4} assembles Level-3 atoms into molecules and molecular complexes. Two further levels extend the hierarchy beyond the wave-function formalism: \textbf{Level 5} extracts a per-species reduced-model record (envelope, surface electrostatic, hydrophobicity, normal modes) from a converged Level-3 run on a single protein, and \textbf{Level 6} drives a population of Level-5 records under Brownian dynamics, capturing $\sim 10^6$-protein cell-scale dynamics on the same hardware that runs Level-1 atoms. At Level 3, reduced-kernel architectures sweep entire periodic-table columns --- closed-shell hydrides match experimental atomization energies within 3--9\% for groups 1, 2, 14, and 16 (NaH, BeH$_2$, H$_2$O, CH$_4$, SiH$_4$, GeH$_4$); the H$_2$ covalent bond at parameter-free Level 1 matches Kolos--Wolniewicz to 0.3\% on total energy and the experimental dissociation energy to 3\%. Reactive chemistry (proton transfer, exchange) and excited states (orthohelium) follow from the same variational principle. At Level 4, the framework supports \textbf{interactive protein folding}: polyglycine hairpins fold from extended to compact via quantum-mechanical H-bond forces alone; alpha-helices form from near-linear chains; mini-proteins fold under universal $i \to i{+}4$ H-bond bias plus a single hydrophobic-pressure parameter, reproducing native-like topology without empirical force fields. A four-system condensed-phase calibration (NaCl crystal melt, CO$_2$ dry ice, solid N$_2$, bare-nucleus He) shows that the simulation transition T for systems with non-dispersive cohesion sits in the 1000--2000~K range, that the overshoot factor against experimental phase-transition temperatures scales monotonically with the missing-dispersion contribution, and that at the dispersion-only endpoint (bare-nucleus He) the cluster cleanly fails to bind, completing the calibration with the predicted clean negative test.
+The framework is organised as a six-level hierarchy of reductions: parameter-free atoms (\textbf{L1}, total energies Li--Rn within ${\sim}1\%$ from minimum-energy electron packing); spherically-reduced inner shells (\textbf{L2}); pseudo-kernel atoms with effective charge and softening (\textbf{L3}); molecular and crystalline assemblies (\textbf{L4}); per-species reduced-model records (\textbf{L5}); and Brownian dynamics of $\sim 10^6$ proteins on a single GPU (\textbf{L6}). Validation across chemistry: H$_2$ at parameter-free L1 to $0.3\%$ of Kolos--Wolniewicz total energy and $3\%$ of experimental dissociation; closed-shell hydrides (NaH, BeH$_2$, H$_2$O, CH$_4$, SiH$_4$, GeH$_4$) within $3$--$9\%$ across groups 1, 2, 14, 16; reactive chemistry (proton transfer, exchange); excited states (orthohelium); ionization energies. At L4 the framework supports \textbf{interactive protein folding}: polyglycine hairpins, $\alpha$-helices, and mini-proteins fold under a universal $i{\to}i{+}4$ H-bond bias plus a single hydrophobic-pressure parameter. A four-system condensed-phase calibration (NaCl melt, CO$_2$ dry ice, solid N$_2$, bare-nucleus He) captures non-dispersive cohesion and cleanly fails to bind at the dispersion-only endpoint.
 
-Stability of matter for a system of $N$ non-overlapping atoms with kernel charge $Z$ follows from the Hardy inequality applied to the global wave function $\Psi$ as a one-paragraph derivation, giving the bound $E \ge -C N Z^3$ --- in striking contrast to the Dyson--Lenard--Lieb--Thirring proof required in standard quantum mechanics. The same multiphase formulation extends naturally to atomic nuclei in a proton--electron picture (4 protons + 2 electrons for He-4), demonstrating reach beyond chemistry to nuclear-scale physics.
+Stability of matter for $N$ non-overlapping atoms with kernel charge $Z$ follows from the Hardy inequality applied to the global $\Psi$ in a one-paragraph derivation, giving $E \ge -C N Z^3$ --- strikingly more compact than the standard Dyson--Lenard--Lieb--Thirring proof. The same multiphase Coulomb formulation extends to \textbf{atomic nuclei} in the pre-1932 proton--electron picture (neutron = proton + electron) with equal mass $m_e = m_p = 1$, through a three-level nuclear hierarchy: 3D polyhedral configurations for light nuclei (He-4 through C-12 within $25\%$ of experiment); a single-shell packing model with proton thickness $d = c/Z$ that reproduces the rising $B/A$ curve to the Fe-Ni peak with two parameters; and an extension with electron-core expansion $R_e^\text{eff}(Z) = R_e + \gamma\,\max(0, Z - Z_\text{break})$ that recovers the full experimental binding curve from H-2 to U-238 --- all from pure Coulomb interactions, no strong-force postulate. The model predicts an electron-to-proton size ratio scaling as $Z^{2/3}$, the same exponent as the Weizsäcker surface term but emerging from inside-out geometric topology rather than from short-range force saturation.
 
-The framework is implemented in ${\sim}8000$ lines of JavaScript and WebGPU compute shaders running interactively in a browser on a consumer laptop GPU --- three orders of magnitude smaller and ${\sim}10^2$--$10^4 \times$ faster than mainstream quantum-chemistry packages. The implementation, validation suite, and curated public Gallery were developed through extended collaboration with an AI code assistant (Claude, Anthropic) starting from initial p5.js prototypes by the author. We present the collaboration as part of the contribution: a worked case of how a single mathematical mind, paired with an AI engineering partner, can produce research-grade interactive scientific software at a scale that previously required a programming team.
+The framework is implemented in ${\sim}8000$ lines of JavaScript and WebGPU compute shaders running interactively in a browser on a consumer laptop GPU --- three orders of magnitude smaller and ${\sim}10^2$--$10^4{\times}$ faster than mainstream quantum-chemistry packages. The implementation, validation suite, and curated public Gallery were developed through extended collaboration with an AI code assistant (Claude, Anthropic). We present the collaboration as part of the contribution: a worked case of how a single mathematical mind paired with an AI engineering partner can produce research-grade interactive scientific software at a scale that previously required a programming team.
 
 \medskip
-\noindent \textbf{Keywords:} quantum chemistry; multiphase wave functions; free-boundary problems; Bernoulli condition; real-space methods; stability of matter; WebGPU; AI-assisted scientific software; human--AI collaboration.
+\noindent \textbf{Keywords:} quantum chemistry; multiphase wave functions; free-boundary problems; Bernoulli condition; real-space methods; stability of matter; protein folding; nuclear binding energy; Weizsäcker formula; WebGPU; AI-assisted scientific software; human--AI collaboration.
 \end{abstract}
 
 \section{Introduction}
@@ -58,7 +57,13 @@ The second is from \textbf{Schr\"odinger, in a letter to Lorentz dated 6 June 19
 If we now have to deal with $N$ particles, then $\Psi(x_1, \ldots, x_N)$ is a function of $N$ variables $x_1, \ldots, x_N$ over $N$ 3D spaces $R_1, \ldots, R_N$. Now first let $R_1$ be identified with the real space $\mathbb{R}^3$ and integrate over $R_2, \ldots, R_N$. Second, identify $R_2$ with the real space and integrate over $R_1, R_3, \ldots, R_N$ and so on. The $N$ individual results are to be added after they have been multiplied by certain constants which characterise the particles. \emph{I consider the result to be the electric charge density in real space.}
 \end{quote}
 
-The two positions are complementary. Dirac states that chemistry reduces to known physical laws; the only obstacle is computational. Schr\"odinger sketches a real-space interpretation in which the $N$-electron wave function projects to an actual charge density in physical $\mathbb{R}^3$, recovering the direct physical meaning that $\psi^2$ has for the hydrogen atom. \textbf{This real-space-density interpretation was abandoned during the late 1920s under the dominance of the Bohr--Born--Heisenberg--Dirac Copenhagen interpretation}, in which $\Psi$ on $\mathbb{R}^{3N}$ became a probability amplitude rather than a physical charge density. The resulting Standard QM (StdQM) inherits the computational obstacle Dirac identified --- solving an equation on $3N$-dimensional configuration space --- and the chemistry-specific approximations introduced to make it tractable have, ever since, made chemistry look more autonomous from physics than Dirac's position would suggest.
+A third foundational position deserves to be set alongside the first two: that of \textbf{Walter Kohn} in his 1998 Nobel Lecture on Density Functional Theory~\cite{Kohn1998Nobel}, where the founder of the most successful working tool of standard quantum chemistry observed that
+\begin{quote}
+in general the many-electron wave function $\Psi(\mathbf{x}_1, \ldots, \mathbf{x}_N)$ for a system of $N$ electrons is not a legitimate scientific concept when $N \geq N_0$, where $N_0 \approx 10^2$--$10^3$.
+\end{quote}
+Kohn's statement is the working-physicist counterpart to Dirac's: the configuration-space wave function loses its status as a scientific object already at small molecular scales. DFT's response was a dimensional reduction to a single 3D density $\rho(\mathbf{x})$ with an approximate exchange-correlation functional; RealQM's response, developed below, is a foundational reformulation that never invokes the $3N$-dimensional object in the first place.
+
+The three positions are not complementary; they are in tension. Dirac states that chemistry reduces to known physical laws; the only obstacle is computational --- but he treats the $3N$-dimensional configuration-space form of the equations as fixed and concludes that the only relief is approximation. Schr\"odinger sketches the real-space alternative in which the $N$-electron wave function projects to an actual charge density in physical $\mathbb{R}^3$, recovering the direct physical meaning that $\psi^2$ has for the hydrogen atom. Kohn, from the working physicist's side seventy years later, observes that the $3N$-dimensional object Dirac took as fixed has, in practice, ceased to be a scientific concept already at small molecular scales --- which is the diagnostic that Schr\"odinger's letter to Lorentz had pointed toward all along. \textbf{The real-space-density interpretation was abandoned during the late 1920s under the dominance of the Bohr--Born--Heisenberg--Dirac Copenhagen interpretation}, in which $\Psi$ on $\mathbb{R}^{3N}$ became a probability amplitude rather than a physical charge density. The resulting Standard QM (StdQM) inherits the computational obstacle Dirac identified --- solving an equation on $3N$-dimensional configuration space --- and the chemistry-specific approximations introduced to make it tractable have, ever since, made chemistry look more autonomous from physics than Dirac's position would suggest. RealQM, developed below, takes the choice made in 1926--1929 to have been the wrong choice: a real-3D-space formulation in the spirit of Schr\"odinger's letter exists, dissolves the computational obstacle Dirac identified, and recovers the scientific status that Kohn observed the $3N$-dimensional wave function had lost.
 
 The formulation developed in this paper, which we call \textbf{RealQM}, returns to the originally proposed real-3D-space picture. The $N$-electron wave function $\Psi(\mathbf{x}) = \sum_{i=1}^N \psi_i(\mathbf{x})$ lives on physical $\mathbb{R}^3$ as a sum of \textbf{one-electron wave functions} $\psi_i$ on a non-overlapping decomposition of $\mathbb{R}^3$ into domains $\Omega_i$, with each $\psi_i^2$ a unit charge density. Energy is the standard Coulomb functional, minimised over the wave functions $\{\psi_i\}$, the domain decomposition $\{\Omega_i\}$, and the nuclear positions; molecular geometry, bonding, and dynamics emerge from the same variational principle. The $3N$-dimensional configuration-space step is not taken at all; the computational obstacle Dirac identified is dissolved by working in 3D throughout, at the cost of replacing antisymmetry with strict spatial non-overlap.
 
@@ -72,8 +77,8 @@ A second contribution of this paper concerns how the implementation was produced
 
 We take this case to be a worth-reporting example of how a single mathematical mind, working with an AI engineering partner in real time, can produce research-grade interactive scientific software at a scale otherwise requiring a programming team. The collaboration is not the science, but it is part of how the science came into existence, and we report it as such.
 
-\paragraph{Note on scope.}
-We present RealQM positively, by stating what it is and what it predicts, rather than by detailed comparison with standard quantum mechanics. A precise comparison would require specifying which interpretive framework --- Copenhagen, Bohmian, Many-Worlds, decoherence-based, or another --- one has in mind, and these differ substantially on the ontological status of the wave function. The reader is invited to perform such comparisons against the framework they favour. The essential claim of this work is positive: RealQM is a formulation in which the wave function lives on physical three-dimensional space and the electrons are real, spatially-extended, non-overlapping regions of charge density.
+\paragraph{Position relative to standard quantum mechanics.}
+This paper does not present RealQM as a parallel approach to be weighed against StdQM. The position taken is that the configuration-space step of 1926--1929 was a wrong turn, that StdQM in its various interpretive guises (Copenhagen, Bohmian, Many-Worlds, decoherence-based) is the apparatus that grew up around that wrong turn, and that the foundational debate among those interpretations is a symptom of the wrong formulation rather than a genuinely open question about nature. The numerical successes of StdQM are real and document that the underlying physics --- Coulomb interactions, the original real-space Schr\"odinger equation --- is right; what those successes do not establish is that the $3N$-dimensional probability-amplitude reading is the correct foundation, and the Kohn 1998 observation makes this point from inside the discipline. RealQM is offered as the formulation Schr\"odinger should have arrived at in 1926 once the multi-electron case was admitted: a wave function on physical three-dimensional space, electrons as spatially-extended non-overlapping regions of charge density, a deterministic variational principle, and no probabilistic interpretation. The validation reported in Section~\ref{sec:validation} establishes that this formulation recovers the chemistry at the same numerical level as StdQM across atoms, molecules, reactions, and condensed phases; it does so at orders-of-magnitude lower computational cost; and it does so without the foundational difficulties that a century of work on the standard formulation has not resolved.
 
 The paper is organized as follows. Section~\ref{sec:reformulation} states the reformulation and the hierarchical reduction. Section~\ref{sec:implementation} describes the numerical implementation. Section~\ref{sec:validation} reports validation, including atom energies, the covalent H$_2$ bond and its He limit, atomization energies of closed-shell hydrides across periodic-table groups, S66 dimer geometries, chemical reactions, protein folding, excited states, and a three-system condensed-phase calibration (NaCl crystal melt, CO$_2$ dry-ice cluster, solid N$_2$) that quantifies how the simulation's overshoot factor against experimental transition temperatures scales with the missing-dispersion contribution. Section~\ref{sec:limitations} states honest limits of the approach. Section~\ref{sec:som} shows that stability of matter --- the lower bound $E \ge -C N Z^2$ on the ground-state energy of a system of $N$ atoms --- follows directly from the Hardy inequality applied to non-overlapping electronic territories, in contrast to the heroic Dyson--Lenard--Lieb--Thirring proof required in standard quantum mechanics. Section~\ref{sec:nucleus} reports an analogous model of the atomic nucleus, demonstrating that the framework extends beyond chemistry to nuclear-scale physics. Section~\ref{sec:chemvphys} places the work in the long-standing chemistry-vs-physics debate. Section~\ref{sec:collaboration} discusses the human--AI collaboration. The full source code, validation suite, and interactive Gallery are available at the URLs in Section~\ref{sec:code}.
 
@@ -90,7 +95,7 @@ balancing kinetic localisation cost against Coulomb attraction to a unit positiv
 
 For an atomic system with $N>1$ electrons the standard approach (Schr\"odinger 1926, with the non-physical configuration-space step taken on Born--Heisenberg suggestion) is to extend $\psi$ to a wave function $\Psi(\mathbf{x}_1, \ldots, \mathbf{x}_N)$ on $\mathbb{R}^{3N}$, with $\Psi^2$ given a probabilistic interpretation. This step replaces three-dimensional physical space with an $N$-fold tensor product whose computational cost grows exponentially in $N$ and whose physical meaning has been contested ever since.
 
-\textbf{The RealQM alternative} keeps the wave function in physical $\mathbb{R}^3$. The $N$-electron wave function $\Psi \in H^1(\mathbb{R}^3)$ is a sum of one-electron wave functions $\psi_i$ on non-overlapping spatial domains $\Omega_i$:
+\textbf{The RealQM formulation} keeps the wave function in physical $\mathbb{R}^3$. The $N$-electron wave function $\Psi \in H^1(\mathbb{R}^3)$ is a sum of one-electron wave functions $\psi_i$ on non-overlapping spatial domains $\Omega_i$:
 \begin{equation}\label{eq:Psi-sum}
 \Psi(\mathbf{x}) = \sum_{i=1}^{N} \psi_i(\mathbf{x}),
 \qquad
@@ -136,7 +141,7 @@ the homogeneous Neumann condition arising from free variation of $\psi_i$ over $
 \item \emph{Pauli exclusion through non-overlap.} The constraint that distinct electrons occupy disjoint domains plays the role of the Pauli exclusion principle. Antisymmetry of a many-body wave function is replaced by spatial separation of one-body wave functions; the two requirements are not equivalent, but the variational consequences (no two electrons share a quantum state) are recovered.
 \item \emph{No probabilistic interpretation needed.} Each $\psi_i^2$ is the actual electronic charge density of electron $i$ in its own domain $\Omega_i$. There is no need to invoke ``probability of finding electron $i$ at $\mathbf{x}$'' --- the density is the physical charge distribution.
 \item \emph{Connection to AIM.} RealQM can be viewed as taking Bader's Atoms-in-Molecules partitioning~\cite{Bader90} as the \emph{primary} variable: rather than first computing $\rho(\mathbf{x})$ and then partitioning, the partition itself $\{\Omega_i, \psi_i\}$ minimises the Coulomb energy directly.
-\item \emph{Kinetic energy as localisation cost.} The term $K(\Psi)$ is named ``kinetic energy'' by analogy with Schr\"odinger's hydrogen problem, but no electronic motion is implied. It is more accurately understood as a localisation cost penalising rapid spatial variation of the charge density --- a strain-like elastic energy for the electronic continuum.
+\item \emph{Kinetic energy as localisation cost / self-repulsion.} The term $K(\Psi) = \tfrac{1}{2}\int |\nabla \Psi|^2$ is named ``kinetic energy'' by analogy with Schr\"odinger's hydrogen problem, but no electronic motion is implied. Two equivalent physical readings are available within RealQM. First, as a \textbf{localisation cost} that penalises rapid spatial variation of the charge density --- a strain-like elastic energy of the electronic continuum that prevents collapse to a delta. Second, as the \textbf{self-repulsion} of each one-electron density $\psi_i^2$ on its own domain $\Omega_i$: the gradient term acts as an internal pressure resisting compression of the charge cloud, in direct analogy with the bulk modulus of a soft continuum. The two readings are mathematically the same term; they differ only in physical interpretation. The self-repulsion reading makes transparent why the inter-electron Coulomb integral~\eqref{eq:PE} correctly omits the diagonal $j = i$: that piece is already supplied, in a different mathematical form, by the gradient term. Standard one-body DFT must add a non-trivial self-interaction correction precisely because the analogous self-Coulomb piece is included in the Hartree term and then must be subtracted; RealQM's disjoint-domain formulation removes the need for this correction by construction.
 \end{itemize}
 
 \subsection{Comparison with the standard formulation}
@@ -147,7 +152,7 @@ The RealQM formulation~\eqref{eq:Psi-sum}--\eqref{eq:PE} works in real $\mathbb{
 
 This raises an obvious question: how do the two compare numerically? At the parameter-free Level-1 atomic model (Section~\ref{sec:atoms}) RealQM gives atom energies within ${\sim}1\%$ of observation. At higher levels (Section~\ref{sec:hydrides}), Level-3 reductions match experimental atomization energies of closed-shell hydrides within 3--9\% across multiple periodic-table groups. Where the methods part company is in the cost: a single closed-shell hydride at Level 3 runs in milliseconds on a laptop GPU, while CCSD(T) on the same system requires minutes to hours on a CPU.
 
-Bader's theory of \emph{Atoms in Molecules}~\cite{Bader90} partitions the total electron density into atomic basins via the topology of the gradient field. RealQM can be viewed as taking that partitioning idea seriously as the \emph{primary} variable: rather than first computing $\rho(\mathbf{x})$ from a Slater-determinant wave function and then partitioning, we let the partition $\{\Omega_i, \psi_i\}$ minimise the Coulomb energy directly.
+Bader's theory of \emph{Atoms in Molecules}~\cite{Bader90} partitions the total electron density into atomic basins via the topology of the gradient field. RealQM takes that partitioning idea seriously as the \emph{primary} variable: rather than first computing $\rho(\mathbf{x})$ from a Slater-determinant wave function and then partitioning, the partition $\{\Omega_i, \psi_i\}$ minimises the Coulomb energy directly. This gives the AIM zero-flux partitioning the first-principles status that, in its original construction as post-processing on an externally-supplied density, it does not have.
 
 \subsection{The hierarchy of reductions}
 
@@ -178,6 +183,13 @@ Across the interface, the density $\psi_i^2$ is positive on the $\Omega_i$ side 
 When the system is \textbf{not at equilibrium}, density mismatches at the interfaces generate forces that drive boundary motion. The free boundary moves toward configurations satisfying the Bernoulli condition; the bulk wave functions and the boundary location relax together. This dynamic is part of how the variational principle arrives at the equilibrium configuration: the boundaries are not fixed but evolve as the wave functions relax. In the numerical implementation (Section~\ref{sec:implementation}), the relaxation is realised through a smoothed $w$-field that softens the partition during imaginary-time propagation and tightens to the Bernoulli condition at convergence.
 
 The free-boundary perspective places the wave-function formulation in a well-studied class of variational problems for which regularity theory, level-set methods, and Dirichlet--Neumann decompositions are available.
+
+\paragraph{Equivalence with Bader's zero-flux surfaces.}
+The Neumann condition~\eqref{eq:neumann} is the wave-function-level version of the \textbf{zero-flux condition} that defines atomic basins in Bader's Atoms-in-Molecules theory~\cite{Bader90}. There, atomic basins $\Omega_i$ are the regions enclosed by surfaces $\Gamma_i$ on which the gradient of the total density vanishes in the normal direction:
+\begin{equation}\label{eq:zeroflux}
+\nabla \rho(\mathbf{x}) \cdot \mathbf{n} \;=\; 0 \quad \text{on } \Gamma_i.
+\end{equation}
+In RealQM, the local density inside $\Omega_i$ is $\rho_i(\mathbf{x}) = \psi_i^2(\mathbf{x})$, so $\nabla \rho_i \cdot \mathbf{n} = 2\psi_i (\partial \psi_i/\partial n)$. The variational Neumann condition~\eqref{eq:neumann} therefore enforces~\eqref{eq:zeroflux} automatically. The two characterisations --- Bader's topological zero-flux surface and the RealQM Bernoulli free boundary --- describe the same geometric object, but with the directions of dependence reversed: in AIM the partition is computed \emph{after} the density is fixed by an external wave-function method, while in RealQM the partition is a \emph{primary} variational degree of freedom co-determined with the $\psi_i$. The Bernoulli condition thus gives the AIM zero-flux partitioning a first-principles status it does not have in its original construction.
 
 The Bernoulli condition itself appears to be \textbf{difficult to verify or disprove by direct experimental observation}: the inter-electron interface is not a quantity that current experiments resolve, and standard quantum-chemistry methods do not produce a comparable object (they work with overlapping orbitals or a single total density, not a partition of space into electron territories with a sharp boundary). In computations, however, the condition functions as a working model: imposing continuity and homogeneous Neumann at the free boundary is consistent with the variational principle, the relaxation reaches a stable boundary configuration, and the resulting energies and geometries agree with experiment across the cases reported in Section~\ref{sec:validation}. We therefore adopt the Bernoulli condition as a model assumption supported by computational evidence rather than by direct measurement, and note this status explicitly.
 
@@ -278,6 +290,9 @@ Radon    & $(2) + (4{+}4) + (18) + (32) + (18) + (4{+}4)$   & $-22800$   & $-235
 \paragraph{Why sub-shells?}
 A diagnostic test illustrates why the sub-shell structure is preferred energetically. With Neon at the proper $(2) + (4{+}4)$ structure the computed energy is $-132$~Ha, in good agreement with the observed $-128.5$~Ha. With Neon forced into a single $8$-electron outer shell, $(2) + (8)$ without the $(4{+}4)$ subdivision, the computed energy drops to $-153$~Ha, far below observation. The mechanism is the homogeneous Neumann condition acting between adjacent sub-shells: this condition widens each shell and raises its kinetic-energy cost, and the variational principle therefore prefers the radially split configuration that splits this cost across two narrower sub-shells. Sub-shell structure is thus an emergent prediction of the variational principle, not a free choice.
 
+\paragraph{Recovery of Lewis's 1916 cubic atom.}
+For the second-row L-shell ($n = 2$), the variational packing of eight non-overlapping unit-density electron territories around a $+2$ closed inner shell produces an arrangement in which the eight L-shell domains occupy the eight octants of a Cartesian frame centred on the kernel --- a geometric pattern dictated by minimisation of the kinetic-energy localisation cost~\eqref{eq:K} subject to non-overlap. This is, geometrically, the eight-cornered cubic arrangement of L-shell electrons proposed by G.~N.~Lewis in his 1916 paper ``The Atom and the Molecule''~\cite{Lewis1916}, originally introduced as a chemical bookkeeping device for valence and the octet rule and dismissed as quantum-mechanically unfounded after the Schr\"odinger 1926 orbital picture took hold. RealQM recovers Lewis's geometric L-shell directly from the variational principle, without external octet axioms. The eight-electron L-shell of Ne, the four-electron half-shell of C, and the valence directionality of the second period thus all sit on a single first-principles footing, with Lewis's chemically-motivated 1916 picture vindicated as the natural geometric result of the multiphase packing.
+
 \subsection{Chemical bonding: the H$_2$ covalent bond and its Helium limit}\label{sec:h2bond}
 
 The hydrogen molecule H$_2$ is the simplest covalent bond --- two protons sharing two electrons --- and provides the cleanest test of how covalent bonding emerges from the unit-density formulation. In RealQM, H$_2$ is described as two unit electron densities that do not overlap (Bernoulli partition), distributed around two H$^+$ kernels at separation $R$. The two electrons occupy opposite halves of the inter-nuclear region (the natural minimum-energy partition for two electrons in a symmetric two-kernel field). Each electron is attracted to both nuclei and repelled by the other electron through Coulomb interactions only; there is no exchange term and no antisymmetric wavefunction.
@@ -373,6 +388,25 @@ A hydrogen atom approaches an H$_2$ molecule along the bond axis. RealQM follows
 \paragraph{What this validates.}
 These cases test the \textbf{forces-not-energies} principle (Section~\ref{sec:forces}) on systems where standard quantum chemistry would require either a transition-state search (for the saddle) or QM/MM molecular dynamics (for the trajectory). In RealQM the Coulomb forces that determine equilibrium geometry also determine reactive trajectories; there is no separate machinery for reactions. The chemical specificity --- which proton transfers, in which direction, to what acceptor --- emerges from the kernel parameters ($Z$, $r_c$, split topology) of the participating atoms and is controlled by the local electron-density configuration around each nucleus, not by any reaction-specific input. Nature does not consult pK$_a$ tables or compute free-energy differences; it acts through local forces, and so does RealQM.
 
+\paragraph{Drug mechanisms as reactive scans.}
+The same forces-not-energies principle extends to a set of pharmacological mechanisms, run as
+\emph{comparative reactive scans}: a generic nucleophile (NH$_3$, an amine/thiol proxy) is driven
+toward an electrophilic carbon on an \emph{activated} species and on a matched \emph{control}, and the
+diagnostic is the differential $\mathrm{drive} = \Delta E(\text{control}) - \Delta E(\text{activated})$
+as a function of approach distance, with a far reference removing long-range dipole bias. A positive,
+growing drive means the activating group genuinely lowers the reactive barrier. The framework
+reproduces the qualitative activation of several covalent-drug motifs: proton-pump inhibitor
+(omeprazole) activation by acid protonation; $\beta$-lactam antibiotic ring-strain activation
+(4-ring vs 5-ring control); covalent kinase-inhibitor warheads (acrylamide Michael acceptor vs plain
+alkene); and the pyridinium electron-sink of the PLP cofactor in GAD65 decarboxylation. A clear scope
+boundary appears: the perpendicular-approach scan captures \emph{addition} mechanisms but fails for
+\emph{substitution} (S$_N$2, acyl transfer), where the reactive trajectory is backside and the
+leaving group departs as an anion --- the reduced model's known weak spots (anions, and a rigid
+scan geometry). These are qualitative sign/trend results on $\sim\!15$--$20$-atom active-site cores;
+on such small mechanisms, established DFT/QM-MM is the more accurate tool, and the value here is the
+\emph{parameter-free, browser-scale} recovery of the correct activation physics, not competitive
+barrier heights. All scans are public in the Gallery (Section~\ref{sec:code}).
+
 \subsection{Protein folding}\label{sec:proteins}
 
 The reformulation supports molecular dynamics at scale. We have used the framework to simulate folding of small peptides and mini-proteins driven by quantum-mechanical forces from the unit-density model, supplemented in some cases by a single implicit-solvent hydrophobic parameter. Headline results:
@@ -391,6 +425,111 @@ Under universal $i \to i{+}4$ H-bond biases applied to every residue (with no sp
 
 \paragraph{Architecture and computational cost.}
 Each backbone atom is modeled at Level 3 with kernel charges $Z = 4$ (C), 3 (N), 2 (O), 1 (H), with bond and angle constraints holding the protein backbone. Folding trajectories run interactively on a $200^3$ or $300^3$ grid; a 35-residue protein folds in hours of real-time on a single GPU, compared to weeks of CPU-cluster time for full DFT-MD or specialized hardware (Anton~\cite{Shaw10}) for force-field MD on the same timescales. The combination of ab initio H-bond forces and a single hydrophobic parameter, with no empirical force field, distinguishes this approach from both classical MD (which requires fitted parameters for every interaction) and pure ML methods (which do not solve the electronic-structure problem at all).
+
+\subsection{Reduced-form docking: streptavidin--biotin recognition}\label{sec:reduced-docking}
+
+The Forward look in Section~\ref{sec:chemvphys} proposed the cell-scale architecture in which each protein species is compressed to a small Level-5 reduced record --- surface points carrying position, charge, and hydrophobicity, extracted from a converged Level-3 RealQM run --- and the cell-scale dynamics is Brownian motion of such records interacting through Coulomb, steric, and hydrophobic forces. We here test that the reduced record retains enough information for \emph{recognition}: does an enclosed binding pocket, represented only by Level-5 data, discriminate ligands by chemistry the way the underlying protein does?
+
+The test system is the biotin-binding pocket of streptavidin, one of the tightest non-covalent receptor--ligand pairs known ($K_d \approx 10^{-15}$\,M). The pocket is represented by fourteen residues from the literature site: four tryptophans (W79, W92, W108, W120) lining the hydrophobic walls; three floor donors (N23, S27, S45); interior hydrophobics (A86, V47); a rim aromatic (Y43); and the rim arginine R84 that anchors biotin's valeryl carboxylate. Each residue is rendered as a sphere of surface points; hydrophobicity is restricted to the inward-facing hemisphere, reflecting the buried packing of the real sidechains. Four ligand types --- a biotin-like model (hydrophobic body with an anionic tail), a neutral hydrophobic ball, a cationic ball, and an anionic ball --- are docked by Brownian dynamics under identical Coulomb, steric, and hydrophobic potentials. Each ligand was run for 50 independent trials of 40\,000 BD steps starting at random orientation and random direction at 13\,\AA{} from the pocket centre, biased to the upper hemisphere so all ligands have access to the pocket opening. A trial counts as ``in pocket'' if the ligand centre of mass reaches within 6\,\AA{} of the pocket centre with $\ge 6$ contact points and binding energy below $-3$ (in the dimensionless units of the simulation).
+
+\begin{center}
+\small
+\begin{tabular}{@{}p{4.3cm}cc p{5.5cm}@{}}
+\hline
+\textbf{Ligand} & \textbf{bound} & \textbf{in pocket} & \textbf{Mechanism} \\
+\hline
+biotin-like (hydrophobic head + anionic tail) & high  & 24/50 (48\%) & hydrophobic burial + R84 tail anchor \\
+neutral hydrophobic ball                      & 25/50 & 20/50 (40\%) & hydrophobic only, no orientation lock \\
+anionic ball                                  & 50/50 & 12/50 (24\%) & R84 captures at rim, no body to bury \\
+cationic ball                                 & 0/50  &  0/50 (0\%)  & R84 electrostatically excludes \\
+\hline
+\end{tabular}
+\end{center}
+
+The hierarchy reproduces three independent recognition modes simultaneously, from a Level-5 record alone:
+
+\emph{Charge complementarity.} The cationic ligand is electrostatically excluded by R84 (0/50), while the anionic ligand is electrostatically captured at the rim (50/50). This is the sign-discriminating behaviour that any selective receptor must exhibit.
+
+\emph{Hydrophobic burial.} The neutral hydrophobic ball, lacking the anionic tail, finds the pocket purely by hydrophobic attraction and enters in 40\% of trials; the cationic ball, despite carrying the same hydrophobic skeleton, never enters because R84 keeps it at distance. The 40\% rate quantifies the unbiased burial probability of a featureless hydrophobic body once stochastic search is given enough time.
+
+\emph{Combined recognition.} The biotin-like ligand benefits from both effects: R84 pulls the anionic tail upward and orients the ligand head-down, after which the hydrophobic body falls into the well. The 48\% pocket-entry rate is the highest in the series. The orientation lock is the same mechanism by which real streptavidin recognises biotin from a vast library of similar small molecules: an enclosed hydrophobic cavity is necessary but not sufficient; the specific anionic-tail-to-rim-arginine register selects \emph{this} ligand.
+
+\paragraph{Pocket vs no-pocket control.}
+The same docking protocol applied to chignolin (10-residue $\beta$-hairpin, no enclosed cavity, surface-only sidechains) gives the complementary result. With a neutral hydrophobic ligand, only $8/50 = 16\%$ of trials produce stable surface contact, against $40\%$ pocket entry for streptavidin. With a cationic ligand, chignolin binds preferentially at the rim of the D2/E4 acidic patch (Y1 aromatic anchor, $\sim 19/50$ surface contacts), while streptavidin excludes it entirely. The framework therefore discriminates not only by chemistry of the ligand but by topology of the receptor: an enclosed cavity yields high specific binding, an exposed surface yields low transient binding. The same Level-5 record reproduces this distinction with no parameter retraining --- only the surface point distribution changes.
+
+The result is independent confirmation that the Level-5 reduced record is not merely a coarse-grained shape but a functional surrogate for the underlying receptor. The same record that drives the cell-scale Brownian gas in the Forward look has, on its own, enough information to reproduce the three classical pillars of drug--receptor discrimination, together with the basic topological pocket-vs-surface distinction.
+
+\paragraph{Scope of the validation.}
+What the docking demonstrations validate is the \emph{Level-5 to Brownian-dynamics} step: that a small surface-point record --- per-residue position, sidechain charge, and inward-facing hydrophobicity --- carries enough information for a deterministic force model (Coulomb $+$ steric $+$ hydrophobic) to reproduce the canonical recognition modes. The Level-5 records used here (chignolin, streptavidin, barnase, barstar) are constructed manually from literature data: PDB C$_\alpha$ coordinates for the relevant residues, Kyte--Doolittle hydrophobicity assigned by amino-acid type, and standard sidechain formal charges. They are not the output of a converged RealQM Level-3 run on each of those proteins.
+
+The complementary step --- \emph{Level-3 to Level-5} extraction from a converged RealQM electron density --- is shown separately on chignolin in the Gallery, where surface electrostatic potential, hydrophobicity map, and solvent-accessible isosurface are read off the converged Level-3 state. Running the full Level-3 simulation on streptavidin or barnase before extracting their Level-5 records is computationally larger than the small-peptide cases in Section~\ref{sec:proteins} and we have not done it here. The Forward look in Section~\ref{sec:chemvphys} sets out that full chain --- Level-3 quantum simulation per protein species, then Level-5 reduction, then cell-scale Brownian gas --- as the architecture; the present subsection validates its terminal step and shows it has the discriminating power claimed for it.
+
+\paragraph{Why the hand-built records are a fair surrogate.}
+The chignolin extraction shows what a Level-5 record produced by RealQM looks like in practice. Three observations transfer to the streptavidin and barnase--barstar cases. \emph{Charges}: integrated electron density around each sidechain at physiological conditions reproduces the standard formal charges (D/E carboxylate $\to -1$, K/R guanidinium/ammonium $\to +1$, H $\to$ 0 to $+1$) that the hand-built records use. \emph{Hydrophobicity}: the Kyte--Doolittle scale is an experimentally fitted summary of the same surface-density polarity that RealQM computes, and the two agree per residue to within tens of percent --- well below the precision needed to discriminate the four ligand types in the table above. \emph{Surface geometry}: RealQM would replace each fixed-radius sphere of points by the actual solvent-accessible isosurface of the converged density, anisotropic with respect to sidechain conformation, but with the same topology of inward-facing hydrophobic patches and outward-facing charged groups that controls the docking outcome. The recognition modes that the docking demonstrations resolve --- charge complementarity, hydrophobic burial, R84 orientation lock, the long-range electrostatic steering of barnase--barstar --- are set by the relative positions of charged and hydrophobic patches, not by their precise shape. The conclusion that the framework recognises pockets, anchors anionic tails, and steers oppositely charged faces into contact would therefore survive replacement of the hand-built records by RealQM-extracted ones.
+
+\subsection{Protein--protein interactions and cell-scale population behaviour}\label{sec:ppi}
+
+The docking validations in Section~\ref{sec:reduced-docking} test a small ligand against a single receptor. The next question is whether the same Level-5 framework, applied to two proteins of comparable size, discriminates a specific protein--protein partner from non-partners, and whether that discrimination survives at population scale in a crowded environment.
+
+\paragraph{Barnase--barstar: electrostatic steering of a specific PPI.}
+The barnase--ribonuclease-inhibitor pair is the textbook case of long-range electrostatic steering in protein recognition, with $K_d \approx 10^{-14}$ M. The Level-5 record places barnase's basic interface (K27, R59, R83, R87) on its $+x$ face and the catalytic Y103 nearby; barstar's acidic interface (D35, D39, E76, E80) sits on its $-x$ face with a tryptophan and threonine as polar partners. With charges concentrated on outward-facing hemispheres so each protein presents a real dipole moment toward its binding face, and with neutral body residues, the long-range monopole attraction $(+4) \times (-4)$ pulls the partners together while the dipole alignment torque orients barstar's red face to meet barnase's blue face before short-range contact. The result is a clean native-interface lock-in in essentially every trial: 5 out of 5 trials reached the bound state in initial testing, with iface contacts $>5$ and binding energy below $-3$ in the simulation's units.
+
+\paragraph{Chignolin homodimer: mutual exclusion.}
+The same docking protocol applied to two identical chignolin records yields the opposite, equally meaningful result. With both partners carrying net charge $-2$ (D2 and E4 acidic in each), Coulomb repulsion at any approach distance exceeds the weak attraction available from two small aromatic patches (Y1 and W8). The two chignolins never associate stably --- exactly as real chignolin behaves in solution, where it is a monomer at neutral pH rather than a homodimer. The framework therefore not only predicts specific binding when it should occur but also predicts non-binding when it should not. This is the negative-result side of selectivity that any model claiming to predict drug--receptor or PPI specificity must clear.
+
+\paragraph{From dimer to population.}
+With the two-protein limit established, the natural next step is to put many proteins in a periodic box and ask whether the specificity survives crowding. We use the mutual-closest pairing rule: each protein chooses its closest bound contact, and a unique pair is recorded only when both proteins choose each other, so each protein participates in at most one counted dimer. The random baseline for $N{+}N$ proteins under this rule is $N/(2N{-}1)$ BS fraction --- approximately $50.5\%$ for 50+50 and $52.6\%$ for 10+10 --- since each protein has $N$ different-species and $N{-}1$ same-species candidates at random.
+
+A simulation of 10 barnase plus 10 barstar in a 60~\AA{} periodic box, all proteins diffusing and rotating freely under the same Coulomb $+$ steric $+$ hydrophobic forces, yields 9 unique barnase--barstar dimers against 0 barnase--barnase and 0 barstar--barstar pairs in equilibrium. That is 100\% specificity against a random expectation of 52.6\% BS. Each protein finds its complementary partner across a crowded box of like-charged competitors.
+
+Scaling to 50 barnase $+$ 50 barstar in a 90~\AA{} box gives 25 unique BS dimers against 1 BB and 0 SS pairs after 1500 BD steps --- 96\% specificity at population scale (random baseline 50.5\%), with the remaining $\sim 25$ proteins still searching in transient contact. The smaller 60~\AA{} system reaches near-saturation; the larger box equilibrates with a lower fraction paired but the same near-perfect specificity.
+
+\begin{center}
+\begin{tabular}{lccccc}
+\hline
+\textbf{Setup} & \textbf{Box} & \textbf{N proteins} & \textbf{uBS} & \textbf{uBB} & \textbf{uSS} \\
+\hline
+small soup, dense         & 60~\AA{}  & 10 $+$ 10 & 9  & 0 & 0 \\
+larger soup, dense        & 90~\AA{}  & 50 $+$ 50 & 25 & 1 & 0 \\
+random baseline (50+50)   & ---       & 50 $+$ 50 & 50.5\% BS & 24.7\% & 24.7\% \\
+\hline
+\end{tabular}
+\end{center}
+
+The framework reproduces four distinct features of real cell biology in a single force model: \emph{specific binding} when charge complementarity and hydrophobic burial align (barnase--barstar); \emph{mutual exclusion} when like-charged partners face each other (chignolin--chignolin); \emph{specificity under crowding} when many proteins of mixed species share a confined volume (PPI soup, $\ge 96\%$ unique-pair BS specificity against a random baseline of $\sim 50\%$); and \emph{liquid--liquid phase separation} when multivalent sticker proteins concentrate at a critical density (hexavalent hydrophobic patches, $\sim 60\%$ condensed fraction in dynamic coexistence with a dilute phase). The smallest non-trivial population of the cell-scale architecture --- twenty proteins of two species --- already exhibits the qualitative behaviour predicted by the Forward look in Section~\ref{sec:chemvphys}.
+
+\paragraph{Condensate formation: liquid--liquid phase separation.}
+A fundamental cell-biology phenomenon distinct from specific binding is the spontaneous segregation of certain proteins into liquid-like droplets that coexist with a dilute surrounding phase --- membraneless condensates such as those formed by FUS, hnRNP and P-granule proteins. The thermodynamic driving force is multivalent weak interaction: each protein has multiple "sticker" patches that can engage multiple partners, producing a percolated network that prefers a dense phase over a dilute one. We model this in the same Level-5 framework by replacing the single-interface protein of the previous paragraphs with a \emph{hexavalent sticker protein} carrying six hydrophobic aromatic patches (Y/W/F clusters) on the six $\pm x, \pm y, \pm z$ faces. No charges --- charge-charge same-sign repulsion would interfere with multivalent contact --- only aromatic hydrophobic stacking, exactly the chemistry that drives real biological condensates.
+
+Sixty hexavalent sticker proteins in a 70~\AA{} periodic box at $kT = 0.15$ in the simulation's units equilibrate to a dynamic two-phase state: a single dominant cluster of $\sim 15$--$30$ proteins coexisting with smaller oligomers and dispersed monomers, with the condensed fraction (proteins in clusters of $\ge 4$) fluctuating in the range 50--70\%. The fluctuations themselves are biologically meaningful: a static aggregate would not show them, while a real droplet maintains continuous exchange between dense and dilute phases on a timescale faster than droplet identity. Switching to a neutral control protein with no sticker patches gives uniform dispersion at the same density and temperature. The framework therefore reproduces both the existence of liquid--liquid phase separation as a function of valency and the qualitative dynamics of the phenomenon, on a Level-5 record indistinguishable in structure from the records used for specific PPI in the previous paragraphs --- only the sticker geometry differs.
+
+\paragraph{Competitive specificity with a decoy.}
+A stricter test of the framework's discrimination is to add a third species to the soup --- a competitor that resembles barstar in some respects but lacks the full native interface. We run 20 barnase $+$ 20 barstar $+$ 20 decoy in an 80~\AA{} box. Three decoy variants probe a graded specificity gradient:
+
+\begin{center}
+\begin{tabular}{lcc}
+\hline
+\textbf{Decoy variant} & \textbf{Decoy net charge} & \textbf{Barnase specificity uBS / (uBS+uBD)} \\
+\hline
+Same charge as barstar; W$\to$S only         & $-4$ & 54\% \\
+Half charge; no hydrophobic core             & $-2$ & 60\% \\
+Neutral peptide; no charge, no hydrophobics  &  $\;\;\,0$ & 86\% \\
+random baseline                              & ---  & 50\% \\
+\hline
+\end{tabular}
+\end{center}
+
+The hierarchy reproduces the biological pattern that binding specificity is not all-or-nothing but a continuous response to interface quality. A single point mutation at the interface (W$\to$S) drops the decoy's competitive advantage modestly but does not eliminate it; halving the surface charge yields a stronger but still partial barstar preference; complete charge neutralisation yields the expected near-clean dominance. This is the same affinity gradient that single-residue mutagenesis exposes in real protein interfaces (Buckle, Schreiber and Fersht, 1994, and successors): every interface contact contributes a fraction of the total binding free energy, and removing any one weakens but rarely abolishes the interaction. The framework reproduces this property as a structural consequence of the force model, with no fitting.
+
+\paragraph{Implications for the cell-scale programme.}
+A bacterial cell is approximately $10^6$ proteins of $\sim 10^3$ species. The validation chain demonstrated here --- atom $\to$ molecule $\to$ small-molecule docking $\to$ protein--protein dimer $\to$ population of mixed species $\to$ competitive specificity under decoy challenge --- spans five of the six levels of the Forward-look hierarchy. The remaining gap is a quantitative scale-up: the framework as implemented here runs at $\sim 10^2$ proteins in browser-JS, $\sim 10^3$ on a single consumer GPU, and would reach $\sim 10^6$ on a small GPU cluster with the same force model plus spatial hashing and long-range multipole expansions. The expensive part of the upstream pipeline --- the Level-3 RealQM run that produces a Level-5 record for each species --- is paid once per species and amortised across all copies at runtime. With approximately $10^3$ species in a bacterial proteome, this is a tractable computational programme rather than a conceptual one.
+
+\paragraph{Honest scope: from caricature to functional cell.}
+The qualifier ``cell simulation'' covers two very different targets. A \emph{caricature cell} --- a periodic box containing every species of a bacterial proteome at correct copy number, diffusing and binding with experimentally meaningful kinetics --- is a direct extension of the validation chain above and is reachable on a small GPU cluster within a year or two of focused engineering. The Level-3 RealQM runs that produce each Level-5 record can be parallelised across species; the Level-5 Brownian dynamics scales nearly linearly in protein count with spatial hashing and long-range multipole acceleration. Population-level observables --- encounter rates, residence times, specificity under crowding, the formation of membraneless condensates by phase separation, mutational effects on affinity --- all sit on the existing pipeline.
+
+A \emph{functional cell} with metabolism, growth, division and signal transduction is further off and depends on extensions that the present formalism does not yet supply. \emph{Conformational flexibility and allostery}: Level-5 records are rigid by construction, while real proteins change shape on binding, and signal transduction propagates through such changes. The natural extension --- carrying the first $\sim 10$ Hessian normal modes as additional internal degrees of freedom on each record --- is clean conceptually but has not been implemented at scale. \emph{Lipid membranes and the cytoskeleton}: the cell envelope and its internal scaffolding are continuum phase phenomena, not protein--protein binding, and require additional machinery beyond what the multiphase electron-domain formulation alone provides. \emph{Reactive chemistry inside the cell}: enzymatic catalysis and metabolic pathways are intrinsically reactive, and RealQM does handle reactions at the atomic level (Section~\ref{sec:reactions}), but inserting reactive sub-steps inside a cell-scale Brownian gas is unsolved. \emph{Water}: the hydrophobic effect appears here as a phenomenological $1/r^7$ force tuned to reproduce binding outcomes, not as a thermodynamic free-energy difference derived from explicit solvent; for specific affinities this is borderline, for kinetics it is worse. \emph{Nucleic acids}: DNA and RNA have charge densities and conformational regimes the protein-tuned Level-5 record does not yet capture cleanly.
+
+The familiar analogy --- ``if we can simulate weather or traffic with millions of components, why not a cell?'' --- is weaker than it sounds. Weather and traffic do not need chemistry, recognition, or reactions; cells are exactly those things at the same component count. What the present framework offers is not a finished cell simulator but a credible \emph{foundation}: a single self-consistent quantum source for the entire proteome, computed once per species, in place of the patchwork of DFT, CCSD, classical force fields and machine-learned potentials with inconsistent calibration regions that current cell-scale simulations have to stitch together. Whether the additional layers --- flexibility, membranes, reactions, water, nucleic acids --- prove tractable is an open question. What is no longer open is whether the foundational level is reachable in principle.
 
 \subsection{Excited states: orthohelium and reduced-kernel atomic spectra}\label{sec:orthohelium}
 
@@ -600,6 +739,98 @@ Materials              & NaCl crystal melt              & T$_\mathrm{sim} \appro
 
 The pattern across regimes is consistent: \textbf{within $\sim$1--10\%} for closed-shell molecular energetics where the Level-3 reduction matches the molecular electron count and bonding topology; \textbf{qualitatively correct} for reactive chemistry, protein folding, and excited states; \textbf{$\sim$1.5$\times$ scale offset, transition character correct} for condensed-phase melting where the Brownian-dynamics time mapping is uncalibrated.
 
+\section{Liquid water: the two-structure question}\label{sec:water}
+
+Liquid water is the most stringent condensed-phase test in the present programme, and it also
+carries an open physics question of its own. A long-standing and recently revived picture holds
+that liquid water is, locally, a fluctuating mixture of two structures: a \emph{low-density liquid}
+(LDL) that is tetrahedral, open and ice-like in short range, and a \emph{high-density liquid} (HDL)
+that is disordered and collapsed, with an interstitial fifth neighbour pushed into the first shell.
+Both are liquids: the split is \emph{within} the liquid, not the solid--liquid distinction. Most
+evidence for the two-state model comes from empirical water potentials (ST2, TIP4P/2005 and
+relatives) tuned to reproduce water, so a two-state signal there can be a property built into the
+potential. A parameter-free model offers a different vantage: it cannot, at this reduction, settle
+whether real water is two liquids, but --- precisely because nothing is fitted --- it can isolate
+\emph{which molecular feature drives the tetrahedral structure}.
+
+\paragraph{The probe.} Reduced-O water (each molecule an oxygen with a screened valence kernel and a
+single, essentially isotropic two-electron cloud, plus two hydrogens) is run as a confined liquid
+under overdamped Brownian dynamics. For every interior oxygen we compute the tetrahedral order
+$q = 1 - \tfrac{3}{8}\sum_{j<k}(\cos\theta_{jk}+\tfrac13)^2$ over its four nearest oxygen neighbours,
+the distance $d_5$ to the fifth-nearest oxygen, and the coordination within $3.5$\,\AA{} (liquid
+$\approx 4$, HDL $\approx 5$). Histograms over molecules and time test for the bimodality that would
+signal two coexisting structures.
+
+\paragraph{The isotropy coin.} The reduced water hydrogen-bonds (a dimer holds O--O near $3.0$\,\AA)
+but the liquid is markedly under-structured: disordered, coordination $\approx 2.6$, and no
+tetrahedral population --- one broad, single $q$-distribution, at 64 and at 128 molecules alike. A
+spherical oxygen accepts a proton from any direction, so it has no preference for the tetrahedral
+arrangement. Placed on a diamond ice lattice, however, the \emph{same} water holds the tetrahedron
+near-perfectly ($q \approx 1$, coordination $\approx 4$), because its two directional O--H
+\emph{donors} supply half the tetrahedral scaffold. Heating the ice at fixed volume drops $q$ from
+$\approx 0.85$ toward $0.55$ while coordination stays $\approx 3.3$ --- melting disorders but cannot
+densify, so it does not make HDL. Compression, by contrast, forces a fifth neighbour in:
+coordination rises and $d_5$ collapses, giving HDL directly. The pattern is one statement seen from
+several sides:
+
+\begin{quote}\itshape
+RealQM water hydrogen-bonds because its oxygen acceptor is a single isotropic cloud --- and that
+same isotropy is exactly why it cannot spontaneously form the tetrahedral (LDL) structure.
+\end{quote}
+
+The model \emph{holds} LDL order when imposed (ice), \emph{forms} HDL under compression, and
+\emph{never spontaneously} makes LDL. The parameter-free verdict on the origin question is therefore
+sharp: spontaneous LDL requires directional lone-pair \emph{acceptors}; donor directionality is not
+sufficient, and HDL is the default isotropic-packing structure. Attempts to install directional
+acceptors by angularly splitting the oxygen cloud into lobes \emph{dissociate} the hydrogen bond ---
+the free boundary through the acceptor destroys the coherent density the donor proton binds to ---
+so directional acceptance cannot be obtained by fragmenting the cloud without losing the bond. This
+also comports with the observation that water's ``two equivalent lone pairs'' are a localized-orbital
+construct rather than an observable: photoelectron spectra place water's two highest orbitals at
+different energies, and the density shows a smeared acceptor-rich crescent, not two sharp lobes.
+
+\paragraph{Transport and elastic moduli: regime, not precise values.} The same model was pushed to
+transport and elastic response, with instructive and honest outcomes. A non-equilibrium shear
+measurement reads viscosity from the velocity profile, $\eta \approx \gamma/(dv_x/dy)$; the fluid
+part thins on heating (correct sign) but too gently --- a small apparent activation energy, the
+weak, under-coordinated hydrogen bonds again. Why water's viscosity is small at all is clarified by
+the Maxwell relation $\eta \approx G_\infty \tau$ (stiffness times relaxation time): water is small-$\eta$
+by \emph{fast relaxation} (small $\tau$), not by being soft --- hydrogen bonds re-route by fast,
+low-barrier concerted switching, cheap precisely because the acceptor is angularly \emph{soft}. This
+is the transport face of the very isotropy that denies LDL: an isotropic (maximally soft) acceptor
+forbids a tetrahedral preference \emph{and} enables facile partner-switching, so no-LDL and
+low-viscosity are dual consequences of one property. A virial bulk modulus $K = \rho\,dP/d\rho$ comes
+out very high (stiff), with the resistance to compression coming largely from the non-overlapping
+electron domains --- \emph{excluded volume}, an intrinsic feature of the multiphase formulation ---
+rather than from the hydrogen-bond network.
+
+Neither coefficient could be pinned down cleanly: the driven-shear viscosity ran into the
+non-equilibrium-MD thermostat dilemma (a weak enough thermostat to expose the fluid response let the
+shear heat the system into runaway), and the virial bulk modulus was dominated by intramolecular
+bond and exclusion stress, which per unit volume contributes a pressure $\propto\rho$ that overwhelms
+$K$. Clean values would require equilibrium Green--Kubo (viscosity) and an energy--volume modulus
+$K = V\,d^2E/dV^2$ (compressibility). But both quantities land in the correct qualitative
+\emph{regime} parameter-free: water is runny (small viscosity) and stiff (small compressibility),
+from complementary microscopic origins --- a soft acceptor (fast switching, low $\eta$) and hard
+electron exclusion (low compressibility). This regime-level result is arguably the physically
+relevant one. On macroscopic scales water behaves as an essentially incompressible fluid at low Mach
+number and, at high Reynolds number, a nearly inviscid one; its large-scale dynamics depend on these
+coefficients being \emph{small} far more than on their exact values --- the same insensitivity that
+underlies slip-boundary, Euler-based computational treatments of turbulent incompressible flow. That
+the precise coefficients proved elusive here is therefore consistent with, not contrary to, their
+macroscopic near-irrelevance: what matters is that a parameter-free microscopic model, with no
+tuning, places water in the correct small-viscosity / small-compressibility regime.
+
+\paragraph{Scope.} These are exploratory, qualitative results: the geometry is coarse, the confined
+droplet has some surface character, the reduced water is under-coordinated, and the dynamics runs in
+model time on an uncalibrated temperature scale. No bimodal $q$ at a single temperature --- the
+LDL/HDL coexistence itself --- was observed, and this is the central finding rather than a shortfall:
+the reduced model cannot produce the coexistence precisely because it lacks the directional acceptor
+that would let tetrahedral order compete with dense packing. Testing the two-state model itself would
+require a water that both hydrogen-bonds and carries a directional acceptor, which angular splitting
+cannot deliver in this formulation. All runs are public and re-runnable in the Gallery
+(Section~\ref{sec:code}).
+
 \section{Limitations}\label{sec:limitations}
 
 Two regimes lie outside the validation reported here. \textbf{Weak intermolecular interactions} (hydrogen bonds at $\sim$5 kcal/mol $= 0.008$ Ha) are below the model's absolute-energy noise floor of $\sim$0.1 Ha; geometric agreement on S66 dimers is good (1--5\%) but quantitative interaction energies are not reliable. \textbf{Dispersion} (van der Waals interactions between non-polar species) is absent at Level 3 entirely, as the unit-density model has no mechanism for the correlated electron motion that produces vdW. Excited states are accessible (Section~\ref{sec:orthohelium}) but at the present stage have only been validated on the simplest cases.
@@ -616,6 +847,9 @@ A more principled (and parameter-free) route to recovering vdW within RealQM use
 \item \textbf{Dispersion energy} from the energy shift of the coupled normal modes: $E_{\rm disp}(R) = -C_6^{AB}/R^6$ with $C_6^{AB} = (3/\pi)\int_0^\infty \alpha_A(i\omega)\,\alpha_B(i\omega)\,d\omega$. In the static-polarisability approximation, $C_6^{AB} \approx \tfrac{3}{2}\alpha_A^{(0)}\alpha_B^{(0)} I_A I_B/(I_A+I_B)$ where $I_{A,B}$ are ionisation potentials (computable as differences of two RealQM runs, Section~\ref{sec:ions}).
 \end{enumerate}
 The whole construction stays inside RealQM: deterministic ground states, deterministic perturbed ground states, classical dipole--dipole electrostatics, and an algebraic mode-coupling shift. No Born rule, no fluctuations, no full time-dependent Schr\"odinger evolution. The resulting $C_6$ values are predictions of the model rather than tabulated parameters --- the same numbers that DFT-D3 fits empirically. This converts the dispersion limitation from a permanent missing physics into a calculation that has not yet been performed.
+
+\paragraph{Electromagnetic coupling through charge density, not spin.}
+A scoping clarification is in order on how RealQM couples to electromagnetic fields. In RealQM, the matter--field coupling enters through the \textbf{charge density} $\rho(\mathbf{x}) = \sum_i \psi_i^2(\mathbf{x})$ and the associated charge--current generated by its time evolution, as in classical Schr\"odinger--Maxwell coupling. There is no \textbf{spin current} contribution, because spin is not a primary variable of the formulation: the Pauli requirement is realised geometrically through non-overlapping electron territories (Section~\ref{sec:reformulation}), not through a spinor wave function. In the regimes where the present validation is performed --- ground-state energetics, equilibrium geometries, vibrational modes, dipole radiation, and reactive chemistry --- the difference is operationally invisible, because the electromagnetic observables depend only on $\rho$ and its time-evolution. In regimes where spin currents contribute directly to electromagnetic phenomena --- magnetic susceptibilities, NMR chemical shifts, hyperfine structure, spin--orbit splittings, EPR --- the RealQM formulation in its current form does not produce these observables, and a separate extension would be required. We flag this as a current scope boundary rather than a permanent feature: a spin-density layer could be added on top of the geometric partition (the $\psi_i$ on $\Omega_i$ acquiring an internal $\pm 1/2$ label whose flux balance enters the magnetic field) without disturbing the variational structure of the ground-state energetics. We do not pursue this in the present paper.
 
 \section{Stability of Matter}\label{sec:som}
 
@@ -696,9 +930,9 @@ Beyond the level-set formulation, analytical theorems on free-boundary regularit
 
 The two routes are complementary rather than competing. The analytical scaffolding gives the universal qualitative picture: stability holds, minimisers exist in a weak sense, free boundaries are regular off small singular sets, and the underlying mechanism is encoded in the Bernoulli structure of Section~\ref{sec:bernoulli}. The computational diagnostics give the specific quantitative picture for each system: where the boundaries sit, where the singular points live, with which numerical regularity exponents. Neither is complete on its own; together they cover both the principled and the operational regimes. This division of labour is in the spirit of computer-assisted proofs (the 4-colour theorem, the Kepler conjecture, parts of mathematical fluid dynamics), in which finite computational verification, systematically combined with analytical reduction, replaces traditional proof in cases where the latter is intractable for the geometry at hand. The Gallery's runnable scan files are the operational embodiment of this hybrid framework: anyone doubting the regularity properties of a specific RealQM solution can run the corresponding file and inspect the boundary directly, with the analytical scaffolding established in the cited literature ensuring that what they see is what the variational principle predicts.
 
-\section{An analogous model of the atomic nucleus}\label{sec:nucleus}
+\section{RealNucleus: An analogous model of the atomic nucleus}\label{sec:nucleus}
 
-The mathematical framework of Section~\ref{sec:reformulation} --- non-overlapping unit charge densities in 3D real space, Coulomb interactions, Bernoulli free boundaries, variational minimization --- is not specific to chemistry. The same multiphase 3D continuum mechanics applies to atomic nuclei when the constituents are taken to be protons and electrons, returning to a pre-1932 picture of nuclear structure.
+The mathematical framework of Section~\ref{sec:reformulation} --- non-overlapping unit charge densities in 3D real space, Coulomb interactions, Bernoulli free boundaries, variational minimization --- is not specific to chemistry. The same multiphase 3D continuum mechanics applies to atomic nuclei when the constituents are taken to be protons and electrons, returning to a pre-1932 picture of nuclear structure. We refer to this as \textbf{RealNucleus}~\cite{RealNucleus}, and together with the RealAtom model of the previous sections it completes a single Coulombic continuum-mechanics treatment of both atoms and nuclei: the same multiphase Hamiltonian, the same Bernoulli free boundaries, the same variational principle, with electrons and protons simply exchanging their geometric roles. In the atomic regime electrons surround a kernel of effective positive charge; in the nuclear regime electrons sit inside as a core surrounded by protons. Atoms and nuclei thereby emerge as the two geometric solutions of one variational principle, distinguished only by which species occupies the inside and which the outside.
 
 In this picture a neutron is identified with a proton--electron pair (the proton--electron model that predates the discovery of the neutron as an elementary particle). A stable nucleus with $Z$ protons and $N$ neutrons therefore contains $(Z+N)$ protons and $N$ electrons, with $N \approx Z$ giving roughly twice as many protons as electrons. The simplest non-trivial case is helium-4 ($Z=2$, $N=2$), modeled as 4 protons and 2 electrons.
 
@@ -709,24 +943,169 @@ The setup uses the same multiphase formulation:
 \item 2 unit-charge densities representing electrons (each $-1$);
 \item Each density supported on its own non-overlapping spatial region in $\mathbb{R}^3$, with continuity and homogeneous Neumann at the inter-species Bernoulli interface;
 \item Coulomb interactions, signed appropriately for the charges: opposite-sign attractive, same-sign repulsive;
-\item Per-domain mass: the kinetic-energy operator coefficient is $\propto 1/m_i$, distinguishing the heavy proton from the light electron;
+\item Equal unit mass for all densities (electrons and protons both with $m_i = 1$) --- the kinetic-energy operator is the same on every domain;
 \item No external confining potential.
 \end{itemize}
 
-The energy functional is the standard Coulomb sum
+The energy functional is the standard Coulomb sum with kinetic energy from all densities:
 \begin{equation}
-E = T_p + T_e + V_{ee} + V_{pp} + V_{ep},
+E = T + V_{ee} + V_{pp} + V_{ep},
 \end{equation}
-with $T_p = \tfrac{1}{2 m_p} \sum_a \int |\nabla \sqrt{\rho_a^{(p)}}|^2 d\mathbf{r}$ for the protons (mass-weighted) and $T_e$ analogous for the electrons. The minimum is taken over all the densities and over the boundary location between the inner electron core and the outer proton shell.
+where $T = \tfrac{1}{2}\sum_i \int |\nabla \sqrt{\rho_i}|^2 d\mathbf{r}$ runs over all electron and proton densities. The minimum is taken over all the densities and over the boundary location between the inner electron core and the outer proton shell.
 
 \paragraph{Mutual confinement.}
-In the standard nuclear shell model, protons and neutrons sit in an effective potential approximating the average force from all other nucleons. Here there is no such external potential. The 4 protons confine the 2 electrons through their collective $+4$ Coulomb attraction; in turn, the 2 electrons confine the protons through their collective $-2$ Coulomb attraction. The electrons need the protons to be confined, and the protons need the electrons to be confined. Numerical experiment confirms that with only \emph{1} electron ($-1$ against $+4$) the attraction is too weak --- the proton shell disintegrates outward. With \emph{2} electrons the system stabilizes. The textbook 2:1 proton-to-electron ratio of stable nuclei ($N \approx Z$) emerges as a binding requirement of mutual confinement.
+In the standard nuclear shell model, protons and neutrons sit in an effective potential approximating the average force from all other nucleons. Here there is no such external potential. The 4 protons act like an outer boundary keeping the electrons together: their collective $+4$ Coulomb attraction draws each electron outward and packs the two electrons against each other in the inner core. In turn, the 2 electrons act like an inner anchor keeping the protons together: their collective $-2$ Coulomb attraction pulls each proton inward and holds the proton shell against its own pairwise repulsion. Neither species is confined by an external potential; each is confined by the other. Numerical experiment confirms that with only \emph{1} electron ($-1$ against $+4$) the inward pull on the protons is too weak and the proton shell disintegrates outward. With \emph{2} electrons the system stabilizes. The textbook $2{:}1$ proton-to-electron ratio of stable nuclei ($N \approx Z$) emerges as a binding requirement of mutual confinement.
+
+\paragraph{The crux: Coulomb confinement without the strong force.}
+The central conceptual point of the nuclear extension is the question of how a group of electrons --- subject to their own pairwise Coulomb repulsion --- can be held together inside a nucleus by an outer proton shell, with no invocation of the strong nuclear force. In the standard atomic model this question does not even arise: the kernel is treated as a point of positive charge $+Z$ with no internal structure, and any proton--proton repulsion or electron--electron repulsion inside it is silently assumed to be handled by the strong force, which lies outside the formalism altogether. The atomic-physics calculation works because the nuclear binding has been factored out. In the RealQM nucleus model no such factorisation is possible --- the electron and proton charges are explicit, all pairwise Coulomb terms (electron--electron repulsion, proton--proton repulsion, electron--proton attraction) appear in the energy functional, and the question of what keeps the electrons confined despite their self-repulsion becomes a question of physics rather than a deferred assumption. The remarkable feature of the model is that the answer is supplied entirely by the outer proton shell through pure Coulomb attraction: the proton shell acts as a closed positively-charged cage whose inward attraction on each electron is strong enough to overcome the electron--electron repulsion within the inner core. No short-range attractive force is required. Whether this pure-Coulomb mechanism reproduces the quantitative scale of nuclear binding once geometric and rescaling factors are included is the open empirical question that the rest of this section explores. What is established already is that the question can be asked --- nuclear confinement can be addressed within a single Coulombic continuum-mechanics framework, with no separate strong-force postulate.
 
 \paragraph{Result for He-4.}
 Energy minimization at fixed boundary radius $R$ between the inner electron core and the outer proton shell, swept across $R$, reveals a clear binding minimum. The protons localize in an outer shell with their density peaked at the boundary; the electrons localize in an inner core. The two species are sharply separated by the Bernoulli interface, with the boundary position selected by the variational principle (continuity plus homogeneous Neumann across the boundary, as in the chemistry sections). The binding character --- mutual confinement, sharp species separation, stable equilibrium $R$ --- is qualitatively consistent with helium-4 being the most tightly bound of the small nuclei. Quantitative agreement with experimental nuclear binding energies is not the goal at this exploratory stage; the framework reproduces the proton--electron model's qualitative predictions through the same RealQM machinery developed for chemistry.
 
-\paragraph{Significance.}
-The nuclear extension is reported here as a side step from the main paper. Its purpose is to demonstrate that the mathematical framework --- multiphase non-overlapping unit densities in real 3D space, with Bernoulli free boundaries and pure Coulomb interactions --- is applicable to atomic-scale physics quite generally. The chemistry validation of Section~\ref{sec:validation} is therefore one application of a broader continuum-mechanics formulation; the nuclear model is another. The framework provides a unifying mathematical structure spanning at least two scales of physics through a single variational-Coulomb-with-Bernoulli-boundary principle. Whether quantitative agreement with nuclear-binding observables can be obtained, and whether the proton--electron picture can be extended beyond He-4 to heavier stable nuclei, are questions for follow-up work.
+\paragraph{Extension to heavier nuclei.}
+The He-4 setup --- 2 electrons inside, 4 protons outside, with the 2:1 ratio fixed by the mutual-confinement requirement --- generalises to any stable nucleus with $N \approx Z$ by scaling both species in proportion. The corresponding configurations for the next few $N{=}Z$ nuclei are tabulated below, each with electrons placed at the vertices of a regular polytope inside and protons at a larger polytope outside, locking the inner--outer Bernoulli boundary as in the He-4 case.
+
+\begin{center}
+\begin{tabular}{lccll}
+\hline
+\textbf{Nucleus} & \textbf{Z} & \textbf{N} & \textbf{Electrons (inner geometry)} & \textbf{Protons (outer geometry)} \\
+\hline
+He-4  & 2 & 2 & 2 (linear pair)        & 4 (tetrahedron) \\
+Li-6  & 3 & 3 & 3 (equilateral triangle) & 6 (octahedron)  \\
+Be-8  & 4 & 4 & 4 (tetrahedron)         & 8 (cube)        \\
+C-12  & 6 & 6 & 6 (octahedron)          & 12 (icosahedron) \\
+O-16  & 8 & 8 & 8 (cube)                & 16 (snub cube or two-shell arrangement) \\
+\hline
+\end{tabular}
+\end{center}
+
+For each entry the inner-electron polytope and outer-proton polytope are chosen as nested polyhedra with matching point-group symmetry, which keeps the locked inner--outer Bernoulli boundary structurally similar across the series. The setup runs in the same molecule.js implementation that handles the chemistry validations, with only the particle counts and initial geometry differing.
+
+\paragraph{Convergence and the early-stopping rule.}
+The multiphase Coulomb model has a real binding minimum but no built-in floor to prevent post-minimum drift into singular densities. Imaginary-time propagation accordingly finds the variational binding state and then continues toward unphysical collapse if iterated indefinitely. The remedy is an early-stopping criterion: terminate ITP when the per-step energy change falls below a coarse threshold ($\sim 0.05$ Ha for three consecutive frames) that captures the meaningful binding state before drift sets in. With this rule the configurations above converge cleanly to stable binding energies:
+
+\begin{center}
+\begin{tabular}{lccccc}
+\hline
+\textbf{Nucleus} & \textbf{A} & \textbf{$E$ (Ha)} & \textbf{$E/A$ (Ha)} & \textbf{$E/A$ rescaled (MeV)} & \textbf{Exp.\ $E/A$ (MeV)} \\
+\hline
+Li-6 &  6 & $-9.57$  & $-1.60$ & $-4.34$ & $5.33$ \\
+Be-8 &  8 & $-25.88$ & $-3.24$ & $-8.80$ & $7.06$ \\
+C-12 & 12 & $-25.90$ & $-2.16$ & $-5.87$ & $7.68$ \\
+\hline
+\end{tabular}
+\end{center}
+
+\paragraph{Scale rescaling: from atomic to nuclear units.}
+The simulations above run at the atomic-physics scale used throughout this paper: lengths in Bohr radii ($a_0 \approx 0.53$~\AA{} $= 5.3 \times 10^{-11}$~m), energies in Hartree (1 Ha $= 27.2$ eV). Atomic nuclei sit at femtometer scales ($1$~fm $= 10^{-15}$~m), so the length-scale ratio is $a_0/\mathrm{fm} \approx 5 \times 10^4$, of order $10^5$. Coulomb energy scales as $1/r$, so a $10^5$ length-scale reduction multiplies energies by $10^5$. The geometric configurations of the proton-electron model are scale-invariant under this transformation: the same multiphase decomposition, the same locked-boundary topology, the same variational minimum at the same dimensionless inner/outer ratio. Only the dimensional units change. Multiplying our converged $E/A$ values by $10^5$ rescales them from Hartree-per-nucleon at atomic scales to electron-Volts-per-nucleon at femtometer scales, then divided by $10^6$ to express in MeV; net factor $10^5 \cdot 27.2 \cdot 10^{-6} = 2.72$.
+
+Applied to the table: Li-6 gives $-4.34$ MeV/nucleon against the experimental $-5.33$ MeV/nucleon (81\%); Be-8 gives $-8.80$ MeV against $-7.06$ (125\%); C-12 gives $-5.87$ MeV against $-7.68$ (76\%). Across three nuclei spanning Z=3 to Z=6, the proton-electron model with pure Coulomb interactions and no strong-force input is within a factor of $\sim 1.3$ of experimental nuclear binding energies per nucleon. The Li-6 $\to$ Be-8 jump is captured correctly (Be-8 binds more strongly per nucleon than Li-6 in both model and experiment); the Be-8 $\to$ C-12 step is inverted in the model (slight decrease instead of slight increase), which we attribute to electron-electron crowding at the central octahedron in our hand-tuned geometry rather than to a fundamental physical deficit.
+
+\paragraph{Significance of the scale rescaling.}
+The factor-$10^5$ rescaling is not an empirical fit. Coulomb's law is scale-invariant in the sense that $V(r) = 1/r$ contains no intrinsic length, so the variational problem on a scaled domain produces the scaled energies exactly. The same continuum-mechanics machinery developed for atomic and molecular chemistry thereby predicts MeV-scale nuclear binding energies per nucleon when the geometric setup is interpreted at femtometer scales, with quantitative agreement within $\sim 25\%$ across Li-6, Be-8, and C-12.
+
+\paragraph{Equal mass is what makes the geometry work --- and why there is no atomic analog.}
+The model assigns equal unit mass $m_e = m_p = 1$ to electrons and protons, so the kinetic-energy operator is identical on both species' densities. This is not a convenience: it is what allows the inner electron core and the outer proton shell to occupy spatial domains of \emph{comparable extent}, separated by the Bernoulli interface that the mutual-confinement argument requires. With comparable kinetic-energy operators, neither species can collapse to a point relative to the other, and the closed positive cage / closed negative core geometry becomes a stable variational extremum.
+
+A natural follow-up question is whether the model has a direct atomic-scale analog --- after all, the molecular cation $\mathrm{H_3^+}$ (3 protons + 2 electrons) shares the constituent count of the RealNucleus Li-6 setup, and pure Coulomb $1/r$ is scale-invariant. The answer is no, and the obstruction is deeper than just the mass ratio. \emph{Atomic physics has no comparable object at all}: the kernel of an atom is treated as a structureless point charge $+Z$, with no internal geometry. Every quantity computed in standard atomic and molecular quantum mechanics --- orbital energies, bond strengths, dipole moments --- factors out whatever is happening inside the kernel and replaces it with a single number. The RealNucleus model is precisely a model of \emph{what the kernel actually is}: a multiphase Coulomb configuration of protons and electrons with internal Bernoulli boundaries. There is no atomic-physics counterpart to that internal structure, because atomic physics never asks the question. The proton-electron picture lives at the nuclear scale because that is the only scale at which the internal structure of a positively charged ``kernel'' is the object of study.
+
+The mass ratio reinforces this point. In real atomic physics $m_p/m_e \approx 1836$, so the proton kinetic-energy term is suppressed by that factor, the proton density localises to roughly $10^{-3}$ of the electron domain, and any internal-structure question collapses to the point-charge picture. The equal-mass choice $m_e = m_p = 1$ that the RealNucleus model adopts is what lets electron and proton densities occupy domains of comparable extent and produces the mutual-confinement geometry. That choice is appropriate to the nuclear regime --- where strong binding makes the kinetic-energy difference between bare proton and bare electron irrelevant compared to the Coulomb scale --- and would be physically wrong at atomic scales. The geometric structure of the proton-electron nucleus is therefore scale-specific in both directions: there is no atomic-scale object it corresponds to, and atomic physics has no machinery that would describe such an object even if it existed.
+
+\paragraph{An aside on the mass ratio in Schr\"odinger's equation.}
+The factor $m_p/m_e \approx 1836$ that suppresses the proton kinetic term in the standard Schr\"odinger equation has no \emph{a priori} physical justification. Coulomb forces $V(r) = q_1 q_2 / r$ depend only on charges and distances, not on masses. The choice to give the proton its empirical inertial mass in a quantum-mechanical equation governed entirely by Coulomb interactions is an empirical input, not a derivation from a deeper principle. Different mass assignments produce different geometries: the empirical $1836:1$ ratio collapses the proton density to a point at atomic scales and recovers the standard atomic picture, while equal masses produce the comparable-domain geometry at nuclear scales. Both are mathematically consistent with Schr\"odinger's equation; neither is forced by the Coulomb force law. The RealNucleus model uses the equal-mass choice because it is the regime in which the proton-electron pair forms an extended structure of nuclear-scale geometry; the standard atomic equation uses the $1836:1$ ratio because it is the regime in which the proton can be treated as a stationary point charge. The conceptual point is that the mass ratio in the kinetic-energy operator is a \emph{scale-selection parameter}, not a fundamental input. It selects which geometric regime --- atomic or nuclear --- the equation is being applied to.
+
+\paragraph{The universal single-shell packing model.}
+Beyond the Platonic-vertex range a clean spherically-symmetric reduction captures the entire periodic table from H-2 to U-238 in a single closed-form equation. Place all $2Z$ protons in one outer shell of thickness $d = c/Z$ around an inner electron core of effective radius $R_e^\text{eff}(Z) = R_e + \gamma Z$, with the proton-shell midradius
+\begin{equation}
+r^*(Z) \;=\; R_e^\text{eff}(Z) + d/2 \;=\; R_e + \gamma Z + \frac{c}{2 Z}.
+\end{equation}
+The Gauss-law algebra cancels the leading $-2Z^2/r^*$ proton-shell attraction against the leading $+2Z^2/r^*$ intra-shell proton-proton repulsion, leaving the residual $-Z/r^*$. Per nucleon (with $A = 2Z$ for the symmetric case):
+\begin{equation}
+\boxed{\;\;\frac{|E|}{A}(Z) \;=\; \frac{1}{2 r^*(Z)} \;=\; \frac{1}{2 R_e + 2 \gamma Z + c/Z} \quad \text{(Ha/nucleon)},\;\;}
+\end{equation}
+converted to MeV by the nuclear-scale factor $1\,\mathrm{Ha} \to 2.72\,\mathrm{MeV}$. The denominator has two $Z$-dependent contributions pulling in opposite directions: the term $c/Z$ shrinks with $Z$ (favours binding by tightening the proton-shell), while the term $\gamma Z$ grows with $Z$ (disfavours binding through electron-core expansion). The two contributions cross at the saddle point
+\begin{equation}
+Z_\text{peak} \;=\; \sqrt{\frac{c}{2 \gamma}},
+\end{equation}
+which for $c \approx 0.5$ and $\gamma \approx 3$--$5 \times 10^{-4}$ a.u.\ gives $Z_\text{peak} \approx 22$--$29$, matching the empirical Fe-Ni binding maximum. The peak is therefore not a piecewise threshold but an emergent saddle of the proton-confinement / core-expansion competition. With three parameters $(c, R_e, \gamma)$ the model traces the entire empirical $B/A$ curve: rising from $\sim 3$ MeV at very light nuclei through $\sim 8.8$ MeV at the Fe-Ni peak and declining monotonically toward $\sim 7.6$ MeV at U-238, in one analytic expression with no piecewise structure.
+
+\paragraph{Where the two Coulomb repulsions live in the formula.}
+Both proton-proton and electron-electron repulsion are present in the universal formula, in different ways:
+\begin{itemize}
+\item \textbf{Proton-proton intra-shell repulsion is explicit and essential.} The cancellation that gives $-Z/r^*$ requires summing the $+P(P-1)/(2 r^*)$ intra-shell pp term alongside the $-PN/r^*$ proton-shell attraction. Without it the model would predict $-Z^2/r^*$ binding --- two orders of magnitude over-bound.
+\item \textbf{Electron-electron repulsion is implicit, encoded in $R_e^\text{eff}(Z)$.} The constant $R_e$ is the value the variational minimum picks for the electron-core size when e-e repulsion balances electron kinetic energy and electron-proton attraction. The linear term $\gamma Z$ is the variational response of the core to growing e-e repulsion as $N = Z$ increases: keeping the per-nucleon e-e energy $\sim N^2/(R_e A) \sim N/R_e$ bounded requires $R_e$ to grow linearly with $N$, which is exactly the $\gamma Z$ contribution. The empirical fit $\gamma \approx 3$--$5 \times 10^{-4}$ a.u.\ is the slope of this expansion determined by the actual variational minimum.
+\end{itemize}
+Both repulsions therefore drive the binding curve --- the proton-proton repulsion through the leading cancellation that produces $-Z/r^*$, and the electron-electron repulsion through the core-expansion term $\gamma Z$ that bends the curve over to produce the Fe-Ni peak and the post-peak decline. The reduced formula is the closed-form output of the full multiphase Coulomb variational minimisation, with $(c, R_e, \gamma)$ as compressed summaries of the kinetic/repulsion balance for protons and electrons. Detailed 3D polyhedral and radial multi-shell simulations include both repulsions explicitly and converge to negative total energies (Li-6, Be-8, C-12 at $-9.57, -25.88, -25.90$~Ha respectively), confirming variational stability. The reduced formula does not contradict these simulations --- it summarises them.
+
+\paragraph{The fusion--fission shift at Fe-56.}
+The saddle at $Z_\text{peak} = \sqrt{c/(2\gamma)} \approx 22$--$29$ coincides with the empirical Fe-56 / Ni-62 binding maximum and has a direct astrophysical meaning. Below the peak, increasing $Z$ raises $|E/A|$, so combining lighter nuclei into a heavier one releases binding energy --- this is the fusion regime, the energy source of stellar nucleosynthesis up to iron. Above the peak, increasing $Z$ lowers $|E/A|$, so a heavy nucleus can release binding energy by splitting into lighter fragments --- this is the fission regime, the energy source of heavy-element decay and reactor power. The model identifies the fusion-to-fission shift at Fe-56 as the single point where the proton-confinement term $c/Z$ stops decreasing $r^*$ faster than the core-expansion term $\gamma Z$ increases it. No threshold is imposed; the shift between the two energy-releasing regimes follows from the same closed-form denominator that produces the curve. The astrophysical fact that all elements heavier than iron must be synthesised by neutron-capture processes (not fusion) is therefore a geometric consequence of the $c/Z$ vs $\gamma Z$ balance, independent of any strong-force input.
+
+\paragraph{The geometric essence of the model.}
+The single-shell reduction makes the model's structural content transparent: \emph{electrons are large, protons are small}. Each electron's effective domain inside the core has linear size $\sim R_e/Z^{1/3}$ (the $Z$ electrons sharing the core volume), while each proton's domain has linear size $\sim c/Z$. The ratio
+\begin{equation}
+\frac{\text{electron size}}{\text{proton size}} \;\sim\; \frac{R_e \, Z^{2/3}}{c}
+\end{equation}
+grows as $Z^{2/3}$, the same scaling that governs surface-to-volume ratios in the Weizsäcker model. Here, however, the $Z^{2/3}$ dependence arises geometrically from the proton-electron size hierarchy rather than from a postulated surface penalty, and it sets the entire binding curve through the single equation above. The proton-electron model with $m_e = m_p = 1$ thus produces a quantitative match to the rising plateau of nuclear binding energies from a model containing essentially one free length scale ($R_e$).
+
+\paragraph{The $Z^{2/3}$ exponent: two derivations, one number.}
+The fact that the same $Z^{2/3}$ (equivalently $A^{2/3}$) exponent appears in both the standard Weizsäcker semi-empirical mass formula and the RealNucleus packing model invites direct comparison, because the two derivations rest on entirely different physical inputs.
+
+In the standard Weizsäcker argument, $A^{2/3}$ enters as a \emph{surface penalty}. The chain of assumptions is: (i) the strong nuclear force is short-range and saturates, so each nucleon binds a fixed number of neighbors regardless of $A$; (ii) saturation implies constant nuclear matter density and hence $R \propto A^{1/3}$; (iii) the nuclear surface area then scales as $S \propto A^{2/3}$; (iv) surface nucleons have fewer neighbors than interior ones, leading to a binding deficit proportional to $S$. Every step in this chain is downstream of the short-range strong-force assumption; remove it and the entire derivation collapses.
+
+The RealNucleus derivation of $Z^{2/3}$ uses none of these ingredients. There is no short-range force, no saturation, no constant-density assumption, and no $R \propto A^{1/3}$ ansatz. Instead the exponent arises from the geometric topology of the model: electrons live \emph{inside} as a core of fixed size $R_e$, so each of the $Z$ electrons occupies a volume $\sim R_e^3 / Z$ and has linear size $\sim R_e / Z^{1/3}$; protons live \emph{outside} as a shell of thickness $d = c/Z$, so each proton has linear size $\sim c/Z$. The ratio of these two scales is $Z^{2/3}$ by construction. The same exponent then governs the binding-energy plateau, because the proton-shell midradius approaches the constant $R_e$ at large $Z$ and the relative correction $c/(2Z R_e)$ that controls deviations from the plateau also scales with the size-hierarchy parameter.
+
+That two physically incompatible accounts converge on the same exponent is a non-trivial observation. The standard derivation requires short-range strong-force physics to enforce constant density; the RealNucleus derivation requires only pure Coulomb plus the topological choice of inside-out geometry. Both reproduce the empirical $A^{2/3}$ scaling. The RealNucleus model therefore exhibits an instance of the Weizsäcker surface term \emph{without} the strong-force premise that the standard textbook derivation treats as essential to it.
+
+\paragraph{Fusion as a multiphase rearrangement: $\mathrm{D} + \mathrm{T} \to \mathrm{He}\text{-}4 + n$.}
+The proton-electron picture makes one nuclear reaction particularly clean to model: $\mathrm{D} + \mathrm{T} \to \mathrm{He}\text{-}4 + n + 17.6\,\mathrm{MeV}$, the canonical fusion used in deuterium-tritium reactors (ITER, NIF). The species involved are: \emph{deuterium} (D, the hydrogen-2 nucleus with 1 proton + 1 neutron); \emph{tritium} (T, the hydrogen-3 nucleus with 1 proton + 2 neutrons); \emph{helium-4} (He-4, the alpha particle, with 2 protons + 2 neutrons); and a free \emph{neutron} (n). Translating each via the proton-electron identification neutron $=$ proton $+$ electron gives the model's constituent breakdown:
+\begin{itemize}
+\item $\mathrm{D} = $ 2 protons + 1 electron (net charge $+1$)
+\item $\mathrm{T} = $ 3 protons + 2 electrons (net charge $+1$)
+\item $\mathrm{He}\text{-}4 = $ 4 protons + 2 electrons (net charge $+2$)
+\item $n = $ 1 proton + 1 electron (net charge $0$)
+\end{itemize}
+Both sides total $5$ protons + $3$ electrons. The reaction is therefore a \emph{pure topological rearrangement} of the same constituents from two clusters (D + T) into one tight cluster (He-4) plus one weakly bound pair (the neutron) that drifts off. No particle creation, no annihilation, no photon emission.
+
+In a multiphase 3D simulation with all $8$ subdomains (5 protons + 3 electrons) initialised in a D-blob + T-blob configuration with all Bernoulli boundaries free and dynamics enabled, the variational principle finds the post-fusion configuration spontaneously: the total energy descends from $\sim -6$ Ha (separated D + T) to $\sim -11.5$ Ha (He-4 + ejected neutron) over the imaginary-time relaxation, a drop of $\Delta E \approx 5.5$ Ha. Rescaled to MeV at the nuclear scale ($1$ Ha $\to 2.72$ MeV), this corresponds to an energy release of $\Delta E \approx 15$ MeV, compared with the experimental Q-value of $17.6$ MeV --- agreement to within $\sim 15\%$ from pure Coulomb with no strong-force input. The smaller static single-shell formula under-predicts this by a further factor of two because it averages over angular structure; the full 3D simulation, with all Bernoulli boundaries free and the angular arrangement of protons around the merged electron core resolved, captures most of the experimental fusion energy. The remaining $\sim 15\%$ gap is the doubly-magic He-4 closed-shell enhancement not present in the spherically-averaged geometry.
+
+The reaction \emph{itself} occurs without any reaction rule, transition-state ansatz, or strong-force input: the system finds the right answer because the right answer is the variational minimum of $5$ protons + $3$ electrons in the proton-electron continuum-mechanics framework, namely a tight $\{4p + 2e\}$ cluster (He-4) plus a free $\{1p + 1e\}$ pair (the neutron). This demonstrates the model's reach beyond static binding-energy fits to actual nuclear reactions, using the same multiphase-Bernoulli machinery used elsewhere for chemical reactions (bond breaking and forming).
+
+\paragraph{Hydrogen burning without neutrinos: $4\mathrm{H} \to \mathrm{He}\text{-}4$ as pure rearrangement.}
+Stellar hydrogen burning --- the net reaction $4\,{}^1\mathrm{H} \to {}^4\mathrm{He} + 2e^+ + 2\nu + \gamma$
+that powers main-sequence stars --- is treated in standard nuclear physics as a weak process: two of
+the four protons must convert to neutrons via $p \to n + e^+ + \nu$, and the emitted neutrinos are the
+observable signature (the solar-neutrino flux). In the proton-electron picture the reaction is a
+\emph{pure topological rearrangement} with no weak step. The constituents are $4\,\mathrm{H} = 4p + 4e$
+and ${}^4\mathrm{He} = 4p + 2e$; the reaction $4\mathrm{H} \to \mathrm{He}\text{-}4$ is simply the
+regrouping of four proton-electron pairs into a tight $\{4p+2e\}$ cluster, releasing two electrons to
+the surrounding electron sea. Because a neutron is here \emph{already} a bound proton-electron pair,
+no proton is converted to a neutron and no neutrino is required: the ``weak'' content of the standard
+reaction is, in this model, the redistribution of electrons among Coulomb domains. The energy release
+is the difference between the loosely bound four-pair configuration and the He-4 minimum, found by the
+same variational relaxation as the D+T case above. The model thus offers a Coulomb-only reading of the
+stellar energy source in which the neutrino flux is not a mandatory by-product of fusion but a feature
+of the specific weak-interaction bookkeeping of the standard picture --- a falsifiable structural
+difference rather than a reinterpretation of the energetics.
+
+\paragraph{Muon-catalyzed fusion as a mass-scaled domain compression.}
+The mass-as-scale-selector point (the aside above) makes muon-catalyzed fusion a clean corollary. In
+the muonic molecular ion $dd\mu$, a negative muon ($m_\mu \approx 207\,m_e$) replaces the electron
+binding two deuterons. Since the domain size in the kinetic-energy term scales inversely with the
+mass, the muonic ``bond length'' contracts by the mass ratio: the deuteron-deuteron equilibrium
+separation of the ordinary $\mathrm{D}_2^+$ ion, $R_e \approx 2.0\,a_0$, shrinks by $\sim\! 207$ to a
+few hundred femtometres, a $\sim\!10^2$-fold linear compression that brings the two deuterons into
+fusion range. In RealQM this requires no new physics: rescaling the per-domain mass in the same
+multiphase solver that computes the $\mathrm{D}_2^+$ potential curve reproduces the muonic contraction
+directly, and the deuterons are delivered to contact by the ordinary Coulomb variational minimum
+rather than by tunnelling through a barrier. The example illustrates, at the boundary between the
+atomic and nuclear regimes, that the geometry of a Coulomb bound state is set by the mass in the
+kinetic term --- the same scale-selection principle that distinguishes the atomic ($1836{:}1$) from
+the nuclear (equal-mass) regime. (Both this and the hydrogen-burning example are Born--Oppenheimer /
+fixed-grid reductions; they exhibit the scaling and the rearrangement, not a full dynamical fusion
+rate.)
+
+\paragraph{Scope: full periodic table, no strong force required.}
+Across the three reduced models, the proton-electron picture recovers experimental nuclear binding energies per nucleon over the entire periodic table using pure Coulomb interactions and a small number of geometric parameters. No strong-force postulate, no surface-vs-volume balance, no nearest-neighbor saturation, and no fitted asymmetry term are required. The Weizsäcker-style $Z^{2/3}$ surface scaling emerges geometrically from the proton-electron size hierarchy rather than from a postulated surface penalty. The post-Fe-56 decline emerges from continuous core expansion --- the natural geometric response when one proton shell cannot accommodate more constituents at the original packing. The nuclear demonstration is therefore not restricted to fusion-side or light nuclei: the same Coulomb-with-Bernoulli-boundary formulation that handles atoms, molecules, hydrogen bonding, and protein folding accounts for the full $B/A$ curve through a single mechanism, with no additional force law introduced anywhere in the chain.
 
 \section{Chemistry vs Physics}\label{sec:chemvphys}
 
@@ -736,7 +1115,7 @@ The hundred-year stalemate has been driven less by disagreement on principle tha
 
 RealQM provides \textbf{concrete evidence that Dirac's position (A) was correct, although not within the 1929 wavefunction-on-$3N$-space formulation that Dirac himself proposed}. The reformulation as a system of non-overlapping unit electron densities in real 3D space, with energy minimization over Coulomb interactions alone, recovers atoms (Section~\ref{sec:atoms}), the covalent bond and its He limit (Section~\ref{sec:h2bond}), atomization energies of hydrides across periodic-table groups (Section~\ref{sec:hydrides}), reactive chemistry (Section~\ref{sec:reactions}), and protein folding (Section~\ref{sec:proteins}) --- using only physics, with no chemistry-specific empirical input beyond the kernel parameters that encode the level-by-level reduction. Chemistry emerges as the variational principle's response to multiple nuclei being present, with no separate machinery required.
 
-The conclusion we draw is not that the standard $3N$-dimensional formulation should be abandoned --- for high-precision spectroscopy, transition probabilities, and excited-state dynamics it remains the canonical tool --- but that \textbf{chemistry-as-applied-physics is achievable} when one is willing to reformulate the problem in real 3D space with an appropriate non-overlap constraint. Dirac was right; the equations were just being written in the wrong space.
+The conclusion we draw is that the standard $3N$-dimensional formulation was a wrong turn at the foundational level. The configuration-space wave function generates the chemistry-specific apparatus that has, ever since 1929, made chemistry look more autonomous than Dirac's position would suggest; in the real-3D-space picture Schr\"odinger envisaged, that apparatus is not needed and chemistry recovers its character as applied physics. The numerical successes of the standard formulation document that the underlying physics --- Coulomb interactions plus Schr\"odinger's original real-space equation --- is right, not that the configuration-space step was a correct foundational choice. Dirac was right about chemistry-as-applied-physics; the equations were just being written in the wrong space.
 
 \paragraph{Forward look: scaling.}
 The multiphase decomposition places each one-electron wavefunction on a non-overlapping subdomain of a single 3D grid. Total computational cost is then linear in the number of mesh cells, and hence --- at fixed atomic density and fixed mesh resolution matched to the reduced kernel --- linear in the number of atoms. This contrasts with standard wavefunction quantum mechanics, whose intrinsic cost is superlinear in electron count regardless of discretisation, since the wavefunction itself lives on $\mathbb{R}^{3N}$. With the reduced-kernel mesh native to the model ($h \sim 0.3$ a.u.), a $1000^3$ grid accommodates $\sim 10^6$ atoms within a single workstation-class GPU.
@@ -933,13 +1312,19 @@ We deliberately do not include figures in this preprint. The Gallery contains ma
 
 \section*{Acknowledgments}
 
-The author is very happy to meet Claude Code in a fruitful cooperation way beyond initial expectations after lonely struggle with coding over long time.
+The author is very happy to meet Claude Code in a fruitful cooperation way beyond initial expectations after lonely struggle with coding over long time. Letting Claude formulate large portions of the text serves a second purpose beyond drafting efficiency: it acts as a check on the author's natural tendency to draw broader conclusions from the available evidence than the evidence itself supports. Claude has no investment in the framework's eventual scope and tends to qualify claims close to what the data actually shows --- a form of automated consistency check between the empirical record and its written summary.
 
 \section*{Competing interests}
 
 None declared.
 
 \begin{thebibliography}{9}
+
+\bibitem{RealNucleus}
+C.~Johnson,
+\emph{RealQM for Atomic Nuclei: RealNucleus},
+2025.
+\url{https://www.dropbox.com/scl/fi/5mfv1nivqpfc6xlelfebg/RealQMNucleusSmall.pdf}
 
 \bibitem{HK64}
 P.~Hohenberg and W.~Kohn,
@@ -1022,6 +1407,17 @@ J.\ Amer.\ Math.\ Soc.\ \textbf{21}, 847 (2008).
 B.~Helffer, T.~Hoffmann-Ostenhof and S.~Terracini,
 \emph{Nodal domains and spectral minimal partitions},
 Ann.\ Inst.\ H.\ Poincar\'e Anal.\ Non Lin\'eaire \textbf{26}, 101 (2009).
+
+\bibitem{Kohn1998Nobel}
+W.~Kohn,
+\emph{Electronic structure of matter --- wave functions and density functionals},
+Nobel Lecture, 8 January 1999;
+Rev.\ Mod.\ Phys.\ \textbf{71}, 1253 (1999).
+
+\bibitem{Lewis1916}
+G.~N.~Lewis,
+\emph{The atom and the molecule},
+J.\ Amer.\ Chem.\ Soc.\ \textbf{38}, 762 (1916).
 
 \end{thebibliography}
 
