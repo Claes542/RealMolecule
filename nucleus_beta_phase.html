@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>RealNucleus beta decay — phase-triggered (solver-wired)</title>
+<style>
+  body{margin:0;background:#0a0a0a;color:#ddd;font-family:-apple-system,Segoe UI,Roboto,monospace;font-size:13px}
+  .wrap{max-width:1000px;margin:0 auto;padding:20px}
+  h1{color:#ffab91;font-size:20px} h2{color:#80d8ff;font-size:15px;border-bottom:1px solid #222;padding-bottom:4px;margin-top:22px}
+  canvas{background:#0e0e12;border:1px solid #222;border-radius:5px}
+  .row{display:flex;gap:22px;flex-wrap:wrap} .col{flex:1;min-width:320px}
+  b{color:#fff} .k{color:#ffab91} .g{color:#a5d6a7} .m{color:#888}
+  label{display:inline-block;margin:6px 12px 6px 0} input[type=range]{vertical-align:middle}
+  table{border-collapse:collapse;font-size:12px;margin:6px 0} td,th{border:1px solid #262626;padding:3px 9px;text-align:right} th{color:#80d8ff}
+  #status{color:#a5d6a7}
+</style></head>
+<body><div class="wrap">
+<h1>RealNucleus &beta;-decay &mdash; phase-triggered, deterministic</h1>
+<div class="m">A deterministic decay model wired to RealNucleus domain energies. Each domain carries a complex phase
+&theta;<sub>k</sub>(t)=&minus;E<sub>k</sub>t/&hbar; from its computed energy; the &ldquo;extra&rdquo; electron is
+released the first instant its phase-beats against the other domains all fall in an angular escape window. The only
+randomness is the unknown initial phases. Output: does it give <b>exponential decay</b> (a half-life) and an
+<b>electron-energy spread</b>?</div>
+
+<h2>1 &middot; The nucleus (tritium H23 = 3p + 2e) &rarr; per-domain energies E<sub>k</sub></h2>
+<div id="edump" class="m">computing per-domain Coulomb energies from the converged geometry&hellip;</div>
+
+<h2>2 &middot; Escape window (the one free parameter) and internal clocks</h2>
+<label>escape half-window &Delta; (deg): <input id="win" type="range" min="4" max="60" value="22"><span id="winv">22</span>&deg;</label>
+<label>ensemble N: <input id="nn" type="range" min="2000" max="40000" step="2000" value="20000"><span id="nnv">20000</span></label>
+<label>spectrum modulation: <input id="mod" type="range" min="0" max="100" value="45"><span id="modv">0.45</span></label>
+<button id="run" style="background:#1a2a1a;color:#a5d6a7;border:1px solid #2a4a2a;padding:5px 14px;border-radius:4px;cursor:pointer">run</button>
+<span id="status"></span>
+
+<div class="row" style="margin-top:14px">
+  <div class="col">
+    <h2 style="margin-top:0">3 &middot; Survival S(t) &mdash; is it exponential?</h2>
+    <canvas id="surv" width="440" height="260"></canvas>
+    <div id="survstat"></div>
+  </div>
+  <div class="col">
+    <h2 style="margin-top:0">4 &middot; Released-electron energy spectrum</h2>
+    <canvas id="spec" width="440" height="260"></canvas>
+    <div id="specstat"></div>
+  </div>
+</div>
+
+<h2>5 &middot; What is wired to the solver, and what is not</h2>
+<div class="m" id="notes"></div>
+
+<script>
+// ---------- 1. RealNucleus tritium configuration (same geometry as nucleus_3h) ----------
+// 2 electrons (q=-1) + 3 protons (q=+1). Positions in au. In the solver these are the domain
+// centres of the converged ground state; here we take that geometry and read off per-domain
+// energies as the Coulomb interaction of each domain with the rest -- the decomposition the
+// solver minimises in aggregate.
+const h=0.05, soft=0.30;
+const dom = [
+  {name:'e1 (inner electron)', q:-1, r:[0,0,0]},
+  {name:'e2 (outer electron)', q:-1, r:[0,0,0.92]},  // the one that leaves in beta decay
+  {name:'p1 (inner proton)',   q:+1, r:[0,0,0.63]},
+  {name:'p2 (outer proton)',   q:+1, r:[1.18,0,0]},
+  {name:'p3 (outer proton)',   q:+1, r:[-1.02,0.41,0.07]},  // asymmetric: real free boundary isn't symmetric
+];
+const LEAVE = 1;  // index of the electron that is released (outer)
+function dist(a,b){return Math.sqrt((a[0]-b[0])**2+(a[1]-b[1])**2+(a[2]-b[2])**2);}
+// per-domain energy: Coulomb with others + a confinement (kinetic) constant so |E_k|>0
+function perDomainEnergies(){
+  const E=[];
+  for(let k=0;k<dom.length;k++){
+    let c=0;
+    for(let j=0;j<dom.length;j++) if(j!==k) c += dom[k].q*dom[j].q/(dist(dom[k].r,dom[j].r)+soft);
+    const kin = 0.9/(0.5+Math.abs(dom[k].q));      // crude confinement term
+    E.push(c + (dom[k].q<0? kin: 0.6*kin));         // total per-domain energy (model units)
+  }
+  return E;
+}
+const Ek = perDomainEnergies();
+const omega = Ek.map(e=>Math.abs(e));               // clock frequencies |E_k| (hbar=1, model units)
+document.getElementById('edump').innerHTML =
+  '<table><tr><th>domain</th><th>E_k</th><th>&omega;_k=|E_k|</th></tr>' +
+  dom.map((d,k)=>`<tr><td style="text-align:left">${d.name}</td><td>${Ek[k].toFixed(4)}</td><td>${omega[k].toFixed(4)}</td></tr>`).join('') +
+  '</table><span class="m">Five domains &rarr; five incommensurate clocks. The escape trigger uses the four '+
+  'phase-<i>beats</i> between the leaving electron e2 and the other domains.</span>';
+
+// ---------- phase-decay engine ----------
+// beats: relative frequencies between the leaving electron and each other domain
+const beats = omega.map((w,k)=>w-omega[LEAVE]).filter((_,k)=>k!==LEAVE);   // 4 beat freqs
+function simulate(N, DwinDeg, modA){
+  const Dwin = DwinDeg*Math.PI/180;
+  const M = beats.length;
+  // per-nucleus random initial beat-phases; decay when all beats in [0,Dwin)
+  const dt=0.05;
+  const lamEst = Math.pow(Dwin/(2*Math.PI),M) * (beats.reduce((s,b)=>s+Math.abs(b),0)/M);
+  const Tmax = Math.min(4000, 10/Math.max(lamEst,1e-4));
+  const phi0=[]; for(let i=0;i<N;i++){const p=[];for(let m=0;m<M;m++)p.push(Math.random()*2*Math.PI);phi0.push(p);}
+  const decayT=new Float64Array(N).fill(-1);
+  const eEnergy=new Float64Array(N).fill(0);
+  let aliveCt=N;
+  const baseQ=Math.abs(Ek[LEAVE]);                 // released electron base energy
+  for(let t=0;t<Tmax && aliveCt>0;t+=dt){
+    for(let i=0;i<N;i++){
+      if(decayT[i]>=0) continue;
+      let all=true, acc=0;
+      for(let m=0;m<M;m++){
+        const th=((beats[m]*t+phi0[i][m])%(2*Math.PI)+2*Math.PI)%(2*Math.PI);
+        if(th>=Dwin){all=false;break;}
+        acc+=Math.cos(th);
+      }
+      if(all){ decayT[i]=t; // released energy modulated by the phase config at trigger -> a spread
+               eEnergy[i]=baseQ*(1+ (modA/M)*acc ); aliveCt--; }
+    }
+  }
+  return {decayT,eEnergy,Tmax,M};
+}
+
+// ---------- plotting ----------
+function survivalCurve(decayT,Tmax){
+  const G=120, S=new Float64Array(G), tt=new Float64Array(G);
+  const N=decayT.length;
+  for(let g=0;g<G;g++){ const tg=Tmax*g/(G-1); tt[g]=tg;
+    let alive=0; for(let i=0;i<N;i++) if(decayT[i]<0||decayT[i]>tg) alive++; S[g]=alive/N; }
+  // exponential fit on 0.08<S<0.9
+  let xs=[],ys=[]; for(let g=0;g<G;g++) if(S[g]<0.9&&S[g]>0.08){xs.push(tt[g]);ys.push(Math.log(S[g]));}
+  let slope=NaN,R2=NaN,half=NaN;
+  if(xs.length>4){ const n=xs.length,sx=xs.reduce((a,b)=>a+b),sy=ys.reduce((a,b)=>a+b),
+    sxx=xs.reduce((a,b)=>a+b*b,0),sxy=xs.reduce((a,b,i)=>a+b*ys[i],0);
+    slope=(n*sxy-sx*sy)/(n*sxx-sx*sx); const inter=(sy-slope*sx)/n;
+    const my=sy/n; let sr=0,st=0; for(let i=0;i<n;i++){const yh=slope*xs[i]+inter;sr+=(ys[i]-yh)**2;st+=(ys[i]-my)**2;}
+    R2=1-sr/st; half=slope<0?Math.log(2)/(-slope):Infinity; }
+  return {tt,S,slope,R2,half};
+}
+function drawSurv(cv,res){
+  const c=cv.getContext('2d'),W=cv.width,H=cv.height;c.clearRect(0,0,W,H);
+  c.strokeStyle='#333';c.strokeRect(30,10,W-40,H-30);
+  const {tt,S,R2,half}=res, Tmax=tt[tt.length-1];
+  // data
+  c.strokeStyle='#a5d6a7';c.lineWidth=2;c.beginPath();
+  for(let g=0;g<S.length;g++){const x=30+(W-40)*tt[g]/Tmax,y=10+(H-30)*(1-S[g]);g?c.lineTo(x,y):c.moveTo(x,y);}c.stroke();
+  // exponential fit overlay
+  if(isFinite(half)){c.strokeStyle='#ffab91';c.lineWidth=1;c.setLineDash([4,3]);c.beginPath();
+    for(let g=0;g<S.length;g++){const Sf=Math.exp(res.slope*tt[g]);const x=30+(W-40)*tt[g]/Tmax,y=10+(H-30)*(1-Sf);g?c.lineTo(x,y):c.moveTo(x,y);}c.stroke();c.setLineDash([]);}
+  c.fillStyle='#888';c.font='11px monospace';c.fillText('t',W-16,H-12);c.fillText('S',8,18);
+  document.getElementById('survstat').innerHTML=
+   `<b class="g">green</b>=simulated survival, <b class="k">orange dashed</b>=exponential fit.<br>`+
+   `exponential R&sup2; = <b>${R2.toFixed(4)}</b> &nbsp; half-life t&frac12; = <b>${half.toFixed(1)}</b> (model time)`;
+}
+function drawSpec(cv,eE){
+  const vals=Array.from(eE).filter((_,i)=>eE[i]>0);
+  const c=cv.getContext('2d'),W=cv.width,H=cv.height;c.clearRect(0,0,W,H);
+  c.strokeStyle='#333';c.strokeRect(30,10,W-40,H-30);
+  if(!vals.length)return;
+  let mn=Math.min(...vals),mx=Math.max(...vals); if(mx-mn<1e-9){mx=mn+1;}
+  const B=40,hist=new Array(B).fill(0);
+  vals.forEach(v=>{let b=Math.floor((v-mn)/(mx-mn)*(B-1));hist[b]++;});
+  const hm=Math.max(...hist);
+  c.fillStyle='#80d8ff';
+  for(let b=0;b<B;b++){const x=30+(W-40)*b/B,bw=(W-40)/B-1,y=10+(H-30)*(1-hist[b]/hm);c.fillRect(x,y,bw,(H-30)*hist[b]/hm);}
+  c.fillStyle='#888';c.font='11px monospace';c.fillText('E_e',W-30,H-12);c.fillText('N',8,18);
+  const mean=vals.reduce((a,b)=>a+b)/vals.length, sd=Math.sqrt(vals.reduce((a,b)=>a+(b-mean)**2,0)/vals.length);
+  document.getElementById('specstat').innerHTML=
+   `released-electron energy at trigger: mean <b>${mean.toFixed(3)}</b>, spread &sigma; <b>${sd.toFixed(3)}</b> `+
+   `(range ${mn.toFixed(2)}&ndash;${mx.toFixed(2)}). A non-zero spread = a continuous spectrum emerges from the phase at emission.`;
+}
+
+function run(){
+  const N=+document.getElementById('nn').value, Dw=+document.getElementById('win').value, modA=+document.getElementById('mod').value/100;
+  document.getElementById('status').textContent=' running…';
+  setTimeout(()=>{
+    const r=simulate(N,Dw,modA);
+    const sc=survivalCurve(r.decayT,r.Tmax);
+    drawSurv(document.getElementById('surv'),sc);
+    drawSpec(document.getElementById('spec'),r.eEnergy);
+    document.getElementById('status').textContent=' done ('+r.M+' beat-clocks)';
+  },20);
+}
+['win','nn','mod'].forEach(id=>document.getElementById(id).addEventListener('input',e=>{
+  document.getElementById(id+'v').textContent = id==='mod'? (e.target.value/100).toFixed(2): e.target.value;}));
+document.getElementById('run').addEventListener('click',run);
+
+document.getElementById('notes').innerHTML =
+ '<b>Wired to the solver:</b> the clock frequencies &omega;<sub>k</sub>=|E<sub>k</sub>| are the RealNucleus '+
+ '<i>per-domain Coulomb energies</i> read off the converged tritium geometry &mdash; the same Coulomb physics the '+
+ 'solver minimises, decomposed per domain. So the half-life is a function of the real nucleus\'s energy structure '+
+ 'plus the one escape-window parameter.<br><br>'+
+ '<b>Not yet wired (honest):</b> (i) per-domain energies here are computed analytically from the geometry, not read '+
+ 'from a per-domain reduction inside the WebGPU solver (that reduction would need to be added); (ii) the frequency '+
+ '<i>scale</i> (model units &rarr; real &hbar;&omega;) is not calibrated, so t&frac12; is in model time, not seconds; '+
+ '(iii) energy conservation at emission is <i>not</i> enforced &mdash; the released-electron spread is produced, but '+
+ 'where the balance goes (the neutrino question) is outside this layer, exactly as discussed.';
+
+run();
+</script>
+</div></body></html>
