@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>RealNucleus alpha decay — Coulomb-barrier tunneling (Gamow)</title>
+<style>
+  body{margin:0;background:#0a0a0a;color:#ddd;font-family:-apple-system,Segoe UI,Roboto,monospace;font-size:13px}
+  .wrap{max-width:1020px;margin:0 auto;padding:20px}
+  h1{color:#ffab91;font-size:20px} h2{color:#80d8ff;font-size:15px;border-bottom:1px solid #222;padding-bottom:4px;margin-top:22px}
+  canvas{background:#0e0e12;border:1px solid #222;border-radius:5px}
+  .row{display:flex;gap:22px;flex-wrap:wrap} .col{flex:1;min-width:340px}
+  b{color:#fff} .m{color:#888} .g{color:#a5d6a7} .k{color:#ffab91}
+  table{border-collapse:collapse;font-size:12px;margin:6px 0} td,th{border:1px solid #262626;padding:3px 9px;text-align:right} th{color:#80d8ff} td.l,th.l{text-align:left}
+  label{display:inline-block;margin:6px 14px 6px 0} select,input{vertical-align:middle}
+</style></head>
+<body><div class="wrap">
+<h1>RealNucleus &alpha;-decay &mdash; Coulomb-barrier tunneling</h1>
+<div class="m">The alpha (2e+4p) is RealNucleus's tight closed cluster. Here it is preformed inside the nucleus, striking
+the <b>Coulomb barrier</b> at the fast assault frequency f&nbsp;~&nbsp;10<sup>21</sup>&nbsp;Hz, and tunnelling out
+with the <b>Gamow factor</b> P=e<sup>&minus;2G</sup>. Rate &lambda;=f&middot;P. Crucially the rare factor P is
+<b>Coulomb physics the model owns</b> &mdash; so unlike beta decay (whose small parameter is the weak coupling
+G<sub>F</sub>), alpha decay's timescale is reachable. The 30-order slowness comes from the exponentially small P.</div>
+
+<h2>Controls</h2>
+<label>nuclear radius r&#8320; (fm): <input id="r0" type="range" min="1.0" max="1.5" step="0.02" value="1.20"><span id="r0v">1.20</span></label>
+<label>well depth V&#8320; (MeV): <input id="V0" type="range" min="20" max="50" value="35"><span id="V0v">35</span></label>
+<label>barrier view: <select id="pick"></select></label>
+
+<div class="row" style="margin-top:12px">
+  <div class="col"><h2 style="margin-top:0">Geiger&ndash;Nuttall: log t&frac12; vs Z/&radic;Q</h2>
+    <canvas id="gn" width="450" height="300"></canvas><div id="gnstat"></div></div>
+  <div class="col"><h2 style="margin-top:0">Coulomb barrier &amp; tunnelling</h2>
+    <canvas id="bar" width="450" height="300"></canvas><div id="barstat" class="m"></div></div>
+</div>
+
+<h2>Half-lives: computed (Coulomb + Gamow) vs measured</h2>
+<div id="tbl"></div>
+
+<script>
+const hbarc=197.327,malpha=3727.379,e2=1.43996,c_fm=2.998e23,yr=3.156e7,d=86400;
+// name, Z_daughter, A_parent, Q(MeV), t_obs(s)
+const DATA=[
+ ["Po-212",82,212,8.954,0.299e-6],["Po-214",82,214,7.833,164.3e-6],["Po-210",82,210,5.407,138.4*d],
+ ["Rn-222",84,222,5.590,3.8235*d],["Ra-226",86,226,4.871,1600*yr],["Th-230",88,230,4.770,7.54e4*yr],
+ ["U-234",90,234,4.859,2.455e5*yr],["Pu-239",92,239,5.245,24110*yr],["U-238",90,238,4.270,4.468e9*yr],
+ ["Th-232",88,232,4.083,1.405e10*yr],["Cm-244",94,244,5.902,18.1*yr]];
+function gamow(Zd,A,Q,r0,V0){
+  const C=2*Zd*e2,b=C/Q,Ad=A-4,R=r0*(Math.cbrt(Ad)+Math.cbrt(4)),x=R/b;
+  const g=Math.acos(Math.sqrt(x))-Math.sqrt(x*(1-x));
+  const twoG=(2/hbarc)*Math.sqrt(2*malpha*Q)*b*g,P=Math.exp(-twoG);
+  const v=c_fm*Math.sqrt(2*(Q+V0)/malpha),f=v/(2*R);
+  return {thalf:Math.LN2/(f*P),twoG,R,b,P,f,C};
+}
+const r0EL=document.getElementById('r0'),V0EL=document.getElementById('V0'),PK=document.getElementById('pick');
+DATA.forEach((r,i)=>{const o=document.createElement('option');o.value=i;o.textContent=r[0];PK.appendChild(o);});
+PK.value=8; // U-238
+
+function fmtT(s){ if(!isFinite(s))return'—'; const a=Math.abs(s);
+  if(a<1e-3)return (s*1e6).toPrecision(3)+' µs'; if(a<60)return s.toPrecision(3)+' s';
+  if(a<3.6e3)return (s/60).toPrecision(3)+' min'; if(a<8.64e4)return (s/3600).toPrecision(3)+' h';
+  if(a<3.156e7)return (s/86400).toPrecision(3)+' d'; return (s/yr).toPrecision(3)+' yr'; }
+
+function recompute(){
+  const r0=+r0EL.value,V0=+V0EL.value; r0EL.nextElementSibling; document.getElementById('r0v').textContent=r0.toFixed(2);
+  document.getElementById('V0v').textContent=V0;
+  const rows=DATA.map(([n,Zd,A,Q,tobs])=>{const G=gamow(Zd,A,Q,r0,V0);
+    return {n,Zd,A,Q,tobs,tc:G.thalf,twoG:G.twoG,gnx:Zd/Math.sqrt(Q)};});
+  // table
+  let dsum=0; rows.forEach(r=>dsum+=Math.abs(Math.log10(r.tc/r.tobs)));
+  const lc=rows.map(r=>Math.log10(r.tc)),lo=rows.map(r=>Math.log10(r.tobs));
+  const mc=lc.reduce((a,b)=>a+b)/lc.length,mo=lo.reduce((a,b)=>a+b)/lo.length;
+  let cov=0,sc=0,so=0; for(let i=0;i<lc.length;i++){cov+=(lc[i]-mc)*(lo[i]-mo);sc+=(lc[i]-mc)**2;so+=(lo[i]-mo)**2;}
+  const corr=cov/Math.sqrt(sc*so);
+  let html='<table><tr><th class="l">nuclide</th><th>Q (MeV)</th><th>2G</th><th>t½ calc</th><th>t½ obs</th><th>Δlog₁₀</th></tr>';
+  rows.forEach(r=>{const dl=Math.log10(r.tc/r.tobs);
+    html+=`<tr><td class="l">${r.n}</td><td>${r.Q.toFixed(2)}</td><td>${r.twoG.toFixed(1)}</td><td>${fmtT(r.tc)}</td><td>${fmtT(r.tobs)}</td><td style="color:${Math.abs(dl)<1?'#a5d6a7':'#ffab91'}">${dl>=0?'+':''}${dl.toFixed(2)}</td></tr>`;});
+  html+='</table>';
+  document.getElementById('tbl').innerHTML=html;
+  // GN plot
+  drawGN(rows,corr,dsum/rows.length);
+  // barrier
+  drawBar(+PK.value,r0,V0);
+}
+function drawGN(rows,corr,mad){
+  const c=document.getElementById('gn').getContext('2d'),W=450,H=300;c.clearRect(0,0,W,H);
+  const xs=rows.map(r=>r.gnx),ys=rows.map(r=>Math.log10(r.tobs)),yc=rows.map(r=>Math.log10(r.tc));
+  const xmin=Math.min(...xs)-1,xmax=Math.max(...xs)+1,ymin=Math.min(...ys,...yc)-1,ymax=Math.max(...ys,...yc)+1;
+  const X=v=>40+(W-55)*(v-xmin)/(xmax-xmin),Y=v=>H-30-(H-45)*(v-ymin)/(ymax-ymin);
+  c.strokeStyle='#282828';c.strokeRect(40,15,W-55,H-45);
+  c.fillStyle='#888';c.font='11px monospace';c.fillText('Z/√Q',W-45,H-10);c.save();c.translate(12,H/2);c.rotate(-Math.PI/2);c.fillText('log₁₀ t½ (s)',0,0);c.restore();
+  // GN fit line through obs
+  const n=xs.length,sx=xs.reduce((a,b)=>a+b),sy=ys.reduce((a,b)=>a+b),sxx=xs.reduce((a,b)=>a+b*b,0),sxy=xs.reduce((a,b,i)=>a+b*ys[i],0);
+  const sl=(n*sxy-sx*sy)/(n*sxx-sx*sx),ic=(sy-sl*sx)/n;
+  const my=sy/n;let sr=0,st=0;for(let i=0;i<n;i++){const yh=sl*xs[i]+ic;sr+=(ys[i]-yh)**2;st+=(ys[i]-my)**2;}const R2=1-sr/st;
+  c.strokeStyle='#555';c.setLineDash([4,3]);c.beginPath();c.moveTo(X(xmin),Y(sl*xmin+ic));c.lineTo(X(xmax),Y(sl*xmax+ic));c.stroke();c.setLineDash([]);
+  // computed (orange) and observed (green)
+  for(let i=0;i<n;i++){c.fillStyle='#ffab91';c.beginPath();c.arc(X(xs[i]),Y(yc[i]),3.5,0,7);c.fill();
+    c.strokeStyle='#a5d6a7';c.lineWidth=1.5;c.beginPath();c.arc(X(xs[i]),Y(ys[i]),4.5,0,7);c.stroke();}
+  document.getElementById('gnstat').innerHTML=`<span class="g">○ measured</span> · <span class="k">● Coulomb+Gamow</span> &nbsp; `+
+    `GN fit R²=<b>${R2.toFixed(3)}</b> &nbsp; corr(log t_calc,log t_obs)=<b>${corr.toFixed(4)}</b> &nbsp; mean|Δlog₁₀|=<b>${mad.toFixed(2)}</b>`;
+}
+function drawBar(i,r0,V0){
+  const [n,Zd,A,Q]=DATA[i],G=gamow(Zd,A,Q,r0,V0),R=G.R,b=G.b,C=G.C;
+  const c=document.getElementById('bar').getContext('2d'),W=450,H=300;c.clearRect(0,0,W,H);
+  const rmax=b*2.2, Vmax=C/R;
+  const X=r=>45+(W-60)*r/rmax, Y=v=>H-30-(H-50)*(v+V0)/(Vmax+V0);
+  c.strokeStyle='#282828';c.strokeRect(45,15,W-60,H-45);
+  // axes
+  c.fillStyle='#888';c.font='11px monospace';c.fillText('r (fm)',W-40,H-10);c.fillText('V (MeV)',48,26);
+  // well (r<R at -V0) + Coulomb (r>=R)
+  c.strokeStyle='#80d8ff';c.lineWidth=2;c.beginPath();
+  c.moveTo(X(0.1),Y(-V0));c.lineTo(X(R),Y(-V0));c.lineTo(X(R),Y(Vmax));
+  for(let r=R;r<=rmax;r+=rmax/300){c.lineTo(X(r),Y(C/r));}c.stroke();
+  // Q line
+  c.strokeStyle='#ffab91';c.setLineDash([5,3]);c.beginPath();c.moveTo(X(0.1),Y(Q));c.lineTo(X(rmax),Y(Q));c.stroke();c.setLineDash([]);
+  c.fillStyle='#ffab91';c.fillText('Q='+Q.toFixed(2),X(rmax)-70,Y(Q)-4);
+  // tunnelling region R..b shaded
+  c.fillStyle='rgba(206,147,216,0.18)';c.fillRect(X(R),15,X(b)-X(R),H-45-15+15);
+  c.fillStyle='#ce93d8';c.fillText('tunnel',(X(R)+X(b))/2-16,24);
+  c.fillStyle='#888';c.fillText('R='+R.toFixed(1),X(R)-6,H-16);c.fillText('b='+b.toFixed(0),X(b)-6,H-16);
+  document.getElementById('barstat').innerHTML=`<b>${n}</b>: barrier peak V(R)=${Vmax.toFixed(0)} MeV, Q=${Q.toFixed(2)} MeV `+
+    `&rarr; the alpha tunnels R&rarr;b (${R.toFixed(1)}&rarr;${b.toFixed(0)} fm). 2G=<b>${G.twoG.toFixed(1)}</b>, `+
+    `P=e<sup>&minus;2G</sup>=${G.P.toExponential(1)} &rarr; t½=<b>${fmtT(G.thalf)}</b>.`;
+}
+[r0EL,V0EL,PK].forEach(el=>el.addEventListener('input',recompute));
+recompute();
+</script>
+</div></body></html>
