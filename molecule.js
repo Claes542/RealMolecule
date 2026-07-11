@@ -4558,6 +4558,7 @@ async function moveNuclei(gpuForces) {
 
   // Flag that atom positions changed — draw() will capture frame after rendering
   window._nucUpdated = true;
+  window._nucPos = nucPos;   // expose current centre positions (grid coords) for readout
 
   // Update atomBuf with new positions, recompute K on GPU (batched, keep converged U, labels, P)
   fillAtomBuf();

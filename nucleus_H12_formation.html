@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<script>
+// RealNucleus: FORMATION of H12 (deuteron, 2p+1e) from separated constituents.
+// Start: 2 protons far apart on the x-axis (pp = 3.0 au, well beyond equilibrium) + 1 electron
+// at the centre. Enable DYNAMICS: the centres move under Coulomb (Hellmann-Feynman) forces,
+// damped so they settle. Question: does the electron glue the two protons and pull them together
+// into the BOUND deuteron (like H2+ at nuclear scale), and at what binding? This is the minimal
+// test that dynamical Coulomb ASSEMBLY works before applying formation to the ambiguous odd nuclei.
+// Solver: molecule.js (dynamical). molecule.js deuteron scale ~ -2.12 (bound target).
+(function() {
+  var gridN = 200, scr = 10, N2 = 100, h = scr / gridN;
+  var R = 1.5;                       // start half-separation -> pp = 3.0 au (equilibrium ~1.85)
+  var atoms = [];
+  atoms.push({ i: N2, j: N2, k: N2, Z: 1, el: 'e' });                       // 0: electron at centre
+  atoms.push({ i: Math.round(N2 + R/h), j: N2, k: N2, Z: 1, el: 'P' });     // 1: proton +x
+  atoms.push({ i: Math.round(N2 - R/h), j: N2, k: N2, Z: 1, el: 'P' });     // 2: proton -x
+
+  console.log('RealNucleus H12 formation: 2p (+/-x, pp=' + (2*R) + ' au) + 1e centre -> assemble deuteron?');
+
+  window.USER_NUCLEUS_MODE = true;
+  window.USER_NN = gridN;
+  window.USER_ATOMS = atoms;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 1000000;
+  window.USER_DYNAMICS = true;         // centres move under forces
+  window.NO_AUTO_DYNAMICS = false;
+  window.USER_FORCE_SCALE = 1.0;
+  window.USER_ARROW_SCALE = 200.0;
+  window.USER_DAMPING = 0.9;           // damp so it settles into the well
+  window.USER_N_MOVE = 50;             // electronic steps between nuclear moves
+  window.CONVERGENCE_THRESHOLD = 0.01;
+  window.USER_Z      = [1, 1, 1];
+  window.USER_Z_NUC  = [0, 0, 0];
+  window.USER_RC     = [0, 0, 0];
+  window.USER_MASS   = [1, 1, 1];      // equal-mass charge clouds
+  window.USER_CHARGE = [-1, 1, 1];     // electron, proton, proton
+  window.USER_SHELL_RADIUS = 0.5;
+  window.USER_SHELL_ZONES = [
+    { rMax: 0.5, atoms: [0] },         // electron core (follows nothing; near centre)
+    { rMax: 1e9, atoms: [1, 2] },      // two protons in the outer zone
+  ];
+  window.USER_CURV_REG = 0.5;
+  window.USER_DIRICHLET_EP = 'electron';
+  window.USER_LOCKED_GROUPS = [];      // all boundaries free
+  window.INIT_ZEFF = 1;
+  window.USER_BOND_PAIRS = [ [1,2,"p-p:"], [0,1,"e-P:"] ];
+  window.USER_REFERENCE = { energy: "H12 formation from 2p+1e; bound deuteron target E ~ -2.12 (molecule.js scale)" };
+})();
+
+window.onSweepDone = function (E) {
+  document.title = 'DFORM DONE E=' + Number(E).toFixed(6);
+  console.log('=== SWEEPDONE DFORM E=' + Number(E).toFixed(6) + ' ===');
+};
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+// title bridge: mirror current E and the p-p separation (main world) for automated reading
+setInterval(function(){
+  var np = window._nucPos;
+  var pp = '';
+  if (np && np[1] && np[2]) {
+    var dx=(np[1][0]-np[2][0]), dy=(np[1][1]-np[2][1]), dz=(np[1][2]-np[2][2]);
+    pp = ' pp=' + (Math.sqrt(dx*dx+dy*dy+dz*dz)*0.05).toFixed(3);
+  }
+  if (window._E !== undefined)
+    document.title = 'DFORM E=' + Number(window._E).toFixed(4) + pp + ' conv=' + (window._convCount||0);
+}, 500);
+</script>
+</body></html>
