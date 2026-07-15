@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="margin:0;background:#000;color:#ddd;font-family:monospace">
+<div id="stat" style="padding:10px 14px;font-size:14px;color:#80d8ff">initialising…</div>
+<div id="err" style="padding:4px 14px;color:#ff5252;font-size:12px"></div>
+<script>window.addEventListener('error',function(e){var d=document.getElementById('err');if(d)d.textContent='ERR: '+e.message+' @'+(e.lineno||'');});</script>
+<script>
+// RELAXING LIGHT-ELECTRON TEST (deuteron 2p+1e), SEMI-IMPLICIT stepping (USER_IMPLICIT_E) so a light
+// electron relaxes STABLY at the normal step (no CFL blow-up, no tiny dt). The electron is NOT frozen:
+// it chooses its own shape. Question: does a genuinely light electron (?me=) relax to a NEARLY FLAT,
+// charge-continuous core -- confirming, self-consistently, what the frozen sphere showed by fiat?
+// Read: flatness = rho(center)/rho(edge) (->1 if flat) and continuity rho_e/rho_p (->1).
+(function() {
+  var me = parseFloat((new URLSearchParams(location.search)).get('me') || '0.01');
+  var gridN = 200, scr = 10, N2 = 100, h = scr / gridN, d = 1.0;
+  var atoms = [
+    { i:N2, j:N2, k:N2, Z:1, el:'e' },
+    { i:Math.round(N2-d/h), j:N2, k:N2, Z:1, el:'P' },
+    { i:Math.round(N2+d/h), j:N2, k:N2, Z:1, el:'P' }
+  ];
+  window.USER_NUCLEUS_MODE = true; window.USER_NN = gridN; window.USER_ATOMS = atoms; window.USER_SCREEN = scr;
+  window.USER_STEPS = 2000000; window.USER_DYNAMICS = false;
+  window.USER_Z=[1,1,1]; window.USER_Z_NUC=[0,0,0]; window.USER_RC=[0,0,0];
+  window.USER_MASS=[me,1,1];                                        // <-- LIGHT electron, relaxing
+  window.USER_IMPLICIT_E = true;                                    // <-- semi-implicit: stable at normal dt
+  window._bndDamp = 0;                                              // <-- FREEZE free boundary (regularize): domain fixed at shell zone, only the electron shape relaxes
+  window.USER_CHARGE=[-1,1,1];
+  window.USER_SHELL_RADIUS = 0.95;
+  window.USER_SHELL_ZONES = [ { rMax:0.95, atoms:[0] }, { rMax:1e9, atoms:[1,2] } ];
+  // NOT frozen, NOT const: let the electron relax from a generic init and find its shape
+  window.USER_DIRICHLET_EP = false; window.USER_CURV_REG = 0.0;
+  window.INIT_ZEFF = 1; window.CONVERGENCE_THRESHOLD = 0.005;
+  window.USER_BOND_PAIRS = [ [0,1,"e-P:"], [1,2,"P-P:"] ];
+  window.USER_REFERENCE = { energy: "deuteron, RELAXING light electron me="+me+" (implicit); does it go flat + continuous?" };
+  window._me = me;
+})();
+window.onSweepDone = function (E) { window._Ef = Number(E); };
+function metrics() {
+  var sd = window._sliceData, S = window._sliceS; if (!sd || !S) return null;
+  var N2 = Math.floor(S/2), SS2 = S*S;
+  var lab = function(i){ return Math.round(sd[SS2 + i*S + N2]) % 1000; };
+  var den = function(i){ return sd[i*S + N2]; };
+  var lab0 = lab(N2), bi = -1;
+  for (var i=N2+3; i<S; i++){ if (lab(i) !== lab0 && lab(i-1) !== lab0) { bi = i-1; break; } }
+  if (bi < 6) return null;
+  var dc = den(N2+1);                 // electron density near center
+  var dedge = den(bi-3);              // electron density near the boundary (still electron)
+  var de = [den(bi-4),den(bi-3),den(bi-2)].sort(function(a,b){return a-b;})[1];
+  var dp = Math.max(den(bi+1), den(bi+2));
+  return { flat:(dedge>1e-12? dc/dedge:0), cont:(dp>1e-12? de/dp:0), dc:dc, dedge:dedge, bi:bi, rBnd:((bi-N2)*0.05).toFixed(3) };
+}
+var s=document.createElement('script'); s.src='molecule_nucleus.js?t='+Date.now();
+s.onload=function(){ var p=document.createElement('script'); p.src='https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js'; document.body.appendChild(p); };
+document.body.appendChild(s);
+setInterval(function(){
+  var m = metrics();
+  var e = (window._Ef!==undefined)? window._Ef.toFixed(3) : (window._prevE!==undefined? Number(window._prevE).toFixed(3) : '…');
+  var ms = m ? ('flatness c/edge=<b style="color:#ff0">'+m.flat.toFixed(3)+'</b> (1=flat) &nbsp; continuity e/p=<b style="color:#0ff">'+m.cont.toFixed(3)+'</b> &nbsp; bnd r='+m.rBnd) : 'metrics=…';
+  document.getElementById('stat').innerHTML = '<b>DEUTERON RELAXING (implicit)</b> &nbsp; light e m<sub>e</sub>=<b style="color:#0f0">'+window._me+'</b> &nbsp; '+ms+' &nbsp; E='+e+' &nbsp; frame='+(window.frameCount||0);
+  document.title = 'DIMPL me='+window._me+' flat='+(m?m.flat.toFixed(2):'…')+' e/p='+(m?m.cont.toFixed(2):'…');
+}, 500);
+</script>
+</body></html>

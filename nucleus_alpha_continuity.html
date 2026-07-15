@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="margin:0;background:#000;color:#ddd;font-family:monospace">
+<div id="stat" style="padding:10px 14px;font-size:14px;color:#80d8ff">initialising…</div>
+<div id="err" style="padding:4px 14px;color:#ff5252;font-size:12px"></div>
+<script>window.addEventListener('error',function(e){var d=document.getElementById('err');if(d)d.textContent='ERR: '+e.message+' @'+(e.lineno||'');});</script>
+<script>
+// ALPHA CHARGE-CONTINUITY RADIUS SWEEP: a frozen UNIFORM -2 electron core (Z=2) caged by 4 protons in a
+// tetrahedron (one vertex on +x so we measure along x toward a proton). Decisive condition = charge
+// continuity Z*u^2: at which core radius ?re= does the flat -2 core's CHARGE density match the proton's
+// at the seam (charge-ratio -> 1)? Mass-free (rigid core). hom Neumann (DIRICHLET_EP=false), curvReg=0.
+// NOTE: readout is CHARGE-weighted (Z*u^2), so continuity is at ratio=1; the VISUAL plots u^2, so it
+// will read ~0.5 at continuity (because the core is Z=2).
+(function() {
+  var re = parseFloat((new URLSearchParams(location.search)).get('re') || '0.9');
+  var gridN = 200, scr = 10, N2 = 100, h = scr / gridN, d = 1.0;   // proton shell radius
+  // regular tetrahedron with one vertex on +x
+  var V = [ [1,0,0], [-1/3, 2*Math.SQRT2/3, 0], [-1/3, -Math.SQRT2/3, Math.sqrt(6)/3], [-1/3, -Math.SQRT2/3, -Math.sqrt(6)/3] ];
+  var atoms = [ { i:N2, j:N2, k:N2, Z:2, el:'e' } ];
+  for (var t=0;t<4;t++) atoms.push({ i:Math.round(N2+V[t][0]*d/h), j:Math.round(N2+V[t][1]*d/h), k:Math.round(N2+V[t][2]*d/h), Z:1, el:'P' });
+
+  window.USER_NUCLEUS_MODE = true; window.USER_NN = gridN; window.USER_ATOMS = atoms; window.USER_SCREEN = scr;
+  window.USER_STEPS = 400000; window.USER_DYNAMICS = false;
+  window.USER_Z=[2,1,1,1,1]; window.USER_Z_NUC=[0,0,0,0,0]; window.USER_RC=[0,0,0,0,0]; window.USER_MASS=[1,1,1,1,1];
+  window.USER_CHARGE=[-2,1,1,1,1];
+  window.USER_SHELL_RADIUS = re;
+  window.USER_SHELL_ZONES = [ { rMax:re, atoms:[0] }, { rMax:1e9, atoms:[1,2,3,4] } ];
+  window.USER_CONST_ECORE = true; window.USER_FREEZE_ECORE = true;  // flat frozen -2 core, mass-independent
+  window.USER_DIRICHLET_EP = false; window.USER_CURV_REG = 0.0;
+  window.INIT_ZEFF = 1; window.CONVERGENCE_THRESHOLD = 0.01;
+  window.USER_BOND_PAIRS = [ [0,1,"core-P:"], [1,2,"P-P:"] ];
+  window.USER_REFERENCE = { energy: "alpha, frozen flat -2 core radius re="+re+"; charge continuity Z*u^2 -> 1?" };
+  window._re = re;
+})();
+window.onSweepDone = function (E) { window._Ef = Number(E); };
+// CHARGE-weighted continuity (Z*u^2) along +x toward proton 1
+function continuity() {
+  var sd = window._sliceData, S = window._sliceS; if (!sd || !S) return null;
+  var N2 = Math.floor(S/2), SS2 = S*S;
+  var packed = function(i){ return Math.round(sd[SS2 + i*S + N2]); };
+  var lab = function(i){ return packed(i) % 1000; };
+  var Zof = function(i){ return Math.floor(packed(i) / 1000); };
+  var chg = function(i){ return Zof(i) * sd[i*S + N2]; };   // charge density Z*u^2
+  var lab0 = lab(N2), bi = -1;
+  for (var i=N2+3; i<S; i++){ if (lab(i) !== lab0 && lab(i-1) !== lab0) { bi = i-1; break; } }
+  if (bi < 5) return null;
+  var eC = [chg(bi-4), chg(bi-3), chg(bi-2)].sort(function(a,b){return a-b;});
+  var de = eC[1];                              // -2 core charge plateau (median)
+  var dp = Math.max(chg(bi+1), chg(bi+2));     // proton charge just past the seam
+  var u2e = sd[(bi-3)*S + N2], u2p = Math.max(sd[(bi+1)*S+N2], sd[(bi+2)*S+N2]);
+  return { ratio: (dp>1e-12? de/dp : 0), u2ratio:(u2p>1e-12? u2e/u2p:0), de:de, dp:dp, bi:bi, rBnd:((bi-N2)*0.05).toFixed(3) };
+}
+var s=document.createElement('script'); s.src='molecule_nucleus.js?t='+Date.now();
+s.onload=function(){ var p=document.createElement('script'); p.src='https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js'; document.body.appendChild(p); };
+document.body.appendChild(s);
+setInterval(function(){
+  var c = continuity();
+  var e = (window._Ef!==undefined)? window._Ef.toFixed(3) : (window._prevE!==undefined? Number(window._prevE).toFixed(3) : '…');
+  var cs = c ? ('charge e/p=<b style="color:#ff0">'+c.ratio.toFixed(3)+'</b> (target 1) &nbsp; u&sup2; e/p=<b style="color:#0ff">'+c.u2ratio.toFixed(3)+'</b> (visual, target 0.5) &nbsp; bnd r='+c.rBnd) : 'continuity=…';
+  document.getElementById('stat').innerHTML = '<b>ALPHA CONTINUITY</b> &nbsp; frozen flat &minus;2 core r<sub>e</sub>=<b style="color:#0f0">'+window._re+'</b> &nbsp; '+cs+' &nbsp; E='+e+' &nbsp; frame='+(window.frameCount||0);
+  document.title = 'ACONT re='+window._re+' q_e/p='+(c?c.ratio.toFixed(3):'…');
+}, 500);
+</script>
+</body></html>

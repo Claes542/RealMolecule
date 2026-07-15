@@ -77,7 +77,7 @@ let E_min = Infinity;
 const PROTEIN_COUNT = window.USER_PROTEIN_COUNT || NELEC;  // atoms with force arrows
 let screenAu = window.USER_SCREEN || 10;
 let hGrid = screenAu / NN, h2v = hGrid * hGrid, h3v = hGrid * hGrid * hGrid;
-const dv = NELEC > 500 ? 0.01 : NELEC > 100 ? 0.03 : 0.12;  // smaller timestep for large systems
+const dv = window.USER_DV || (NELEC > 500 ? 0.01 : NELEC > 100 ? 0.03 : 0.12);  // smaller timestep for large systems (USER_DV: manual override, e.g. dv proportional to lightest mass for stability)
 let dtv = dv * h2v, half_dv = 0.5 * dv;
 const CANVAS_SIZE = window.USER_CANVAS || 700;
 const PX = CANVAS_SIZE / NN;
@@ -305,7 +305,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   // Full nuclear potential (all nuclei) minus other-electron repulsion (no self-repulsion)
   // ITP: kinetic + potential. PotherBuf has charge-weighted potential in NUCLEUS_MODE.
   let hd = p.half_d / atoms[myL].mass;
-  Uo[id] = uc + hd * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;
+  ${window.USER_FREEZE_ECORE ? 'if (atoms[myL].charge < 0.0) { Uo[id] = uc; return; }   // freeze: electron held rigid (constant-density sphere, mass-irrelevant)' : ''}
+  ${window.USER_IMPLICIT_E
+    ? 'Uo[id] = (uc * (1.0 + p.dt * (K[id] - 2.0 * Pi[id])) + hd * (lap + 6.0 * uc)) / (1.0 + 6.0 * hd);   // semi-implicit (implicit-kinetic backward-Euler Jacobi sweep): unconditionally stable, same fixed point as explicit'
+    : 'Uo[id] = uc + hd * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;'}
 }
 `;
 
@@ -390,6 +393,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let lap = u_ip + u_im + u_jp + u_jm + u_kp + u_km - 6.0 * uc;
 
   let hd = p.half_d / atoms[myL].mass;
+  ${window.USER_FREEZE_ECORE ? 'if (atoms[myL].charge < 0.0) { Uo[id] = uc; return; }   // freeze: electron held rigid (constant-density sphere)' : ''}
   let itpStep = uc + hd * lap + p.dt * (K[id] - 2.0 * Pi[id]) * uc;
 
   Uo[id] = cheb.omega * itpStep + (1.0 - cheb.omega) * Uprev[id];
@@ -1482,6 +1486,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   K[id] = Kval;
+  ${window.USER_CONFINE ? `{ // mild harmonic confinement: raise potential energy (-K) with r^2 from centre
+    let dcx=f32(i)-${(NN/2).toFixed(1)}; let dcy=f32(j)-${(NN/2).toFixed(1)}; let dcz=f32(kk)-${(NN/2).toFixed(1)};
+    K[id] = K[id] - ${Number(window.USER_CONFINE).toFixed(6)} * (dcx*dcx+dcy*dcy+dcz*dcz) * p.h2; }` : ''}
+  ${window.USER_JELLIUM_R ? `{ // uniform -Q electron background (jellium): monopole outside Rbg, harmonic well inside
+    let jdx=f32(i)-${(NN/2).toFixed(1)}; let jdy=f32(j)-${(NN/2).toFixed(1)}; let jdz=f32(kk)-${(NN/2).toFixed(1)};
+    let rj=sqrt(jdx*jdx+jdy*jdy+jdz*jdz)*p.h; let Rb=${Number(window.USER_JELLIUM_R).toFixed(4)}; let Qb=${Number(window.USER_JELLIUM_Q||2).toFixed(4)};
+    let vin = (3.0*Qb/(2.0*Rb)) - (Qb/(2.0*Rb*Rb*Rb))*rj*rj; let vout = Qb/max(rj,1e-4);
+    K[id] = K[id] + select(vout, vin, rj < Rb); }` : ''}
   ${NUCLEUS_MODE ? '// skip Voronoi bestU — shell split sets it below' : 'bestU[id] = bU;'}
 ${(function() {
     var sr = window.USER_SHELL_RADIUS;
@@ -1498,7 +1510,7 @@ ${(function() {
         var pick = `var bestZ${zi}: u32 = ${list[0]}u; var bestZ${zi}D: f32 = 1e10;
     ${list.map((idx, ai) => `{ let z${zi}_${ai}x = f32(i) - f32(atoms[${idx}u].posI); let z${zi}_${ai}y = f32(j) - f32(atoms[${idx}u].posJ); let z${zi}_${ai}z = f32(kk) - f32(atoms[${idx}u].posK); let z${zi}_${ai}d = sqrt(z${zi}_${ai}x*z${zi}_${ai}x+z${zi}_${ai}y*z${zi}_${ai}y+z${zi}_${ai}z*z${zi}_${ai}z); if (z${zi}_${ai}d < bestZ${zi}D) { bestZ${zi}D = z${zi}_${ai}d; bestZ${zi} = ${idx}u; } }`).join('\n    ')}
     label[id] = bestZ${zi};
-    bestU[id] = ${zi === 0 ? 'exp(rDist) - 1.0' : 'exp(-rDist)'};`;
+    bestU[id] = ${zi === 0 ? (window.USER_CONST_ECORE ? '1.0' : 'exp(rDist) - 1.0') : (window.USER_PROTON_INVR ? 'sqrt(1.0 / (rDist + 0.05))' : 'exp(-rDist)')};`;
         if (zi === 0) return `  if (rDist < ${z.rMax.toFixed(4)}) {\n    ${pick}\n  }`;
         if (zi === zones.length - 1) return ` else {\n    ${pick}\n  }`;
         return ` else if (rDist < ${z.rMax.toFixed(4)}) {\n    ${pick}\n  }`;
@@ -1634,6 +1646,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   let uc = Ui[id];
+  ${window.USER_FREEZE_ECORE ? `if (atoms[myL].charge < 0.0) { HU[id] = 0.0; return; }   // freeze electron core -> stays uniform (constant density)` : ''}
 
   // Neumann BC at domain boundaries and r_c surfaces
   let l_ip = label[id + p.S2]; let excl_ip = isInsideRc(i+1u, j, k, l_ip);
@@ -2252,6 +2265,7 @@ window.activateAtoms = async function(count) {
   nucVel = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
   nucForce = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
   nucPos = molNucPos.map(p => [...p]);
+  window._nucPos = nucPos;   // expose live nuclei positions for radius readout during dynamics
   updateParamsBuf();
   await uploadInitialData();
   tStep = 0;
@@ -3384,6 +3398,7 @@ async function doSteps(n) {
   await sliceReadBuf.mapAsync(GPUMapMode.READ);
   sliceData = new Float32Array(sliceReadBuf.getMappedRange().slice(0));
   sliceReadBuf.unmap();
+  window._sliceData = sliceData; window._sliceS = S;   // expose density(slot0)+label(slot1) slice for continuity readout
 
   tStep += n;
   lastMs = performance.now() - t0;
@@ -3905,6 +3920,7 @@ async function doLOBPCGStep() {
   await sliceReadBuf.mapAsync(GPUMapMode.READ);
   sliceData = new Float32Array(sliceReadBuf.getMappedRange().slice(0));
   sliceReadBuf.unmap();
+  window._sliceData = sliceData; window._sliceS = S;   // expose density(slot0)+label(slot1) slice for continuity readout
 
   tStep += LOBPCG_ITERS;
   lastMs = performance.now() - t0;

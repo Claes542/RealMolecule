@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="margin:0;background:#000;color:#ddd;font-family:monospace">
+<div id="stat" style="padding:10px 14px;font-size:14px;color:#80d8ff">initialising…</div>
+<div id="err" style="padding:4px 14px;color:#ff5252;font-size:12px"></div>
+<script>window.addEventListener('error',function(e){var d=document.getElementById('err');if(d)d.textContent='ERR: '+e.message+' @'+(e.lineno||'');});</script>
+<script>
+// FROZEN-FLAT CAGING TEST (deuteron 2p + 1e). The electron is held EXACTLY uniform
+// (USER_CONST_ECORE + USER_FREEZE_ECORE) and caged between two fixed protons. A flat cloud has
+// kinetic energy IDENTICALLY ZERO, so its binding is mass-independent BY CONSTRUCTION -- this reaches
+// the physical "target=1836" answer in one shot, with no blow-up and no slow relaxation (the electron
+// never evolves). Question: does the flat caged electron BIND the two protons? me=?me= only proves
+// the result is identical for any mass (kinetic never acts on a frozen flat core).
+(function() {
+  var me = parseFloat((new URLSearchParams(location.search)).get('me') || '1.0');
+  var gridN = 200, scr = 10, N2 = 100, h = scr / gridN, d = 0.6;   // protons at +/- d along x
+  var atoms = [
+    { i:N2, j:N2, k:N2, Z:1, el:'e' },                             // electron core (-1) at center
+    { i:Math.round(N2-d/h), j:N2, k:N2, Z:1, el:'P' },             // proton 1
+    { i:Math.round(N2+d/h), j:N2, k:N2, Z:1, el:'P' }              // proton 2
+  ];
+
+  window.USER_NUCLEUS_MODE = true; window.USER_NN = gridN; window.USER_ATOMS = atoms; window.USER_SCREEN = scr;
+  window.USER_STEPS = 400000; window.USER_DYNAMICS = false;         // fixed geometry
+  window.USER_Z=[1,1,1]; window.USER_Z_NUC=[0,0,0]; window.USER_RC=[0,0,0];
+  window.USER_MASS=[me,1,1];                                        // irrelevant: electron is frozen
+  window.USER_CHARGE=[-1,1,1];
+  window.USER_SHELL_RADIUS = 0.6;
+  window.USER_SHELL_ZONES = [ { rMax:0.6, atoms:[0] }, { rMax:1e9, atoms:[1,2] } ];
+  window.USER_CONST_ECORE = true; window.USER_FREEZE_ECORE = true;  // <-- electron held EXACTLY uniform (kinetic == 0)
+  window.USER_DIRICHLET_EP = false; window.USER_CURV_REG = 0.5;
+  window.INIT_ZEFF = 1; window.CONVERGENCE_THRESHOLD = 0.01;
+  window.USER_BOND_PAIRS = [ [0,1,"e-P:"], [1,2,"P-P:"] ];
+  window.USER_REFERENCE = { energy: "deuteron 2p+1e, FROZEN uniform electron, me="+me+"; does a flat caged core bind?" };
+  window._me = me;
+})();
+window.onSweepDone = function (E) { window._Ef = Number(E); document.title='DFROZ me='+window._me+' DONE E='+Number(E).toFixed(4); };
+var s=document.createElement('script'); s.src='molecule_nucleus.js?t='+Date.now();
+s.onload=function(){ var p=document.createElement('script'); p.src='https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js'; document.body.appendChild(p); };
+document.body.appendChild(s);
+setInterval(function(){
+  var e = (window._Ef!==undefined)? window._Ef.toFixed(4) : (window._prevE!==undefined? Number(window._prevE).toFixed(4) : '…');
+  document.getElementById('stat').innerHTML = '<b>DEUTERON FROZEN-FLAT CAGE</b> &nbsp; (m<sub>e</sub>=<b style="color:#ff0">'+window._me+'</b>, irrelevant) &nbsp; E=<b style="color:#0f0">'+e+'</b> &nbsp; conv='+(window._convCount||0)+' frame='+(window.frameCount||0);
+  document.title = 'DFROZ me='+window._me+' E='+e;
+}, 400);
+</script>
+</body></html>

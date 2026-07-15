@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="margin:0;background:#000;color:#ddd;font-family:monospace">
+<div id="stat" style="padding:10px 14px;font-size:14px;color:#80d8ff">initialising…</div>
+<div id="err" style="padding:4px 14px;color:#ff5252;font-size:12px"></div>
+<script>window.addEventListener('error',function(e){var d=document.getElementById('err');if(d)d.textContent='ERR: '+e.message+' @'+(e.lineno||'');});</script>
+<script>
+// CHARGE-CONTINUITY RADIUS SWEEP (deuteron 2p + 1e). Frozen UNIFORM electron of radius ?re= caged by
+// two fixed protons. The DECISIVE condition is charge continuity, not energy: at which electron radius
+// does the flat core's density MATCH the proton density at the interface (ratio -> 1)? That radius is
+// the natural, MASS-INDEPENDENT caging size (continuity contains no mass). curvReg=0 (curvature term
+// breaks continuity). Read: rho_e/rho_p at the electron->proton boundary along +x.
+(function() {
+  var re = parseFloat((new URLSearchParams(location.search)).get('re') || '0.8');
+  var gridN = 200, scr = 10, N2 = 100, h = scr / gridN, d = 1.0;   // protons fixed at +/- d (WIDE cage, clean seam)
+  var atoms = [
+    { i:N2, j:N2, k:N2, Z:1, el:'e' },
+    { i:Math.round(N2-d/h), j:N2, k:N2, Z:1, el:'P' },
+    { i:Math.round(N2+d/h), j:N2, k:N2, Z:1, el:'P' }
+  ];
+  window.USER_NUCLEUS_MODE = true; window.USER_NN = gridN; window.USER_ATOMS = atoms; window.USER_SCREEN = scr;
+  window.USER_STEPS = 400000; window.USER_DYNAMICS = false;
+  window.USER_Z=[1,1,1]; window.USER_Z_NUC=[0,0,0]; window.USER_RC=[0,0,0]; window.USER_MASS=[1,1,1];
+  window.USER_CHARGE=[-1,1,1];
+  window.USER_SHELL_RADIUS = re;
+  window.USER_SHELL_ZONES = [ { rMax:re, atoms:[0] }, { rMax:1e9, atoms:[1,2] } ];
+  window.USER_CONST_ECORE = true; window.USER_FREEZE_ECORE = true;  // flat frozen electron, mass-independent
+  window.USER_DIRICHLET_EP = false; window.USER_CURV_REG = 0.0;     // curvReg=0: does NOT break continuity
+  window.INIT_ZEFF = 1; window.CONVERGENCE_THRESHOLD = 0.01;
+  window.USER_BOND_PAIRS = [ [0,1,"e-P:"], [1,2,"P-P:"] ];
+  window.USER_REFERENCE = { energy: "deuteron, frozen flat e radius re="+re+"; measure charge continuity rho_e/rho_p" };
+  window._re = re;
+})();
+window.onSweepDone = function (E) { window._Ef = Number(E); };
+// read charge continuity from the exposed slice: rho_e/rho_p at the electron->proton boundary along +x
+function continuity() {
+  var sd = window._sliceData, S = window._sliceS; if (!sd || !S) return null;
+  var N2 = Math.floor(S/2), SS2 = S*S;
+  var lab = function(i){ return Math.round(sd[SS2 + i*S + N2]) % 1000; };
+  var den = function(i){ return sd[i*S + N2]; };
+  var lab0 = lab(N2), bi = -1;
+  for (var i=N2+3; i<S; i++){ if (lab(i) !== lab0 && lab(i-1) !== lab0) { bi = i-1; break; } }  // stable label change
+  if (bi < 4) return null;
+  // electron plateau: median of a few cells well inside; proton: value a couple cells past the seam
+  var eCells = [den(bi-4), den(bi-3), den(bi-2)].sort(function(a,b){return a-b;});
+  var de = eCells[1];                          // median electron plateau (flat, avoids transition)
+  var dp = Math.max(den(bi+1), den(bi+2));     // proton just past the seam (avoids transition cell)
+  var deEdge = den(bi-1), dpEdge = den(bi+1);
+  return { ratio: (dp>1e-12? de/dp : 0), de:de, dp:dp, bi:bi, rBnd:((bi-N2)*0.05).toFixed(3),
+           edge:(dpEdge>1e-12? deEdge/dpEdge : 0) };
+}
+var s=document.createElement('script'); s.src='molecule_nucleus.js?t='+Date.now();
+s.onload=function(){ var p=document.createElement('script'); p.src='https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js'; document.body.appendChild(p); };
+document.body.appendChild(s);
+setInterval(function(){
+  var c = continuity();
+  var e = (window._Ef!==undefined)? window._Ef.toFixed(3) : (window._prevE!==undefined? Number(window._prevE).toFixed(3) : '…');
+  var cs = c ? ('rho_e/rho_p=<b style="color:#ff0">'+c.ratio.toFixed(3)+'</b> (rho_e='+c.de.toExponential(2)+', rho_p='+c.dp.toExponential(2)+', bnd r='+c.rBnd+')') : 'continuity=…';
+  document.getElementById('stat').innerHTML = '<b>DEUTERON CONTINUITY</b> &nbsp; frozen flat e r<sub>e</sub>=<b style="color:#0ff">'+window._re+'</b> &nbsp; '+cs+' &nbsp; E='+e+' &nbsp; frame='+(window.frameCount||0);
+  document.title = 'DCONT re='+window._re+' ratio='+(c?c.ratio.toFixed(3):'…');
+}, 500);
+</script>
+</body></html>
