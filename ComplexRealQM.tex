@@ -1,0 +1,224 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{authblk}
+\usepackage[margin=1in]{geometry}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xurl}
+\usepackage{setspace}
+
+\title{Complex Time-Dependent RealQM:\\
+Currents, Radiation, and Magnetism from the Real-Space Continuum}
+\author[1]{Claes Johnson}
+\affil[1]{KTH Royal Institute of Technology, SE-100 44 Stockholm, Sweden \\
+\texttt{claesjohnson@gmail.com}}
+\date{\today \\[0.4em]
+\small\textit{Argument and formulation by the author; drafting and computation prepared with AI assistance (Claude, Anthropic), reviewed and verified by the author.}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+RealQM in its established form is a \emph{real-valued}, \emph{parabolic} theory: electrons are
+real-valued charge densities $\psi_i:\mathbb R^3\to\mathbb R$ on non-overlapping domains, and ground
+states are found by imaginary-time (gradient-flow) relaxation of the Coulomb energy. This form is
+validated across chemistry, but it produces no electric \emph{current} --- a real wavefunction has
+$\mathbf J=\frac{\hbar}{m}\mathrm{Im}(\psi^*\nabla\psi)\equiv 0$ --- and therefore no radiation currents,
+no magnetic moments, and no spin observables; the base theory itself flags these as requiring a separate
+extension. Here we formulate that extension: a \emph{complex}, \emph{unitary}, time-dependent RealQM,
+$i\hbar\,\partial_t\psi_i = \mathcal H_i\psi_i$ on each domain, carrying a well-defined charge current,
+alongside the existing parabolic relaxation. We show that the free-boundary (Bernoulli / zero-flux)
+condition that already defines the domains \emph{automatically} makes the unitary evolution
+charge-conserving on each domain, so the extension respects the multiphase structure with no new
+assumption. Two kinds of motion then generate the electromagnetic observables the real theory cannot:
+\emph{oscillation} (a superposition of states, a time-varying density) sources dipole radiation, and
+\emph{circulation} (a spatial phase winding, a standing current) gives a magnetic moment
+$\boldsymbol\mu=\tfrac12\int\mathbf r\times\mathbf J$. Ground states are real, hence currentless, hence
+carry no moment --- which is why RealQM's flat confined electron has none --- while excited or winding
+states carry both. We are explicit that this is a proposed formulation, consistent with but extending the
+validated real theory: the ground-state energetics are unchanged; the current-bearing dynamics, and its
+use for the free electron's own moment and for spin, are new and open.
+
+\medskip
+\noindent\textbf{Keywords:} RealQM; time-dependent; complex wavefunction; charge current; free boundary;
+radiation; magnetic moment; spin; parabolic vs unitary.
+\end{abstract}
+
+\setstretch{1.12}
+
+\section{Why an extension is needed}
+\label{sec:why}
+
+RealQM \cite{RealQM} represents the $N$ electrons of an atom or molecule by real-valued one-electron wave
+functions $\psi_i:\mathbb R^3\to\mathbb R$ supported on non-overlapping domains $\Omega_i$ with free
+(Bernoulli) boundaries, and finds the ground state by minimising the Coulomb energy
+\begin{equation}
+E \;=\; \sum_i \tfrac12\!\int_{\Omega_i}|\nabla\psi_i|^2
+\;+\; \tfrac12\!\iint\frac{\rho(\mathbf x)\rho(\mathbf y)}{|\mathbf x-\mathbf y|}\,d\mathbf x\,d\mathbf y,
+\qquad \rho=\sum_i q_i\,\psi_i^2 ,
+\label{eq:E}
+\end{equation}
+via imaginary-time relaxation $\dot\psi_i + \mathcal H_i\psi_i = 0$, a structurally \emph{parabolic}
+(dissipative) flow toward the lowest state. This is the validated core, and it is deliberately real.
+
+A real wavefunction, however, carries \emph{no current}: with $\psi_i$ real,
+$\mathrm{Im}(\psi_i^*\nabla\psi_i)=0$. So the base theory cannot express any observable that is built from
+charge \emph{in motion} --- dipole radiation, magnetic moments, magnetic susceptibility, NMR shifts,
+hyperfine structure. RealQM says as much of itself, flagging these as outside its current form and
+requiring ``a separate extension.'' This note writes that extension down.
+
+The guiding principle is minimal: keep the domains, the Coulomb energy \eqref{eq:E}, and the free-boundary
+condition exactly as they are, and add only what is needed for motion --- a \emph{complex} phase and a
+\emph{unitary} time law that carries it.
+
+\section{The complex time-dependent formulation}
+\label{sec:form}
+
+Let each electron wave function now be complex and time-dependent,
+$\psi_i:\Omega_i\times\mathbb R\to\mathbb C$, with charge density and charge current
+\begin{equation}
+\rho_i = q_i\,|\psi_i|^2, \qquad
+\mathbf J_i = q_i\,\frac{\hbar}{m_i}\,\mathrm{Im}\!\left(\psi_i^*\nabla\psi_i\right),
+\qquad \rho=\sum_i\rho_i,\ \ \mathbf J=\sum_i\mathbf J_i .
+\label{eq:rhoJ}
+\end{equation}
+The evolution is \emph{unitary} on each domain,
+\begin{equation}
+i\hbar\,\partial_t\psi_i \;=\; \mathcal H_i\,\psi_i,
+\qquad
+\mathcal H_i = -\frac{\hbar^2}{2m_i}\nabla^2 + V_i ,
+\label{eq:tdse}
+\end{equation}
+with $V_i$ the same real (kernel plus inter-domain Hartree) potential as in the ground-state problem,
+$V_i(\mathbf x)=W(\mathbf x)+\sum_{j\ne i}\int q_j|\psi_j|^2/|\mathbf x-\mathbf y|\,d\mathbf y$. The free
+boundary carries the \emph{same} Bernoulli condition as before,
+\begin{equation}
+\frac{\partial\psi_i}{\partial n}=0 \quad\text{on }\Gamma_i=\partial\Omega_i .
+\label{eq:neumann}
+\end{equation}
+
+\paragraph{The free boundary conserves charge automatically.} Equations \eqref{eq:tdse}--\eqref{eq:neumann}
+have a property that makes the extension consistent with the multiphase structure without any new
+assumption. From \eqref{eq:tdse} with real $V_i$ follows the continuity equation
+\begin{equation}
+\partial_t\rho_i + \nabla\!\cdot\!\mathbf J_i = 0 \quad\text{in }\Omega_i .
+\label{eq:cont}
+\end{equation}
+Integrating over $\Omega_i$ and using the divergence theorem, the rate of change of the charge on domain
+$i$ is the flux through its boundary,
+$\dot Q_i = -\oint_{\Gamma_i}\mathbf J_i\!\cdot\!\mathbf n\,dS$. But the normal current is
+$\mathbf J_i\!\cdot\!\mathbf n = q_i(\hbar/m_i)\,\mathrm{Im}(\psi_i^*\,\partial_n\psi_i)$, and the Bernoulli
+condition \eqref{eq:neumann} sets $\partial_n\psi_i=0$, so
+\begin{equation}
+\mathbf J_i\!\cdot\!\mathbf n = 0 \ \text{on }\Gamma_i
+\qquad\Longrightarrow\qquad \dot Q_i = 0 .
+\label{eq:noflux}
+\end{equation}
+\textbf{Each electron keeps its unit charge under the unitary evolution}, because the very boundary
+condition that defines the RealQM domains is also a zero-current (no-leak) condition. The free boundary,
+introduced for the statics, is exactly what the complex dynamics needs to remain a clean $N$-electron
+partition. (For small-amplitude motion the domains may be held fixed at their ground-state shape; for
+large-amplitude dynamics the boundary co-evolves, a harder problem noted in \S\ref{sec:open}.)
+
+\paragraph{Relation to the parabolic form.} The two dynamics are the same operator under
+$\tau=it$: the parabolic relaxation $\dot\psi_i=-\mathcal H_i\psi_i$ drives $\psi_i$ to the real ground
+state (imaginary time), while the unitary law \eqref{eq:tdse} carries the complex phase (real time).
+\emph{Relaxation finds the state; unitary evolution carries the current.} A system prepared in its ground
+state and left alone has real $\psi_i$, hence $\mathbf J=0$: no radiation, no moment, at rest --- as it
+should be.
+
+\section{The electromagnetic observables the real theory could not give}
+\label{sec:obs}
+
+With a current in hand, the observables follow by the classical (Schr\"odinger--Maxwell) reading: the
+charge density and current $\rho,\mathbf J$ source the electromagnetic field, and every electromagnetic
+observable is a functional of them. Two distinct motions matter.
+
+\paragraph{Oscillation $\Rightarrow$ radiation.} A superposition of two stationary states,
+$\psi_i = a\,\phi_1 e^{-iE_1t/\hbar}+b\,\phi_2 e^{-iE_2t/\hbar}$, has a density that beats at
+$\omega=(E_2-E_1)/\hbar$ and an oscillating dipole $\mathbf d(t)=\int\mathbf x\,\rho\,d\mathbf x$, which
+radiates at $\omega$ by the Larmor formula. This is the charge ``oscillating between two states'' of the
+matter--radiation picture, now with a definite current behind it.
+
+\paragraph{Circulation $\Rightarrow$ magnetic moment.} A stationary state with a \emph{spatial phase
+winding}, $\psi_i = R(\mathbf x)\,e^{im\phi}$ about an axis, carries a standing azimuthal current and a
+magnetic moment
+\begin{equation}
+\boldsymbol\mu \;=\; \tfrac12\!\int \mathbf r\times\mathbf J\,d^3x ,
+\qquad \mu_z = -\,m\,\mu_B \quad(\text{for a normalised electron density}),
+\label{eq:mu}
+\end{equation}
+the moment being quantised in the winding number $m$ and independent of the density's shape. A real
+($m=0$) density gives $\mu=0$. This is the magnetostatic partner of the oscillation: charge going in
+circles rather than back and forth.
+
+\paragraph{Why the confined electron has no moment.} The two facts combine into the result of the
+companion note \cite{NuclearMoment}: RealQM computes the deuteron's caged electron as a \emph{flat, real}
+density --- the $m=0$, currentless case --- so it carries no magnetic moment, and nuclear moments come out
+at nuclear-magneton scale. That result lives already in the \emph{real} theory ($\psi$ real $\Rightarrow$
+$\mathbf J=0$); the present extension is what would be needed for the \emph{nonzero} moments (the free
+electron's own $\mu_B$, the neutron's residual), which require a genuine current.
+
+\section{Spin as a further structure}
+\label{sec:spin}
+
+Spin is not a primary variable of RealQM; Pauli exclusion is realised geometrically by non-overlap. The
+natural place for spin in the complex extension is an \emph{internal circulation}: the free electron's
+$\mu_B$ cannot be an ordinary orbital winding (the free/atomic ground state is real, $m=0$, with zero
+orbital moment), so if it is a current at all it is a Compton-scale internal circulation --- the
+Zitterbewegung structure --- carrying angular momentum $\hbar/2$ and moment $\sim\mu_B$. Equivalently, one
+may add the $\pm\tfrac12$ domain label the base theory suggests, with its flux balance entering the
+magnetic field. Either route is a genuine addition beyond \eqref{eq:tdse}; we flag it, and the anomalous
+$g/2=1.00116\ldots$, as open (\S\ref{sec:open}) rather than claim them here.
+
+\section{What is proposed, what is validated, what is open}
+\label{sec:open}
+
+\emph{Validated (unchanged):} the real, parabolic ground-state RealQM and all its chemistry --- energies,
+geometries, reactions, condensed phases --- are untouched. The extension reduces to it exactly for a
+system at rest (real $\psi$, $\mathbf J=0$).
+
+\emph{Proposed here:} the complex, unitary, time-dependent law \eqref{eq:tdse} on the RealQM domains, its
+current \eqref{eq:rhoJ}, and the observation \eqref{eq:noflux} that the Bernoulli free boundary makes it
+charge-conserving per domain. This gives radiation and (orbital) magnetic moments a first-principles home
+in the real-space continuum.
+
+\emph{Open:}
+\begin{itemize}
+\item \textbf{The moving free boundary.} For large-amplitude dynamics the domains $\Omega_i$ should
+co-evolve with the $\psi_i$; the well-posedness of the coupled complex-field / free-boundary problem is a
+genuine mathematical question. The fixed-domain version is the clean small-amplitude case.
+\item \textbf{The free electron's $\mu_B$ and spin.} These require the Compton-scale internal circulation
+of \S\ref{sec:spin}, not the atomic-scale winding \eqref{eq:mu}; they are not delivered by
+\eqref{eq:tdse} alone.
+\item \textbf{The anomalous moment.} $g/2 = 1.00116\ldots$ (QED's most precise number) would be the sharp
+test of any current-based account of the electron moment, and is untouched here.
+\item \textbf{Numerics.} Implementing \eqref{eq:tdse} (two real fields per domain, a norm-preserving
+staggered-leapfrog step, the current \eqref{eq:rhoJ}) on top of the existing solver is the computational
+next step, and the vehicle for the free-vs-caged moment test.
+\end{itemize}
+
+\section{Conclusion}
+\label{sec:concl}
+
+RealQM was built real and parabolic, and is validated there; but charge in motion --- radiation,
+magnetism, spin --- lives only in a complex, unitary, time-dependent form, which the base theory itself
+marks as missing. The extension is minimal: the same domains, the same Coulomb energy, the same Bernoulli
+boundary, now with a complex phase evolved by $i\hbar\dot\psi_i=\mathcal H_i\psi_i$. The free boundary
+turns out to be exactly the zero-current condition that keeps the evolution a clean $N$-electron
+partition, so nothing new must be assumed. Oscillation then gives radiation and circulation gives a
+magnetic moment, while the real ground state --- currentless --- gives neither, which is why the flat
+confined electron carries no moment. What remains open, honestly, is the free electron's own $\mu_B$ at
+the Compton scale, the anomalous $g$-factor, the moving-boundary dynamics, and the numerics --- but the
+formulation on which all of these can now be posed is in place.
+
+\begin{thebibliography}{9}
+\bibitem{RealQM} C.~Johnson, \emph{Real Quantum Mechanics as Multiphase 3D Continuum Mechanics},
+manuscript, 2026; \url{https://claes542.github.io/RealMolecule/gallery.html}.
+\bibitem{NuclearMoment} C.~Johnson, \emph{Magnetism as Circulating Charge: Why the Nuclear Electron
+Carries No Magnetic Moment}, 2026 (companion note).
+\end{thebibliography}
+
+\end{document}
