@@ -129,3 +129,22 @@ The caged winding is unaffordable by ~$10^4$, so the electron is locked in $m=0$
 9.5 GeV is a harmonic-vs-Gaussian O(1) model factor; the ~$10^4$ margin is robust.) The free ground state
 is still $m=0$: this proves the caged side, and does not manufacture the free electron's $\mu_B$, which is
 intrinsic / Compton-scale.
+
+---
+
+## Magnetic-field response — run (Zeeman, circulating density reacts to B)
+
+`bfield_zeeman_prototype.py` adds the vector potential by minimal coupling
+$\mathbf p\to\mathbf p-q\mathbf A$ (uniform $B$ along $z$, $\mathbf A=\tfrac{B}{2}(-y,x)$) and evaluates
+the energy of the circulating $m=\pm1$ states vs the non-circulating $m=0$ state:
+
+| $B$ | $E(+1)-E(-1)$ | $2\mu_B B$ |
+|---|---|---|
+| 0.05 | +0.0499 | 0.0500 |
+| 0.10 | +0.0999 | 0.1000 |
+| 0.20 | +0.1998 | 0.2000 |
+
+The circulating states shift **linearly** (Zeeman $-\boldsymbol\mu\cdot\mathbf B$, moment $\pm\mu_B$, split
+$=2\mu_B B$ to four digits); the $m=0$ state barely moves (only weak diamagnetic $B^2$). So a RealQM
+circulating charge density genuinely **reacts to a magnetic field** — orbital ($g=1$) magnetism, computed,
+no spin. The two-valued ($g=2$, spin) response remains the residue (`SpinorResidue.tex`).
