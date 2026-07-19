@@ -1,0 +1,281 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{authblk}
+\usepackage[margin=1in]{geometry}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xurl}
+\usepackage{setspace}
+
+\title{Magnetism in RealQM:\\
+Currents, the Nuclear Electron, and the Spin Residue}
+\author[1]{Claes Johnson}
+\affil[1]{KTH Royal Institute of Technology, SE-100 44 Stockholm, Sweden \\
+\texttt{claesjohnson@gmail.com}}
+\date{\today \\[0.4em]
+\small\textit{Argument and claims by the author; drafting and computation prepared with AI assistance (Claude, Anthropic), reviewed and verified by the author.}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+RealQM reformulates quantum mechanics as multiphase continuum mechanics in real three-dimensional space:
+electrons are real-valued charge densities on non-overlapping domains with free boundaries, ground states
+minimising the Coulomb energy. In that form the theory is deliberately real, and produces no electric
+current --- a real wavefunction has $\mathbf J=\frac{q}{m}\,\mathrm{Im}(\psi^*\nabla\psi)\equiv 0$ --- so
+magnetism is absent by construction. We develop magnetism as a minimal, current-bearing extension and
+follow it, honestly, to where it stops. Four results and one boundary. \emph{(1)}~A complex,
+unitary, time-dependent RealQM on the same domains carries a well-defined charge current; the Bernoulli
+free boundary automatically conserves charge per domain, so nothing new must be assumed, and the Madelung
+hydrodynamic reading becomes a physical flow in real 3D space for any number of electrons. \emph{(2)}~A
+circulating charge density carries a magnetic moment $\mu_z=-m\mu_B$, quantised by the winding number
+(gyromagnetic $g=1$), and reacts correctly to a field: a numerical solver conserves norm and reproduces
+the Zeeman splitting $2\mu_B B$ to four digits. \emph{(3)}~The electron confined in a nucleus is computed
+as a \emph{flat, real} density, hence currentless, hence carries \emph{no} moment --- so nuclear moments
+come out at nuclear-magneton rather than Bohr-magneton scale, dissolving the classical magnetic-moment
+objection to nuclear electrons; the same flatness that makes the electron's mass irrelevant makes its
+moment vanish. \emph{(4)}~A single-electron spinor structure delivers $g=2$: from
+$(\boldsymbol\sigma\cdot\mathbf D)^2=\mathbf D^2-q\,\boldsymbol\sigma\cdot\mathbf B$ (verified
+numerically) the $g=2$ term \emph{emerges}, and an $L=0$ electron splits into two levels with no middle
+--- Stern--Gerlach --- non-relativistically. \emph{The boundary:} the many-electron extension fails.
+A closed shell comes out paramagnetic, not diamagnetic; forcing the spins antiparallel geometrically
+costs energy (a spinor domain wall), so geometry favours parallel. Closed-shell diamagnetism, and
+ferromagnetism, require an exchange term that geometric non-overlap does not supply. The precise
+statement earned is that RealQM's non-overlap reproduces the \emph{spatial} consequences of antisymmetry
+but not its \emph{spin} consequences: single-particle magnetism is delivered; collective magnetism is not.
+\end{abstract}
+
+\medskip
+\noindent\textbf{Keywords:} RealQM; magnetism; charge current; magnetic moment; nuclear electron; $g=2$;
+Stern--Gerlach; exchange; closed shell; spinor.
+
+\setstretch{1.08}
+
+\section{Introduction}
+\label{sec:intro}
+
+RealQM~\cite{RealQM} represents the $N$ electrons of an atom or molecule by real-valued one-electron
+functions $\psi_i:\mathbb R^3\to\mathbb R$ on non-overlapping domains $\Omega_i$ with free (Bernoulli)
+boundaries, the ground state minimising the Coulomb energy
+\begin{equation}
+E=\sum_i\tfrac12\!\int_{\Omega_i}|\nabla\psi_i|^2
++\tfrac12\!\iint\frac{\rho(\mathbf x)\rho(\mathbf y)}{|\mathbf x-\mathbf y|}\,d\mathbf x\,d\mathbf y,
+\qquad \rho=\sum_i q_i\psi_i^2,
+\label{eq:E}
+\end{equation}
+found by imaginary-time (parabolic) relaxation. This form is validated across chemistry, but it is
+deliberately real, and a real wavefunction carries no current: with $\psi_i$ real,
+$\mathrm{Im}(\psi_i^*\nabla\psi_i)=0$. Magnetism --- radiation, moments, susceptibility --- is charge in
+motion, and is therefore absent from the base theory by construction.
+
+This paper builds magnetism as a minimal extension and reports, without embellishment, both what it
+delivers and where it stops. Sections~\ref{sec:complex}--\ref{sec:spinor} give four results: the
+current-bearing formulation, orbital magnetism and its field response, the vanishing moment of the
+nuclear electron, and the single-electron $g=2$. Section~\ref{sec:limit} gives the boundary: the
+many-electron (closed-shell) extension fails, and we state precisely why. Throughout we set $\hbar=1$ in
+formulae; masses $m_i$ and charges $q_i=\pm1$ are kept explicit. Numerical claims are from small,
+self-contained solvers documented with the source.
+
+\section{A current-bearing RealQM}
+\label{sec:complex}
+
+Let each electron function now be complex and time-dependent, $\psi_i:\Omega_i\times\mathbb R\to\mathbb C$,
+with charge density and current
+\begin{equation}
+\rho_i=q_i|\psi_i|^2,\qquad
+\mathbf J_i=\frac{q_i}{m_i}\,\mathrm{Im}(\psi_i^*\nabla\psi_i)=\rho_i\mathbf v_i,\quad
+\mathbf v_i=\frac{\nabla S_i}{m_i},
+\label{eq:J}
+\end{equation}
+the last form (writing $\psi_i=R_i e^{iS_i}$) being the Madelung reading: current is charge density times
+a velocity set by the phase gradient. The evolution is unitary on each domain,
+\begin{equation}
+i\,\partial_t\psi_i=\mathcal H_i\psi_i,\qquad
+\mathcal H_i=-\frac{1}{2m_i}\nabla^2+V_i,
+\label{eq:tdse}
+\end{equation}
+with $V_i$ the same real (kernel plus inter-domain Hartree) potential as in the ground-state problem, and
+the free boundary carrying the \emph{same} Bernoulli condition $\partial_n\psi_i=0$ on $\Gamma_i$.
+
+\paragraph{The free boundary conserves charge.} From \eqref{eq:tdse} with real $V_i$ follows continuity,
+$\partial_t\rho_i+\nabla\!\cdot\!\mathbf J_i=0$. The rate of change of charge on $\Omega_i$ is the boundary
+flux $-\oint_{\Gamma_i}\mathbf J_i\!\cdot\!\mathbf n$, and the normal current is
+$\mathbf J_i\!\cdot\!\mathbf n=(q_i/m_i)\,\mathrm{Im}(\psi_i^*\partial_n\psi_i)$, which the Bernoulli
+condition $\partial_n\psi_i=0$ sets to zero. Hence $\dot Q_i=0$: \emph{each electron keeps its unit charge
+under the unitary evolution}, because the boundary that defines the RealQM domains is also a no-leak
+condition. The static free boundary is exactly what the dynamics needs.
+
+\paragraph{Madelung, physical in 3D.} Equations \eqref{eq:J} are the standard quantum probability current
+and the Madelung (1927) hydrodynamic reading. In standard quantum mechanics this reading is physical only
+for one particle; for $N$ electrons the fluid lives on $3N$-dimensional configuration space. Because
+RealQM keeps every $\psi_i$ in real $\mathbb R^3$, each $(\rho_i,\mathbf v_i,\mathbf J_i)$ is a genuine
+three-dimensional density, velocity and current --- one physical charge fluid per electron. RealQM thus
+gives the Madelung flow physical existence in real space for any $N$ (with the caveat that this is
+RealQM's own fluid, non-overlap standing in for antisymmetry, not a projection of the standard
+configuration-space object).
+
+\paragraph{Implementation.} The dynamics is implemented in Cartesian form $\psi_i=u_i+iv_i$, evolved by
+the coupled leapfrog $\partial_t u_i=\mathcal H_i v_i$, $\partial_t v_i=-\mathcal H_i u_i$ (Visscher
+staggered, norm-preserving to $O(\Delta t^2)$). The polar form $R_i e^{iS_i}$ is avoided: it is singular
+at nodes ($S_i$ undefined, $\mathbf v_i$ divergent where $R_i\to0$) --- exactly the axis of a winding
+state --- whereas $(u_i,v_i)$ is smooth through nodes and linear.
+
+\section{Orbital magnetism and its response to a field}
+\label{sec:orbital}
+
+A stationary state with a spatial phase winding, $\psi=R(\mathbf x)e^{im\phi}$, carries an azimuthal
+current and a magnetic moment
+\begin{equation}
+\boldsymbol\mu=\tfrac12\!\int\mathbf r\times\mathbf J\,d^3x,\qquad \mu_z=-m\,\mu_B,
+\label{eq:mu}
+\end{equation}
+quantised in the winding number and \emph{independent of the density's shape}: the moment-arm ($\propto s$)
+and the winding velocity ($\propto 1/s$) cancel, which is the gyromagnetic relation
+$\boldsymbol\mu=(q/2m)\mathbf L$ with $L_z=m$ fixed topologically by single-valuedness of $e^{im\phi}$.
+This has gyromagnetic factor $g=1$.
+
+\paragraph{Numerical validation.} A Cartesian $(u,v)$ leapfrog for one electron in a 2D harmonic well,
+initialised in the $m=1$ winding state $\psi=(x+iy)e^{-r^2/2}$, conserves norm to $1.000000$ and holds
+$\mu_z/\mu_B=-1.00$ (grid value $-0.997$) stable over $4000$ steps. The circulating density is genuine.
+
+\paragraph{Reaction to a magnetic field.} Adding the field by minimal coupling
+$\mathbf p\to\mathbf p-q\mathbf A$ (uniform $B$ along $z$, $\mathbf A=\tfrac{B}{2}(-y,x)$) and evaluating
+the energy of the $m=\pm1$ states gives the Zeeman response (Table~\ref{tab:zeeman}): the circulating
+states shift linearly, splitting $E(+1)-E(-1)=2\mu_B B$ to four digits, while the non-circulating $m=0$
+state barely moves (weak diamagnetism only). So a RealQM circulating charge density reacts to a field
+exactly as a moment $\pm\mu_B$ should --- ordinary orbital magnetism, from a charge density in real space,
+no spin invoked.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{cccc}
+\toprule
+$B$ & $E(m{=}0)$ & $E(+1)-E(-1)$ & $2\mu_B B$ \\
+\midrule
+$0.05$ & $0.999$ & $+0.0499$ & $0.0500$ \\
+$0.10$ & $1.000$ & $+0.0999$ & $0.1000$ \\
+$0.20$ & $1.004$ & $+0.1998$ & $0.2000$ \\
+\bottomrule
+\end{tabular}
+\caption{Zeeman response of the circulating density (minimal coupling). The $m=\pm1$ splitting matches
+$2\mu_B B$; the $m=0$ (non-circulating) state is inert to linear order.}
+\label{tab:zeeman}
+\end{table}
+
+\section{The nuclear electron carries no moment}
+\label{sec:nuclear}
+
+The classical objection that retired the proton--electron nucleus in 1932 was magnetic: an electron
+confined inside a nucleus should carry a moment of order $\mu_B=1836\,\mu_N$, whereas nuclear moments (the
+neutron's $-1.913\,\mu_N$ included) are of order $\mu_N$ --- a thousandfold too small. In a charge-density
+theory the moment is the current's \eqref{eq:mu}, and a real density has $\mathbf J=0$. RealNucleus
+computes the deuteron's confined electron as a \emph{flat, real, node-less} density~\cite{RealNucleus};
+it is the $m=0$, currentless case, and carries \emph{no} magnetic moment. Nuclear moments are then set by
+the protons and come out at $\mu_N$ scale. The thousandfold overshoot does not occur, because in a
+charge-density theory there is no intrinsic moment to carry --- only the current, and the flat electron's
+current is zero.
+
+\paragraph{Energetics, and one flatness for two objections.} A winding at confinement scale $\sigma$ costs
+$\Delta T=\tfrac{\hbar^2}{2m_e}m^2\langle1/s^2\rangle\approx\mathrm{Ry}\,(a_0/\sigma)^2$: about one Rydberg
+($27$~eV) for a free electron ($\sigma\sim a_0$) but $\sim$GeV for a femtometre-caged one --- thousands of
+times the deuteron binding, so the caged electron cannot afford a winding and settles at $m=0$. A radial
+relaxation confirms this self-consistently. And the point is the \emph{same} flatness that was introduced
+to make the electron's \emph{mass} irrelevant to nuclear binding (a flat density has vanishing kinetic
+gradient): that flatness, being real and currentless, makes the \emph{magnetic moment} vanish too. Two
+of the classical objections to nuclear electrons --- confinement energy and magnetic moment --- are
+answered by one property of the confined-electron solution.
+
+\section{Single-electron spin: $g=2$ from a spinor structure}
+\label{sec:spinor}
+
+Orbital circulation gives $g=1$; the electron's spin moment has $g=2$ (a spin of $\hbar/2$ yields a full
+$\mu_B$), and the two-valued Stern--Gerlach response is not orbital at all. This is not a demand for
+relativity. By Lévy-Leblond~\cite{LevyLeblond}, $g=2$ follows from a first-order, \emph{non-relativistic}
+spinor equation. Equipping the domains with a two-component spinor and the linearised structure
+$(\boldsymbol\sigma\cdot\mathbf D)$, $\mathbf D=\mathbf p-q\mathbf A$, the operator identity
+\begin{equation}
+(\boldsymbol\sigma\cdot\mathbf D)^2=\mathbf D^2\,\mathbb 1-q\,\boldsymbol\sigma\cdot\mathbf B
+\label{eq:pauli}
+\end{equation}
+holds (verified numerically to grid accuracy, residual $\sim10^{-3}$), so the $g=2$ Zeeman term
+$-q\,\boldsymbol\sigma\cdot\mathbf B$ \emph{emerges} from squaring $\boldsymbol\sigma\cdot\mathbf p$ --- it
+is not inserted. Consequently an $L=0$ (orbitally inert) electron --- the state a scalar density leaves
+undeflected --- splits under the spinor into \emph{two} levels $\pm\mu_B B$, splitting $2\mu_B B$,
+$g_s=2$, with \emph{no middle}, against the three-level ($m=-1,0,+1$) orbital pattern. This is
+Stern--Gerlach, delivered non-relativistically: spin reaches $\pm\mu_B$ at $\pm\tfrac12$ unit of angular
+momentum ($g=2$, no middle) where orbital needs $\pm1$ unit ($g=1$, with middle). The ``2'' is the SU(2)
+double cover of the rotation group --- geometric, not relativistic.
+
+\section{The boundary: collective magnetism is not supplied}
+\label{sec:limit}
+
+Here the extension stops, and it is important to say so plainly. ``Spin'' bundles two logically distinct
+things: \emph{statistics-spin} (the fermionic exclusion --- two electrons per orbital, the periodic
+table), which RealQM realises geometrically by non-overlap with no spin variable; and \emph{magnetic-spin}
+(the two-valued moment of \S\ref{sec:spinor}). The single-electron magnetic-spin is delivered. The
+many-electron case is not.
+
+\paragraph{The closed-shell test fails.} A filled shell must be diamagnetic --- two electrons pairing to
+zero net moment. We tested the spin sector of the naive extension: two electrons, each with an independent
+spinor, in a field. The ground state is the aligned pair with net moment $2\mu_B$ --- \emph{paramagnetic},
+not diamagnetic. Nothing in geometric non-overlap forces the two spins antiparallel.
+
+\paragraph{Geometry does not rescue it.} One might hope continuity of the spinor field across the shared
+domain boundary would force the spins antiparallel. It does the opposite. Forcing the joined field
+antiparallel means a spinor \emph{domain wall}, whose kinetic cost is
+$T_{\rm spin}=\tfrac18\!\int(\theta')^2\approx\pi^2/24w>0$, while the parallel configuration costs nothing:
+continuity \emph{favours parallel} (paramagnetic). And in the actual RealQM structure --- separate
+functions on non-overlapping domains --- the spinors are simply uncoupled and degenerate, aligning with
+any field. Either way geometry supplies no antiparallel pairing. Obtaining diamagnetism requires an
+antiparallel-pairing (exchange) term $J\,\mathbf S_1\!\cdot\!\mathbf S_2$, which is a spin-statistics
+ingredient non-overlap does not carry. The same missing exchange is what drives \emph{collective}
+magnetism generally: ferromagnetism is the spontaneous alignment of atomic moments by exchange, and it too
+is absent.
+
+\paragraph{The precise statement.} Geometric non-overlap reproduces the \emph{spatial} consequences of
+antisymmetry (exclusion, shells, the whole of chemistry) but not its \emph{spin} consequences (singlet
+pairing, exchange splitting, closed-shell diamagnetism, ferromagnetism). Single-particle magnetism is
+delivered; collective, exchange-driven magnetism is a genuine limitation, not a gap awaiting a boundary
+condition.
+
+\section{Interpretive frame: magnetism without relativity}
+\label{sec:frame}
+
+The results sit naturally in a reading of RealQM in which an electron is not a standalone object but a
+\emph{domain of a configuration}, its size fixed by Coulomb balance within the configuration rather than
+by any intrinsic scale~\cite{Charges}. On that reading the single-atom magnetic moment is a configuration
+property --- $\mu_B$ when the electron is loosely confined (a winding it can afford), none when tightly
+caged --- and no rest-energy or Compton scale is invoked anywhere; even $g=2$ is the geometric SU(2)
+factor, not a relativistic one. This frame is not needed for the computational results of
+\S\S\ref{sec:complex}--\ref{sec:limit}, which stand on their own; it is offered as the picture that makes
+them coherent, and as the reason the one true residue --- collective magnetism --- is a matter of missing
+\emph{exchange}, not of missing relativity.
+
+\section{Conclusion}
+\label{sec:concl}
+
+Magnetism enters RealQM as a minimal current-bearing extension: complex, unitary dynamics on the same
+domains, with the free boundary conserving charge and the Madelung flow made physical in real 3D. From it,
+orbital magnetism is delivered and reacts correctly to a field; the flat confined electron carries no
+moment, dissolving the magnetic-moment objection to nuclear electrons by the same flatness that removes
+its mass; and a single-electron spinor structure yields $g=2$ and Stern--Gerlach non-relativistically. The
+extension then reaches a firm boundary: closed-shell diamagnetism and ferromagnetism require an exchange
+term that geometric non-overlap does not supply, because non-overlap carries the spatial but not the spin
+consequences of antisymmetry. What RealQM delivers is single-particle magnetism, honestly and without
+relativity; what it does not deliver is the collective, exchange-driven magnetism that binds many moments
+together --- and locating that boundary precisely is itself a result.
+
+\begin{thebibliography}{9}
+\bibitem{RealQM} C.~Johnson, \emph{Real Quantum Mechanics as Multiphase 3D Continuum Mechanics},
+manuscript, 2026; \url{https://claes542.github.io/RealMolecule/gallery.html}.
+\bibitem{RealNucleus} C.~Johnson, \emph{RealNucleus: Nuclear Binding as Dual Coulomb Confinement, without
+a Strong or Weak Force}, 2026.
+\bibitem{Charges} C.~Johnson, \emph{Elementary Charges as Configurations, not Objects: Why RealQM Needs No
+Relativity}, 2026.
+\bibitem{LevyLeblond} J.-M.~Lévy-Leblond, \emph{Nonrelativistic particles and wave equations},
+Commun. Math. Phys. \textbf{6}, 286 (1967).
+\end{thebibliography}
+
+\end{document}
