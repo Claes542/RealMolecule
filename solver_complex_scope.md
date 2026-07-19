@@ -88,3 +88,25 @@ tiny-for-free / huge-for-caged it already backs the paper's claim quantitatively
 only to turn the energetics into a self-consistent, dynamical demonstration for a stronger version of the
 article. Level 2 is also the natural vehicle for the free electron's own μ_B (the winding as the
 Zitterbewegung-style internal circulation) — the remaining hard piece, short of the g-factor anomaly.
+
+---
+
+## Level 2 core — validated (prototype)
+
+`complex_solver_prototype.py` implements the Cartesian $(u,v)$ Visscher leapfrog
+($\partial_t u = \mathcal H v,\ \partial_t v = -\mathcal H u$, $\hbar=m=1$) for one electron in a 2D
+harmonic well, initialized in the $m=1$ winding state $\psi=(x+iy)e^{-r^2/2}$, and reads the moment
+$\mu_z = \tfrac12\int(\mathbf r\times\mathbf J)_z$ off $(u,v)$ directly. Result over 4000 steps
+($t=0\to8$):
+
+| quantity | value |
+|---|---|
+| norm | 1.000000 (conserved) |
+| $\mu_z/\mu_B$ | $-0.997$ (exact $-1$; 0.3% grid error), stable in time |
+
+This confirms the two things that mattered: (i) the **real/imaginary** representation is the right choice
+(smooth through the axis node, norm-preserving), and (ii) the **current-and-moment readout** from
+$(u,v)$ gives the expected $-\mu_B$ for an $m=1$ winding. The remaining step is the physics test proper —
+relax the $m=0$ vs $m=1$ states for a **free** vs a **caged** potential and compare energies (Level 1) —
+which by the Level-0 estimate should show the caged winding is unaffordable. The WebGPU port carries the
+same two-real-field kernels onto the existing solver grid.

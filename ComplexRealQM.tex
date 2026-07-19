@@ -105,6 +105,22 @@ $\mathbf v_i = \nabla S_i/m_i$: it scales the current when there \emph{is} a pha
 irrelevant when there is none --- consistent with the flat electron being both mass-irrelevant and
 currentless.
 
+\paragraph{Madelung, made physical in three dimensions.} Equations \eqref{eq:rhoJ}--\eqref{eq:madelung}
+are nothing exotic: they are the standard quantum probability current and the Madelung (1927) hydrodynamic
+reading of the Schr\"odinger equation --- $\rho$ a density, $\mathbf v=\nabla S/m$ a velocity field. But
+in \emph{standard} quantum mechanics that reading is physical only for a \emph{single} particle; for $N$
+electrons the wave function lives on $3N$-dimensional configuration space, and the Madelung fluid lives
+there too, with no existence in physical three-dimensional space. RealQM removes exactly this obstacle:
+because its $N$ electrons are one-electron densities $\psi_i$ on domains in real $\mathbb R^3$, each
+$(\rho_i,\mathbf v_i,\mathbf J_i)$ is a genuine three-dimensional density, velocity, and current --- one
+physical charge fluid per electron, on its own territory. \textbf{RealQM thus gives the Madelung
+hydrodynamic picture physical existence as a real-space flow, for any number of electrons, which standard
+quantum mechanics confines to configuration space.} The sense of this must be stated carefully: RealQM is
+not standard $N$-body QM (non-overlap replaces antisymmetry), so this is RealQM's \emph{own} Madelung
+fluid within its own real-space formulation, not a projection of the standard configuration-space fluid
+down into 3D. Within that formulation, however, the flow is as physical as the charge density RealQM
+already takes $\psi_i^2$ to be.
+
 The evolution is \emph{unitary} on each domain,
 \begin{equation}
 i\,\partial_t\psi_i \;=\; \mathcal H_i\,\psi_i,
@@ -230,9 +246,14 @@ of \S\ref{sec:spin}, not the atomic-scale winding \eqref{eq:mu}; they are not de
 \eqref{eq:tdse} alone.
 \item \textbf{The anomalous moment.} $g/2 = 1.00116\ldots$ (QED's most precise number) would be the sharp
 test of any current-based account of the electron moment, and is untouched here.
-\item \textbf{Numerics.} Implementing \eqref{eq:tdse} (two real fields per domain, a norm-preserving
-staggered-leapfrog step, the current \eqref{eq:rhoJ}) on top of the existing solver is the computational
-next step, and the vehicle for the free-vs-caged moment test.
+\item \textbf{Numerics.} Implement \eqref{eq:tdse} in \emph{Cartesian} form, $\psi_i = u_i + i\,v_i$ with
+two real fields, evolved by the coupled leapfrog $\partial_t u_i = \mathcal H_i v_i$,
+$\partial_t v_i = -\mathcal H_i u_i$ (staggered by $\tfrac12$ step, norm-preserving to $O(\Delta t^2)$).
+The \emph{polar} form $\psi_i = R_i e^{iS_i}$ must be avoided in computation: it is singular at nodes
+($S_i$ undefined and $\mathbf v_i=\nabla S_i/m_i$ divergent where $R_i\to0$), which is exactly the
+axis of a winding state; the Cartesian representation is smooth through nodes and linear. Read the
+current \eqref{eq:rhoJ} and the moment \eqref{eq:mu} off $(u_i,v_i)$ directly. This sits on top of the
+existing solver and is the vehicle for the free-vs-caged moment test.
 \end{itemize}
 
 \section{Conclusion}
