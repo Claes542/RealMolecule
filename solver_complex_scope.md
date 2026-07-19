@@ -110,3 +110,22 @@ $(u,v)$ gives the expected $-\mu_B$ for an $m=1$ winding. The remaining step is 
 relax the $m=0$ vs $m=1$ states for a **free** vs a **caged** potential and compare energies (Level 1) —
 which by the Level-0 estimate should show the caged winding is unaffordable. The WebGPU port carries the
 same two-real-field kernels onto the existing solver grid.
+
+---
+
+## Level 1 — run (free-vs-caged winding energetics)
+
+`level1_winding_energetics.py` relaxes the $m=0$ and $m=1$ states self-consistently (2D radial
+imaginary-time) in a harmonic well and scales the winding cost to physical confinement:
+
+| electron | scale | $\Delta E = E(m{=}1)-E(m{=}0)$ |
+|---|---|---|
+| dimensionless well ($\omega=1$) | — | $1.0000\,\hbar\omega$ (exact; solver converges to the analytic 2D-oscillator values 1, 2) |
+| free | $\sim a_0$ | 27 eV (≈ level spacing — accessible) |
+| caged (deuteron) | $\sim 2$ fm | 19 GeV (≈ $9\times10^3$ × the 2.2 MeV binding — forbidden) |
+
+The caged winding is unaffordable by ~$10^4$, so the electron is locked in $m=0$ and carries **no moment**
+— now shown by a self-consistent relaxation, not just the Level-0 estimate. (The 19 GeV vs Level-0's
+9.5 GeV is a harmonic-vs-Gaussian O(1) model factor; the ~$10^4$ margin is robust.) The free ground state
+is still $m=0$: this proves the caged side, and does not manufacture the free electron's $\mu_B$, which is
+intrinsic / Compton-scale.
