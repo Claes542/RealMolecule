@@ -120,6 +120,10 @@ def main():
         Eint = -np.sum(ne * phi_p) * dA
         return Te, Tp, Eint, Te + Tp + Eint
 
+    # dipole record (for the radiated-field estimate, stage 3)
+    c_light = 137.036            # speed of light in atomic units
+    dip = []                     # dipole moment d_x(t) = q_e <x>_e + q_p <x>_p
+
     nsteps = int(args.T / args.dt)
     log = max(1, nsteps // 12)
     print("RealQM beta-decay 2-D test (electron emission + proton recoil + momentum)")
@@ -151,13 +155,16 @@ def main():
         psi_e *= np.exp(-1j * Ve * args.dt / 2)
         psi_p *= np.exp(-1j * Vp * args.dt / 2)
 
+        # dipole moment each step, for the radiated-field (Larmor) estimate
+        xe_s, _ = mean_pos(psi_e, X, Y, dA)
+        xp_s, _ = mean_pos(psi_p, X, Y, dA)
+        dip.append(-xe_s + xp_s)          # d = q_e<x>_e + q_p<x>_p, q_e=-1 q_p=+1
+
         if s % log == 0 or s == nsteps - 1:
-            xe, _ = mean_pos(psi_e, X, Y, dA)
-            xp, _ = mean_pos(psi_p, X, Y, dA)
             pxe, _ = momentum(psi_e, KX, KY, dA)
             pxp, _ = momentum(psi_p, KX, KY, dA)
             _, _, _, E = energies()
-            print(f"  {(s+1)*args.dt:6.2f} {xe:8.3f} {xp:9.4f} {pxe:+9.4f} "
+            print(f"  {(s+1)*args.dt:6.2f} {xe_s:8.3f} {xp_s:9.4f} {pxe:+9.4f} "
                   f"{pxp:+9.4f} {pxe+pxp:+10.2e} {(E-E0)/abs(E0):+9.1e}")
 
     # final summary
@@ -172,8 +179,26 @@ def main():
           f"(=-1 => exactly back-to-back)")
     print(f"    total momentum p_e+p_p = {pxe+pxp:+.2e}  (conserved ~0)")
     print("  => 2-body RealQM conserves vector momentum; e and p emerge back-to-back.")
-    print("     Matching the OBSERVED non-back-to-back recoil needs field momentum")
-    print("     (the current-carrying/retarded EM extension) -- beyond this solve.")
+
+    # ---- STAGE 3: how much can the radiated EM field actually carry? ----
+    # Larmor dipole radiation: P(t) = (2/3 c^3) |d''(t)|^2  (Gaussian-atomic, e=1).
+    d = np.array(dip)
+    dt = args.dt
+    dd = np.gradient(np.gradient(d, dt), dt)          # d''(t)
+    P_rad = (2.0 / (3.0 * c_light ** 3)) * dd ** 2
+    E_rad = np.sum(P_rad) * dt                         # total radiated energy
+    KE_e = 0.5 * pxe ** 2 / 1.0                        # electron kinetic energy
+    p_field_max = E_rad / c_light                      # |p_field| <= E_rad/c (photons)
+    print("\n  STAGE 3 -- radiated EM field (Larmor estimate from the dipole):")
+    print(f"    electron kinetic energy  KE_e     = {KE_e:.4e}")
+    print(f"    total radiated energy    E_rad    = {E_rad:.4e}")
+    print(f"    radiated energy fraction E_rad/KE = {E_rad/KE_e:.2e}")
+    print(f"    max field momentum  E_rad/c       = {p_field_max:.2e}  "
+          f"(vs |p_e|={abs(pxe):.3f})")
+    print(f"    field-momentum fraction (E_rad/c)/|p_e| = {p_field_max/abs(pxe):.2e}")
+    print("  => if this fraction is ~1e-2 or smaller, the radiated field is far too")
+    print("     weak to carry the ~60% of Q and the momentum the neutrino accounts")
+    print("     for -- i.e. the field cannot replace the neutrino.")
 
 
 if __name__ == '__main__':
