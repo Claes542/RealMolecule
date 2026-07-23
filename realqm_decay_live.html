@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RealQM decay — live</title>
+<style>
+  body{margin:0;background:#0e1116;color:#d7dde5;font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:900px;margin:0 auto;padding:18px}
+  h1{font-size:20px;margin:.2em 0;color:#eaf0f7}
+  p.lead{color:#9fb0c3;margin:.3em 0 1em}
+  canvas{width:100%;background:#0a0d12;border:1px solid #1e2733;border-radius:8px;display:block}
+  .row{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin:12px 0}
+  .ctl{display:flex;align-items:center;gap:8px}
+  button{background:#1b2734;color:#cfe0f2;border:1px solid #2b3b4e;border-radius:6px;padding:6px 12px;cursor:pointer}
+  button:hover{background:#233247}
+  input[type=range]{width:180px}
+  .stat{font-variant-numeric:tabular-nums}
+  .k{color:#7f93a8}.v{color:#90caf9;font-weight:600}
+  .hl{color:#ffcc80;font-weight:700}
+  small{color:#7f93a8}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>RealQM decay — live</h1>
+  <p class="lead">The full time-dependent RealQM (complex Schr&ouml;dinger, real&nbsp;time) evolved by a
+  unitary Crank&ndash;Nicolson step with an absorbing edge &mdash; the same solver as the imaginary-time
+  relaxation, only the time step changed. A metastable charge domain sits in a well behind a barrier and
+  <b>tunnels out</b>. The trapped charge decays <b>exponentially</b> and a <b>half-life</b> emerges from the
+  dynamics &mdash; no WKB, no fitting. Raise the barrier and the half-life grows (Geiger&ndash;Nuttall).</p>
+
+  <canvas id="dens" height="260"></canvas>
+  <div class="row">
+    <div class="ctl"><button id="play">&#10073;&#10073; Pause</button>
+      <button id="reset">&#8635; Reset</button></div>
+    <div class="ctl"><span class="k">barrier V<sub>b</sub></span>
+      <input id="vb" type="range" min="0.4" max="2.2" step="0.05" value="1.0">
+      <span class="v stat" id="vbval">1.00</span></div>
+    <div class="ctl"><span class="k">speed</span>
+      <input id="spd" type="range" min="5" max="120" step="5" value="45"></div>
+  </div>
+  <div class="row stat">
+    <div><span class="k">time</span> <span class="v" id="tval">0</span></div>
+    <div><span class="k">trapped norm</span> <span class="v" id="nval">1.000</span></div>
+    <div><span class="k">half-life</span> <span class="hl" id="thval">&mdash;</span></div>
+    <div><span class="k">resonance E</span> <span class="v" id="eval">&mdash;</span></div>
+  </div>
+  <canvas id="decay" height="220"></canvas>
+  <p><small>Left: |&psi;(x)|&sup2; (blue) leaking through the barrier (grey). Right/below: trapped norm on a
+  log axis &mdash; a straight line is exponential decay; the dashed line is the running fit whose slope gives
+  the half-life. Well width a=5, barrier width w=1.5, m=&#8463;=1.</small></p>
+</div>
+<script>
+// ---------- grid & potential ----------
+const N=700, L=70.0, dx=L/N, aWell=5.0, wBar=1.5;
+const x=new Float64Array(N); for(let j=0;j<N;j++) x[j]=j*dx;
+const xabs=L-12.0, etaA=3.0;
+const Vabs=new Float64Array(N);
+for(let j=0;j<N;j++){ Vabs[j]= x[j]>xabs ? etaA*Math.pow((x[j]-xabs)/(L-xabs),2):0; }
+let Vb=1.0, dt=0.06;
+const k=0.5/(dx*dx);
+const Vr=new Float64Array(N);
+function buildV(){ for(let j=0;j<N;j++) Vr[j]=(x[j]>=aWell && x[j]<aWell+wBar)?Vb:0; }
+
+// ---------- state ----------
+let re=new Float64Array(N), im=new Float64Array(N);
+let Eres=0, N0=1, t=0, trace=[], thalf=null;
+
+function relax(){
+  // imaginary-time relaxation of the well resonance (real psi), confined to well
+  const p=new Float64Array(N);
+  for(let j=0;j<N;j++) p[j]= x[j]<=aWell? Math.sin(Math.PI*x[j]/aWell):0;
+  const dtau=0.2*dx*dx;
+  const inWell=(j)=>x[j]<=aWell;
+  function norm(){let s=0;for(let j=0;j<N;j++) if(inWell(j)) s+=p[j]*p[j]; s*=dx; const f=1/Math.sqrt(s); for(let j=0;j<N;j++)p[j]*=f;}
+  norm();
+  const q=new Float64Array(N);
+  for(let it=0;it<3500;it++){
+    for(let j=1;j<N-1;j++){
+      const lap=(p[j+1]-2*p[j]+p[j-1])/(dx*dx);
+      q[j]=p[j]+dtau*(0.5*lap - Vr[j]*p[j]);
+    }
+    q[0]=0;q[N-1]=0;
+    for(let j=0;j<N;j++) p[j]=q[j];
+    norm();
+  }
+  // energy estimate
+  let num=0,den=0;
+  for(let j=1;j<N-1;j++){
+    const lap=(p[j+1]-2*p[j]+p[j-1])/(dx*dx);
+    num+=p[j]*(-0.5*lap+Vr[j]*p[j]); den+=p[j]*p[j];
+  }
+  Eres=num/den;
+  for(let j=0;j<N;j++){re[j]=p[j];im[j]=0;}
+  N0=trapped(); t=0; trace=[]; thalf=null;
+}
+function trapped(){let s=0;for(let j=0;j<N;j++) if(x[j]<=aWell) s+=re[j]*re[j]+im[j]*im[j]; return s*dx;}
+
+// ---------- complex Crank-Nicolson step ----------
+const asub_im=-dt*k/2;                 // A sub/super = -i dt k/2 (pure imaginary)
+const cpRe=new Float64Array(N), cpIm=new Float64Array(N);
+const dpRe=new Float64Array(N), dpIm=new Float64Array(N);
+function cdiv(pr,pi,qr,qi){const d=qr*qr+qi*qi;return [(pr*qr+pi*qi)/d,(pi*qr-pr*qi)/d];}
+function cmul(pr,pi,qr,qi){return [pr*qr-pi*qi, pr*qi+pi*qr];}
+function step(){
+  // rhs = psi - (i dt/2) H psi ;  H psi with V = Vr - i Vabs
+  const rr=new Float64Array(N), ri=new Float64Array(N);
+  for(let j=1;j<N-1;j++){
+    const Hre=-k*(re[j+1]+re[j-1])+(2*k+Vr[j])*re[j]+Vabs[j]*im[j];
+    const Him=-k*(im[j+1]+im[j-1])+(2*k+Vr[j])*im[j]-Vabs[j]*re[j];
+    rr[j]=re[j]+(dt/2)*Him;
+    ri[j]=im[j]-(dt/2)*Hre;
+  }
+  rr[0]=0;ri[0]=0;rr[N-1]=0;ri[N-1]=0;
+  // A diag: b_j = 1 + (dt/2)Vabs + i (dt/2)(2k+Vr)
+  // forward sweep
+  // row 0: b=1, c=0
+  cpRe[0]=0;cpIm[0]=0;dpRe[0]=0;dpIm[0]=0;
+  for(let j=1;j<N;j++){
+    let bRe,bIm,cRe=0,cIm=asub_im;
+    if(j===N-1){bRe=1;bIm=0;}
+    else{bRe=1+(dt/2)*Vabs[j];bIm=(dt/2)*(2*k+Vr[j]);}
+    // a = sub = (0, asub_im); m = b - a*cp_{j-1}
+    const [acpR,acpI]=cmul(0,asub_im,cpRe[j-1],cpIm[j-1]);
+    const mRe=bRe-acpR, mIm=bIm-acpI;
+    if(j<N-1){const [q0,q1]=cdiv(cRe,cIm,mRe,mIm);cpRe[j]=q0;cpIm[j]=q1;}
+    else{cpRe[j]=0;cpIm[j]=0;}
+    const [adpR,adpI]=cmul(0,asub_im,dpRe[j-1],dpIm[j-1]);
+    const [d0,d1]=cdiv(rr[j]-adpR, ri[j]-adpI, mRe, mIm);
+    dpRe[j]=d0;dpIm[j]=d1;
+  }
+  re[N-1]=dpRe[N-1];im[N-1]=dpIm[N-1];
+  for(let j=N-2;j>=0;j--){
+    const [cr,ci]=cmul(cpRe[j],cpIm[j],re[j+1],im[j+1]);
+    re[j]=dpRe[j]-cr; im[j]=dpIm[j]-ci;
+  }
+  re[0]=0;im[0]=0;
+  t+=dt;
+}
+
+// ---------- drawing ----------
+const cd=document.getElementById('dens'), gd=cd.getContext('2d');
+const cc=document.getElementById('decay'), gc=cc.getContext('2d');
+function fit(c){c.width=c.clientWidth*devicePixelRatio;c.height=c.height*devicePixelRatio;}
+function drawDens(){
+  const W=cd.width,H=cd.height;gd.clearRect(0,0,W,H);
+  const x0=40,x1=W-10,y0=H-24,y1=14, xmax=42;
+  // barrier band
+  const bx0=x0+(aWell/xmax)*(x1-x0), bx1=x0+((aWell+wBar)/xmax)*(x1-x0);
+  gd.fillStyle='#182230';gd.fillRect(bx0,y1,bx1-bx0,y0-y1);
+  // density
+  let dmax=1e-9;for(let j=0;j<N;j++){const d=re[j]*re[j]+im[j]*im[j];if(x[j]<xmax&&d>dmax)dmax=d;}
+  gd.beginPath();gd.strokeStyle='#4aa3ff';gd.lineWidth=2*devicePixelRatio;
+  for(let j=0;j<N;j++){ if(x[j]>xmax)break;
+    const d=re[j]*re[j]+im[j]*im[j];
+    const px=x0+(x[j]/xmax)*(x1-x0), py=y0-(d/dmax)*(y0-y1)*0.95;
+    j===0?gd.moveTo(px,py):gd.lineTo(px,py);}
+  gd.stroke();
+  gd.fillStyle='#6b7d90';gd.font=(12*devicePixelRatio)+'px system-ui';
+  gd.fillText('|ψ(x)|²   (barrier shaded)',x0,y1+6);
+  gd.fillText('x',x1-10,y0+18*devicePixelRatio);
+}
+function drawDecay(){
+  const W=cc.width,H=cc.height;gc.clearRect(0,0,W,H);
+  const x0=46,x1=W-10,y0=H-22,y1=14;
+  gc.strokeStyle='#22303f';gc.lineWidth=1;
+  for(let p=0;p<=3;p++){const yy=y1+(y0-y1)*p/3;gc.beginPath();gc.moveTo(x0,yy);gc.lineTo(x1,yy);gc.stroke();
+    gc.fillStyle='#5d6f82';gc.font=(11*devicePixelRatio)+'px system-ui';gc.fillText('1e'+(-p),4,yy+4);}
+  if(trace.length<2)return;
+  const tmax=Math.max(trace[trace.length-1][0],1);
+  const logmin=-3; // plot log10(N/N0) from 0 down to -3
+  const X=tt=>x0+(tt/tmax)*(x1-x0);
+  const Y=nn=>{let l=Math.log10(Math.max(nn,1e-4));l=Math.max(l,logmin);return y1+(0-l)/(0-logmin)*(y0-y1);};
+  gc.beginPath();gc.strokeStyle='#4aa3ff';gc.lineWidth=2*devicePixelRatio;
+  for(let i=0;i<trace.length;i++){const px=X(trace[i][0]),py=Y(trace[i][1]/N0);i===0?gc.moveTo(px,py):gc.lineTo(px,py);}
+  gc.stroke();
+  // running exp fit over N in [0.15,0.9]
+  let sx=0,sy=0,sxx=0,sxy=0,n=0;
+  for(const [tt,nn] of trace){const r=nn/N0;if(r<0.9&&r>0.15&&tt>0.1*tmax){const ly=Math.log(r);sx+=tt;sy+=ly;sxx+=tt*tt;sxy+=tt*ly;n++;}}
+  if(n>5){const slope=(n*sxy-sx*sy)/(n*sxx-sx*sx);const b=(sy-slope*sx)/n;
+    const lam=-slope; thalf= lam>0? Math.log(2)/lam:null;
+    gc.beginPath();gc.strokeStyle='#e57373';gc.setLineDash([6,5]);gc.lineWidth=1.5*devicePixelRatio;
+    gc.moveTo(X(0),Y(Math.exp(b)));gc.lineTo(X(tmax),Y(Math.exp(slope*tmax+b)));gc.stroke();gc.setLineDash([]);}
+  gc.fillStyle='#6b7d90';gc.font=(12*devicePixelRatio)+'px system-ui';
+  gc.fillText('trapped norm N(t) / N₀   (log)',x0,y1+2);gc.fillText('t',x1-8,y0+16);
+}
+
+// ---------- loop ----------
+let playing=true, stepsPerFrame=45;
+function frame(){
+  if(playing){ for(let s=0;s<stepsPerFrame;s++) step();
+    trace.push([t,trapped()]); if(trace.length>4000) trace.shift(); }
+  drawDens();drawDecay();
+  document.getElementById('tval').textContent=t.toFixed(0);
+  const nn=trapped();document.getElementById('nval').textContent=(nn/N0).toFixed(3);
+  document.getElementById('thval').textContent= thalf? thalf.toFixed(0):'measuring…';
+  document.getElementById('eval').textContent=Eres.toFixed(3);
+  requestAnimationFrame(frame);
+}
+function resetAll(){ buildV(); relax(); trace=[]; }
+window.addEventListener('resize',()=>{cd.width=cd.clientWidth*devicePixelRatio;cc.width=cc.clientWidth*devicePixelRatio;});
+cd.width=cd.clientWidth*devicePixelRatio; cd.height=260*devicePixelRatio;
+cc.width=cc.clientWidth*devicePixelRatio; cc.height=220*devicePixelRatio;
+document.getElementById('play').onclick=e=>{playing=!playing;e.target.innerHTML=playing?'&#10073;&#10073; Pause':'&#9658; Play';};
+document.getElementById('reset').onclick=resetAll;
+document.getElementById('vb').oninput=e=>{Vb=parseFloat(e.target.value);document.getElementById('vbval').textContent=Vb.toFixed(2);resetAll();};
+document.getElementById('spd').oninput=e=>{stepsPerFrame=parseInt(e.target.value);};
+buildV(); relax(); requestAnimationFrame(frame);
+</script>
+</body>
+</html>
