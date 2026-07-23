@@ -1,43 +1,36 @@
-# The equation of motion of the RealQM free boundary (summary)
+# RealQM free-boundary conditions (summary)
 
-Full derivation and discussion: **RealQMAction.tex** ("A Stationary-Action Principle for Real Quantum
-Mechanics, and the Equation of Motion of the Free Boundary").
+Full article: **RealQMAction.tex** ("The Free-Boundary Conditions of RealQM, and their Overdetermination in
+Time"). Kept basic: conditions to be satisfied on the boundaries; no domain variation, no Noether.
 
-RealQM is governed by ONE stationary-action principle whose dynamical variables are the charge-density
-fields ψ_i on non-overlapping domains Ω_i(t) AND the free boundaries between them:
+## Real-valued (static) theory — well posed
+N unit-charge densities psi_i^2 (real) on non-overlapping domains, ground state minimises the Coulomb energy
+E. Each domain: a one-electron eigenvalue equation with its own Poisson/Hartree potential, coupled by
+Coulomb. On the free boundaries TWO conditions hold:
+  (i)  continuity of psi (=> density continuity rho_1=rho_2, since rho=psi^2);
+  (ii) vanishing normal derivative d psi/dn = 0 (homogeneous Neumann / Bernoulli).
+(i) matches the densities; (ii) fixes the interface location. Together the static free-boundary problem is
+well posed -- this is the theory that computes atoms/molecules/nuclei. Static, real: density fixed, no
+charge flows, the two conditions sit together without tension.
 
-    S = ∫dt { Σ_i ∫_{Ω_i} [ (i/2)(ψ_i*∂_tψ_i − c.c.) − ½|∇ψ_i|² ] − ½∬ρρ/|x−y| }.
+## Time-dependent (complex) extension — OVERDETERMINED
+Complex psi (Schrodinger from E) carries a current j_i = Im(psi_i* grad psi_i), d_t rho_i + div j_i = 0
+(zero for real psi). Keeping each electron's unit charge as the boundary moves at speed V_n requires a THIRD
+condition:
+  (iii) V_n = (j_i.n)/rho_i  (boundary moves with the flow; and j_1.n/rho_1 = j_2.n/rho_2).
+Three conditions (i)(ii)(iii) on one free boundary => OVERDETERMINED; cannot hold all three.
+Concretely: (ii) Neumann => j.n = 0 => (iii) forces V_n = 0 (boundary frozen); and (i) is a condition on the
+VALUE of psi while (iii) is on its GRADIENT -- independent.
 
-## Field variation → the time-dependent RealQM equations
-    i ∂_t ψ_i = −½ ∇²ψ_i + q_i φ[ρ] ψ_i,   φ[ρ] the self-consistent Coulomb potential.
+## The fork (choose which condition to drop)
+- (A) Keep psi continuous: retain (i)+(ii) [the static Bernoulli pair], boundary sits where they hold and
+  moves as the fields evolve; energy conserved; drop (iii) -> charge MIGRATES between domains (per-electron
+  Q_i not conserved, sum is). This is what RealQM's level-set relaxation already does.
+- (B) Keep per-electron charge: retain (iii); interface = contact discontinuity (flow speeds match, density
+  JUMPS); psi discontinuous, drop (i).
+Both reduce to static Bernoulli at rest (currents=0 => V_n=0, boundary stops, (i)+(ii) hold). They differ
+only for a genuinely MOVING boundary (real-time multi-domain dynamics). Resolution left OPEN.
 
-## Domain variation → the free boundary is a MATERIAL interface
-The action is invariant under an INDEPENDENT phase rotation of each domain (ψ_i→e^{iα_i}ψ_i), so by Noether
-each electron's charge Q_i=∫_{Ω_i}|ψ_i|² is conserved. With the boundary moving at normal speed V_n,
-charge conservation forces, pointwise on the interface Γ,
-
-    V_n = (j_i·n)/|ψ_i|² = v_i·n ,   v_i = ∇S_i  (Madelung velocity),  j_i=Im(ψ_i*∇ψ_i),
-
-i.e. the interface is MATERIAL (no charge crosses) and advects with the charge-fluid velocity; applied to
-both domains it forces velocity continuity v_1·n = v_2·n = V_n on Γ.
-
-## Energy by Noether
-Time-translation invariance ⇒ total energy E = Σ_i ½∫|∇ψ_i|² + ½∬ρρ/|x−y| conserved EXACTLY for the
-coupled field+boundary evolution -- provided the boundary obeys its own Euler-Lagrange law above, not an
-imposed rule. Spatial-translation invariance ⇒ momentum conserved.
-
-## Corrects two naive prescriptions
-- Dirichlet (ψ_i=0) + slope-matching |∂_nψ_1|=|∂_nψ_2|: conserves per-electron charge but NOT (generally)
-  energy -- this is what realqm_twodomain.py used, hence its energy leak.
-- Neumann (∂_nψ_i=0) + density continuity |ψ_1|=|ψ_2|: can conserve energy but TRANSFERS charge across the
-  moving boundary, violating per-electron charge conservation. (An earlier version of this note wrongly
-  favoured it.)
-Only the MATERIAL law (boundary moves with the flow) respects BOTH, because both descend from the one
-action.
-
-## Static limit & scope
-Stationary states have j_i=0 ⇒ V_n=0: the boundary is at rest and S reduces to the static Coulomb-energy
-minimisation defining the RealQM ground state (atoms/molecules/nuclei). The time-dependent law matters for
-real-time NON-adiabatic multi-domain dynamics (attosecond, charge migration, photochemistry, collisions);
-it does NOT affect Born-Oppenheimer chemistry (static re-minimisation per geometry) or radioactive-decay
-timing (density-driven, boundary-independent).
+## Scope
+Only the time-dependent extension is affected. The real-valued static theory (the program's established
+results) is untouched: currents vanish, boundary at rest, Bernoulli holds.
