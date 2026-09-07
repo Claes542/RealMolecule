@@ -250,6 +250,12 @@ const INTERIOR = (NN - 1) * (NN - 1) * (NN - 1);
 // Pseudopotential atoms (rc > 0) are unaffected either way: their cutoff is rc, already absolute,
 // which is why the lithium-chain corrugation passed a mesh ladder where the bare-proton one does not.
 const R_SING = Math.max(2 * hGrid, window.USER_R_SING || 0);
+// USER_KIN: the coefficient of the kinetic term, normally 1/2 from hbar^2/2m. Raising it penalises
+// density gradients, i.e. makes the charge stiffer against being modulated -- a stand-in for the
+// degeneracy pressure this construction lacks (C = 0), and a way to test whether the corrugation is
+// set by the stiffness-versus-modulation competition. Not a physical knob: it corresponds to a
+// lighter carrier, and it rescales every length in the problem, so read trends, not totals.
+const KIN_C = (window.USER_KIN !== undefined) ? window.USER_KIN : 0.5;
 const W_CUTOFF = window.USER_W_CUTOFF || 0;  // smooth ψ cutoff near other nuclei (au), 0 = off
 // Detect if any bare nuclei exist (Z=0, Z_nuc>0) at compile time
 // Exclude a cell from EVERY pseudopotential core, not just its own domain's.

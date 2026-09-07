@@ -224,6 +224,13 @@ window.onerror = function (msg, url, line) {
   var ESTAG = (q.get('estag') !== null) ? parseFloat(q.get('estag')) : 0.5;  // row offset, spacings
   var ESEED = parseFloat(q.get('eseed') || '0');  // seed offset WITHIN the brick, in spacings
   var EZIG  = (q.get('ezig') === '1');            // one electron per kernel, alternating up/down
+  var COAX  = (q.get('coax') === '1');            // core electrons + a sliding outer shell
+  var CR    = parseFloat(q.get('cr') || '1.2');   // radius dividing core from shell, a0
+  var NCORE = parseInt(q.get('ncore') || '1');   // core electrons per site (2 = a real 1s^2)
+  var CR2   = parseFloat(q.get('cr2') || '0');   // OUTER radius of the shell, a0 (0 = box face)
+  var KMUL  = parseInt(q.get('kmul') || '1');     // kernels per site, at charge kq/kmul each
+  var NSH   = parseInt(q.get('nsh') || '0');      // shell electrons over N ion sites (0 = N)
+  var KLINE = parseInt(q.get('kline') || '0');    // K kernels ON THE AXIS, 2 rows of N electrons
   var NK    = parseInt(q.get('nk') || '0');       // kernel CHAINS round the axis (0 = off)
   var KQ    = parseFloat(q.get('kq') || '0.5');   // charge per kernel
   var KRAD  = parseFloat(q.get('krad') || '2.5'); // kernel-chain radius, a0
@@ -318,6 +325,96 @@ window.onerror = function (msg, url, line) {
   // count from N -- every other construction here assumed one electron per site -- so each
   // electron faces a HALF-strength kernel array and the two rows can sit at opposite registry
   // phase without either having to straddle a kernel pair.
+  // kline=<K>: ONE line of K kernels on the axis at spacing a and charge kq, with 2N electrons in
+  // two rows of N at y = +/- erad. Each row is spaced (K/N)*a and the lower row is offset by half
+  // of that, so the two interleave and each electron covers K/(2N) kernels. Neutral when
+  // K*kq = 2N -- K=16, N=4, kq=1/2 gives 8 electrons over 16 half-kernels, two kernels each.
+  // coax=1: the arrangement a metal actually has. N kernels of charge kq on the axis, N CORE
+  // electrons held inside radius cr, and N SHELL electrons outside it forming a hollow cylinder
+  // that slides along the wire. A hollow shell is impossible with one electron per site -- the
+  // domains tile, so a single domain per kernel must contain that kernel, which is the plain chain
+  // again. Two per site is what makes the shell a separate object: the core screens the kernel and
+  // the shell is free to slide over the screened lattice. Neutral at kq = 2.
+  //
+  // Only the SHELL slides: d offsets the outer slabs and leaves the cores where they are, which is
+  // the transport coordinate rather than a rigid translation of everything.
+  if (COAX && q.get('kq') === null) {
+    KQ = NCORE + (q.get('nsh') !== null ? parseInt(q.get('nsh')) / N : 1);          // neutrality: N*kq = N cores + nsh shell
+  }
+  if (COAX) {
+    atoms.length = 0; Z.length = 0; Znuc.length = 0; zeff.length = 0; rcs.length = 0;
+    var cSplitT = [], cSplitI = [], cSplitR = [], cAx = [];
+    var rShell = Math.round((CR + (CR2 > CR ? 0.5 * (CR2 - CR) : 0.8)) / h);   // seed mid-annulus
+    // ncore=2 models the ion properly: a +3 kernel with a real 1s^2 core and one valence electron,
+    // i.e. Li+ at net +1. The two core electrons take upper and lower half-cylinders (the standard
+    // way a pair shares one centre here). With the core present EXPLICITLY the pseudopotential is
+    // redundant -- rc can be 0 -- so the own-core/every-core exclusion bracket does not arise.
+    var dCore = Math.max(1, Math.round(0.4 * CR / h));
+    for (var mC = 0; mC < N; mC++) {
+      for (var cE = 0; cE < NCORE; cE++) {
+        // 1 core: on axis. 2: upper/lower half. 4: quadrants of the (y,z) plane.
+        var dj = 0, dk = 0;
+        if (NCORE === 2) { dj = (cE === 0) ? dCore : -dCore; }
+        else if (NCORE >= 4) { dj = (cE < 2) ? dCore : -dCore; dk = (cE % 2 === 0) ? dCore : -dCore; }
+        atoms.push({ i: coreI[mC], j: N2 + dj, k: N2 + dk, Z: 1, el: 'Li' });
+        Z.push(1); Znuc.push(0); zeff.push(ZE); rcs.push(0);
+        cSplitT.push(5); cSplitI.push(0); cSplitR.push(CR); cAx.push([1, 0, 0]);
+      }
+    }
+    // nsh=<n>: n shell electrons over N ion sites, so the carrier lattice has period N*a/n and the
+    // ion lattice period a. Neutrality then forces the kernel charge: N*kq = N (cores) + n (shell),
+    // i.e. kq = 1 + n/N, and each site is a net +n/N ion. A commensurate ratio pins whatever the
+    // coupling; the Fibonacci ratios 5/8, 8/13, 13/21 hold kq fixed to 1% while the period grows
+    // 8 -> 13 -> 21, which separates commensurability from substrate strength -- the confound that
+    // made the earlier filling scan uninterpretable.
+    var nShell = (NSH > 0) ? NSH : N, stepS = N / nShell;
+    for (var mS = 0; mS < nShell; mS++) {               // shell seeds, standing off the axis
+      // FOLD the seed modulo the chain, exactly as the label index folds. Without this the seeds
+      // run off the end as d grows while their labelled regions wrap back to the left, so each
+      // domain's psi is seeded outside its own region and E(d) climbs monotonically instead of
+      // being periodic -- the run that reached +15.6 eV at d = 7.5.
+      var xSeed = ((stepS * (mS + 0.5) + DFRAC) % N + N) % N;
+      atoms.push({ i: Math.round(coreI[0] + xSeed * A / h),
+                   j: N2 + rShell, k: N2, Z: 1, el: 'Li' });
+      Z.push(1); Znuc.push(0); zeff.push(ZE); rcs.push(0);
+      cSplitT.push(5); cSplitI.push(1); cSplitR.push(CR); cAx.push([1, 0, 0]);
+    }
+    // kmul>1 subdivides each site into kmul kernels of charge kq/kmul, holding the total charge
+    // and the standoff fixed while moving the lowest harmonic to 2*pi*kmul/a. The corrugation then
+    // has to fall as exp(-2*pi*kmul*cr/a), and at kmul large the line is homogeneous and the slide
+    // must cost EXACTLY nothing -- which is the noise floor of every corrugation measured here.
+    for (var mK3 = 0; mK3 < N * KMUL; mK3++) {
+      atoms.push({ i: Math.round(coreI[0] + mK3 * (A / h) / KMUL), j: N2, k: N2, Z: 0, el: 'Li' });
+      Z.push(0); Znuc.push(KQ / KMUL); zeff.push(ZE); rcs.push(RC);
+      cSplitT.push(0); cSplitI.push(0); cSplitR.push(0); cAx.push([1, 0, 0]);
+    }
+    window.USER_SPLIT_TYPE = cSplitT; window.USER_SPLIT_IDX = cSplitI;
+    window.USER_SPLIT_ROT = cSplitR;  window.USER_SPLIT_AXIS = cAx;
+  }
+
+  if (KLINE > 0) {
+    atoms.length = 0; Z.length = 0; Znuc.length = 0; zeff.length = 0; rcs.length = 0;
+    // The line is centred on the box, not on the N-site chain: span here is (KLINE-1)*a, which
+    // is much longer than the (N-1)*a the box was sized from. Pass box=<L> to fit it.
+    var jL = Math.round(ERAD / h), aL = A / h, x0L = N2 - (KLINE - 1) * aL / 2;
+    var lSplitT = [], lSplitI = [];
+    var stepL = KLINE / N;                                  // electron spacing, in spacings
+    for (var rowL = 0; rowL < 2; rowL++) {
+      for (var mL = 0; mL < N; mL++) {
+        var xL = x0L + (stepL * (mL + 0.5) + (rowL === 1 ? 0.5 * stepL : 0)) * aL;
+        atoms.push({ i: Math.round(xL), j: N2 + (rowL === 0 ? jL : -jL), k: N2, Z: 1, el: 'Li' });
+        Z.push(1); Znuc.push(0); zeff.push(ZE); rcs.push(0);
+        lSplitT.push(6); lSplitI.push(rowL);
+      }
+    }
+    for (var mL2 = 0; mL2 < KLINE; mL2++) {
+      atoms.push({ i: Math.round(x0L + mL2 * aL), j: N2, k: N2, Z: 0, el: 'Li' });
+      Z.push(0); Znuc.push(KQ); zeff.push(ZE); rcs.push(RC);
+      lSplitT.push(0); lSplitI.push(0);
+    }
+    if (q.get('split') !== '0') { window.USER_SPLIT_TYPE = lSplitT; window.USER_SPLIT_IDX = lSplitI; }
+  }
+
   if (NK > 0) {
     atoms.length = 0; Z.length = 0; Znuc.length = 0; zeff.length = 0; rcs.length = 0;
     var jRad = Math.round(ERAD / h), kR = KRAD / h;
@@ -340,7 +437,9 @@ window.onerror = function (msg, url, line) {
         eSplitT.push(0); eSplitI.push(0);
       }
     }
-    window.USER_SPLIT_TYPE = eSplitT; window.USER_SPLIT_IDX = eSplitI;
+    if (q.get('split') !== '0') {          // split=0: drop the half-space constraint, to test
+      window.USER_SPLIT_TYPE = eSplitT; window.USER_SPLIT_IDX = eSplitI;
+    }
   }
 
   if (EROWS === 2) {
@@ -665,6 +764,51 @@ window.onerror = function (msg, url, line) {
     // erows=2: two interleaved chains of slabs, one per row. Row is decided by j, position within
     // the row by a slab of width 2a, the lower row shifted by estag spacings. Domain numbering
     // matches the seed order above so each domain's psi is seeded inside its own region.
+    // coax: inside cr, the core slab holding that kernel; outside, the shell slab, offset by d.
+    if (COAX) {
+      var crCell = CR / h, oX = coreI[0];
+      for (var iX = 0; iX < S; iX++) {
+        var mcRaw = Math.floor((iX - oX + 0.5 * aG) / aG);
+        var mCore = WRAP ? (((mcRaw % N) + N) % N) : Math.min(N - 1, Math.max(0, mcRaw));
+        var nSh = (NSH > 0) ? NSH : N, stS = (N / nSh) * aG;
+        // WRAP: the shell must slide cyclically, not be clamped at the ends. The slide period for
+        // nSh carriers on N sites is N spacings (the common multiple of the two lattice periods),
+        // so a scan of the full landscape needs d = 0..N and every intermediate d must relabel
+        // rather than pile carriers up at the last slab.
+        var mRaw = Math.floor((iX - oX - DFRAC * aG + 0.5 * stS) / stS);
+        var mShell = WRAP ? (((mRaw % nSh) + nSh) % nSh) : Math.min(nSh - 1, Math.max(0, mRaw));
+        for (var jX = 0; jX < S; jX++) for (var kX = 0; kX < S; kX++) {
+          var ry = jX - N2, rz = kX - N2;
+          // cr2 gives the shell a genuine OUTER bound -- the wire's surface. Without it the shell
+          // domain runs to the box face, its charge piles against the inner edge and the standoff
+          // is just cr with no thickness to average over. With it, cores live inside cr, the shell
+          // occupies cr..cr2, and beyond cr2 there is no charge: the cells there are given to the
+          // nearest shell domain so the partition still tiles, but the density decays away.
+          var r2c = ry * ry + rz * rz;
+          var inCore = (r2c < crCell * crCell);
+          // core domains are numbered NCORE per site, split by the sign of y for a pair
+          var cIdx = (NCORE === 1) ? mCore
+                   : (NCORE === 2) ? (2 * mCore + ((ry >= 0) ? 0 : 1))
+                   : (NCORE * mCore + ((ry >= 0) ? 0 : 2) + ((rz >= 0) ? 0 : 1));
+          lab[iX * S2 + jX * S + kX] = inCore ? cIdx : (NCORE * N + mShell);
+        }
+      }
+      return lab;
+    }
+    // kline mode: 2N domains, N per row, each a slab of (K/N) spacings in its own half-space.
+    if (KLINE > 0) {
+      var stepC = (KLINE / N) * aG, oC = N2 - (KLINE - 1) * aG / 2;
+      for (var iC = 0; iC < S; iC++) {
+        for (var jC = 0; jC < S; jC++) {
+          var rowC = (jC >= N2) ? 0 : 1;
+          var offC = (rowC === 1) ? 0.5 * stepC : 0;
+          var mC = Math.floor((iC - oC - offC - DFRAC * aG) / stepC);
+          var dmC = rowC * N + Math.min(N - 1, Math.max(0, mC));
+          for (var kC = 0; kC < S; kC++) lab[iC * S2 + jC * S + kC] = dmC;
+        }
+      }
+      return lab;
+    }
     // nk mode: 2N domains, N per row, each a slab of one spacing in its own half-space.
     if (NK > 0) {
       var aK = aG, oK = coreI[0];
@@ -862,6 +1006,7 @@ window.onerror = function (msg, url, line) {
   // minimum-area configuration, so an area penalty stabilises precisely what we want to
   // destabilise. Consistent with the two-centre geometry, where the seed spread went from
   // 0.031 at beta=0 to 0.040 at beta=0.05.
+  if (q.get('kin') !== null) window.USER_KIN = parseFloat(q.get('kin'));  // kinetic coefficient
   window.USER_BETA = parseFloat(q.get('beta') || '0');
   // field: a uniform E along the chain, V_ext = E*x, entering the wavefunction equation.
   // With the partition SPECIFIED this gives conduction as a computable criterion rather than
@@ -1129,6 +1274,10 @@ window.onerror = function (msg, url, line) {
            + (NEL > 0 ? '_FILL' + NEL + 'of' + N : '')
            + (BC !== 'nn' ? '_BC' + BC : '')
            + (ZNUC !== 1.0 && NEL === 0 ? '_Zn' + ZNUC.toFixed(3) : '')
+           + (COAX && CR2 > 0 ? '_R2' + CR2.toFixed(2) : '')
+           + (COAX ? '_COAX' + CR.toFixed(2) + 'q' + KQ.toFixed(3) + (NCORE > 1 ? 'c' + NCORE : '') + (NSH > 0 ? 'n' + NSH : '') + (KMUL > 1 ? 'x' + KMUL : '') : '')
+           + (KLINE > 0 ? '_KL' + KLINE + 'q' + KQ.toFixed(2) + 'e' + ERAD.toFixed(1) : '')
+           + (NK > 0 && q.get('split') === '0' ? '_NS' : '')
            + (NK > 0 ? '_NK' + NK + 'q' + KQ.toFixed(2) + 'r' + KRAD.toFixed(1) + 'e' + ERAD.toFixed(1) + 'g' + ESTAG.toFixed(2) : '')
            + (EZIG ? '_ZIG' : '')
            + (ESEED !== 0 ? '_ES' + ESEED.toFixed(2) : '')
