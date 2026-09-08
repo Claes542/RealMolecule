@@ -65,7 +65,7 @@ The current single-orbital \texttt{sphere} setup does not use the natural \textt
 
 \subsection{Graphene: the 2D trigonal-planar carbon sheet}
 
-Graphene is the 2D crystalline form of carbon: a single atomic layer in which each C atom is bonded to three neighbours in a honeycomb lattice, with the fourth valence electron forming a delocalised $\pi$-band perpendicular to the sheet. It is the canonical 2D material, the parent of the broader 2D-material class (h-BN, MoS$_2$, transition-metal dichalcogenides), and the system on which the band-structure concept of the Dirac cone is most cleanly displayed.
+Graphene is the 2D crystalline form of carbon: a single atomic layer in which each C atom is bonded to three neighbours in a honeycomb lattice, with the fourth valence electron forming a delocalised $\pi$-band perpendicular to the sheet. It is the canonical 2D material, the parent of the broader 2D-material class (h-BN, MoS$_2$, transition-metal dichalcogenides), and the system on which the band-structure concept of the Dirac cone is most cleanly displayed. That last property is outside this framework, for the reason set out under \emph{Metals} below: what is computed here is the $\sigma$-bonded skeleton and its mechanics, not the $\pi$-band or anything derived from it.
 
 \paragraph{What runs in the current implementation.}
 The codebase (\texttt{graphene\_temp.html}) builds a honeycomb graphene sheet in a single plane of the 3D simulation box, with the carbon atoms placed at the honeycomb sites and the rest of the box empty. Each C atom uses the same Level-3 kernel as diamond ($Z_{\rm kernel} = 4$, $r_c = 0.4$). The setup is 50 atoms in a $5 \times 5$ unit-cell sheet, with the outer ring of 32 perimeter atoms \textbf{frozen} and the 18 inner atoms free to evolve under Langevin Brownian dynamics with a temperature ramp.
@@ -106,15 +106,164 @@ The 2D materials class is a major area of contemporary materials science: graphe
 
 The 2D-materials work is exploratory in the same sense as Chapter~\ref{ch:folding}'s folding work: structurally promising, qualitatively correct, quantitatively at the early stage. The next iteration of the framework --- combining the proper \texttt{tetra}/\texttt{third} splitting topologies with the correlation extension that would handle interlayer interactions --- would bring 2D materials into the same quantitative regime as the molecular-scale validation of Part~III.
 
+\section{Conduction and insulation: two arrangements of the same charge}\label{sec:conduction}
+
+Whether a material conducts is the oldest question in solid-state physics, and it is a hard one to
+put to a framework like this. Atomic energies are tens of electron-volts; semiconductor activation
+is $50$--$500$~meV; metallic conduction sets in near $20$~meV. Against the total energy of a system
+large enough for the question to arise those are $10^{-3}$, $10^{-5}$ and $10^{-6}$, so the answer
+lies five or six orders of magnitude below the number a calculation returns. A description good
+enough for binding, where a per cent error is invisible, can be useless here, where a per cent of
+the total is a hundred times the quantity at issue.
+
+Two arrangements were measured, and they answer differently.
+
+\paragraph{What is measured.}
+A domain carries one unit of charge by constraint, so no charge passes between sites. What can move
+is the \emph{partition}: boundaries are redrawn and the pattern of domains advances through the
+lattice. When it has advanced by one full spacing every electron has taken over its neighbour's
+kernel and the configuration is restored, identical, since the energy depends on the partition and
+not on labels. Charge has been transported and nothing material has crossed the sample --- the
+relation a dislocation bears to slip. What decides whether this happens is the energy along that
+path, $E(d)$ for a displacement of a fraction $d$ of a spacing, and in particular its amplitude, the
+\emph{corrugation}: the barrier the partition must cross to advance one site.
+
+A finite chain has ends, and they dominate --- terminal domains bind an electron-volt harder than
+interior ones. Displacing only the middle $M$ carriers repairs this: the energy difference is then
+$M$ times a bulk cost plus two junction costs, so differencing two window sizes cancels the
+junctions exactly and no terminal domain moves in either configuration. A third window tests the
+assumed linearity rather than fitting it.
+
+\paragraph{Model I: a chain of atoms.}
+One kernel per site with its valence electron occupying the same region --- what a hydrogen chain
+is, and an alkali to a first approximation. With the partition held fixed and a uniform field
+applied, the induced dipole gives the polarisability, and repeating at three chain lengths gives its
+scaling: $\alpha=27.4N$, flat to $1\%$ per atom. That is the signature of charge fixed per site. A
+metal's polarisability grows faster than the number of atoms because charge redistributes over the
+whole sample; here each domain carries its unit and cannot give it up, so the only responses are the
+density deforming inside a fixed domain and the boundaries displacing --- both per-atom constants,
+summing to something exactly proportional to $N$. The one escape is a vanishing corrugation, which
+would let the partition slide freely and the response grow without bound.
+
+The chain's corrugation does not vanish, but its \emph{value} is not settled, and the reason is
+worth recording rather than papering over. The model atom uses a pseudopotential, and the rule for
+excluding a domain from a core admits two readings: excluding a domain from its own core alone
+under-excludes, letting density from one domain collect a neighbour's attraction; excluding it from
+every core over-confines, leaving so little room that the displaced state is barely bound. The two
+readings bracket the answer over more than an order of magnitude instead of fixing it. What survives
+is the extensivity above, which is independent of the rule.
+
+\paragraph{Model II: a cable of ions surrounded by electrons.}
+The chain places the carrier where the attractor is. Conducting matter does not: core electrons
+occupy the region around each nucleus and the conduction charge stands outside them. Representing
+that needs two populations --- cores held inside a radius, carriers outside, with only the carriers
+free to slide --- and it is the one arrangement giving a carrier a standoff without violating the
+tiling, because the inner region is genuinely owned rather than left empty.
+
+Sixteen sites, kernels of charge $+3$ on the axis, a closed core of two electrons at each, and one
+valence electron per site outside them: neutral, with \emph{no pseudopotential anywhere}, so the
+carrier is kept out of the core region by non-overlap rather than by an imposed rule. This
+construction therefore escapes the bracket that limits Model I. The measured bulk corrugation is
+\[
+\varepsilon_{\rm bulk} \approx 240\pm30~\text{meV per carrier},
+\]
+inside the $10$--$500$~meV band of the doped semiconductors, organic conductors and polaronic oxides
+--- the class whose transport is thermally activated hopping. The same interaction, the same energy,
+the same domains: only the arrangement of the charge has changed.
+
+\begin{figure}[htb]
+\centering
+\includegraphics[width=\textwidth]{pictures/cable_domains.png}
+\caption{The cable, relaxed. Sixteen sites along the axis, each with a kernel of charge $+3$, a core
+domain of two electrons confined within $2.4\,a_0$, and one valence electron outside it. Colour
+distinguishes domains; white verticals mark the free boundaries between neighbouring carriers, the
+coloured curves are density profiles along the axis, and the yellow segments are net forces on the
+kernels. Every boundary shown is an unknown of the minimisation.}
+\label{fig:cable-domains}
+\end{figure}
+
+\paragraph{What sets the pinning.}
+The barrier is set less by the strength of the ion lattice than by whether the carriers bunch into
+its wells: a carrier distribution that resisted being modulated would ride over the lattice, one
+that does not resist locks to it. RealQM's free interface resists very little, and this is internal
+to the construction --- a flat density is admissible on a free boundary at no cost, so redrawing an
+interface between domains of equal density is free, and the only penalty on a \emph{modulated}
+density is the gradient term, carrying the coefficient $\tfrac12$.
+
+That coefficient is a standardisation, not a constant of the theory: it is set by calibrating
+against atomic spectra, on a bound electron in a single potential well. An extended arrangement is a
+different object, and the coefficient governing how a carrier lattice resists modulation by an ion
+lattice has no obligation to equal the one an atom's spectrum sets. So the natural thing is to ask
+how much the answer turns on it. Doubling it --- a round factor, chosen for being round, not
+calibrated to reproduce anything --- and leaving ions, standoff, geometry and mesh unchanged gives
+$\varepsilon_{\rm bulk}\approx24$~meV, an elevenfold fall, to thermal energy at room temperature.
+
+A barrier at $kT$ does not confine, so the pinning no longer holds and the charge is free to move.
+What state the system is then in this measurement does not determine. It is not \emph{band}
+conduction, since non-overlap admits no extended states for a band to be made of --- but that rules
+out a mechanism, not a phenomenon, and whether the unpinned state would behave as a metal, as a
+sliding charge lattice, or as something else is a question the instrument cannot reach. The
+instrument measures a barrier; when the barrier goes, so does the instrument.
+
+\paragraph{From a barrier to a conductivity.}
+In the activated regime the corrugation is the activation energy in
+$\sigma=(ne^2a^2\nu/kT)\,e^{-E_a/kT}$, where the exponential is the fraction of the time the system
+is over the barrier and the prefactor $\nu=(1/2\pi)\sqrt{K/M}$ is how often it asks --- the
+small-oscillation frequency of the collective coordinate, the charge pattern rocking against the ion
+lattice. Since it is the sites that move, that rocking is a lattice vibration and $M$ is an ionic
+mass. With $M=28\,u$ at $300$~K the two activated arrangements give $2\times10^{-12}$ and
+$6.5$~S\,m$^{-1}$ --- glass and intrinsic germanium --- and the attempt frequencies come out at
+$10^{12}$--$10^{13}$~Hz, the middle one at $11$~meV or $90$~cm$^{-1}$, an ordinary low-lying phonon.
+Nothing was arranged to make that so, and it is the check that the mass entering $\nu$ is the right
+kind of mass.
+
+Three things enter from outside and should be named. The curvature $K$ is taken from an assumed
+sinusoidal shape, since only the endpoints of $E(d)$ were computed. The mass is imported, because
+RealQM carries no masses --- the coefficient of $|\nabla\psi_i|^2$ is a geometric scale, not
+$\hbar^2/2m$, which is exactly why it could be doubled above. And $n=1/a^3$ is a convention for
+turning a per-carrier barrier on a line of sites into a bulk conductivity. What the framework
+supplies is the exponent.
+
+\paragraph{Status.}
+These barriers are rigid-slide values --- all carriers displaced together --- and that is the
+expensive path. The cheap one is a kink: one carrier advancing while the rest hold still,
+compressing the domains ahead and expanding those behind, at a cost independent of chain length.
+Real conductors use kinks, so every barrier here is an upper bound and every conductivity a lower
+bound, by a factor not yet determined. The carriers-on-a-substrate system is a Frenkel--Kontorova
+chain, and in that reading the kink has its own width and its own limiting velocity, both computable
+from two curvatures of the energy; neither is measured yet. Nor is the mesh convergence of the
+$240$~meV, which is the first thing a reader should ask for and which is under test at the time of
+writing. The instrument, at least, is sound: junction cancellation is exact by construction,
+linearity is tested against a third window, translation by one spacing must return the same energy
+to the last digit, and domains related by a symmetry must have equal eigenvalues.
+
 \section{Roadmap toward broader materials applications}\label{sec:material-roadmap}
 
 The validated materials-science regime of Chapter~\ref{ch:condensed} (ionic crystals, molecular crystals where electrostatics dominates) is the working bottom of a larger ambition. We sketch what extensions would enable the framework to reach further into the materials-science landscape.
 
 \paragraph{Metals.}
-Metallic bonding is delocalised: conduction electrons spread across many atoms, and the non-overlapping unit-density picture of Level 3 has to be extended to accommodate this. A natural extension keeps the inner-shell electrons at Level 3 but allows the outermost valence electrons to share territories under a relaxed Bernoulli constraint, producing a continuum description of the conduction band. The development of this extension is a natural next step; it has not yet been validated within the current implementation.
+Metallic bonding is delocalised: conduction electrons spread across many atoms, and the non-overlapping unit-density picture of Level 3 has to be extended to accommodate this. This has now been examined directly rather than left as a prospect, and the outcome is that the extension is not optional but structural.
+
+Section~\ref{sec:conduction} puts this to the test directly, and the outcome is more interesting than
+a flat exclusion. A chain of one-valence-electron atoms does behave as a dielectric: each domain
+carries exactly one electron by constraint, so no charge passes between sites and the polarisability
+is extensive before anything is computed --- confirmed as $\alpha=27.4N$, flat to $1\%$ per atom.
+But rearranging the same charge into a cable of ions surrounded by carriers drops the barrier into
+the semiconductor range, and stiffening the carriers removes it altogether.
+
+Underneath the arithmetic one obstacle is genuinely structural: non-overlap makes the transfer
+integral vanish identically. The transfer integral \emph{is} the overlap of neighbouring orbitals,
+and there is none --- so the construction is not the Mott limit ($U\to\infty$ with $t\neq0$,
+insulating but alive, conducting when doped) but the \emph{atomic limit}, where doping activates
+nothing. \emph{Band} conduction is therefore absent in kind and not by degree: there are no extended
+states for a band to be made of. That is a statement about a mechanism, and it does not by itself
+decide whether the framework can produce conducting behaviour by another route --- which is the open
+question Section~\ref{sec:conduction} ends on. A relaxed constraint permitting overlapping valence
+territories would change the postulate rather than refine the implementation, and is one way out;
+whether it is the only one is not established.
 
 \paragraph{Semiconductors.}
-Semiconductor physics depends on a small band gap and on the response of the gap to dopants, strain, and external fields. A Level-3 treatment of crystalline semiconductors (silicon, germanium, GaAs) could in principle reach the qualitative band structure through the angular splitting of the kernel valence sector, with the splitting topology matched to the crystalline geometry (tetrahedral for Si and Ge, zincblende for GaAs). Quantitative band-gap accuracy would require correlation beyond Level 3, paralleling the GW/Bethe-Salpeter extensions of standard DFT.
+Semiconductor physics as usually formulated depends on a small band gap and on the response of that gap to dopants, strain, and external fields --- and a band gap is a property of a band structure, which for the reason just given the Level-3 construction does not possess. That route is closed. Geometry the framework does reach: the tetrahedral and zincblende bonding topologies of Si, Ge and GaAs are within the angular splitting of the kernel valence sector, and cohesion, elastic response and defect energetics follow from it. And the \emph{transport} of the activated conductors turns out to be reachable by a different road, without a gap: Section~\ref{sec:conduction} measures a hopping barrier of ${\approx}240$~meV for a cable of ions, which is the activation energy such materials are characterised by. What remains outside is everything specifically tied to promotion across a gap --- intrinsic carrier statistics, the doping response through $t$, optical absorption edges.
 
 \paragraph{Polymers and soft matter.}
 Polymer chains and soft-matter systems are at the boundary between the molecular and the condensed regimes covered in Chapters~\ref{ch:folding} and~\ref{ch:condensed}. The Level-5 residue-level reduction of Chapter~\ref{ch:hierarchy} extends naturally to polymer monomer-level reductions, treating each monomer as an effective unit with appropriate electrostatic and steric profile.

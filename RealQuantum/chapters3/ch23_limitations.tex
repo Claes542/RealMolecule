@@ -83,7 +83,7 @@ Glycine deprotonates correctly to form the carboxylate, but the NH$_3^+$ on the 
 
 \section{Current limitations}\label{sec:current-limitations}
 
-These are systems and phenomena where RealQM at the current level of development does not yet reproduce experiment, even qualitatively. Each is a current limitation rather than an in-principle barrier: the extensions described after each item are concrete and tractable at the present stage of the framework.
+These are systems and phenomena where RealQM at the current level of development does not yet reproduce experiment, even qualitatively. Most are current limitations rather than in-principle barriers: the extensions described after each item are concrete and tractable at the present stage of the framework. One is mixed, and is marked as such --- electronic conduction has a part that is structural, lying in the postulate rather than the implementation and removable only by changing the formulation, and a part that is neither, being already described and measured.
 
 \paragraph{Blind protein folding.}
 Folding from an extended chain to native structure \emph{without} the SASA-based hydrophobic parameter does not work. Chignolin stays extended under H-bond forces alone; Villin's hydrophobic core does not pack without the SASA pressure. The framework's regime ends where the entropic hydrophobic effect becomes load-bearing for the fold.
@@ -100,6 +100,33 @@ The repulsion that prevents two atoms from approaching closer than their hard-sp
 
 \paragraph{Chemical-accuracy energies.}
 Quantitative agreement at the $\sim$1~kcal/mol level (chemical accuracy) is not achieved across most of the validated regime. Binding energies are typically off by 3--9\% (i.e.\ tens of kcal/mol for strongly bonded systems), and absolute energies are accurate only to $\sim$0.1~Ha (62~kcal/mol). For ranking molecules, predicting trends, identifying basins of attraction, and understanding mechanisms, this is sufficient; for high-precision thermochemistry, it is not.
+
+\paragraph{Electronic conduction \textnormal{(partly structural, partly current)}.}
+This limitation has several parts, of different kinds, and they should not be run together.
+
+What is genuinely structural is \emph{band} conduction. Non-overlap makes the transfer integral
+vanish identically --- it \emph{is} the overlap of neighbouring orbitals --- so there are no extended
+states for a band to be made of, and no refinement of the implementation produces one. Two further
+obstacles are structural in the same way. A real density carries no current at all, since $\mathbf
+J\propto\mathrm{Im}(\psi^*\nabla\psi)$ vanishes identically, so charge moves only when a domain
+boundary moves. And a minimisation has no time in it: a barrier is computable and a rate is not,
+which is why a resistive conductivity $\sigma=ne^2\tau/m$, needing a relaxation time from
+electron--phonon scattering, stays outside at every barrier height.
+
+What is \emph{not} established is that the framework therefore fails to conduct. Charge transport by
+a moving partition is described, not forbidden, and Section~\ref{sec:conduction} measures its
+barrier in two arrangements: an atomic chain, which is a dielectric with an extensive polarisability
+$\alpha=27.4N$; and a cable of ions surrounded by carriers, which gives ${\approx}240$~meV, the
+activated-hopping range of real semiconductors. Doubling the coefficient of the kinetic energy
+removes the pinning altogether. So the honest position is that band conduction is excluded in kind,
+hopping transport is inside and quantified, and the unpinned state has been produced but not
+classified. An earlier version of this chapter quoted a threshold field of $10^{9}$--$10^{10}$~V/m
+for the chain; that number depended on a pseudopotential exclusion rule since found to be wrong, and
+is withdrawn.
+
+Also inside the framework: transport whose carrier is a nucleus --- protonic and ionic conduction,
+of which Grotthuss transfer is the worked case --- and the dielectric response, a genuine electrical
+property computed parameter-free.
 
 \paragraph{Dispersion (van der Waals).}
 The Level-3 reduction has no dispersion mechanism. The framework relies on a single unit density per electron territory, with no mechanism for the correlated electron motion that produces van der Waals attraction between non-polar species. Systems where dispersion dominates cohesion (CO$_2$, solid N$_2$, much of biological hydrophobicity) are outside the framework's regime; the condensed-phase calibration of Chapter~\ref{ch:condensed} quantifies the resulting overshoot.
