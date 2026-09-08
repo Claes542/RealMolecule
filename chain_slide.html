@@ -227,6 +227,8 @@ window.onerror = function (msg, url, line) {
   var COAX  = (q.get('coax') === '1');            // core electrons + a sliding outer shell
   var CR    = parseFloat(q.get('cr') || '1.2');   // radius dividing core from shell, a0
   var NCORE = parseInt(q.get('ncore') || '1');   // core electrons per site (2 = a real 1s^2)
+  var CHOM  = (q.get('chom') === '1');           // core as ONE domain of charge NCORE, no split
+  var SWIN  = parseInt(q.get('swin') || '0');    // slide only the middle SWIN shell domains
   var CR2   = parseFloat(q.get('cr2') || '0');   // OUTER radius of the shell, a0 (0 = box face)
   var KMUL  = parseInt(q.get('kmul') || '1');     // kernels per site, at charge kq/kmul each
   var NSH   = parseInt(q.get('nsh') || '0');      // shell electrons over N ion sites (0 = N)
@@ -349,15 +351,20 @@ window.onerror = function (msg, url, line) {
     // i.e. Li+ at net +1. The two core electrons take upper and lower half-cylinders (the standard
     // way a pair shares one centre here). With the core present EXPLICITLY the pseudopotential is
     // redundant -- rc can be 0 -- so the own-core/every-core exclusion bracket does not arise.
+    // chom=1: the closed shell as a SINGLE domain carrying NCORE electrons, spherically symmetric,
+    // rather than NCORE domains meeting at a plane. A filled shell is symmetric, so this is the
+    // better model -- and it removes the defect the eigenvalues exposed, where two mirror halves of
+    // one core came out 16 eV apart because they are separate domains free to relax unequally.
     var dCore = Math.max(1, Math.round(0.4 * CR / h));
+    var nCoreDom = CHOM ? 1 : NCORE;
     for (var mC = 0; mC < N; mC++) {
-      for (var cE = 0; cE < NCORE; cE++) {
+      for (var cE = 0; cE < nCoreDom; cE++) {
         // 1 core: on axis. 2: upper/lower half. 4: quadrants of the (y,z) plane.
         var dj = 0, dk = 0;
-        if (NCORE === 2) { dj = (cE === 0) ? dCore : -dCore; }
-        else if (NCORE >= 4) { dj = (cE < 2) ? dCore : -dCore; dk = (cE % 2 === 0) ? dCore : -dCore; }
-        atoms.push({ i: coreI[mC], j: N2 + dj, k: N2 + dk, Z: 1, el: 'Li' });
-        Z.push(1); Znuc.push(0); zeff.push(ZE); rcs.push(0);
+        if (!CHOM && NCORE === 2) { dj = (cE === 0) ? dCore : -dCore; }
+        else if (!CHOM && NCORE >= 4) { dj = (cE < 2) ? dCore : -dCore; dk = (cE % 2 === 0) ? dCore : -dCore; }
+        atoms.push({ i: coreI[mC], j: N2 + dj, k: N2 + dk, Z: (CHOM ? NCORE : 1), el: 'Li' });
+        Z.push(CHOM ? NCORE : 1); Znuc.push(0); zeff.push(ZE); rcs.push(0);
         cSplitT.push(5); cSplitI.push(0); cSplitR.push(CR); cAx.push([1, 0, 0]);
       }
     }
@@ -388,6 +395,7 @@ window.onerror = function (msg, url, line) {
       Z.push(0); Znuc.push(KQ / KMUL); zeff.push(ZE); rcs.push(RC);
       cSplitT.push(0); cSplitI.push(0); cSplitR.push(0); cAx.push([1, 0, 0]);
     }
+    window.USER_FIRST_SHELL = (CHOM ? 1 : NCORE) * N;   // shell domains start here; used by kins
     window.USER_SPLIT_TYPE = cSplitT; window.USER_SPLIT_IDX = cSplitI;
     window.USER_SPLIT_ROT = cSplitR;  window.USER_SPLIT_AXIS = cAx;
   }
@@ -775,7 +783,12 @@ window.onerror = function (msg, url, line) {
         // nSh carriers on N sites is N spacings (the common multiple of the two lattice periods),
         // so a scan of the full landscape needs d = 0..N and every intermediate d must relabel
         // rather than pile carriers up at the last slab.
-        var mRaw = Math.floor((iX - oX - DFRAC * aG + 0.5 * stS) / stS);
+        // swin: only the middle SWIN carriers are displaced; the rest stay at d = 0. The energy
+        // difference then contains SWIN carriers of bulk corrugation plus two junction costs, and
+        // differencing two window sizes cancels the junctions exactly -- bulk with no ends in it.
+        var mUn = Math.floor((iX - oX + 0.5 * stS) / stS);          // undisplaced slab index
+        var inWin = (SWIN <= 0) || (mUn >= Math.floor((N - SWIN) / 2) && mUn < Math.floor((N - SWIN) / 2) + SWIN);
+        var mRaw = Math.floor((iX - oX - (inWin ? DFRAC : 0) * aG + 0.5 * stS) / stS);
         var mShell = WRAP ? (((mRaw % nSh) + nSh) % nSh) : Math.min(nSh - 1, Math.max(0, mRaw));
         for (var jX = 0; jX < S; jX++) for (var kX = 0; kX < S; kX++) {
           var ry = jX - N2, rz = kX - N2;
@@ -787,10 +800,11 @@ window.onerror = function (msg, url, line) {
           var r2c = ry * ry + rz * rz;
           var inCore = (r2c < crCell * crCell);
           // core domains are numbered NCORE per site, split by the sign of y for a pair
-          var cIdx = (NCORE === 1) ? mCore
-                   : (NCORE === 2) ? (2 * mCore + ((ry >= 0) ? 0 : 1))
-                   : (NCORE * mCore + ((ry >= 0) ? 0 : 2) + ((rz >= 0) ? 0 : 1));
-          lab[iX * S2 + jX * S + kX] = inCore ? cIdx : (NCORE * N + mShell);
+          var nCD = CHOM ? 1 : NCORE;
+          var cIdx = (nCD === 1) ? mCore
+                   : (nCD === 2) ? (2 * mCore + ((ry >= 0) ? 0 : 1))
+                   : (nCD * mCore + ((ry >= 0) ? 0 : 2) + ((rz >= 0) ? 0 : 1));
+          lab[iX * S2 + jX * S + kX] = inCore ? cIdx : ((CHOM ? 1 : NCORE) * N + mShell);
         }
       }
       return lab;
@@ -1006,7 +1020,17 @@ window.onerror = function (msg, url, line) {
   // minimum-area configuration, so an area penalty stabilises precisely what we want to
   // destabilise. Consistent with the two-centre geometry, where the seed spread went from
   // 0.031 at beta=0 to 0.040 at beta=0.05.
-  if (q.get('kin') !== null) window.USER_KIN = parseFloat(q.get('kin'));  // kinetic coefficient
+  if (q.get('kin')  !== null) {
+    window.USER_KIN = parseFloat(q.get('kin'));
+    // The ITP step is explicit, so it needs half_d = KIN*dv <= 1/6 for the 3D Laplacian.
+    // Raising KIN at fixed dv breaks that (KIN=2 gives 0.24 and diverges around step 50), so
+    // shrink dv in proportion: the diffusion number is held and only convergence slows.
+    window.USER_DV = 0.12 * 0.5 / Math.max(window.USER_KIN, window.USER_KIN_SHELL || 0);
+  }
+  if (q.get('kins') !== null) {
+    window.USER_KIN_SHELL = parseFloat(q.get('kins'));
+    window.USER_DV = 0.12 * 0.5 / Math.max(window.USER_KIN_SHELL, window.USER_KIN || 0.5);
+  }
   window.USER_BETA = parseFloat(q.get('beta') || '0');
   // field: a uniform E along the chain, V_ext = E*x, entering the wavefunction equation.
   // With the partition SPECIFIED this gives conduction as a computable criterion rather than
@@ -1275,7 +1299,10 @@ window.onerror = function (msg, url, line) {
            + (BC !== 'nn' ? '_BC' + BC : '')
            + (ZNUC !== 1.0 && NEL === 0 ? '_Zn' + ZNUC.toFixed(3) : '')
            + (COAX && CR2 > 0 ? '_R2' + CR2.toFixed(2) : '')
-           + (COAX ? '_COAX' + CR.toFixed(2) + 'q' + KQ.toFixed(3) + (NCORE > 1 ? 'c' + NCORE : '') + (NSH > 0 ? 'n' + NSH : '') + (KMUL > 1 ? 'x' + KMUL : '') : '')
+           + (q.get('kin')  !== null ? '_KIN' + parseFloat(q.get('kin')).toFixed(2) : '')
+           + (q.get('kins') !== null ? '_KS' + parseFloat(q.get('kins')).toFixed(2) : '')
+           + (SWIN > 0 ? '_SW' + SWIN : '')
+           + (COAX ? '_COAX' + CR.toFixed(2) + 'q' + KQ.toFixed(3) + (NCORE > 1 ? 'c' + NCORE : '') + (CHOM ? 'h' : '') + (NSH > 0 ? 'n' + NSH : '') + (KMUL > 1 ? 'x' + KMUL : '') : '')
            + (KLINE > 0 ? '_KL' + KLINE + 'q' + KQ.toFixed(2) + 'e' + ERAD.toFixed(1) : '')
            + (NK > 0 && q.get('split') === '0' ? '_NS' : '')
            + (NK > 0 ? '_NK' + NK + 'q' + KQ.toFixed(2) + 'r' + KRAD.toFixed(1) + 'e' + ERAD.toFixed(1) + 'g' + ESTAG.toFixed(2) : '')

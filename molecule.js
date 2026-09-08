@@ -226,7 +226,11 @@ const PROTEIN_COUNT = window.USER_PROTEIN_COUNT || NELEC;  // atoms with force a
 let screenAu = window.USER_SCREEN || 10;
 let hGrid = screenAu / NN, h2v = hGrid * hGrid, h3v = hGrid * hGrid * hGrid;
 const dv = window.USER_DV || (NELEC > 500 ? 0.01 : NELEC > 100 ? 0.03 : 0.12);  // smaller timestep for large systems
-let dtv = dv * h2v, half_dv = 0.5 * dv;
+// half_dv carries the kinetic coefficient into the imaginary-time step: psi += half_d*lap + ...
+// so scaling it scales the kinetic term the RELAXATION minimises. The diagnostic H.psi has its
+// own copy (KIN_C below) and both must move together or the reported energy will not belong to
+// the state produced. Default 0.5 reproduces the standard operator exactly.
+let dtv = dv * h2v, half_dv = ((window.USER_KIN !== undefined) ? window.USER_KIN : 0.5) * dv;
 const CANVAS_SIZE = window.USER_CANVAS || 700;
 const PX = CANVAS_SIZE / NN;
 const INTERIOR = (NN - 1) * (NN - 1) * (NN - 1);
@@ -256,6 +260,14 @@ const R_SING = Math.max(2 * hGrid, window.USER_R_SING || 0);
 // set by the stiffness-versus-modulation competition. Not a physical knob: it corresponds to a
 // lighter carrier, and it rescales every length in the problem, so read trends, not totals.
 const KIN_C = (window.USER_KIN !== undefined) ? window.USER_KIN : 0.5;
+// KIN_S applies to domains with label >= FIRST_SHELL -- the outer shell in the coaxial wire, so the
+// carriers can be stiffened against axial modulation while the cores keep the physical coefficient.
+// Defaults reproduce the standard operator exactly: KIN_S = KIN_C and FIRST_SHELL beyond any label.
+const KIN_S = (window.USER_KIN_SHELL !== undefined) ? window.USER_KIN_SHELL : KIN_C;
+// Per-domain half_d for the RELAXATION step (the diagnostic has its own copy above). dv is set
+// by the caller from the LARGER coefficient so both stay inside the explicit-step limit 1/6.
+const HD_C = KIN_C * dv, HD_S = KIN_S * dv;
+const FIRST_SHELL = (window.USER_FIRST_SHELL !== undefined) ? window.USER_FIRST_SHELL : 999999;
 const W_CUTOFF = window.USER_W_CUTOFF || 0;  // smooth ψ cutoff near other nuclei (au), 0 = off
 // Detect if any bare nuclei exist (Z=0, Z_nuc>0) at compile time
 // Exclude a cell from EVERY pseudopotential core, not just its own domain's.
@@ -580,7 +592,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
   let vBeta = p.beta * nface * p.inv_h;
   let vExt = p.fieldX * (f32(i) - f32(p.NN) * 0.5) * p.h;
-  Uo[id] = uc + p.half_d * lap + p.dt * (K[id] - 2.0 * Pi[id] - vBeta - vExt) * uc;
+  Uo[id] = uc + select(${HD_C.toFixed(8)}, ${HD_S.toFixed(8)}, myL >= ${FIRST_SHELL}u) * lap + p.dt * (K[id] - 2.0 * Pi[id] - vBeta - vExt) * uc;
 }
 `;
 
@@ -672,7 +684,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
   let vBeta = p.beta * nface * p.inv_h;
   let vExt = p.fieldX * (f32(i) - f32(p.NN) * 0.5) * p.h;
-  let itpStep = uc + p.half_d * lap + p.dt * (K[id] - 2.0 * Pi[id] - vBeta - vExt) * uc;
+  let itpStep = uc + select(${HD_C.toFixed(8)}, ${HD_S.toFixed(8)}, myL >= ${FIRST_SHELL}u) * lap + p.dt * (K[id] - 2.0 * Pi[id] - vBeta - vExt) * uc;
 
   Uo[id] = cheb.omega * itpStep + (1.0 - cheb.omega) * Uprev[id];
 }
@@ -1943,7 +1955,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let lap = u_ip + u_im + u_jp + u_jm + u_kp + u_km - 6.0 * uc;
 
   // H·U = -½∇²U + V_eff·U where V_eff = -K + 2P
-  HU[id] = -0.5 * lap * p.inv_h2 + (-K[id] + 2.0 * Pi[id]) * uc;
+  // toFixed forces a decimal point: JS renders 1.0 as "1", which is an AbstractInt in WGSL and
+  // makes the whole expression integer-typed -- the shader then fails to compile in applyH.
+  let kco = select(${KIN_C.toFixed(8)}, ${KIN_S.toFixed(8)}, myL >= ${FIRST_SHELL}u);
+  HU[id] = -kco * lap * p.inv_h2 + (-K[id] + 2.0 * Pi[id]) * uc;
 }
 `;
 
@@ -2898,7 +2913,8 @@ async function initGPU() {
           const lap = psi[id + S2] + psi[id - S2] + psi[id + S] + psi[id - S]
                     + psi[id + 1] + psi[id - 1] - 6 * uc;
           const vExt = F * (i - S * 0.5) * hGrid;
-          Hpsi[id] = -0.5 * lap * inv_h2 + (-K[id] + 2 * Pot[id] + vExt) * uc;
+          const kco = (L >= FIRST_SHELL) ? KIN_S : KIN_C;
+          Hpsi[id] = -kco * lap * inv_h2 + (-K[id] + 2 * Pot[id] + vExt) * uc;
           interior[id] = 1;
           eps[L] = (eps[L] || 0) + uc * Hpsi[id];
           den[L] = (den[L] || 0) + uc * uc;
@@ -2981,7 +2997,12 @@ async function initGPU() {
           const lap = xp + xm + yp + ym + zp + zm - 6 * uc;
           const gx = (xp - xm) * 0.5, gy = (yp - ym) * 0.5, gz = (zp - zm) * 0.5;
           norm  += uc * uc;
-          Tlap  += -0.5 * uc * lap * inv_h2;
+          // Third site for the kinetic coefficient: the ENERGY sum. The relaxation step and the
+          // H.psi diagnostic each have their own copy, and all three must agree or the reported
+          // energy does not belong to the state produced -- scoring a shell relaxed at KIN_S with
+          // a coefficient of 0.5 under-counts its kinetic energy and drops the total by hartrees.
+          const kcE = (L >= FIRST_SHELL) ? KIN_S : KIN_C;
+          Tlap  += -kcE * uc * lap * inv_h2;
           Tgrad +=  0.5 * (gx * gx + gy * gy + gz * gz) * inv_h2;
           Ven   += -K[id] * uc * uc;
           Vee   += 2 * Pot[id] * uc * uc;

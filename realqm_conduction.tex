@@ -1,6 +1,6 @@
 \documentclass[11pt]{article}
 \usepackage[margin=1in]{geometry}
-\usepackage{amsmath,amssymb,booktabs,authblk,graphicx}
+\usepackage{amsmath,amssymb,booktabs,authblk,graphicx,url}
 \newcommand{\grad}{\nabla}
 \newcommand{\half}{\tfrac12}
 
@@ -38,14 +38,15 @@ kinetic energy from the $\half$ of atomic standardisation to $1$, which compensa
 interface that resists neither compression nor modulation, gives ${\approx}24$~meV: the pinning no
 longer holds and charge is free to move.
 
-The corrugation is the activation energy $E_a$ in the hopping conductivity
-$\sigma=(ne^2a^2\nu/kT)\exp(-E_a/kT)$. Closing the prefactor with an attempt frequency
-$\nu=(1/2\pi)\sqrt{K/M}$ built from the curvature of the same landscape and an ionic mass gives
+The corrugation is the activation energy $E_a$ in a hopping conductivity
+$\sigma\propto\nu\,e^{-E_a/kT}$. Closing the prefactor with an attempt frequency
+$\nu=(1/2\pi)\sqrt{K/M}$, built from the curvature of that landscape and an ionic mass, gives
 $\nu\approx10^{12}$--$10^{13}$~Hz, a lattice frequency, and room-temperature conductivities of
-$2\times10^{-12}$, $6.5$ and $8.8\times10^{3}$~S\,m$^{-1}$ for the three cases --- glass, germanium
-and a poor metal, in that order, with nothing fitted. Only $E_a$ is measured here; the mass and the
-carrier density are inputs, since RealQM carries no masses. Metallic conduction proper is different:
-its rate needs a relaxation time from electron--phonon scattering, and that stays outside.
+$2\times10^{-12}$ and $6.5$~S\,m$^{-1}$ for the first two --- glass and germanium, with nothing
+fitted. For the third the expression does not apply, a barrier at $kT$ being no barrier: that state
+is unpinned, and what it is instead is left open. Only $E_a$ is measured here; the mass and the
+carrier density are inputs, since RealQM carries no masses. A resistive conductivity is outside in
+any case, needing a relaxation time from electron--phonon scattering.
 \end{abstract}
 
 \section{The framework, and what is asked of it}
@@ -74,13 +75,15 @@ arrangement of the same two kinds of charge.
 \paragraph{What conduction is normally computed with.} There is no single standard theory of
 conduction to set beside this one. There is a stack of them, each excellent within its regime and
 each carrying quantities supplied from measurement. Metal is separated from insulator by a gap at the
-Fermi level, and the gap comes from a chosen exchange--correlation functional which moves it by tens
-of per cent, repaired by hybrid mixing or a $GW$ self-energy. Transport is then a second model on top
-of the first: a Boltzmann equation closed by a relaxation time, with an effective mass and a
-deformation potential for the semiconductor; a transfer integral and a reorganisation energy for a
-hopping conductor; a localisation length and a density of states at the Fermi level for variable-range
-hopping in a disordered one; a Hubbard $U$ where the band picture fails outright and the material
-insulates by correlation instead. The point of the contrast is not accuracy --- these are accurate,
+Fermi level \cite{ashcroft}, and in practice the gap comes from a chosen exchange--correlation
+functional \cite{kohnsham}; the Kohn--Sham gap is not the excitation gap even for the exact
+functional \cite{perdewlevy}, and the discrepancy is repaired by hybrid mixing or a $GW$ self-energy
+\cite{hedin}. Transport is then a second model on top of the first: a Boltzmann equation closed by a
+relaxation time, with an effective mass and a deformation potential for the semiconductor
+\cite{bardeen}; a transfer integral and a reorganisation energy for a hopping conductor
+\cite{marcus,holstein}; a localisation length and a density of states at the Fermi level for
+variable-range hopping in a disordered one \cite{mott}; a Hubbard $U$ where the band picture fails
+outright and the material insulates by correlation instead \cite{hubbard,imada}. The point of the contrast is not accuracy --- these are accurate,
 and are what one should use to predict a number for a given material. It is that they are several
 models with parameters, addressing the three regimes separately, whereas what follows is one energy
 with none, in which the regimes differ by how the charge is arranged.
@@ -206,9 +209,14 @@ Raised from $\half$ to $1$, with the ions, the standoff, the geometry and the me
 \[
 \varepsilon_{\rm bulk} \approx 24~\text{meV per carrier},
 \]
-a fall by a factor of eleven, to thermal energy at room temperature. The pinning no longer holds and
-the charge is free to move --- not as a metal, since non-overlap leaves no extended states to fill
-into bands, but as a charge lattice sliding collectively over the ions.
+a fall by a factor of eleven, to thermal energy at room temperature. That is the measurement, and it
+is worth being careful about what it does and does not say. What it says is that the pinning no
+longer holds: a barrier at $kT$ does not confine, and the charge is free to move. What state the
+system is then in is not determined here. It is not band conduction, since non-overlap admits no
+extended states for a band to be made of --- but that rules out a mechanism, not a phenomenon, and
+whether the unpinned state would behave as a metal, as a sliding charge lattice, or as something
+without a name in the existing vocabulary is a question this measurement does not reach. The
+instrument measures a barrier. When the barrier goes away, so does the instrument.
 
 \begin{center}
 \small
@@ -218,7 +226,7 @@ model & corrugation per carrier & regime\\
 \midrule
 chain of atoms: carrier on its own kernel & ${\sim}1$~eV & insulator\\
 cable of ions: carriers standing off the cores & ${\approx}240$~meV & semiconductor: activated hopping\\
-\quad the same cable, carriers stiffened & ${\approx}24$~meV & metallic onset: unpinned\\
+\quad the same cable, carriers stiffened & ${\approx}24$~meV & unpinned; regime not classified\\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -232,10 +240,23 @@ conductor is
 \qquad
 \nu = \frac{1}{2\pi}\sqrt{\frac{K}{M}},
 \end{equation}
-$a$ the hop distance, $n$ the carrier density, $\nu$ the attempt frequency --- the carrier sits in a
-well and tries once per vibrational period --- and $K$ the curvature of that well. The measurements
-supply $E_a$, which decides the temperature dependence and the ratio between regimes. The prefactor
-needs $K$, $M$ and $n$, and it is worth being exact about where each comes from.
+$a$ the hop distance and $n$ the carrier density. The two factors do separate work. The exponential
+is the fraction of the time the system has enough thermal energy to be over the barrier; the
+prefactor $\nu$ is how often it asks. In activated rate theory \cite{hanggi} a system sits near the
+bottom of a well, oscillates there at the small-oscillation frequency $\nu=(1/2\pi)\sqrt{K/M}$ set by
+the curvature $K$ of the well and the mass $M$ of what oscillates, and each oscillation is one
+attempt at the barrier --- whence \emph{attempt frequency}.
+
+What oscillates here is the collective coordinate $u$: the displacement of the carrier pattern along
+the chain, the same variable $E(u)$ was measured against in \S2. The attempt is therefore the charge
+pattern rocking back and forth in one corrugation well against the ion lattice, and since it is the
+sites that move, that rocking is a lattice vibration. Both $V_0$ and $M$ are then taken per carrier,
+which is consistent: displacing $m$ carriers rigidly costs $m$ times the barrier and moves $m$ times
+the mass, and $\nu$ is unchanged.
+
+The measurements supply $E_a$, which decides the temperature dependence and the ratio between
+regimes. The prefactor needs $K$, $M$ and $n$, and it is worth being exact about where each comes
+from.
 
 $K$ is the curvature of the landscape whose amplitude was measured. Taking the periodic curve to be
 $E(u)=\half V_0\bigl[1-\cos(2\pi u/a)\bigr]$ gives $K=2\pi^2V_0/a^2$, which for $V_0=240$~meV at
@@ -266,17 +287,23 @@ With $M=28\,u$ and $T=300$~K:
 \midrule
 chain of atoms & ${\sim}1$~eV & $5.5\times10^{12}$ & $2\times10^{-12}$ & glass, $10^{-11}$--$10^{-15}$\\
 cable of ions & $240$~meV & $2.7\times10^{12}$ & $6.5$ & intrinsic Ge, $2$; lightly doped Si\\
-cable, stiffened & $24$~meV & $8.5\times10^{11}$ & $8.8\times10^{3}$ & a poor metal; Cu is $6\times10^{7}$\\
+cable, stiffened & $24$~meV & $8.5\times10^{11}$ & $(8.8\times10^{3})$ & --- see below\\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \noindent The attempt frequencies are $10^{12}$--$10^{13}$~Hz, which is where lattice vibrations
-live; nothing was arranged to make that so, and it is the check that the mass entering $\nu$ is the
-right kind of mass. The conductivities span fifteen orders of magnitude and fall, in order, in the
-insulating, semiconducting and metallic-onset ranges. Between the two cable rows the factor is
-$1.3\times10^{3}$: the exponential alone gives $4\times10^{3}$, reduced because $\nu\propto\sqrt{V_0}$
-falls as the barrier does.
+live: the middle row is $2.7$~THz, or $\hbar\nu=11$~meV, or $90$~cm$^{-1}$, an ordinary low-lying
+phonon. Nothing was arranged to make that so, and it is the check that the mass entering $\nu$ is
+the right kind of mass. The first two rows fall in the insulating and semiconducting ranges.
+
+The third is bracketed because the formula has been carried outside the regime it describes.
+Equation \eqref{eq:sigma} is the rate of escape from a well, and presumes a barrier large against
+$kT$ so that escape is rare and the prefactor counts attempts. At $E_a=24$~meV against
+$kT=25.9$~meV, $e^{-E_a/kT}=0.4$: nothing is confined and nothing is being attempted. The number is
+what the hopping expression returns when extrapolated to a barrier that has ceased to exist, and it
+should be read as a marker for \emph{unpinned} rather than as a conductivity. What the unpinned state
+actually is, and what rate law governs it, this calculation does not determine.
 
 These are order-of-magnitude statements and cannot be more. The $\pm30$~meV on $E_a$ is already a
 factor $3.2$ either way in $\sigma$ at room temperature, the sinusoid is an assumption, and $M$ and
@@ -289,10 +316,13 @@ climb at once. Real conductors do not do this. The cheap path is a kink --- one 
 while the rest hold still, the domains ahead of it compressed and those behind expanded --- a
 localised defect whose energy does not grow with the length of the chain and which, once formed,
 moves by shifting its centre through the lattice. This is the relation a dislocation bears to sliding
-a whole crystal plane, and it is the same object a charge-density wave transports charge with.
+a whole crystal plane, and it is the same object a charge-density wave transports charge with
+\cite{gruner}.
 
-The carriers-on-a-substrate system of \S5 is a Frenkel--Kontorova chain: a harmonic coupling $\kappa$
-between neighbouring carriers on the periodic potential of curvature $K$ measured here. Two
+The carriers-on-a-substrate system of \S5 is a Frenkel--Kontorova chain \cite{braun}: a harmonic
+coupling $\kappa$ between neighbouring carriers on the periodic potential of curvature $K$ measured
+here. Whether such a chain pins at all is the Aubry transition \cite{aubry}, controlled by the same
+ratio of the two constants. Two
 consequences follow, and both bear on the numbers above. First, the barrier changes character. A kink
 of width $w=\sqrt{\kappa/K}$ sites crosses a Peierls--Nabarro barrier $E_{\rm PN}$ which falls
 steeply --- exponentially, in the continuum limit --- as $w$ grows, so a wide kink slides almost
@@ -310,11 +340,14 @@ quantity. Nothing new in kind is needed; what is needed is $\kappa$, which is th
 energy against a \emph{non-uniform} displacement of the carriers, and $E_{\rm PN}$, which must be
 inferred from $\kappa$ and $K$ rather than read off a slide. Neither is measured here.
 
-Metallic conduction is different and is outside. There $\sigma=ne^2\tau/m$, with $\tau$ a momentum
-relaxation time set by electron--phonon scattering, which requires a current as an object, electron
-dynamics, and irreversibility. A minimisation over real densities has none of the three. Non-overlap
-also leaves no extended states to fill into bands, so band conduction is absent in kind and not by
-degree, and no choice of stiffness produces it.
+What is outside is not a regime but a kind of quantity. A resistive conductivity
+$\sigma=ne^2\tau/m$ needs a momentum relaxation time from electron--phonon scattering, and that needs
+a current as an object, electron dynamics, and irreversibility; a minimisation over real densities
+has none of the three, at any barrier height. And band conduction specifically is absent in kind
+rather than by degree: non-overlap admits no extended states, so there is nothing for a band to be
+made of, and no choice of stiffness produces one. Neither of these tells us what the unpinned state
+of \S5 is. They say only that if it conducts, it does not do so by filling bands, and that this
+framework will not supply the rate at which it does.
 
 \section{Status}
 
@@ -342,21 +375,40 @@ property of the interface condition rather than of the interaction: a free inter
 and supplying the missing stiffness removes the pinning.
 
 What the framework delivers is the activation energy. Closing the hopping prefactor with an attempt
-frequency built from that landscape and an ionic mass then puts the three arrangements at
-$10^{-12}$, $10^{0}$ and $10^{4}$~S\,m$^{-1}$ --- glass, germanium, a poor metal --- with the attempt
-frequencies coming out at lattice values without being asked to. The mass is imported, since RealQM
-carries none; the carrier density is a convention; the curvature assumes a shape; and all three
-numbers are upper bounds on the barrier and hence lower bounds on $\sigma$, because charge moves by
-kinks and not by rigid slides. What the framework does not deliver at all is metallic conduction
-proper, whose rate is a relaxation time from electron--phonon scattering: that needs a current as an
-object and irreversible dynamics, and a minimisation over real densities has neither.
+frequency built from that landscape and an ionic mass puts the first two arrangements at $10^{-12}$
+and $10^{0}$~S\,m$^{-1}$ --- glass and germanium --- with the attempt frequencies coming out at
+lattice values without being asked to. The mass is imported, since RealQM carries none; the carrier
+density is a convention; the curvature assumes a shape; and the barriers are upper bounds, hence the
+conductivities lower bounds, because charge moves by kinks and not by rigid slides. The third
+arrangement is unpinned, and there the account stops: a barrier at $kT$ is not a barrier, the rate
+law built on one does not apply, and what the framework has then produced is a state it can exhibit
+but not classify. What it does not deliver in any regime is a resistive conductivity, whose
+relaxation time needs a current as an object and irreversible dynamics: a minimisation over real
+densities has neither.
 
 \appendix
 \section{Computational details}
 
 All calculations use the RealQM solver \texttt{molecule.js} driven by \texttt{chain\_slide.html}
 (WebGPU, single GPU). Equation \eqref{eq:E} is minimised by imaginary-time relaxation of the
-densities on a uniform Cartesian grid, with the partition specified by a cell-ownership map. For
+densities on a uniform Cartesian grid, with the partition specified by a cell-ownership map.
+
+\paragraph{The code, and running it.} Everything is at
+\begin{center}\small\url{https://github.com/Claes542/RealMolecule}\end{center}
+and runs \emph{in a web browser} with nothing to install, compile or configure: the solver is
+JavaScript and WGSL, the arithmetic is done by WebGPU on whatever GPU the machine has, and a run is
+started by opening a page. A WebGPU-capable browser is required --- Chrome or Edge at present. Every
+configuration in this article is a query string, so each measurement below is reproduced by following
+one link. The reference state and the two windows that give the $240$~meV of \S4:
+\begin{center}\small
+\url{https://claes542.github.io/RealMolecule/chain_slide.html?n=16&a=4.5&rc=0&rsing=0.5&cps=8&wrap=1&coax=1&ncore=2&chom=1&cr=2.4&d=0}
+\end{center}
+and the same with \texttt{\&swin=4\&d=0.5}, \texttt{\&swin=8\&d=0.5}, \texttt{\&swin=12\&d=0.5}; the
+stiffened runs of \S5 add \texttt{\&kins=1}. Each run relaxes until its energy stops changing and
+then writes its total energy, its Euler--Lagrange residual and its per-domain eigenvalues into
+\texttt{localStorage} under \texttt{realqm\_resid}, keyed by the full configuration, so the numbers in
+the tables below are read out rather than transcribed from the screen. The parameters are named in
+the source at the top of \texttt{chain\_slide.html}. For
 every corrugation the partition is \emph{frozen}: the energy of a stated configuration is evaluated,
 which is legitimate for configurations related by a symmetry of the lattice and is why translation by
 one spacing is used as the control. Energies are reported in hartree and converted at
@@ -434,8 +486,40 @@ the terminal domains of a finite cable binding an electron-volt harder than the 
 the necessity of \eqref{eq:window}. Euler--Lagrange residuals are $4\times10^{-3}$ for the chain and
 $2$--$3\times10^{-2}$ for the cable.
 
-\begin{thebibliography}{9}
-\bibitem{realqm} C.~Johnson, \emph{Real Quantum Mechanics}, \texttt{https://realqm.com}.
+\begin{thebibliography}{99}
+\bibitem{ashcroft} N.~W. Ashcroft and N.~D. Mermin, \emph{Solid State Physics}, Holt, Rinehart and
+Winston, New York, 1976.
+\bibitem{kohnsham} W.~Kohn and L.~J. Sham, Self-consistent equations including exchange and
+correlation effects, \emph{Phys. Rev.} \textbf{140}, A1133 (1965).
+\bibitem{perdewlevy} J.~P. Perdew and M.~Levy, Physical content of the exact Kohn--Sham orbital
+energies: band gaps and derivative discontinuities, \emph{Phys. Rev. Lett.} \textbf{51}, 1884 (1983).
+\bibitem{hedin} L.~Hedin, New method for calculating the one-particle Green's function with
+application to the electron-gas problem, \emph{Phys. Rev.} \textbf{139}, A796 (1965).
+\bibitem{bardeen} J.~Bardeen and W.~Shockley, Deformation potentials and mobilities in non-polar
+crystals, \emph{Phys. Rev.} \textbf{80}, 72 (1950).
+\bibitem{marcus} R.~A. Marcus, On the theory of oxidation--reduction reactions involving electron
+transfer. I, \emph{J. Chem. Phys.} \textbf{24}, 966 (1956).
+\bibitem{holstein} T.~Holstein, Studies of polaron motion: Part II. The ``small'' polaron,
+\emph{Ann. Phys.} \textbf{8}, 343 (1959).
+\bibitem{mott} N.~F. Mott, Conduction in non-crystalline materials III. Localized states in a
+pseudogap and near extremities of conduction and valence bands, \emph{Philos. Mag.} \textbf{19}, 835
+(1969).
+\bibitem{hubbard} J.~Hubbard, Electron correlations in narrow energy bands, \emph{Proc. R. Soc.
+London A} \textbf{276}, 238 (1963).
+\bibitem{imada} M.~Imada, A.~Fujimori and Y.~Tokura, Metal--insulator transitions, \emph{Rev. Mod.
+Phys.} \textbf{70}, 1039 (1998).
+\bibitem{hanggi} P.~H\"anggi, P.~Talkner and M.~Borkovec, Reaction-rate theory: fifty years after
+Kramers, \emph{Rev. Mod. Phys.} \textbf{62}, 251 (1990).
+\bibitem{braun} O.~M. Braun and Y.~S. Kivshar, \emph{The Frenkel--Kontorova Model: Concepts, Methods,
+and Applications}, Springer, Berlin, 2004.
+\bibitem{aubry} S.~Aubry, The twist map, the extended Frenkel--Kontorova model and the devil's
+staircase, \emph{Physica D} \textbf{7}, 240 (1983).
+\bibitem{gruner} G.~Gr\"uner, The dynamics of charge-density waves, \emph{Rev. Mod. Phys.}
+\textbf{60}, 1129 (1988).
+\bibitem{realqm} C.~Johnson, \emph{Real Quantum Mechanics}, \url{https://realqm.com}.
+\bibitem{code} C.~Johnson, \emph{RealMolecule}: RealQM solver and browser front-ends,
+\url{https://github.com/Claes542/RealMolecule}. Runs in a WebGPU browser with no installation; the
+gallery of live calculations is at \url{https://claes542.github.io/RealMolecule/gallery.html}.
 \bibitem{realqmbook} C.~Johnson, \emph{Real Quantum Mechanics: a new view of the atom}, book
 manuscript.
 \bibitem{realnucleus} C.~Johnson, \emph{RealNucleus: nucleons as charge densities}, submitted.
