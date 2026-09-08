@@ -457,10 +457,21 @@ range across spacings from $3.5$ to $8.0\,a_0$ is measured on the $r_c=1.0$ chai
 \paragraph{Model II: cable of ions surrounded by electrons.} $N=16$ sites at $a=4.5\,a_0$ on the
 axis, kernel charge $+3$, one core domain per site carrying two electrons and confined within
 $c_r=2.4\,a_0$ of the axis, one valence electron per site outside that radius: $32$ domains, neutral,
-$r_c=0$ with the nuclear singularity clamped at an absolute $0.5\,a_0$ so the potential is the same
-object at every mesh. Mesh $8$ cells per spacing, box $=(N-1)a+10=77.5\,a_0$, grid $138^3$,
-$h=77.5/138=0.5616\,a_0$. The box is the chain span plus a fixed pad and so does not depend on the
-mesh, which is what makes a refinement series meaningful.
+$r_c=0$, so there is no pseudopotential and the carrier is excluded from the core region by
+non-overlap alone. Mesh $8$ cells per spacing, box $=(N-1)a+10=77.5\,a_0$, grid $138^3$,
+$h=77.5/138=0.5616\,a_0$; the box is the chain span plus a fixed pad and so does not depend on the
+mesh.
+
+\paragraph{The nuclear cutoff, and a correction.} A bare $-Z/r$ well cannot be represented on a
+grid, so it is clamped at a radius $R_{\rm sing}$. The solver sets
+$R_{\rm sing}=\max(2h,\,r_{\rm sing})$ with $r_{\rm sing}$ a requested absolute value, and the
+requested $0.5\,a_0$ used here is smaller than $2h$ at every mesh employed --- $1.12$, $0.90$ and
+$0.75\,a_0$ at $8$, $10$ and $12$ cells per spacing. The cutoff was therefore $2h$ throughout, tied
+to the grid rather than absolute, and refining the mesh sharpens the ion instead of merely resolving
+it. An earlier version of this appendix stated that the clamp fixed the potential as the same object
+at every mesh; that is not what the code does, and any comparison across meshes made under that
+assumption compares different ions rather than one ion at different resolutions. To hold the
+potential fixed, $r_{\rm sing}$ must be set above $2h$ at the finest mesh in use.
 Only the shell slides. Energies at $d=\half$ with $M$ middle carriers displaced, against the
 undisplaced reference $E=-160.133661$~Ha:
 \begin{center}
