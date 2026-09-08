@@ -61,7 +61,7 @@ a velocity variable and a dissipation channel, neither of which a static theory 
 
 \setstretch{1.15}
 
-\section{The question, and the two formulations}
+\section{The question, and the two formulations}\label{sec:intro}
 
 \textbf{Can RealQM explain the difference between a conductor and an insulator?} That is the
 question of this article: whether the framework, given only the charges present and their Coulomb
@@ -583,13 +583,6 @@ the numerical mobility is set to. The threshold is a property of the measured cu
 survives refinement; the current above it is a property of the scheme and does not --- and the
 regime is in any case the one just excluded.
 
-\paragraph{Why this supersedes the barrier attempts.} Every earlier route asked for a difference
-between two configurations far apart in the energy landscape --- and \S\ref{sec:mesh} shows why that
-could not work, six of eight scans failing their own control. Equation \eqref{eq:Fdep} asks instead
-for the slope of a single curve, sampled at points a fraction of a spacing apart, on a geometry
-whose control passes by four orders of magnitude. It is the same physics, asked in the form the
-discretisation can answer.
-
 \paragraph{A defect in the model behind these numbers, and what it leaves standing.} The
 pseudopotential exclusion used throughout this section keeps valence density out of a domain's
 \emph{own} core only. A cell belonging to domain $A$ but lying inside neighbouring core $B$ is not
@@ -613,31 +606,6 @@ an undisplaced partition, where each domain contains its own core and the two ru
 decimals, so $\alpha=27.4N$ and the extensivity verdict stand independently of how the exclusion is
 settled. That the article reaches the same conclusion by two routes is what makes the loss of one of
 them survivable.
-
-\paragraph{And it is converged.} The amplitude was checked on three grids at fixed geometry,
-$a=5.5$, $r_c=1.93$, with the translation control exact and the reflection pairs identical to five
-decimals at each:
-
-\begin{center}
-\small
-\begin{tabular}{@{}lrrr@{}}
-\toprule
-$h$ (a$_0$) & $0.448$ & $0.352$ & $0.299$\\
-$V_0$ per electron (meV) & $812$ & $820$ & $815$\\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\noindent $V_0=816\pm4$~meV, a spread of half a per cent across a fifty per cent refinement. What
-makes that possible is worth stating, because the same solver produced scatter of a factor of two
-in \S\ref{sec:mesh}: over this range the \emph{totals} drift by $1572$~meV while the amplitude moves
-by $7$. The cancellation is $99.5\%$, against roughly $89\%$ for the open-chain barrier --- and
-$89\%$ left a residual comparable to the signal, where $99.5\%$ leaves one per cent of it. The
-improvement comes from the geometry alone: $d=0$ and $d=\tfrac12$ lie on one periodic curve on an
-identical grid with identical topology, so their discretisation errors track each other, whereas the
-open chain's two configurations differed in their end domains as well as their registry and the
-errors were independent. \emph{A difference is only as good as the symmetry relating the two
-configurations}, which is the transferable lesson of this article.
 
 \paragraph{The corrugation is bounded below, at every density.} The same scan repeated across
 lattice spacings, with the translation control exact ($0.0$~meV) at every one and reflection pairs
@@ -713,54 +681,6 @@ those behind, depins at a lower field and \eqref{eq:Fdep} is an upper bound. And
 change position without changing width and a wider domain lets its electron spread. What the
 distorted state does under a field is not determined here. Both qualifications point the same way,
 toward a lower threshold, and neither is remotely capable of closing twelve orders of magnitude.
-
-\paragraph{Why a chain rather than a ring.} A ring supplies a clean barrier --- no ends,
-every site equivalent, the energy obliged to repeat with the lattice period --- but it cannot host
-the drive: a conservative field has zero circulation, so no bias drives a sea around a closed loop.
-A chain has ends, a potential drop along it is an ordinary thing to apply, and a single carrier may
-enter at one end and leave at the other, which is the transport event itself.
-
-\paragraph{The partition must be specified, not searched for.} Before the number, the method,
-because the obvious approach fails and the failure is instructive. A kink is \emph{not} the ground
-state, so a free-boundary minimisation relaxes it away --- asked to hold one, the solver oscillates
-between the kinked and uniform partitions and the energy never settles, wandering over
-$0.05$~Ha against a barrier of order $0.01$. That is not a convergence failure to be tuned away:
-it is unaltered by the surface tension $\beta$, by reducing the boundary step fivefold, and by
-freezing the labels outright.
-
-The cause is general and it disqualifies the free boundary for every transport quantity in this
-article. The interface moves by \emph{local single-cell label flips}, so a run descends to whichever
-configuration no single flip improves --- the nearest stuck point, not the minimum --- and which one
-that is depends on the initial condition. Four independent geometries agree:
-
-\begin{center}
-\small
-\begin{tabular}{@{}lll@{}}
-\toprule
-geometry & spread & against a barrier of\\
-\midrule
-ring, between two builds & $0.005$~Ha & $0.012$--$0.022$\\
-kink chain, across steps & $0.05$~Ha (never settles) & $\sim0.01$\\
-$\mathrm{H}^-+\mathrm{H}$, four seeds & $0.031$~Ha & $\sim0.001$\\
-alkali chain, two seeds & $0.013$~Ha & $\sim0.001$\\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\noindent In every case the ambiguity exceeds the quantity sought, by one to two orders. It is a
-failure of the \emph{search}, not of the energy functional, which is why nothing in the functional
-touches it. It is also why the ring's $0.01186$~Ha moved to $0.022$~Ha under a recompilation that
-altered no physics: rounding at the last bit flips cells sitting near the threshold, and a different
-stuck point follows. The rigid-sliding figure should be read as a bound of that order rather than a
-determination, and the doping barriers of the earlier barrier scans, obtained the same way, with it.
-
-The repair is not a better minimiser but no minimiser. The domain walls of a chain are planes
-perpendicular to the axis, so they can be \emph{placed}: specify the partition, freeze it, and relax
-only the wavefunctions. Nothing is searched for, the same input returns the same output, and the
-question asked is no longer ``where does the boundary go'' but ``what does this configuration
-cost'' --- which is the question a barrier actually poses. It is the device that makes the
-$\mathrm{H}_2$ midplane exact, applied to a coordinate instead of a symmetry.
-
 
 \section{The same verdict from scaling}\label{sec:scaling}
 
@@ -1028,123 +948,29 @@ others, and the factor of eleven rests on two coefficients rather than a curve. 
 provisional is the instrument: \eqref{eq:window} cancels ends and junctions by construction and
 verifies itself against a third window.
 
-\section{The barrier is not extractable, and the control that shows it}\label{sec:mesh}
+\section{The route that did not work, and what it cost to find out}\label{sec:mesh}
 
-A barrier taken as the difference of two configurations is only as good as the cancellation between
-their errors, and that cancellation is not something one may assume. The check is available and
-costs nothing conceptually: scan the carrier's position through a \emph{full lattice period} rather
-than sampling two configurations, and require the scan to return to where it began. On an infinite
-chain $E(c{=}0)$ and $E(c{=}1)$ are the same configuration translated by one spacing and must agree
-exactly. Their mismatch is therefore a per-run noise floor --- finite size and discretisation
-together --- measured in the same run as the quantity it has to be compared against.
+The measurement of \S\ref{sec:three} was not the first attempt. The first asked for the barrier
+directly --- the energy difference between a carrier here and a carrier one site along --- and it
+cannot be obtained at any resolution this or any comparable calculation will reach. The reason is the
+scale problem of \S\ref{sec:intro} in its sharpest form: the quantity is about $0.01$~Ha, the totals
+it must be differenced from are $1.3$~Ha, and the first-order discretisation error on those totals is
+$0.27$~Ha. Reaching ten per cent of the barrier would need a $42\,000^3$ grid. Brute force does not
+help, because the error does not cancel between two configurations that differ in more than registry.
 
-Two further benefits come with it. The barrier becomes the \emph{amplitude} of $E(c)$, so nothing
-depends on having guessed where the extrema lie; and the shape of $E(c)$ is visible, so a genuine
-corrugation can be told from a monotone drift. Both matter, as it turns out: the maximum is
-generally not at the half-way point that a two-configuration measurement assumes.
+\paragraph{The control that showed it.} Scanning a full lattice period instead of sampling two
+configurations supplies the diagnosis for free: translation by one spacing must return the same
+energy. Six of eight such scans failed that identity, the two that passed survived no change of
+parameter, and the scan at parameters the framework itself fixes failed by the widest margin. What
+the scans did contain, reproducibly, was a drift of the carrier toward a chain end and grid-locking
+of a staircase interface --- both of order an electron-volt, which is why they were mistaken for
+signal for as long as they were.
 
-Applying it is decisive. Eight scans, each nine configurations over one period, with the core
-radius and the lattice spacing varied:
-
-\begin{center}
-\small
-\begin{tabular}{@{}rrrrrl@{}}
-\toprule
-$a$ (a$_0$) & $r_c$ & amplitude & control & ratio & \\
-\midrule
-$6.0$ & $1.60$ & $\phantom{0}770$~meV & $699$~meV & $\phantom{0}1.1$ & fails\\
-$6.0$ & $1.60$ & $1087$ & $535$ & $\phantom{0}2.0$ & fails\\
-$4.5$ & $0.80$ & $1854$ & $1524$ & $\phantom{0}1.2$ & fails\\
-$4.5$ & $1.20$ & $1735$ & $936$ & $\phantom{0}1.9$ & fails\\
-$4.5$ & $1.60$ & $1900$ & $\phantom{00}78$ & $24.4$ & passes\\
-$4.5$ & $1.93$ & $2597$ & $584$ & $\phantom{0}4.4$ & passes\\
-$5.5$ & $1.93$ & $1949$ & $1192$ & $\phantom{0}1.6$ & fails\\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\noindent \textbf{Six of the eight fail their own control}, and the two that pass do not survive a
-change of either parameter. Worse for any attempt to rescue a number from them, the passes cluster
-at one spacing, $a=4.5$, across three different core radii --- including one for which $4.5$ is not
-the equilibrium. Had the control been passing because a bound chain holds the carrier, the
-calibrated radius at \emph{its own} equilibrium would have passed; it fails by the widest margin in
-the table.
-
-The last row is the one that settles the matter. Everywhere else in this article at least one
-parameter was chosen for convenience: $r_c=1.6$ because it was to hand, $a=6.0$ because the first
-scans used it. In that row both are determined --- $r_c=1.93$ from the isolated atom's ionisation
-energy, and $a=5.5$ from that radius's own equilibrium, located by a five-point scan of the
-defect-free chain with a minimum at $5.43$~a$_0$. \emph{At parameters the framework does not get to
-choose, no barrier can be quoted.}
-
-\paragraph{Why, in one line of arithmetic.} The totals converge only to first order in the mesh, at
-about $0.91$~Ha per unit $h$, so at $h=0.30$ each still carries some $0.27$~Ha of discretisation
-error --- a fifth of the total --- while the barrier differenced from the pair is $0.01$~Ha. The
-quantity sought is under four per cent of the error in each quantity it is subtracted from, and
-would need better than ninety-six per cent cancellation to survive. It does not get it: refining the
-mesh alone at fixed everything else moves the value $315\to371\to552\to265$~meV, without converging
-and without monotonicity. Brute force cannot close this. Reducing the error merely to the size of
-the barrier needs $h\approx0.011$, a $4200^3$ grid; reaching ten per cent of it needs $42000^3$.
-
-\paragraph{Two artifacts, both identified.} What the scans do contain is a monotone drift of
-$0.5$--$1.5$~eV per site, the carrier being attracted to a chain end, superposed on a deterministic
-wiggle of similar size. The wiggle is grid-locking, and it can be caught in the act: at $h=0.348$
-the configurations $c=0.125$ and $c=0.250$ return \emph{identical} energies to five decimals,
-because the cell-by-cell assignment did not flip between them. The partition is a staircase pinned
-to the grid, and the interface energy jumps as the staircase does. Neither artifact is noise ---
-repeated runs of one configuration agree to all five decimals recorded --- which is precisely why
-scatter of this kind survived so long undetected: it is exactly reproducible, and reproducibility
-was taken for correctness.
-
-\paragraph{A caution about spacing, from the exact side.} Every barrier first computed here used
-$a=6.0$. On a hydrogen chain of the same geometry, full configuration interaction puts the binding
-at $0.8$~mHa --- $21$~meV for six atoms, against the same atoms separated. \emph{The chain is not
-bound at that spacing.} A lattice that does not hold together cannot pin a carrier, so the absence
-of a periodic corrugation there is the expected result and not a finding about RealQM. This
-invalidates the original comparison with hopping semiconductors on its own, before any question of
-numerical resolution arises: those materials are bound solids.
-
-\paragraph{What would be needed instead.} Not a finer grid. The failure is structural to the method
-of differencing large totals, so the routes out change what is computed. Either the barrier is
-obtained as a path integral of the interface force, $dE/d\lambda=\oint_\Gamma[w]\,v_n\,dS$,
-whose error scales with the interface rather than with the volume; or the partition is given
-sub-cell resolution so that $E$ becomes a smooth function of where the walls lie instead of a rough
-one. Both are projects rather than adjustments, and neither was attempted here.
-
-\paragraph{The control is sound, and a ring shows it.} Lest the failures above be read as a defect
-of the specified-partition method itself, the control was checked on a geometry whose symmetry is
-exact. A ring of six kernels carrying six electrons, the partition rotated rigidly by $\phi$ in
-units of the spacing, must return the same energy at $\phi=1$ as at $\phi=0$ --- the two are related
-by a relabelling --- and must be symmetric about $\phi=\tfrac12$. It is, to every digit recorded:
-$E(0)=E(1)=0.56101$, $E(0.125)=E(0.875)=0.35258$, $E(0.375)=E(0.625)=-0.21304$, with one pair
-disagreeing by $0.011$~Ha and thereby setting the noise floor. So the method reproduces exact
-translations exactly, and the chain's asymmetry --- its minimum displaced from $d=\tfrac12$, which a
-reflection through a core forbids --- is the finite chain's two end domains, $29\%$ of a seven-core
-system, and not the partition. That ring is not otherwise usable: its angular sectors widen with
-radius, most of each domain lies far from its kernel, and the total energy comes out
-\emph{positive} for a system six hydrogen atoms would bind at $-3$~Ha. It settles the control and
-nothing else.
-
-\paragraph{Why this quantity in particular resists measurement.} The construction is a
-Frenkel--Kontorova system, and saying so explains the difficulty rather than merely naming it. The
-electron domains are a chain with elastic stiffness $\kappa$ supplied by Coulomb repulsion between
-neighbours; the kernels are a periodic substrate of amplitude set by $V$. Every configuration in
-this article is a displacement field $u(x)$ of electrons against kernels: the rigid slide is its
-uniform mode, and a kink is the localised profile carrying $u$ from $0$ to one spacing. In that
-model the width of the kink and the barrier to moving it are
-\begin{equation}\label{eq:fk}
-W=\sqrt{\kappa/K},\qquad K=V''(u_{\min}),\qquad E_{\rm PN}\sim\exp(-c\,W/a),
-\end{equation}
-so \emph{the barrier is exponentially sensitive to a ratio of two curvatures}. That is the worst
-possible form for direct measurement --- an exponential magnifies every error in $\kappa$ and $K$ ---
-and it is why differencing total energies was never going to work, whatever the mesh. It also
-indicates the route: $\kappa$ and $K$ are local curvatures, taken between configurations differing
-infinitesimally, where discretisation errors cancel instead of competing. Measuring those and
-inferring $E_{\rm PN}$ from \eqref{eq:fk} is a different calculation from the one attempted here,
-and it is left to a separate study. A caution belongs with it: \eqref{eq:fk} assumes
-nearest-neighbour coupling, while Coulomb is long-ranged, which changes kink profiles from
-exponential to power-law and shifts the transition. It is a guide to the regime, not a formula to
-trust to three figures.
+\paragraph{Earlier figures, not quoted.} A compression test on a ring, a doping series, a lattice
+barrier of order $5$~eV between interstitial pockets, and an interface defect at $179$~meV
+independent of chain length. Each specified or evolved a partition that no symmetry fixes, so each is
+a bound of its stated order rather than a determination. They are superseded by the measurements
+above and are recorded here only so that the earlier numbers are not read as results.
 
 \paragraph{What this says about scope.} Narrower than it first appears. That this barrier is not
 extractable does not leave the scope claim unmeasured: \S\ref{sec:three} obtains it by another route,
@@ -1153,69 +979,17 @@ What this section establishes is that the quantity cannot be reached by comparin
 apart in the landscape --- and that the structural part of the claim, non-overlap and a vanishing
 transfer integral, needs no grid at all.
 
-\paragraph{Earlier figures, and why they are not quoted.} A series of barrier scans was made
-before the difficulty above was understood, all of them by the free-boundary route: a compression
-test on a ring, a doping series at two concentrations, a lattice barrier between interstitial
-pockets of order $5$~eV, and a localised interface defect costing $179$~meV independently of chain
-length. Every one specified or evolved a partition that no symmetry fixes, so each is a bound of
-its stated order rather than a determination, and all are superseded by the barrier above. What
-survives from them is the direction of the density trend, which the symmetry-fixed measurement
-confirms.
+\paragraph{The lesson, which is the transferable part.} Ask for a quantity in the form the
+discretisation can answer. A difference between distant configurations inherits the full
+discretisation error of both; a difference between neighbouring ones, on a geometry whose symmetry
+fixes the partition, does not. \S\ref{sec:threshold} asks for the slope of a curve sampled a fraction
+of a spacing apart, and \S\ref{sec:three} asks for an increment between two window sizes with the
+ends held still. Both are the same physics asked in a form that survives being computed.
 
-\paragraph{What is actually transported.} The carrier in this framework is not an electron. An
-electron here is not a particle but a unit of charge density on a domain, and what exists is the
-\emph{partition} of space; dynamics is the evolution of that partition, and transport is the
-partition pattern travelling. What moves along the chain is the \textbf{free boundary} --- a locus
-where two densities balance --- and nothing material traverses it at all.
-
-The quantitative form of this is the useful one. As a kink passes, each electron advances by exactly
-one site spacing and then stops, while the kink advances the entire length of the chain. The
-carrier's displacement and its constituents' displacement are decoupled, and their ratio is the
-chain length. This is the relation between a dislocation and the slip it produces: the dislocation
-crosses the crystal, no atom moves far. Charge is genuinely transported and real charge arrives at
-the far end; it is the \emph{carrier} that is immaterial, in the sense that a wave is immaterial
-while the water is not.
-
-That diagnosis also accounts for the failures recorded earlier in this study rather than excusing
-them. Each of the unsuccessful constructions imposed a carrier that had to \emph{translate}, moving
-bodily through occupied space, and returned costs of tens of electron-volts or else collapsed. Those
-were the price of forbidding the only mechanism the framework has. The solver states as much
-directly: its free boundary evolves by the density balance $(\rho_i - \rho_j)/(\rho_i + \rho_j)$,
-flipping ownership cell by cell. Boundary motion is the only motion it performs. The corona result
-is the same statement seen from the favourable side --- an added electron spread into a uniform
-shell at no cost, which is a boundary redistributing freely.
-
-This raises the stake of the kink measurement. If transport works here it works \emph{because} of
-the free boundary, which is the single feature separating this framework from the standard theory;
-and if the boundary cannot carry charge cheaply, the difficulty is not in a detail of the
-construction but in the framework's defining object.
-
-\paragraph{A repair that is not available, and one that is.} An obvious response to the barrier is
-to let valence electrons share a territory, which removes it by construction. The $n^{5/3}$
-scaling rules that out: sharing destroys the extensivity the partition supplies, and a metal would
-lose its kinetic energy density by fifteen orders of magnitude.
-
-\paragraph{What the framework then is.}\label{sec:hubbard} Non-overlapping sites, occupation $0$, $1$ or $2$, an on-site
-repulsion $U$, and transfer between neighbours: that is the \textbf{Hubbard model}. Which locates
-RealQM exactly. As formulated --- one unit of charge per domain, always --- it is the Hubbard model in
-the limit $U\to\infty$, where double occupancy is forbidden outright and every site is singly
-occupied. That limit is a Mott insulator at every density, which is precisely what
-the earlier barrier scans found by direct computation, and it explains the density trend as well: no
-finite $U$ can be beaten by a bandwidth that does not exist.
-
-The repair is correspondingly minimal. Keep the partition, keep the geometry, keep the Coulomb
-energetics, and allow occupation to take the value two at a computed cost. The framework then sits
-where the standard treatment of strongly correlated matter sits --- the Hubbard model is the working
-description of Mott insulators, of the cuprates, and of the materials for which band theory fails ---
-with the difference that its $U$ and its lattice are derived rather than supplied.
-
-We do not carry this out here. What is established is where the obstruction lies: not in the
-interface condition, not in the geometry, but in the rule of one unit of charge per domain. That rule
-is also the source of one of the framework's results, charge quantization as a consequence of
-indivisibility rather than an assumption. The tension is worth stating plainly: \emph{the postulate
-that explains why charge comes in units is the postulate that forbids a metal.} Matter has it both
-ways, quantizing the particles while leaving the amplitude on each site continuous, and a partition
-of real densities has no evident means to do the same.
+\paragraph{A repair that is not available.} An obvious response to a barrier is to let valence
+electrons share a territory, which removes it by construction. The $n^{5/3}$ scaling rules that out:
+sharing destroys the extensivity the partition supplies, and a metal would lose its kinetic energy
+density by fifteen orders of magnitude.
 
 \section{The carrier itself, against exact diagonalisation}\label{sec:stdqm}
 
