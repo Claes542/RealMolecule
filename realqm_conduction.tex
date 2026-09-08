@@ -246,6 +246,69 @@ a hopping conductivity and the ratio between regimes. What it does not deliver i
 that needs a timescale, which for hopping is a lattice frequency it could compute and has not, and
 for metallic conduction is a relaxation time it cannot.
 
+\appendix
+\section{Computational details}
+
+All calculations use the RealQM solver \texttt{molecule.js} driven by \texttt{chain\_slide.html}
+(WebGPU, single GPU). Equation \eqref{eq:E} is minimised by imaginary-time relaxation of the
+densities on a uniform Cartesian grid, with the partition specified by a cell-ownership map. For
+every corrugation the partition is \emph{frozen}: the energy of a stated configuration is evaluated,
+which is legitimate for configurations related by a symmetry of the lattice and is why translation by
+one spacing is used as the control. Energies are reported in hartree and converted at
+$1$~Ha${}=27211$~meV.
+
+\paragraph{Model I: chain of atoms.} $N=7$ model atoms in a row, nuclear charge $+1$, one valence
+electron each, wrapped labelling so that translation by one spacing is an exact relabelling. Two
+geometries were used: $r_c=1.0\,a_0$ at spacings $a=3.5$ to $8.0\,a_0$ for the polarisability and the
+density trend, and $r_c=1.93\,a_0$ at $a=5.5\,a_0$, $h=0.448\,a_0$ for the corrugation, $r_c$ in the
+second being fixed by the isolated atom's ionisation energy rather than chosen. Polarisability from
+the induced dipole at two field strengths with the partition frozen, at $N=3,5,7$:
+$\alpha=27.4N\,a_0^3$, flat to $1\%$ per atom. Corrugation from $E(0)$ and $E(\half)$; on the
+$a=5.5$ chain, $E(0)=-1.631277$~Ha throughout, with $E(\half)=-1.839$~Ha under own-core exclusion
+($808$~meV per electron) and $-1.617$~Ha under exclusion from every core ($54$~meV). These bracket
+the answer; the electron-volt scale quoted in \S3 is the own-core end, and the ${\sim}0.8$--$1.5$~eV
+range across spacings from $3.5$ to $8.0\,a_0$ is measured on the $r_c=1.0$ chain.
+
+\paragraph{Model II: cable of ions surrounded by electrons.} $N=16$ sites at $a=4.5\,a_0$ on the
+axis, kernel charge $+3$, one core domain per site carrying two electrons and confined within
+$c_r=2.4\,a_0$ of the axis, one valence electron per site outside that radius: $32$ domains, neutral,
+$r_c=0$ with the nuclear singularity clamped at an absolute $0.5\,a_0$ so the potential is the same
+object at every mesh. Mesh $8$ cells per spacing, $h=0.5625\,a_0$, box $59.5\,a_0$, grid $106^3$.
+Only the shell slides. Energies at $d=\half$ with $M$ middle carriers displaced, against the
+undisplaced reference $E=-160.133661$~Ha:
+\begin{center}
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+$M$ & $4$ & $8$ & $12$\\
+\midrule
+$E$ (Ha) & $-160.352807$ & $-160.312817$ & $-160.281810$\\
+$\Delta E$ (meV) & $-5963$ & $-4875$ & $-4031$\\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent Equation \eqref{eq:window} on $(4,8)$ gives $\varepsilon_{\rm bulk}=272$~meV and
+$\varepsilon_{\rm junc}=-3526$~meV per junction; on $(8,12)$ it gives $211$~meV. The linearity test
+predicts $\Delta E(12)=-3787$~meV against $-4031$ measured, a $6\%$ miss, and the spread between the
+two estimates is quoted as the uncertainty: $240\pm30$~meV. The $(4,8)$ pair is the cleaner, both its
+junctions lying well inside the chain, where at $M=12$ only two sites remain on either side.
+
+\paragraph{Stiffened carriers.} Identical geometry, mesh and ion lattice, with the coefficient of
+$|\grad\psi_i|^2$ raised from $\half$ to $1$ for the shell domains only, the cores keeping $\half$.
+The coefficient enters three places --- the imaginary-time step, the $H\psi$ diagnostic and the
+energy sum --- and all three must carry it or the reported energy does not belong to the state
+produced. The explicit step requires the diffusion number below $1/6$, so the timestep is halved in
+proportion; the stiffened runs are correspondingly less relaxed. $\Delta E(4)=-8447$~meV,
+$\Delta E(8)=-8352$~meV, giving $\varepsilon_{\rm bulk}=24$~meV per carrier.
+
+\paragraph{Controls applied.} Translation by one full period must return the same energy: satisfied
+to nine digits ($E(0)=E(N)$ exactly) on the wrapped geometries. Repeat runs of one configuration
+agree to nine digits, so the solver is deterministic and any discrepancy is attributable to the
+model or the input. Domains related by a symmetry must have equal eigenvalues: this is what exposed
+the terminal domains of a finite cable binding an electron-volt harder than the interior, and hence
+the necessity of \eqref{eq:window}. Euler--Lagrange residuals are $4\times10^{-3}$ for the chain and
+$2$--$3\times10^{-2}$ for the cable.
+
 \begin{thebibliography}{9}
 \bibitem{realqm} C.~Johnson, \emph{Real Quantum Mechanics}, \texttt{https://realqm.com}.
 \bibitem{realqmbook} C.~Johnson, \emph{Real Quantum Mechanics: a new view of the atom}, book
