@@ -1,0 +1,256 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,authblk}
+\newcommand{\grad}{\nabla}
+\newcommand{\half}{\tfrac12}
+
+\title{Conduction vs Insulation by RealQM}
+\author[1]{Claes Johnson}
+\affil[1]{KTH Royal Institute of Technology, SE-100 44 Stockholm, Sweden \\
+\texttt{claesjohnson@gmail.com}}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent This article shows what RealQM, as a new alternative to textbook quantum mechanics, offers
+as explanation of the difference between conductors and insulators. RealQM represents an
+$N$-electron system by $N$ non-negative unit charge densities in ordinary three-dimensional space,
+one per electron, meeting at free boundaries and minimising the total energy --- Coulomb interaction
+plus kinetic energy, with no other force and nothing fitted. It is a computable, parameter-free model
+at polynomial cost.
+
+Computationally the difficulty is one of scale. Atomic energies are tens of electron-volts;
+semiconductor activation is $50$--$500$~meV; metallic conduction sets in near $20$~meV. Against the
+total energy of a system large enough for the question to be posed those are $10^{-3}$, $10^{-5}$ and
+$10^{-6}$, so whether a material conducts is decided by a difference five or six orders of magnitude
+below the number a calculation returns. The same span falls on the model: a description adequate for
+binding, where a per cent error is invisible, can be hopeless for conduction, where a per cent of the
+total is a hundred times the quantity in question.
+
+Two models are measured. A \textbf{chain of atoms}, the valence electron occupying its own kernel's
+region, gives a corrugation of order an electron-volt for the electron pattern to slide through, and
+an extensive polarisability $\alpha=27.4N$: an insulator. A \textbf{cable of ions surrounded by
+electrons}, the carriers standing off cores that screen the kernels, gives ${\approx}240$~meV --- the
+semiconductor range, where transport is thermally activated hopping. Raising the coefficient of the
+kinetic energy from the $\half$ of atomic standardisation to $1$, which compensates for a free
+interface that resists neither compression nor modulation, gives ${\approx}24$~meV: the pinning no
+longer holds and charge is free to move.
+
+The corrugation is the activation energy $E_a$, fixing the exponential in the hopping conductivity
+$\sigma\propto\nu\exp(-E_a/kT)$, so $240$ against $24$~meV is four orders of magnitude in $\sigma$ at
+room temperature. The prefactor $\nu$ is an attempt frequency, a lattice quantity this framework can
+also supply, though it is not computed here. Metallic conduction is different: its rate needs a
+relaxation time from electron--phonon scattering, and that stays outside.
+\end{abstract}
+
+\section{The framework, and what is asked of it}
+
+RealQM represents an $N$-electron system by $N$ non-negative densities $\psi_i$, each carrying unit
+charge on its own domain $\Omega_i$, the domains non-overlapping and their interfaces free to move to
+where the energy is least. The energy minimised is
+\begin{equation}\label{eq:E}
+E[\{\psi_i\},\{\Omega_i\}]=\sum_i\int_{\Omega_i}\Bigl(\half|\grad\psi_i|^2
+-\sum_a\frac{Z_a}{|x-x_a|}\psi_i^2\Bigr)dx
++\half\sum_{i\neq j}\iint\frac{\psi_i^2(x)\psi_j^2(y)}{|x-y|}\,dx\,dy,
+\end{equation}
+subject to $\int_{\Omega_i}\psi_i^2=1$. There is no wavefunction in $3N$ dimensions, no antisymmetry
+and no self-interaction; the role played by the exclusion principle is played by the requirement that
+domains do not overlap. The minimisation runs over the partition as well as over the densities, so
+the domain edges are unknowns of the problem. Everything is Coulomb interaction and kinetic energy,
+with nothing fitted, and the cost is polynomial in $N$ rather than exponential.
+
+Every previous test of this construction --- ionisation energies across the periodic table, molecular
+binding, hydrogen bonds and solvation, nuclear binding by dual Coulomb confinement --- has been on
+\emph{bound} matter, where an attractor is always present and the charge is where the attractor is.
+Conduction is the first question that asks about charge which is not where an attractor holds it, and
+the framework has no separate machinery for it: the same energy, the same domains, in a different
+arrangement of the same two kinds of charge.
+
+\paragraph{Two arrangements, both ordinary matter.} The first is a \textbf{chain of atoms}: one
+kernel per site with its valence electron occupying the same region, which is what a hydrogen chain
+is and what an alkali is to a first approximation. The second is a \textbf{cable of ions surrounded
+by electrons}: kernels screened by their own core electrons, with the valence charge standing off
+outside them, which is how a wire is built. The question is what each gives.
+
+\section{What is measured}
+
+A domain carries one unit of charge by constraint, so no charge passes between sites. What can move
+is the \emph{partition}: the boundaries are redrawn, and the pattern of domains advances through the
+lattice. When the pattern has advanced by one full spacing, every electron has taken over its
+neighbour's kernel and the configuration is restored --- identical, since the electrons are identical
+and the energy depends on the partition and not on labels. Charge has been transported and nothing
+material has traversed the sample, which is the relation a dislocation bears to slip.
+
+The quantity that decides whether this happens is the energy along that path. Write $E(d)$ for the
+energy with the partition displaced by a fraction $d$ of a spacing. It is periodic, $E(d+1)=E(d)$,
+and its amplitude
+\begin{equation}\label{eq:V0}
+V_0 = \max_d E(d) - \min_d E(d)
+\end{equation}
+is the corrugation: the barrier the partition must cross to advance one site. A field tilts this
+curve by $-NeFd$, so the pattern runs when the tilt exceeds the steepest slope of $E(d)$, and
+otherwise settles at a displacement and stops --- bounded polarisation, no current.
+
+\paragraph{Ends, and how to remove them.} A finite chain has ends, and they dominate: terminal
+domains bind an electron-volt harder than interior ones, so a corrugation read from total energies is
+reading the ends. Displacing only the middle $M$ carriers repairs this. The energy difference is then
+$M$ times the bulk cost plus two junction costs, so differencing two window sizes cancels the
+junctions exactly, and no terminal domain moves in either configuration:
+\begin{equation}\label{eq:window}
+\Delta E(M) = M\,\varepsilon_{\rm bulk} + 2\varepsilon_{\rm junc},
+\qquad
+\varepsilon_{\rm bulk} = \frac{\Delta E(M_2)-\Delta E(M_1)}{M_2-M_1}.
+\end{equation}
+The decomposition asserts linearity in $M$, which a third window tests rather than fits.
+
+\section{Model I: a chain of atoms}
+
+Seven model atoms in a row, one valence electron each, the electron occupying its kernel's region.
+Two measurements.
+
+\paragraph{The polarisability is extensive.} With the partition held fixed and a uniform field
+applied, the induced dipole gives $\alpha$, and repeating at three chain lengths gives its scaling:
+$\alpha = 27.4N$, flat to $1\%$ per atom. That is the signature of charge fixed per site. A metal's
+polarisability grows faster than the number of atoms, because charge redistributes over the whole
+sample; here each domain carries its unit and cannot give it up, so the only responses are the
+density deforming inside a fixed domain and the boundaries displacing. Both are per-atom constants,
+and the sum is exactly proportional to $N$. The one escape is a vanishing corrugation, which would
+let the partition slide freely and the response grow without bound.
+
+\paragraph{The corrugation does not vanish.} It is of order an electron-volt per electron, and it
+stays there: repeating the measurement across lattice spacings from $3.5$ to $8.0\,a_0$ gives a
+minimum near the equilibrium spacing and a rise on both sides, with no spacing approaching zero and
+no flip of the registry preference. Compressed, the cores crowd the electron; expanded, sharing a
+kernel costs more than owning one.
+
+An electron-volt is forty times thermal energy at room temperature and lies above the $10$--$500$~meV
+of the activated conductors this framework might otherwise describe. On this model the answer is
+unambiguous: an insulator, and not a marginal one.
+
+\section{Model II: a cable of ions surrounded by electrons}
+
+The chain places the carrier where the attractor is. Conducting matter does not: the core electrons
+occupy the region around each nucleus and the conduction charge stands outside them. Representing
+that needs two populations --- cores held inside a radius, carriers outside it, with only the
+carriers free to slide --- and it is the one arrangement that gives a carrier a standoff without
+violating the tiling, because the inner region is genuinely owned rather than left empty.
+
+Sixteen sites, kernels of charge $+3$ on the axis, a closed core of two electrons at each, and one
+valence electron per site outside them: neutral, with no pseudopotential anywhere, so the exclusion
+of the carrier from the core region is by non-overlap rather than by an imposed condition. The
+corrugation, measured by \eqref{eq:window} with windows of four and eight carriers and checked
+against a third at twelve:
+\[
+\varepsilon_{\rm bulk} \approx 240~\text{meV per carrier}.
+\]
+That is inside the $10$--$500$~meV band of the doped semiconductors, organic conductors and polaronic
+oxides --- the class of materials whose transport is thermally activated hopping, and the class this
+framework has a claim on. The same interaction, the same energy, the same domains: only the
+arrangement of the charge has changed, and the barrier has fallen by a factor of four.
+
+\section{What sets the pinning}
+
+The barrier is not set by the strength of the ion lattice but by whether the carriers bunch into its
+wells. A carrier distribution that resisted being modulated would ride over the lattice; one that
+does not resist locks to it.
+
+RealQM's free interface resists very little, and this is internal to the construction. A flat density
+is admissible on a free boundary at no cost --- a constant $\psi_i$ satisfies the normalisation, has
+$\grad\psi_i=0$, and minimises the electrostatic energy against a neutralising background --- so
+redrawing an interface between domains of equal density costs nothing. The partition therefore offers
+no resistance to uniform compression, and the only penalty on a \emph{modulated} density is the
+gradient term in \eqref{eq:E}, carrying the coefficient $\half$.
+
+\paragraph{That coefficient is a standardisation, not a constant of the theory.} It is set by
+calibrating the framework against atomic spectra, hydrogen first among them --- on a bound electron
+in a single potential well. An extended arrangement is a different object, as an effective mass in a
+solid differs from the free-electron mass without anyone regarding it as tampering, and the
+coefficient governing how a carrier lattice resists modulation by an ion lattice has no obligation to
+equal the one an atom's spectrum sets. Raising it is therefore a question rather than a fitted
+parameter: what stiffness does an extended arrangement carry?
+
+Raised from $\half$ to $1$, with the ions, the standoff, the geometry and the mesh unchanged:
+\[
+\varepsilon_{\rm bulk} \approx 24~\text{meV per carrier},
+\]
+a fall by a factor of eleven, to thermal energy at room temperature. The pinning no longer holds and
+the charge is free to move --- not as a metal, since non-overlap leaves no extended states to fill
+into bands, but as a charge lattice sliding collectively over the ions.
+
+\begin{center}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+model & corrugation per carrier & regime\\
+\midrule
+chain of atoms: carrier on its own kernel & ${\sim}1$~eV & insulator\\
+cable of ions: carriers standing off the cores & ${\approx}240$~meV & semiconductor: activated hopping\\
+\quad the same cable, carriers stiffened & ${\approx}24$~meV & metallic onset: unpinned\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{What this gives, and what it does not}
+
+In the activated regime the corrugation is the activation energy, and the conductivity of a hopping
+conductor is $\sigma\propto\nu\exp(-E_a/kT)$. The measurements therefore supply the factor that
+decides the temperature dependence and the ratio between regimes: $240$ against $24$~meV is four
+orders of magnitude in $\sigma$ at room temperature. What is missing is the prefactor $\nu$, an
+attempt frequency --- the carrier sits in a well and tries once per vibrational period, so
+$\nu\simeq(1/2\pi)\sqrt{K/M}$ with $K$ the curvature of the same landscape measured here and $M$ an
+ionic mass. Both are available in this framework, which computes forces on kernels and moves nuclei
+under classical equations of motion. An absolute hopping conductivity is therefore a phonon
+calculation away rather than a missing piece of theory. It is not attempted here.
+
+Metallic conduction is different and is outside. There $\sigma=ne^2\tau/m$, with $\tau$ a momentum
+relaxation time set by electron--phonon scattering, which requires a current as an object, electron
+dynamics, and irreversibility. A minimisation over real densities has none of the three. Non-overlap
+also leaves no extended states to fill into bands, so band conduction is absent in kind and not by
+degree, and no choice of stiffness produces it.
+
+\section{Status}
+
+The corrugations above are rigid-slide values: all carriers displaced together, the pattern
+translating without deforming. That is the expensive path. The cheap one is a kink --- a single
+carrier advancing while the rest hold still, compressing the domains ahead and expanding those behind
+--- whose cost is independent of chain length, and which is what real conductors use. The kink
+barrier is not measured here, so every number above is an upper bound, and the true barriers are
+lower by a factor this article does not determine.
+
+The states carry Euler--Lagrange residuals of $2$--$3\times10^{-2}$, against $4\times10^{-3}$ for the
+chain, so they are not fully relaxed; the stiffened runs use a halved timestep and are less relaxed
+than the others; and the factor of eleven rests on two values of the coefficient rather than a curve.
+The chain's corrugation depends on a pseudopotential exclusion rule that is not settled: excluding a
+domain from its own core alone under-excludes, excluding from every core over-confines, and the two
+bracket the answer rather than fixing it. What does not depend on any of this is the instrument.
+Equation \eqref{eq:window} cancels ends and junctions by construction and tests itself against a
+third window, and the controls throughout are of the kind that can fail: translation by one spacing
+must return the same energy to the last digit, and domains related by a symmetry must have equal
+eigenvalues.
+
+\section{Conclusion}
+
+Asked whether it distinguishes a conductor from an insulator, RealQM answers differently for two
+arrangements of the same charge. Where the valence electron occupies its own kernel's region it
+insulates, with a corrugation of an electron-volt and a polarisability extensive in the number of
+electrons. Where the carriers stand off ion cores --- the arrangement conducting matter actually has
+--- the barrier falls into the range of the activated conductors. And the barrier is set not by the
+lattice but by how strongly the carrier distribution resists being modulated by it, which is a
+property of the interface condition rather than of the interaction: a free interface resists nothing,
+and supplying the missing stiffness removes the pinning.
+
+What the framework then delivers is the activation energy, and with it the temperature dependence of
+a hopping conductivity and the ratio between regimes. What it does not deliver is an absolute rate:
+that needs a timescale, which for hopping is a lattice frequency it could compute and has not, and
+for metallic conduction is a relaxation time it cannot.
+
+\begin{thebibliography}{9}
+\bibitem{realqm} C.~Johnson, \emph{Real Quantum Mechanics}, \texttt{https://realqm.com}.
+\bibitem{realqmbook} C.~Johnson, \emph{Real Quantum Mechanics: a new view of the atom}, book
+manuscript.
+\bibitem{realnucleus} C.~Johnson, \emph{RealNucleus: nucleons as charge densities}, submitted.
+\end{thebibliography}
+
+\end{document}
