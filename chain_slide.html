@@ -1003,7 +1003,18 @@ window.onerror = function (msg, url, line) {
   window.USER_RC = rcs;
   window.USER_NN = gridN;
   window.USER_SCREEN = scr;
-  window.USER_STEPS = 1000000;
+  // steps=<n>: run a FIXED number of relaxation steps instead of stopping when the energy
+  // stops changing. The energy test halts at a different step count on every configuration --
+  // 600 here, 900 there, never on the ones that drift -- so runs are neither repeatable nor
+  // comparable, and a configuration that never trips it runs to the million-step cap, which
+  // at ~1.5 s/step is weeks. With steps=<n> the run always ends in the same place after the
+  // same work, the convergence hook is disabled so it cannot end early, and the automatic
+  // switch to nuclear dynamics at 10000 steps is suppressed. Convergence is then judged
+  // where it should be, on the Euler-Lagrange residual rMax stored beside the energy.
+  window.STEPCAP = parseInt(q.get('steps') || '0');
+  var STEPCAP = window.STEPCAP;
+  window.USER_STEPS = STEPCAP > 0 ? STEPCAP : 1000000;
+  if (STEPCAP > 0) window.NO_AUTO_DYNAMICS = true;
   window.USER_DYNAMICS = false;
   // free=1 RELEASES the boundary after seeding it with the specified partition. This joins
   // the two halves of the argument. Freezing is instrumental, not a claim: it maps E(d) the
@@ -1045,7 +1056,7 @@ window.onerror = function (msg, url, line) {
   // the barrier. Differences at one field are meaningful, across fields they are not.
   window.USER_FIELD_X = parseFloat(q.get('field') || '0');
   window.USER_CURV_REG = parseFloat(q.get('curv') || '0.10');
-  window.CONVERGENCE_THRESHOLD = 0.00002;
+  window.CONVERGENCE_THRESHOLD = STEPCAP > 0 ? 0 : 0.00002;
 
   var SWEEP = q.get('sweep');                                   // parameter to sweep
   var VALS  = (q.get('vals') || '').split(',').filter(Boolean);  // its values, in order
@@ -1316,6 +1327,7 @@ window.onerror = function (msg, url, line) {
            + (SMODE !== 0 ? '_SM' + SMODE.toFixed(3) : '')
            + (q.get('jac') !== null ? '_jac' + q.get('jac') : '')
            + (q.get('p5') !== null ? '_p5' + q.get('p5') : '')
+           + (window.STEPCAP > 0 ? '_ST' + window.STEPCAP : '')
            + '_d' + DFRAC.toFixed(3) + '_dg3'] = {
           rMax: Number(res.rMax.toPrecision(4)),
           rInfMax: Number((res.rInfMax || 0).toPrecision(4)),
