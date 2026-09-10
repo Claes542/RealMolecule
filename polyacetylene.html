@@ -52,12 +52,9 @@
     for (var n = 1; n < NC; n++) { cx.push(cx[n-1] + dx0 * (1 + s * delta)); s = -s; }
     var span = cx[NC-1];
 
-    // The mesh must divide the carbon spacing exactly. Nuclei are placed at integer
-    // cell indices, so if dx0 is not a whole number of cells the rounding error differs
-    // from bond to bond and manufactures an alternation. At h ~ 0.1 A that artefact
-    // reached 0.054 A -- the same size as the real Peierls alternation of ~0.08 A, which
-    // would make the measurement unreadable. Choosing h = dx0/CPB with CPB an integer
-    // puts every carbon on an exact cell and removes it.
+    // cpb sets the mesh as h = dx0/CPB. With continuous positions this is no longer
+    // required -- nuclei need not land on cells -- but it is kept, since a mesh
+    // commensurate with the lattice is still the cleaner comparison.
     var CPB = Math.round(f('cpb', 12));      // cells per carbon-carbon advance
     var NN  = Math.round(f('nn', 160));
     if (NN % 2 !== 0) NN += 1;
@@ -66,8 +63,13 @@
     var N2  = Math.round(NN / 2);
     var x0  = -span / 2;                     // centre the chain
 
+    // Positions are NOT rounded to cells. The solver carries them as floats, so a nucleus
+    // may sit between grid points -- which is what the Peierls distortion requires, being
+    // about a sixth of a cell per carbon at this mesh. Rounding here would reimpose the
+    // very limitation the solver was changed to remove, and would also manufacture a
+    // spurious bond alternation from the differing rounding errors of neighbouring atoms.
     function gi(x, y, z) {
-      return { i: Math.round(N2 + (x + x0) / h), j: Math.round(N2 + y / h), k: Math.round(N2 + z / h) };
+      return { i: N2 + (x + x0) / h, j: N2 + y / h, k: N2 + z / h };
     }
 
     var nuclei = [], targets = [];

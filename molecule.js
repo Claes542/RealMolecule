@@ -405,7 +405,7 @@ const ATOM_STRIDE = 14; // 8 base + 6 split (splitType, splitIdx, splitAxX/Y/Z, 
 const ATOM_BUF_BYTES = MAX_ATOMS * ATOM_STRIDE * 4;
 const atomStructWGSL = `
 struct Atom {
-  posI: u32, posJ: u32, posK: u32, Z: f32,
+  posI: f32, posJ: f32, posK: f32, Z: f32,
   rc: f32, Z_nuc: f32, initZeff: f32, initRcut: f32,
   splitType: u32, splitIdx: u32, splitAxX: f32, splitAxY: f32,
   splitAxZ: f32, splitRot: f32,
@@ -485,9 +485,9 @@ ${atomStructWGSL}
 @group(0) @binding(6) var<storage, read> atoms: array<Atom>;
 
 fn distToAtom(ci: u32, cj: u32, ck: u32, n: u32) -> f32 {
-  let dx = (f32(ci) - f32(atoms[n].posI)) * p.h;
-  let dy = (f32(cj) - f32(atoms[n].posJ)) * p.h;
-  let dz = (f32(ck) - f32(atoms[n].posK)) * p.h;
+  let dx = (f32(ci) - atoms[n].posI) * p.h;
+  let dy = (f32(cj) - atoms[n].posJ) * p.h;
+  let dz = (f32(ck) - atoms[n].posK) * p.h;
   return sqrt(dx*dx + dy*dy + dz*dz);
 }
 
@@ -552,7 +552,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let hw = 2.0 * p.h;
     for (var n: u32 = 0u; n < ${NELEC}u; n++) {
       if (n == myL) { continue; }
-      let ax = f32(atoms[n].posI); let ay = f32(atoms[n].posJ); let az = f32(atoms[n].posK);
+      let ax = atoms[n].posI; let ay = atoms[n].posJ; let az = atoms[n].posK;
       // w(r) for each neighbor position
       let d_ip = sqrt((f32(i+1u)-ax)*(f32(i+1u)-ax) + (f32(j)-ay)*(f32(j)-ay) + (f32(k)-az)*(f32(k)-az)) * p.h;
       let d_im = sqrt((f32(i-1u)-ax)*(f32(i-1u)-ax) + (f32(j)-ay)*(f32(j)-ay) + (f32(k)-az)*(f32(k)-az)) * p.h;
@@ -624,9 +624,9 @@ struct ChebP { omega: f32, _p0: f32, _p1: f32, _p2: f32 }
 @group(0) @binding(8) var<uniform> cheb: ChebP;
 
 fn distToAtom(ci: u32, cj: u32, ck: u32, n: u32) -> f32 {
-  let dx = (f32(ci) - f32(atoms[n].posI)) * p.h;
-  let dy = (f32(cj) - f32(atoms[n].posJ)) * p.h;
-  let dz = (f32(ck) - f32(atoms[n].posK)) * p.h;
+  let dx = (f32(ci) - atoms[n].posI) * p.h;
+  let dy = (f32(cj) - atoms[n].posJ) * p.h;
+  let dz = (f32(ck) - atoms[n].posK) * p.h;
   return sqrt(dx*dx + dy*dy + dz*dz);
 }
 
@@ -714,9 +714,9 @@ ${atomStructWGSL}
 ${cellIdxWGSL}
 ${inSplitWGSL}
 fn cellSectorOK(i: u32, j: u32, k: u32, n: u32) -> bool {
-  let dx = (f32(i) - f32(atoms[n].posI)) * p.h;
-  let dy = (f32(j) - f32(atoms[n].posJ)) * p.h;
-  let dz = (f32(k) - f32(atoms[n].posK)) * p.h;
+  let dx = (f32(i) - atoms[n].posI) * p.h;
+  let dy = (f32(j) - atoms[n].posJ) * p.h;
+  let dz = (f32(k) - atoms[n].posK) * p.h;
   // splitType 5: CYLINDRICAL BAND about the axis through the BOX CENTRE (not about the
   // atom's own nucleus, unlike the angular splits). splitIdx 0 = this domain may own only
   // cells INSIDE radius splitRot, 1 = only cells OUTSIDE it. Used to hold a chain's own
@@ -1005,9 +1005,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   for (var n: u32 = 0u; n < ${NELEC}u; n++) {
     let Za = atoms[n].Z;
     if (Za <= 0.0 || n == m) { continue; }
-    let dx = xi - f32(atoms[n].posI) * p.h;
-    let dy = yj - f32(atoms[n].posJ) * p.h;
-    let dz = zk - f32(atoms[n].posK) * p.h;
+    let dx = xi - atoms[n].posI * p.h;
+    let dy = yj - atoms[n].posJ * p.h;
+    let dz = zk - atoms[n].posK * p.h;
     let r = sqrt(dx*dx + dy*dy + dz*dz + p.h2);
     val += 0.5 / r;
   }
@@ -1354,9 +1354,9 @@ ${atomStructWGSL}
 
 fn isInsideExcl(ci: u32, cj: u32, ck: u32, lbl: u32) -> bool {
   let rc = max(atoms[lbl].rc, ${R_SING});
-  let dx = (f32(ci) - f32(atoms[lbl].posI)) * p.h;
-  let dy = (f32(cj) - f32(atoms[lbl].posJ)) * p.h;
-  let dz = (f32(ck) - f32(atoms[lbl].posK)) * p.h;
+  let dx = (f32(ci) - atoms[lbl].posI) * p.h;
+  let dy = (f32(cj) - atoms[lbl].posJ) * p.h;
+  let dz = (f32(ck) - atoms[lbl].posK) * p.h;
   return sqrt(dx*dx + dy*dy + dz*dz) < rc;
 }
 
@@ -1576,9 +1576,9 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
       let lbl = label[lineIdx];
       for (var n: u32 = 0u; n < ${NELEC}u; n++) {
         if (n == lbl) { continue; }
-        let dx = (f32(i) - f32(atoms[n].posI)) * p.h;
-        let dy = (f32(sk) - f32(atoms[n].posJ)) * p.h;
-        let dz = (f32(sk) - f32(atoms[n].posK)) * p.h;
+        let dx = (f32(i) - atoms[n].posI) * p.h;
+        let dy = (f32(sk) - atoms[n].posJ) * p.h;
+        let dz = (f32(sk) - atoms[n].posK) * p.h;
         let d = sqrt(dx*dx + dy*dy + dz*dz);
         let s = clamp((d - w_c + hw) / (2.0 * hw), 0.0, 1.0);
         wVal = min(wVal, s * s * (3.0 - 2.0 * s));
@@ -1660,9 +1660,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     return;
   }
 
-  let ci = i32(atoms[atom].posI);
-  let cj = i32(atoms[atom].posJ);
-  let ck = i32(atoms[atom].posK);
+  let ci = i32(round(atoms[atom].posI));
+  let cj = i32(round(atoms[atom].posJ));
+  let ck = i32(round(atoms[atom].posK));
   let R = ${FORCE_RADIUS}i;
   let R2f = f32(R * R);
   let inv2h = 0.5 * p.inv_h;
@@ -1730,9 +1730,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     return;
   }
 
-  let Ri = f32(atoms[atom].posI) * p.h;
-  let Rj = f32(atoms[atom].posJ) * p.h;
-  let Rk = f32(atoms[atom].posK) * p.h;
+  let Ri = atoms[atom].posI * p.h;
+  let Rj = atoms[atom].posJ * p.h;
+  let Rk = atoms[atom].posK * p.h;
   let h3 = p.h * p.h * p.h;
   let soft = p.h2;
 
@@ -1797,9 +1797,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let Za = atoms[n].Z;
     let Zn = select(Za, atoms[n].Z_nuc, atoms[n].Z_nuc > 0.0);
     if (Za <= 0.0 && Zn <= 0.0) { continue; }
-    let di = (f32(i) - f32(atoms[n].posI)) * p.h;
-    let dj = (f32(j) - f32(atoms[n].posJ)) * p.h;
-    let dk = (f32(k) - f32(atoms[n].posK)) * p.h;
+    let di = (f32(i) - atoms[n].posI) * p.h;
+    let dj = (f32(j) - atoms[n].posJ) * p.h;
+    let dk = (f32(k) - atoms[n].posK) * p.h;
     let r2 = di*di + dj*dj + dk*dk;
     // Bare atoms (rc=0): clamp at R_SING. Pseudopotential (rc>0): hard cutoff at rc.
     let r_eff = select(max(sqrt(r2), ${R_SING}), max(sqrt(r2), atoms[n].rc), atoms[n].rc > 0.0);
@@ -1849,9 +1849,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let Za = atoms[n].Z;
     let Zn = select(Za, atoms[n].Z_nuc, atoms[n].Z_nuc > 0.0); // nuclear charge (defaults to Z)
     if (Za <= 0.0 && Zn <= 0.0) { continue; }
-    let dx = xi - f32(atoms[n].posI) * p.h;
-    let dy = yj - f32(atoms[n].posJ) * p.h;
-    let dz = zk - f32(atoms[n].posK) * p.h;
+    let dx = xi - atoms[n].posI * p.h;
+    let dy = yj - atoms[n].posJ * p.h;
+    let dz = zk - atoms[n].posK * p.h;
     let r2 = dx*dx + dy*dy + dz*dz;
     // Bare atoms (rc=0): clamp at R_SING. Pseudopotential (rc>0): hard cutoff at rc.
     let r = select(max(sqrt(r2), ${R_SING}), max(sqrt(r2 + 0.04 * p.h2), atoms[n].rc), atoms[n].rc > 0.0);
@@ -1906,9 +1906,9 @@ ${atomStructWGSL}
 @group(0) @binding(6) var<storage, read> atoms: array<Atom>;
 
 fn distToAtom(ci: u32, cj: u32, ck: u32, n: u32) -> f32 {
-  let dx = (f32(ci) - f32(atoms[n].posI)) * p.h;
-  let dy = (f32(cj) - f32(atoms[n].posJ)) * p.h;
-  let dz = (f32(ck) - f32(atoms[n].posK)) * p.h;
+  let dx = (f32(ci) - atoms[n].posI) * p.h;
+  let dy = (f32(cj) - atoms[n].posJ) * p.h;
+  let dz = (f32(ck) - atoms[n].posK) * p.h;
   return sqrt(dx*dx + dy*dy + dz*dz);
 }
 
@@ -2333,9 +2333,16 @@ function fillAtomBuf() {
   const af = new Float32Array(ab);
   for (let n = 0; n < MAX_ATOMS; n++) {
     const off = n * ATOM_STRIDE;
-    au[off] = nucPos[n][0];
-    au[off + 1] = nucPos[n][1];
-    au[off + 2] = nucPos[n][2];
+    // Positions are f32 in the Atom struct: nuclei may sit between cells. They were
+    // written through a Uint32Array here, which truncated every coordinate to a whole
+    // cell -- so a displacement below one cell did not exist, and the nuclear dynamics
+    // moved atoms in integer jumps. That single truncation blocked the Frenkel-Kontorova
+    // coupling, the kink barrier, the released polarisability, the depinning threshold,
+    // the attempt frequency read from a trajectory, and the Peierls bond alternation of a
+    // conjugated chain, all of which are sub-cell displacements.
+    af[off] = nucPos[n][0];
+    af[off + 1] = nucPos[n][1];
+    af[off + 2] = nucPos[n][2];
     af[off + 3] = Z[n];
     af[off + 4] = r_cut[n];
     af[off + 5] = Z_nuc[n]; // nuclear charge (may differ from Z for bare protons)
