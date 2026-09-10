@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <title>trans-polyacetylene (CH)n — does it dimerise?</title>
+  <style>body { margin: 0; background: #000; }</style>
+</head><body>
+<div id="loadStatus" style="color:#ff0;font-family:monospace;padding:20px;font-size:14px">HTML loaded, fetching solver…</div>
+<script>
+  window.onerror = function(msg, url, line, col, err) {
+    var pre = document.createElement('pre');
+    pre.style.cssText = 'color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
+    pre.textContent = 'ERROR: ' + msg + '\n  at ' + url + ':' + line + ':' + col +
+      (err && err.stack ? '\n\n' + err.stack : '');
+    document.body.insertBefore(pre, document.body.firstChild);
+  };
+  (function() {
+    var q = new URLSearchParams(location.search);
+    var f = function(k, d) { var v = parseFloat(q.get(k)); return isFinite(v) ? v : d; };
+
+    // ---------------------------------------------------------------------
+    // trans-polyacetylene, planar zigzag in the xy-plane, chain along x.
+    //
+    // The question this driver exists to ask: started with EQUAL bonds, does
+    // the chain spontaneously alternate them? That is the Peierls distortion,
+    // and it is what makes polyacetylene a semiconductor rather than a metal.
+    // It is a collective instability of a half-filled conjugated chain, so it
+    // is not tested by any molecule computed in this framework so far.
+    //
+    // Geometry. Carbons alternate above and below the axis by +-yC, advancing
+    // by dx per carbon. With dx = 1.23 A and yC = 0.335 A the C-C bond is
+    // 1.40 A and the C-C-C angle 123 deg, which is trans-polyacetylene.
+    // delta=<u> biases the START toward alternation: bonds become
+    // (1+u), (1-u), (1+u)... in length. delta=0 is the undistorted chain --
+    // the interesting case, since the distortion then has to appear by itself.
+    //
+    // Carbon follows the recipe already working for methane in this codebase:
+    // a Z=4 pseudo-ion with rc=0.5 carrying four valence electrons, hydrogen
+    // Z=1 with rc=0. Chain ends are left as CH, so the two terminal carbons
+    // are under-coordinated; read the bond pattern from the interior.
+    // ---------------------------------------------------------------------
+    var NC    = Math.round(f('nc', 8));      // number of CH units (even)
+    var delta = f('delta', 0.0);             // initial bond-alternation bias
+    var A     = 1.8897259886;                // A -> a0
+
+    var dx0 = 1.23 * A;                      // advance per carbon, a0
+    var yC  = 0.335 * A;                     // zigzag half-amplitude, a0
+    var CH  = 1.09 * A;                      // C-H bond, a0
+
+    // carbon x positions with alternating bond lengths (1+-delta)
+    var cx = [0], s = 1;
+    for (var n = 1; n < NC; n++) { cx.push(cx[n-1] + dx0 * (1 + s * delta)); s = -s; }
+    var span = cx[NC-1];
+
+    // The mesh must divide the carbon spacing exactly. Nuclei are placed at integer
+    // cell indices, so if dx0 is not a whole number of cells the rounding error differs
+    // from bond to bond and manufactures an alternation. At h ~ 0.1 A that artefact
+    // reached 0.054 A -- the same size as the real Peierls alternation of ~0.08 A, which
+    // would make the measurement unreadable. Choosing h = dx0/CPB with CPB an integer
+    // puts every carbon on an exact cell and removes it.
+    var CPB = Math.round(f('cpb', 12));      // cells per carbon-carbon advance
+    var NN  = Math.round(f('nn', 160));
+    if (NN % 2 !== 0) NN += 1;
+    var h   = dx0 / CPB;                     // exact by construction
+    var scr = NN * h;                        // box follows the mesh
+    var N2  = Math.round(NN / 2);
+    var x0  = -span / 2;                     // centre the chain
+
+    function gi(x, y, z) {
+      return { i: Math.round(N2 + (x + x0) / h), j: Math.round(N2 + y / h), k: Math.round(N2 + z / h) };
+    }
+
+    var nuclei = [], targets = [];
+    for (var n = 0; n < NC; n++) {
+      var yc = (n % 2 === 0) ? yC : -yC;
+      var c  = gi(cx[n], yc, 0);
+      nuclei.push({ i: c.i, j: c.j, k: c.k, Z: 4, rc: 0.5 });
+      targets.push(4);
+      // H on the outward side, in the plane
+      var hh = gi(cx[n], yc + (yc > 0 ? CH : -CH), 0);
+      nuclei.push({ i: hh.i, j: hh.j, k: hh.k, Z: 1, rc: 0.0 });
+      targets.push(1);
+    }
+
+    // molecule.js (not mol_fast.js): it is the solver that writes energies and
+    // Euler-Lagrange residuals to localStorage, carries the nuclear dynamics, and
+    // takes USER_ATOMS / USER_Z / USER_Z_NUC / USER_RC. mol_fast.js draws but does
+    // not report, and every measurement in this project comes out through storage.
+    window.USER_NN      = NN;
+    window.USER_SCREEN  = scr;
+    window.USER_ATOMS   = nuclei.map(function (a) { return { i: a.i, j: a.j, k: a.k }; });
+    window.USER_Z       = nuclei.map(function (a) { return a.Z; });     // electrons in the domain
+    window.USER_Z_NUC   = nuclei.map(function (a) { return a.Z; });     // kernel charge (neutral)
+    window.USER_RC      = nuclei.map(function (a) { return a.rc; });
+    window.USER_ALPHA_TF = 0;
+    window.USER_STEPS   = Math.round(f('steps', 4000));
+    // dyn=1 releases the nuclei, which is how the chain is allowed to find its
+    // own bond pattern. dyn=0 holds the geometry and just reports the energy,
+    // which is what a scan of delta needs.
+    window.USER_DYNAMICS = (q.get('dyn') === '1');
+    window.NO_AUTO_DYNAMICS = true;
+    if (q.get('damp')  !== null) window.USER_DAMPING  = parseFloat(q.get('damp'));
+    if (q.get('nmass') !== null) window.USER_NUC_MASS = parseFloat(q.get('nmass'));
+
+    window.PA_INFO = { NC: NC, delta: delta, scr: scr, NN: NN, h: h, nel: NC * 5 };
+
+    // molecule.js announces completion through onSweepDone but records nothing itself:
+    // the localStorage write lives in chain_slide.html, which this driver does not use.
+    // So the readout is supplied here. Bond lengths are the measurement -- whether the
+    // C-C distances alternate is the whole question -- and they are taken from the live
+    // nuclear positions, which is why they must be read inside the page.
+    window.onSweepDone = function (E) {
+      try {
+        var key = 'pa_nc' + NC + '_d' + delta.toFixed(3) + '_nn' + NN
+                + '_st' + window.USER_STEPS + (window.USER_DYNAMICS ? '_dyn' : '');
+        var rec = { E: Number(Number(E).toFixed(9)), NC: NC, delta: delta, h: h };
+        var np = window._nucPos;
+        if (np) {
+          // carbons are the even entries; bond n is C_n to C_{n+1}, in angstrom
+          var b = [];
+          for (var n = 0; n + 1 < NC; n++) {
+            var a1 = np[2 * n], a2 = np[2 * (n + 1)];
+            if (!a1 || !a2) continue;
+            var dx = (a1[0] - a2[0]) * h, dy = (a1[1] - a2[1]) * h, dz = (a1[2] - a2[2]) * h;
+            b.push(Number((Math.sqrt(dx * dx + dy * dy + dz * dz) / 1.8897259886).toFixed(4)));
+          }
+          rec.bonds = b;
+          // alternation: mean |b_even - b_odd| over interior bonds, angstrom
+          var alt = 0, m = 0;
+          for (var n = 1; n + 1 < b.length; n++) { alt += Math.abs(b[n] - b[n - 1]); m++; }
+          rec.alternation = m ? Number((alt / m).toFixed(4)) : 0;
+        }
+        var st = JSON.parse(localStorage.getItem('realqm_pa') || '{}');
+        st[key] = rec;
+        localStorage.setItem('realqm_pa', JSON.stringify(st));
+      } catch (e) { console.log('PA readout failed: ' + e); }
+    };
+    document.getElementById('loadStatus').textContent =
+      '(CH)' + NC + '  delta=' + delta + '  box=' + scr.toFixed(1) + ' a0  grid ' + NN + '^3  h=' + h.toFixed(4)
+      + '  ' + (NC * 5) + ' valence electrons  dyn=' + (window.USER_DYNAMICS ? 'on' : 'off');
+  })();
+
+  var status = document.getElementById('loadStatus');
+  var s = document.createElement('script');
+  s.src = 'molecule.js?t=' + Date.now();
+  s.onload = function() {
+    status.textContent += '\nmolecule.js loaded';
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    p.onload = function() { status.textContent += '\np5.js loaded — running'; };
+    document.body.appendChild(p);
+  };
+  document.body.appendChild(s);
+</script>
+</body></html>
