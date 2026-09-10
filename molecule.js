@@ -360,7 +360,16 @@ window._nucForceTotal = nucForceTotal;
 window._nucForceElec = nucForceElec;
 window._nucForceNuc  = nucForceNuc;
 let nucStepCount = 0, dynamicsEnabled = window.USER_DYNAMICS || false;
-function nucMass(z) { return ({1:1, 2:16, 3:14, 4:12}[z] || 1) * 1836; }
+Object.defineProperty(window, '_nucStepCount', { get() { return nucStepCount; }, configurable: true });
+// USER_NUC_MASS overrides the element table with a single mass in proton units, for runs
+// where the nuclei are moved to MEASURE a lattice frequency rather than to do chemistry.
+// The table is keyed by domain charge, not atomic number, so a +3 kernel picks up nitrogen's
+// mass (14) whether or not the system is lithium -- harmless for relaxation, wrong by a
+// factor of two for a frequency, since nu goes as M^(-1/2).
+function nucMass(z) {
+  if (window.USER_NUC_MASS) return window.USER_NUC_MASS * 1836;
+  return ({1:1, 2:16, 3:14, 4:12}[z] || 1) * 1836;
+}
 
 // Multigrid coarse grid
 if (NN % 2 !== 0) throw new Error("NN must be even for multigrid");

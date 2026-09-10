@@ -1015,7 +1015,15 @@ window.onerror = function (msg, url, line) {
   var STEPCAP = window.STEPCAP;
   window.USER_STEPS = STEPCAP > 0 ? STEPCAP : 1000000;
   if (STEPCAP > 0) window.NO_AUTO_DYNAMICS = true;
-  window.USER_DYNAMICS = false;
+  // dyn=1 moves the kernels under classical equations of motion, which is the one genuine
+  // clock in the framework: the relaxation iteration is imaginary time and carries none.
+  // damp=<f> overrides the 0.98 per-step damping -- set 1.0 to leave an oscillation
+  // undamped so its period can be read. nmass=<m> sets the nuclear mass in proton units,
+  // overriding a table keyed by domain charge that would give a +3 kernel nitrogen's mass.
+  window.USER_DYNAMICS = (q.get('dyn') === '1');
+  if (q.get('damp')  !== null) window.USER_DAMPING  = parseFloat(q.get('damp'));
+  if (q.get('nmass') !== null) window.USER_NUC_MASS = parseFloat(q.get('nmass'));
+  if (q.get('dtnuc') !== null) window.USER_DT_NUC   = parseFloat(q.get('dtnuc'));
   // free=1 RELEASES the boundary after seeding it with the specified partition. This joins
   // the two halves of the argument. Freezing is instrumental, not a claim: it maps E(d) the
   // way a constrained scan maps a reaction barrier, and nobody supposes the reacting system
@@ -1116,6 +1124,24 @@ window.onerror = function (msg, url, line) {
   // Frozen runs reproduced to 0.00000 before this poller existed and to 0.00993 after it, so
   // it is a suspect in its own right and does not belong in a run that has no use for it.
   var POLL = (q.get('free') === '1');
+  // dyn=1: trace kernel x-positions against SIMULATION time (nuclear steps x DT_NUC), so a
+  // lattice oscillation can be read as a period. Written to localStorage because that is the
+  // only channel visible from outside the page.
+  if (q.get('dyn') === '1') {
+    var nucTrace = [], nucKey = 'n' + N + '_a' + A.toFixed(1) + '_cr' + CR.toFixed(2)
+      + '_m' + (q.get('nmass') || 'tab') + '_dt' + (q.get('dtnuc') || 'def')
+      + '_damp' + (q.get('damp') || 'def') + '_d' + DFRAC.toFixed(3);
+    setInterval(function () {
+      if (typeof window._nucPos === 'undefined') return;
+      var xs = [], np = window._nucPos;
+      for (var m = 0; m < N; m++) if (np[m]) xs.push(Number((np[m][0]).toFixed(5)));
+      if (!xs.length) return;
+      nucTrace.push({ s: window._nucStepCount || 0, x: xs });
+      var st = JSON.parse(localStorage.getItem('realqm_nuctrace') || '{}');
+      st[nucKey] = nucTrace;
+      localStorage.setItem('realqm_nuctrace', JSON.stringify(st));
+    }, 1000);
+  }
   setInterval(async function () {
     if (!POLL || slipBusy || typeof window.readDomainCentroids !== 'function') return;
     slipBusy = true;
