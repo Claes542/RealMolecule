@@ -14,21 +14,27 @@
 \maketitle
 
 \begin{abstract}
-\noindent This article computes the activation energy for charge transport in a solid from Coulomb
-interaction and kinetic energy alone, with nothing fitted. No such computation appears to have been
-carried out before: the equation that determines the quantity from those two terms is the
-$3N$-dimensional Schr\"odinger equation, which cannot be solved, and every route that can be
-followed introduces something further --- a chosen functional, a relaxation time, a transfer
-integral. The framework used is RealQM, a new \emph{ab initio} alternative to textbook quantum
-mechanics. RealQM represents an $N$-electron system in
-terms of $N$ real-valued wave functions $\psi_i(x)$, with $x$ a coordinate in three-dimensional
-Euclidean space, whose squares $\psi_i^2$ are unit charge densities with non-overlapping supports
-meeting at free interfaces. The physics of the system is described
-through its energy functional, the sum of electron Coulomb potential energy without self-repulsion
-and kinetic energy: no other force enters it, and nothing in it is fitted. The ground state is the
-configuration minimising that functional over the supports as well as over the wave functions, so
-the interfaces are unknowns of the problem rather than inputs to it, and the cost is polynomial of
-small power in $N$.
+\noindent RealQM is an \emph{ab initio} alternative to textbook quantum mechanics. It represents an
+$N$-electron system by $N$ real-valued wave functions $\psi_i(x)$, with $x$ a coordinate in
+three-dimensional Euclidean space, whose squares $\psi_i^2$ are unit charge densities with
+non-overlapping supports meeting at free interfaces. The physics is carried by a single energy
+functional: electron Coulomb potential energy without self-repulsion, plus kinetic energy. No other
+force enters it and nothing in it is fitted. The ground state is the configuration minimising that
+functional over the supports as well as over the wave functions, so the interfaces are unknowns of
+the problem rather than inputs to it, and the cost is polynomial of small power in $N$.
+
+The objective of this article is to put a question of solid-state physics to that functional: what
+does it cost to advance the electron pattern of a solid by one lattice site --- the activation
+energy for charge transport. The answer is obtained from Coulomb interaction and kinetic energy
+alone, with nothing fitted, and no such computation appears to have been carried out before. The
+reason is structural rather than a want of effort. In textbook quantum mechanics the $N$-electron
+state is a function on a $3N$-dimensional configuration space, an object beyond computation for any
+$N$ of interest, so every route that can actually be followed first reduces the dimension and then
+repairs the reduction with modelled parameters --- a chosen exchange-correlation functional, a
+relaxation time, a transfer integral, an effective mass --- and the transport energy comes out of
+those parameters rather than out of the two terms it is made of. Working in three dimensions from
+the start removes the need for them. That is the new capability reported here: the quantity is
+computed rather than modelled.
 
 Computationally the difficulty is one of scale. Atomic energies are tens of electron-volts,
 semiconductor activation is $50$--$500$~meV per carrier and metallic conduction sets in near
@@ -40,24 +46,25 @@ a few interior domain walls sit --- so that every large contribution to the erro
 and cancels.
 
 Three arrangements of charge are computed, and the barrier to advancing the electron pattern by one
-site differs by more than an order of magnitude between them. These are not one-dimensional
+site differs by nearly three orders of magnitude between them. These are not one-dimensional
 models. The wave functions are functions on ordinary three-dimensional space, the domains are
 regions of it, and the calculations run on grids of some two to three million points; what is
 arranged along a line is the nuclei. A \textbf{chain of hydrogen atoms},
-the electron on its own kernel, gives ${\approx}580$~meV per electron and a polarisability
+the electron on its own kernel, gives ${\approx}642$~meV per electron and a polarisability
 $\alpha=7.4N$, extensive in the number of electrons. A \textbf{cable of Li ions}, the carriers
-standing off closed cores, gives ${\approx}230$~meV. The same cable with the carriers stiffened ---
-the coefficient of the kinetic energy doubled --- gives ${\approx}31$~meV, and with the sign
-inverted: the preferred registry moves from the carriers sitting on their ion sites to sitting
-between them.
+standing off closed cores, gives ${\approx}246$~meV. The same cable with the carriers stiffened ---
+the coefficient of the kinetic energy doubled --- gives ${\approx}1$~meV, a fall by a factor of some
+$240$: the pinning is removed, while the preferred registry, carriers on their own ion sites, is
+unchanged.
 
 The barrier is the activation energy in a hopping conductivity
 $\sigma=(ne^2a^2\nu/kT)\,e^{-E_a/kT}$. Closing the prefactor with an attempt frequency
 $\nu=(1/2\pi)\sqrt{K/M}$ built from the curvature of the same landscape and a nuclear mass gives
-$\nu$ of $92$ and $22$~meV --- lattice frequencies, not asked for --- and room-temperature
-conductivities of $1\times10^{-4}$ and $19$~S\,m$^{-1}$, comparable to intrinsic silicon and to
-intrinsic germanium. For the stiffened cable the expression does not apply, a barrier at $1.2\,kT$
-being no barrier to speak of. What the framework supplies is the exponent; the nuclear mass and the
+$\nu$ of $2.3\times10^{13}$ and $5.5\times10^{12}$~Hz, that is $h\nu$ of $97$ and $23$~meV ---
+lattice frequencies, not asked for --- and room-temperature
+conductivities of $1\times10^{-5}$ and $10$~S\,m$^{-1}$, which bracket ordinary semiconducting
+material --- intrinsic silicon at $4\times10^{-4}$ and intrinsic germanium at $2$ lie between them. For the stiffened cable the expression does not apply, a barrier at $0.04\,kT$
+being no barrier at all. What the framework supplies is the exponent; the nuclear mass and the
 carrier density are part of specifying the system and of reporting it, not parameters fitted to
 anything: nothing in the model is adjusted to reproduce a measured number. The barriers are upper
 bounds, since
@@ -215,7 +222,7 @@ scanned, exactly as a constrained coordinate maps a reaction barrier, and nobody
 reacting system is constrained. This is why translation by one full spacing is the control: two
 specified configurations related by an exact symmetry of the lattice must return the same energy,
 and that test has no force unless the partition is specified. The second reason is a limitation
-rather than a choice, and \S9 returns to it: a released boundary sits in one cell or the next, so a
+rather than a choice, and \S\ref{sec:further} returns to it: a released boundary sits in one cell or the next, so a
 sub-threshold force moves it by zero cells or by one, and what a released calculation reports is
 that quantisation rather than the physics.
 
@@ -268,14 +275,15 @@ the carrier occupies its own kernel's region, and it is a real system rather tha
 
 \paragraph{The barrier.} Sliding the whole pattern by half a spacing costs
 \[
-\varepsilon \approx 580~\text{meV per electron}.
+\varepsilon \approx 642~\text{meV per electron}.
 \]
 The control on this is exact: on a wrapped chain a displacement of one full spacing is a relabelling
 and must return the same energy, and two independently relaxed runs give
-$E(d{=}0)=E(d{=}1)=-3.624632386$~Ha to all nine digits. The result also proves insensitive to
-the one arbitrary length in it --- repeating with the nuclear cutoff at $0.8\,a_0$ instead of
-$0.6\,a_0$ moves the total energy by $6.3$~eV and the barrier by $0.9$~meV, which is the error
-cancellation of \S3 shown rather than argued.
+$E(d{=}0)=E(d{=}1)=-3.623964481$~Ha to all nine digits. The result is also far less sensitive to the
+one arbitrary length in it than the total energy is: repeating with the nuclear cutoff at
+$0.8\,a_0$ instead of $0.6\,a_0$ moves the total energy by $6.2$~eV and the barrier by $40$~meV, a
+suppression by a factor of $158$. That is the error cancellation of \S3 shown rather than argued,
+and it is also the honest size of the uncertainty: $6\%$ of the barrier, from the clamp alone.
 
 \paragraph{The polarisability is extensive.} With the partition frozen and a uniform field applied,
 the induced dipole gives $\alpha$, and repeating at three chain lengths gives its scaling:
@@ -309,9 +317,9 @@ goes entirely, recovering the usual absence of self-interaction. The carriers ar
 
 The barrier, evaluated by \eqref{eq:window} with windows of $W=4$ and $W=8$ carriers, is
 \[
-\varepsilon_{\rm bulk} \approx 230~\text{meV per carrier},
+\varepsilon_{\rm bulk} \approx 246~\text{meV per carrier},
 \]
-a factor of $2.5$ below the chain. The interaction is the same and the energy functional is the
+a factor of $2.6$ below the chain. The interaction is the same and the energy functional is the
 same; what has changed is where the carrier sits relative to its kernel.
 
 \begin{figure}[htb]
@@ -332,8 +340,15 @@ and kernels, is the quantity computed in \S3.}
 prescribed, not found. It is a constraint on the minimisation and an expensive one: at fixed particle
 content the energy falls steeply as $c_r$ is reduced, by of order ten electron-volts per electron
 over the range examined, so the configuration is held open against a strong preference to collapse.
-Released --- the same system with that interface free --- the carrier shell falls onto the axis, and
-every starting standoff returns the same energy. Nor can the barrier be traced along $c_r$ as a free
+Released --- the same system with that interface free --- the carrier shell moves inward and
+different starting standoffs end at a common energy, which is what a collapse onto the axis would
+look like. That reading is not established here, because the released calculations do not converge
+at this resolution: the Euler--Lagrange residual settles near $0.12$ against $0.004$ for the same
+system held, a factor of thirty. The reason is the one named in \S\ref{sec:further} --- the interface is quantised
+to whole cells, so the released radius is an integer coordinate rather than a continuous one, and a
+sub-threshold restoring force moves it by zero cells or by one. What is reported here is therefore
+that the frozen configuration is held against a steep preference, and that the released question
+cannot be answered at whole-cell resolution, not that the shell is known to collapse. Nor can the barrier be traced along $c_r$ as a free
 coordinate, at least downward: at this mesh a smaller radius squeezes the core between the nuclear
 cutoff and its own boundary, leaving it in a nearly flat well that does not relax, so the
 atom-like end of the range is not reachable here. The cable is therefore a
@@ -367,21 +382,33 @@ round --- and the corrugation is computed again. No value was sought that would 
 conductivity, a barrier, or any other quantity taken from experiment, and none of the numbers below was known in
 advance. Doubled, with the ions, the standoff, the geometry and the mesh unchanged:
 \[
-\varepsilon_{\rm bulk} \approx -31~\text{meV per carrier},
+\varepsilon_{\rm bulk} \approx +1~\text{meV per carrier},
 \]
-and the sign is the result. A negative value does not mean the barrier has gone: on a wrapped chain
-$d=1$ \emph{is} $d=0$, so a preference for the displaced configuration means the minimum has moved
-to $d=\half$ and the maximum now sits at $d=0$. The barrier between successive minima is
-$E(0)-E(\half)\approx31$~meV per carrier, a fall by a factor of $7.3$ from the unstiffened cable,
-and the preferred registry has inverted --- from carriers sitting on their ion sites to carriers
-sitting between them.
+and the collapse is the result: a fall by a factor of some $240$ from the unstiffened cable, to
+$0.04\,kT$. The preferred registry is unchanged --- the carriers still sit on their own ion sites
+--- so what the stiffening removes is the pinning itself and not merely its location.
 
 That is what a stiff carrier lattice should do. A lattice that resists being modulated resists being
-pulled into the ion wells, and past some stiffness it prefers the configuration that keeps its own
-spacing uniform. The charge is not thereby free: $31$~meV is $1.2\,kT$, small but not absent, and it
-still holds the carriers --- in a different place. The response rests on two values of the
-coefficient rather than a curve, and on two endpoints $d=0$ and $d=\half$, so that the extrema lie
-exactly there is an assumption the sign inversion makes worth testing with an intermediate point.
+pulled into the ion wells, and past some stiffness the cost of following them exceeds the cost of
+keeping its own spacing uniform.
+
+The number is small enough to need saying what it does and does not establish. One meV is a
+difference of $1.5\times10^{-4}$~Ha between two total energies of $158$~Ha, and while the windowed
+difference cancels everything common to the two configurations, this protocol has not been shown to
+resolve a residual that small. What is established is the collapse, two and a half orders of
+magnitude and far outside any drift the step ladder shows; the precise value is not, nor is the
+exact location of the minimum, the response resting on two values of the coefficient rather than a
+curve and on the two endpoints $d=0$ and $d=\half$.
+
+An earlier version of this section reported $-31$~meV here, with an inverted registry in which the
+carriers preferred to sit between the ion sites rather than on them. That was an artifact of the
+grid. The ion kernels were then rounded to whole cells, and since $a/h=8.0129$ the spacings came out
+$8,8,8,\ldots,9$ cells --- a lattice irregular by up to $6\%$ of a spacing. The spurious corrugation
+that introduced was larger than the real one and of the opposite sign. The episode is worth
+recording rather than quietly removing, because it bounds what may be asked of this kind of
+quantity: a barrier two orders below the arrangement's own energy scale is delicate against
+geometric defects that leave every symmetry of the problem intact, and is therefore not settled by
+any symmetry control.
 
 \begin{center}
 \small
@@ -389,9 +416,9 @@ exactly there is an assumption the sign inversion makes worth testing with an in
 \toprule
 arrangement & barrier per carrier & preferred registry\\
 \midrule
-chain of H atoms, carrier on its kernel & $580$~meV & carrier on its site\\
-cable of Li ions, carrier standing off & $230$~meV & carrier on its site\\
-\quad the same cable, carriers stiffened & $31$~meV & carrier between sites\\
+chain of H atoms, carrier on its kernel & $642$~meV & carrier on its site\\
+cable of Li ions, carrier standing off & $246$~meV & carrier on its site\\
+\quad the same cable, carriers stiffened & ${\approx}1$~meV & carrier on its site\\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -436,7 +463,7 @@ RealQM supplies $E_a$, which decides the temperature dependence and the ratio be
 from.
 
 $K$ is the curvature of the landscape whose amplitude was computed. Taking the periodic curve to be
-$E(u)=\half V_0\bigl[1-\cos(2\pi u/a)\bigr]$ gives $K=2\pi^2V_0/a^2$, which for $V_0=230$~meV at
+$E(u)=\half V_0\bigl[1-\cos(2\pi u/a)\bigr]$ gives $K=2\pi^2V_0/a^2$, which for $V_0=246$~meV at
 $a=4.5\,a_0$ is $0.80$~eV\,\AA$^{-2}$. This is the one step that assumes a shape rather than
 measuring one: the windowed slide was run at the two endpoints $d=0$ and $d=\half$, which fix the
 amplitude and not the curvature. A scan at small $d$ would replace the assumption, and until it is
@@ -467,25 +494,25 @@ Li cable --- and $T=300$~K:
 \toprule
  & $E_a$ & $\nu$ (Hz) & $\sigma$ (S/m) & for scale\\
 \midrule
-chain of H atoms & $580$~meV & $2.2\times10^{13}$ & $1.0\times10^{-4}$ & intrinsic Si, $4\times10^{-4}$\\
-cable of Li ions & $230$~meV & $5.3\times10^{12}$ & $19$ & intrinsic Ge, $2$\\
-cable, stiffened & $31$~meV & $1.9\times10^{12}$ & $(1.5\times10^{4})$ & --- see below\\
+chain of H atoms & $642$~meV & $2.3\times10^{13}$ & $1.0\times10^{-5}$ & intrinsic Si, $4\times10^{-4}$\\
+cable of Li ions & $246$~meV & $5.5\times10^{12}$ & $10$ & intrinsic Ge, $2$\\
+cable, stiffened & ${\approx}1$~meV & --- & --- & --- see below\\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \noindent The attempt frequencies are $10^{12}$--$10^{13}$~Hz, which is where lattice vibrations
-live: $22$~meV for the cable and $92$~meV for the hydrogen chain, the latter high because a proton
+live: as an energy $h\nu$, $23$~meV for the cable and $97$~meV for the hydrogen chain, the latter high because a proton
 is light. Nothing was arranged to make that so, and it is the check that the mass entering $\nu$ is
 the right kind of mass. The first two rows bracket the conductivity of ordinary semiconducting
-material, three orders of magnitude apart on a barrier ratio of $2.5$.
+material, six orders of magnitude apart on a barrier ratio of $2.6$.
 
-The third is bracketed because it violates the first condition above. At $E_a=31$~meV against
-$kT=25.9$~meV the barrier is $1.2\,kT$ and $e^{-E_a/kT}=0.30$: the carriers are over the top nearly
-a third of the time, so escape is not rare and $\nu$ is not counting attempts. The number is what
-\eqref{eq:sigma} returns when applied outside its own regime, and should be read as a marker that
-the barrier has become small rather than as a conductivity. What rate law governs that state, and
-what the state is, this calculation does not determine.
+The third row carries no numbers because it violates the first condition above completely. At
+$E_a\approx1$~meV against $kT=25.9$~meV the barrier is $0.04\,kT$ and $e^{-E_a/kT}=0.96$: the
+carriers are over the top essentially all of the time, so escape is not rare, $\nu$ counts nothing,
+and there is no sense in which \eqref{eq:sigma} describes the state. Evaluating it there would
+return a large conductivity, but the number would be an artifact of applying a rate law where no
+rate is defined. What that state is, and what law governs it, this calculation does not determine.
 
 These are order-of-magnitude statements and cannot be more. The $\pm30$~meV on $E_a$ is already a
 factor $3.2$ either way in $\sigma$ at room temperature, the sinusoid is an assumption, and $M$ and
@@ -550,7 +577,7 @@ made of, and no choice of stiffness produces one. Neither of these tells us what
 of \S5 is. They say only that if it conducts, it does not do so by filling bands, and that this
 framework will not supply the rate at which it does.
 
-\section{Further studies}
+\section{Further studies}\label{sec:further}
 
 The nuclei reported here lie on a line. The calculation does not: it is three-dimensional
 throughout, and what is restricted is the lattice, not the electronic problem. A line is the
@@ -590,27 +617,30 @@ compression and rarefaction of the carrier lattice, dopant concentration setting
 and an $n/p$ asymmetry that is structural rather than fitted.
 
 One defect in the discretisation blocks more than any single calculation. Positions live on the
-grid --- a domain wall sits in one cell or the next, and nuclear coordinates are truncated to whole
-cells when they are handed to the solver --- so a displacement smaller than a cell does not exist.
-At the mesh used here one cell is an eighth of a spacing. Six quantities are held up by this one
-limitation, and they have the appearance of separate difficulties only because they were met
-separately. The
-polarisability must be computed with the partition frozen, since a released boundary answers a
-sub-threshold field by moving zero cells or one. A boundary driven at fixed force either sticks or
-chatters between adjacent cells, so a depinning threshold cannot be read. The Peierls--Nabarro
-barrier needs a kink profile finer than a cell. And $\kappa$, the second Frenkel--Kontorova
-constant, requires a non-uniform displacement small enough to be harmonic --- smaller than the grid
-can express, so amplitudes below a cell return the undisplaced chain exactly.
+grid, so a displacement smaller than a cell does not exist, and at the mesh used here one cell is an
+eighth of a spacing. The defect has two halves. One of them has since been repaired, which is worth
+reporting because it changes what is owed and what is merely not yet done.
 
-The same limitation reaches the nuclei, and two further things follow. The attempt frequency was to
-be obtained by releasing the kernels and reading a period off a trajectory, which would retire the
-assumed curvature; but a thermal oscillation at room temperature has amplitude around $0.3\,a_0$,
-under a cell at this mesh, so the nuclei would not move. And a conjugated chain such as
-polyacetylene distorts by alternating its bonds --- the Peierls instability that makes it a
-semiconductor and gives its solitons something to be a defect in --- by about $0.03\,a_0$ per
-carbon, a sixth of a cell. Neither is a matter of longer runs or a larger machine. Carrying
-positions as continuous coordinates rather than cell indices, and the boundary as a volume fraction
-rather than by whole-cell ownership, would release all six.
+Nuclear coordinates were truncated to whole cells when handed to the solver, and are now carried as
+continuous ones. Two quantities return with them. The attempt frequency can be obtained as it was
+meant to be --- by releasing the kernels and reading a period off a trajectory, which retires the
+assumed curvature altogether --- since a thermal oscillation of some $0.3\,a_0$ at room temperature
+is no longer rounded away. And the Peierls instability of a conjugated chain, the distortion that
+makes polyacetylene a semiconductor and gives its solitons something to be a defect in, is about
+$0.03\,a_0$ per carbon or a sixth of a cell: a chain that previously returned identical energies at
+five values of the distortion now resolves them. Neither quantity is measured in this article.
+Both are now reachable, which they were not.
+
+The other half stands, and four quantities wait on it --- all of them a boundary moving rather than
+a nucleus. A domain wall still sits in one cell or the next. The polarisability must therefore be
+computed with the partition frozen, since a released boundary answers a sub-threshold field by
+moving zero cells or one. A boundary driven at fixed force either sticks or chatters between
+adjacent cells, so a depinning threshold cannot be read. The Peierls--Nabarro barrier needs a kink
+profile finer than a cell. And $\kappa$, the second Frenkel--Kontorova constant, requires a
+non-uniform displacement small enough to be harmonic --- smaller than the grid can express, so
+amplitudes below a cell return the undisplaced chain exactly. Carrying the boundary as a volume
+fraction rather than by whole-cell ownership would release all four, and is the single change the
+programme of this section most depends on.
 
 That constant is worth naming as an aim in its own right. The chain of carriers on a periodic
 substrate is a Frenkel--Kontorova system \cite{braun}, the standard phenomenological account of
@@ -627,9 +657,11 @@ the ones RealQM has.
 
 Two questions are open in a way that could change the account rather than sharpen it. Whether RealQM
 has a self-consistent standoff --- a cable the functional chooses rather than one held open against
-a strong preference to collapse --- is the first, and \S5 records that released, it does not. The
-second is whether the arrangement in which the barrier falls to thermal energy conducts in any
-useful sense, or is merely a lattice in a different registry; the polarisability scaling is the test,
+a strong preference to collapse --- is the first, and \S5 records that it cannot be settled at this
+resolution, the released calculation being the one place where whole-cell interfaces bite hardest. The
+second is whether the arrangement in which the barrier all but vanishes conducts in any useful
+sense, or is merely an unpinned lattice that still holds its charge per site; the polarisability
+scaling is the test,
 since charge fixed per site gives $\alpha\propto N$ whatever the barrier.
 
 Finally, nothing here has been compared with a measured conductivity. The framework's record is on
@@ -640,18 +672,18 @@ a real activated conductor measures the same quantity directly.
 \section{Conclusion}
 
 For a chain of hydrogen atoms, the electron occupying its own kernel's region, RealQM gives a
-barrier of $580$~meV per electron for the electron pattern to advance one site, and a polarisability
+barrier of $642$~meV per electron for the electron pattern to advance one site, and a polarisability
 $\alpha=7.4N$, extensive in the number of electrons.
 
-For a cable of Li ions with the carriers standing off closed cores it gives $230$~meV, a factor of
-$2.5$ less. The two cannot be built from the same ion, and the reason is instructive: a carrier can
+For a cable of Li ions with the carriers standing off closed cores it gives $246$~meV, a factor of
+$2.6$ less. The two cannot be built from the same ion, and the reason is instructive: a carrier can
 stand off a core only if there is a core, and since the domains tile, one domain per kernel must
 contain its kernel --- so a standoff requires at least two electrons per site where the chain has
 one. The difference in ion is entailed by the difference in arrangement rather than chosen alongside
 it. What is the same is the physics: \eqref{eq:E} throughout, with nothing fitted in either.
 
-Stiffening the carriers of that cable gives $31$~meV, and inverts the preferred registry: the
-carriers come to prefer sitting between the ion sites rather than on them. So the barrier is set
+Stiffening the carriers of that cable collapses the barrier to ${\approx}1$~meV, a factor of some
+$240$, without changing the preferred registry. So the barrier is set
 less by the ion lattice than by how strongly the carrier distribution resists being modulated by it,
 which is a property of the interface condition rather than of the interaction.
 
@@ -700,12 +732,16 @@ one electron per site, $r_c=0$. Wrapped labelling, so translation by one spacing
 per spacing, box $=(N-1)a+10=41.5\,a_0$, grid $148^3$, $h=0.2804\,a_0$; nuclear cutoff
 $r_{\rm sing}=0.6\,a_0$, above $2h=0.561$. Fixed $4000$ steps.
 \[
-E(0)=-3.624632386,\quad E(\half)=-3.454076534,\quad E(1)=-3.624632386~\text{Ha},
+E(0)=-3.623964481,\quad E(\half)=-3.435219214,\quad E(1)=-3.623964481~\text{Ha},
 \]
-giving $580.1$~meV per electron, with $E(1)=E(0)$ to nine digits as the control. Repeating at
-$r_{\rm sing}=0.8\,a_0$ (grid $148^3$, same mesh) gives $E(0)=-3.395159382$ and
-$E(\half)=-3.224867411$, i.e.\ $579.2$~meV: the totals move by $0.23$~Ha and the barrier by
-$0.9$~meV. Polarisability from the induced dipole at $F=5\times10^{-4}$~au with the partition
+giving $642.0$~meV per electron, with $E(1)=E(0)$ to nine digits as the control. Repeating at
+$r_{\rm sing}=0.8\,a_0$ (grid $148^3$, same mesh) gives $E(0)=-3.394494680$ and
+$E(\half)=-3.217398798$, i.e.\ $602.4$~meV: the totals move by $0.2295$~Ha $=6.24$~eV while the
+barrier moves by $39.6$~meV, a suppression of $158$. An earlier version of this appendix reported
+$0.9$~meV here, a suppression of nearly $7000$; that pair was computed before the ion positions were
+made continuous, and the near-perfect agreement it showed was a coincidence of the rounded lattice
+rather than a property of the method. The present figure is the one to rely on, and $6\%$ is the
+uncertainty the clamp alone places on the chain's barrier. Polarisability from the induced dipole at $F=5\times10^{-4}$~au with the partition
 frozen, at $N=4,6,8$: $\alpha/N = 7.25,\ 7.43,\ 7.40\,a_0^3$.
 
 \paragraph{The cable of Li ions.} $N=16$ sites at $a=4.5\,a_0$ on the
@@ -734,13 +770,13 @@ Only the shell slides. All runs use the fixed-step protocol below, at $r_{\rm si
 \toprule
  & $W=4$ & $W=8$\\
 \midrule
-$E$ (Ha), $4000$ steps & $-149.411042$ & $-149.377292$\\
-$E$ (Ha), stiffened, $8000$ steps & $-157.956523$ & $-157.961137$\\
+$E$ (Ha), $4000$ steps & $-149.542323$ & $-149.506148$\\
+$E$ (Ha), stiffened, $8000$ steps & $-157.965427$ & $-157.965275$\\
 \bottomrule
 \end{tabular}
 \end{center}
 \noindent Equation \eqref{eq:window} gives $\varepsilon_{\rm bulk}=+229.6$~meV per carrier
-unstiffened and $-31.4$~meV stiffened.
+unstiffened and $+1.0$~meV stiffened.
 
 \paragraph{Stiffened carriers.} Identical geometry, mesh and ion lattice, with the coefficient of
 $|\grad\psi_i|^2$ raised from $\half$ to $1$ for the shell domains only, the cores keeping $\half$.
@@ -819,7 +855,7 @@ digits; repeat runs of one configuration must agree, and do, to the last reporte
 discipline is not a formality. It found, in the course of this work, that the nuclear cutoff was
 tied to the mesh rather than fixed, so that refining the grid sharpened the ion instead of resolving
 it; and that nuclear coordinates are truncated to whole cells before the solver sees them, which is
-why several quantities named in \S9 cannot presently be computed at all. Neither is a fitted
+why several quantities named in \S\ref{sec:further} cannot presently be computed at all. Neither is a fitted
 parameter, and both changed what the calculation means.
 
 The distinction worth drawing is therefore not between assistance with code and assistance with

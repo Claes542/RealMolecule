@@ -398,7 +398,12 @@ window.onerror = function (msg, url, line) {
     // has to fall as exp(-2*pi*kmul*cr/a), and at kmul large the line is homogeneous and the slide
     // must cost EXACTLY nothing -- which is the noise floor of every corrugation measured here.
     for (var mK3 = 0; mK3 < N * KMUL; mK3++) {
-      atoms.push({ i: Math.round(coreI[0] + mK3 * (A / h) / KMUL), j: N2, k: N2, Z: 0, el: 'Li' });
+      // NOT rounded. These carry Znuc, so they are the ions whose corrugation is being measured:
+      // rounding them puts the positive lattice on whole cells, and since a/h = 8.0129 here the
+      // spacings come out 8, 8, 8, ..., 9, irregular by up to half a cell. The core positions were
+      // made continuous earlier and these were missed, which left the cable with exact cores on a
+      // quantised ion lattice -- the worse of the two states, since it looked corrected.
+      atoms.push({ i: coreI[0] + mK3 * (A / h) / KMUL, j: N2, k: N2, Z: 0, el: 'Li' });
       Z.push(0); Znuc.push(KQ / KMUL); zeff.push(ZE); rcs.push(RC);
       cSplitT.push(0); cSplitI.push(0); cSplitR.push(0); cAx.push([1, 0, 0]);
     }
@@ -1027,6 +1032,29 @@ window.onerror = function (msg, url, line) {
   // damp=<f> overrides the 0.98 per-step damping -- set 1.0 to leave an oscillation
   // undamped so its period can be read. nmass=<m> sets the nuclear mass in proton units,
   // overriding a table keyed by domain charge that would give a +3 kernel nitrogen's mass.
+  // lockcar=1: freeze the boundaries BETWEEN carriers while leaving the core/carrier
+  // boundary free. USER_LOCKED_GROUPS blocks a flip when BOTH labels lie in one group, so
+  // grouping the carrier domains locks carrier-to-carrier and leaves core-to-carrier alone.
+  // ORDER: the coax branch clears what the main loop built and pushes cores first, then
+  // carriers, then kernels -- so the carriers are NOT 0..N-1. Grouping 0..N-1 groups the CORES,
+  // which in this geometry are discs of thickness a stacked FACE-TO-FACE along the axis and so
+  // are very much in contact: that lock is a real constraint on the core stacking, just not the
+  // one intended. Measured, released: rMax 0.1194 nothing held, 0.1162 carriers held, 0.0474
+  // cores held, 0.0041 frozen -- so the core stacking, not the carrier registry, is what the
+  // released cable fails to converge. This is the experiment that isolates the
+  // standoff: with everything released, a collapse could be the carriers rearranging as
+  // much as the standoff giving way, and the released run does not converge in any case
+  // (rMax 0.12 against 0.004 frozen) because a wall with nowhere sub-cell to sit chatters
+  // between two cells. With the registry held, the radius is the only freedom left.
+  if (q.get('lockcar') === '1' && COAX) {
+    // recomputed here from the top-level parameters rather than read from the coax block, so the
+    // count cannot drift out of step with the construction
+    var nCoreDom  = N * (CHOM ? 1 : NCORE);
+    var nShellDom = (NSH > 0) ? NSH : N;
+    var carrierGroup = [];
+    for (var mLC = 0; mLC < nShellDom; mLC++) carrierGroup.push(nCoreDom + mLC);
+    window.USER_LOCKED_GROUPS = [carrierGroup];
+  }
   window.USER_DYNAMICS = (q.get('dyn') === '1');
   if (q.get('damp')  !== null) window.USER_DAMPING  = parseFloat(q.get('damp'));
   if (q.get('nmass') !== null) window.USER_NUC_MASS = parseFloat(q.get('nmass'));
@@ -1360,6 +1388,9 @@ window.onerror = function (msg, url, line) {
            + (SMODE !== 0 ? '_SM' + SMODE.toFixed(3) : '')
            + (q.get('jac') !== null ? '_jac' + q.get('jac') : '')
            + (q.get('p5') !== null ? '_p5' + q.get('p5') : '')
+           + (q.get('lockcar') === '1' ? '_LC' : '')
+           + (q.get('free') === '1' ? '_FREE' : '')   // released and frozen runs are
+           // different calculations and must not share a slot
            + (KOFF !== 0 ? '_KO' + KOFF.toFixed(4) : '')
            + (window.STEPCAP > 0 ? '_ST' + window.STEPCAP : '')
            + '_d' + DFRAC.toFixed(3) + '_dg3'] = {
