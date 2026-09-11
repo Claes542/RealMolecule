@@ -281,10 +281,17 @@ window.onerror = function (msg, url, line) {
   }
   var KMOVE = (q.get('kmove') !== null) ? parseInt(q.get('kmove')) : -1;
   var KDX   = parseFloat(q.get('kdx') || '0');
+  // koff=<f>: displace EVERY kernel along the chain by f spacings, f a fraction of a cell if
+  // wished. This is the collective coordinate u of the corrugation -- the ion lattice moved
+  // rigidly against the carrier partition -- and it is the small perturbation an oscillation
+  // wants. It became expressible only when nuclear positions stopped being truncated to whole
+  // cells; before that, any koff below 1/cps rounded away to nothing.
+  var KOFF  = parseFloat(q.get('koff') || '0');
   for (var m = 0; m < N; m++) {
     var xd = x0 + m * A + ((m % 2 === 0) ? 1 : -1) * NDIM * A
-           + ((m === KMOVE) ? KDX * A : 0);
-    var xi = Math.round(N2 + xd / h);
+           + ((m === KMOVE) ? KDX * A : 0) + KOFF * A;
+    // NOT rounded: the solver carries positions as floats.
+    var xi = N2 + xd / h;
     // dbl=<i>&hole=<j>: a doublon-holon pair on an otherwise half-filled chain. Site i holds
     // TWO electrons in one domain -- the construction validated on helium today, where a
     // charge-2 density and two hemispheres agreed to 6e-5 -- and site j holds none. The energy
@@ -1353,6 +1360,7 @@ window.onerror = function (msg, url, line) {
            + (SMODE !== 0 ? '_SM' + SMODE.toFixed(3) : '')
            + (q.get('jac') !== null ? '_jac' + q.get('jac') : '')
            + (q.get('p5') !== null ? '_p5' + q.get('p5') : '')
+           + (KOFF !== 0 ? '_KO' + KOFF.toFixed(4) : '')
            + (window.STEPCAP > 0 ? '_ST' + window.STEPCAP : '')
            + '_d' + DFRAC.toFixed(3) + '_dg3'] = {
           rMax: Number(res.rMax.toPrecision(4)),
