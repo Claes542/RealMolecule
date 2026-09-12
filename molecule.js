@@ -133,6 +133,9 @@ const SPLIT_TYPE = window.USER_SPLIT_TYPE || [];
 const SPLIT_IDX  = window.USER_SPLIT_IDX  || [];
 const SPLIT_AXIS = window.USER_SPLIT_AXIS || [];
 const SPLIT_ROT  = window.USER_SPLIT_ROT  || [];
+// USER_SPLIT_CYL_ORG[n] = [i,j,k] in CELLS: a point on the axis of the splitType-5 cylinder that
+// bounds domain n. Omitted => box centre, which is what a single centred cable wants.
+const SPLIT_CYL_ORG = window.USER_SPLIT_CYL_ORG || [];
 let R_out = 0.5;   // au, unused legacy
 let curvReg = (window.USER_CURV_REG !== undefined) ? window.USER_CURV_REG : 0.15;  // curvature regularization for free boundary
 // Robin surface tension on the electron-electron interface: the natural boundary condition of
@@ -401,7 +404,7 @@ struct P {
   beta: f32, fieldX: f32, _pad1: f32, _pad2: f32,
 }`;
 
-const ATOM_STRIDE = 14; // 8 base + 6 split (splitType, splitIdx, splitAxX/Y/Z, splitRot)
+const ATOM_STRIDE = 17; // 8 base + 6 split + 3 cylinder-axis origin (cylOX/Y/Z, cell units)
 const ATOM_BUF_BYTES = MAX_ATOMS * ATOM_STRIDE * 4;
 const atomStructWGSL = `
 struct Atom {
@@ -409,6 +412,7 @@ struct Atom {
   rc: f32, Z_nuc: f32, initZeff: f32, initRcut: f32,
   splitType: u32, splitIdx: u32, splitAxX: f32, splitAxY: f32,
   splitAxZ: f32, splitRot: f32,
+  cylOX: f32, cylOY: f32, cylOZ: f32,
 }`;
 
 // Angular shell-split test (ported from mol_fast.js). A split sibling only owns
@@ -457,8 +461,12 @@ fn inSplitAtom(dx: f32, dy: f32, dz: f32, r: f32, n: u32) -> bool {
 const cylSplitWGSL = `
 fn cylOK(i: u32, j: u32, k: u32, n: u32) -> bool {
   if (atoms[n].splitType != 5u) { return true; }
-  let c = f32(p.NN) * 0.5;
-  let cx = (f32(i) - c) * p.h; let cy = (f32(j) - c) * p.h; let cz = (f32(k) - c) * p.h;
+  // Origin of THIS domain's cylinder axis, in cells. Defaults to the box centre, so a single
+  // centred cable is unchanged; an array gives each cable its own. The seed of a shell domain
+  // sits OFF the axis, so the origin cannot be taken from the atom's own position.
+  let cx = (f32(i) - atoms[n].cylOX) * p.h;
+  let cy = (f32(j) - atoms[n].cylOY) * p.h;
+  let cz = (f32(k) - atoms[n].cylOZ) * p.h;
   let axL = max(sqrt(atoms[n].splitAxX*atoms[n].splitAxX
                    + atoms[n].splitAxY*atoms[n].splitAxY
                    + atoms[n].splitAxZ*atoms[n].splitAxZ), 1e-12);
@@ -2359,6 +2367,11 @@ function fillAtomBuf() {
     const ax = SPLIT_AXIS[n] || [0, 0, 1];
     af[off + 10] = ax[0]; af[off + 11] = ax[1]; af[off + 12] = ax[2];
     af[off + 13] = SPLIT_ROT[n] || 0;
+    // Cylinder-axis origin in cells; box centre unless the driver names one per domain.
+    const org = SPLIT_CYL_ORG[n];
+    af[off + 14] = org ? org[0] : NN * 0.5;
+    af[off + 15] = org ? org[1] : NN * 0.5;
+    af[off + 16] = org ? org[2] : NN * 0.5;
   }
   device.queue.writeBuffer(atomBuf, 0, ab);
 }

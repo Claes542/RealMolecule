@@ -230,6 +230,17 @@ window.onerror = function (msg, url, line) {
   var CHOM  = (q.get('chom') === '1');           // core as ONE domain of charge NCORE, no split
   var SWIN  = parseInt(q.get('swin') || '0');    // slide only the middle SWIN shell domains
   var CR2   = parseFloat(q.get('cr2') || '0');   // OUTER radius of the shell, a0 (0 = box face)
+  // cab=<nY>x<nZ>: an ARRAY of parallel cables, csep apart, each the same construction as the
+  // single one. The point is that the nuclei then form a genuine two- or three-dimensional
+  // lattice instead of a line, so the carrier density n stops being the convention 1/a^3 and
+  // becomes a property of the structure -- and the coupling between cables can be read off by
+  // running one cable with and without neighbours. The box is already 77.5 a0 across and almost
+  // empty transversally, so an array costs no extra grid.
+  var CABSPEC = (q.get('cab') || '1x1').split('x');
+  var NCY   = Math.max(1, parseInt(CABSPEC[0]) || 1);
+  var NCZ   = Math.max(1, parseInt(CABSPEC.length > 1 ? CABSPEC[1] : CABSPEC[0]) || 1);
+  var NCAB  = NCY * NCZ;
+  var CSEP  = parseFloat(q.get('csep') || '0') || (3 * CR);   // a0 between neighbouring axes
   var KMUL  = parseInt(q.get('kmul') || '1');     // kernels per site, at charge kq/kmul each
   var NSH   = parseInt(q.get('nsh') || '0');      // shell electrons over N ion sites (0 = N)
   var KLINE = parseInt(q.get('kline') || '0');    // K kernels ON THE AXIS, 2 rows of N electrons
@@ -364,15 +375,28 @@ window.onerror = function (msg, url, line) {
     // one core came out 16 eV apart because they are separate domains free to relax unequally.
     var dCore = Math.max(1, Math.round(0.4 * CR / h));
     var nCoreDom = CHOM ? 1 : NCORE;
-    for (var mC = 0; mC < N; mC++) {
-      for (var cE = 0; cE < nCoreDom; cE++) {
-        // 1 core: on axis. 2: upper/lower half. 4: quadrants of the (y,z) plane.
-        var dj = 0, dk = 0;
-        if (!CHOM && NCORE === 2) { dj = (cE === 0) ? dCore : -dCore; }
-        else if (!CHOM && NCORE >= 4) { dj = (cE < 2) ? dCore : -dCore; dk = (cE % 2 === 0) ? dCore : -dCore; }
-        atoms.push({ i: coreI[mC], j: N2 + dj, k: N2 + dk, Z: (CHOM ? NCORE : 1), el: 'Li' });
-        Z.push(CHOM ? NCORE : 1); Znuc.push(0); zeff.push(ZE); rcs.push(0);
-        cSplitT.push(5); cSplitI.push(0); cSplitR.push(CR); cAx.push([1, 0, 0]);
+    // Transverse offsets of the cable axes, in CELLS, centred on the box. Fractional is fine:
+    // positions are continuous now, and the labelling compares distances rather than indices.
+    // cab=1x1 gives the single offset [0,0], so every array path below reduces exactly to the
+    // single cable -- which is what the regression checks.
+    var cabOff = [];
+    for (var cY = 0; cY < NCY; cY++) for (var cZ = 0; cZ < NCZ; cZ++) {
+      cabOff.push([(cY - (NCY - 1) / 2) * CSEP / h, (cZ - (NCZ - 1) / 2) * CSEP / h]);
+    }
+    var cylOrg = [];   // per-domain cylinder-axis origin, handed to the solver
+    for (var cA = 0; cA < NCAB; cA++) {
+      var cdj = cabOff[cA][0], cdk = cabOff[cA][1];
+      for (var mC = 0; mC < N; mC++) {
+        for (var cE = 0; cE < nCoreDom; cE++) {
+          // 1 core: on axis. 2: upper/lower half. 4: quadrants of the (y,z) plane.
+          var dj = 0, dk = 0;
+          if (!CHOM && NCORE === 2) { dj = (cE === 0) ? dCore : -dCore; }
+          else if (!CHOM && NCORE >= 4) { dj = (cE < 2) ? dCore : -dCore; dk = (cE % 2 === 0) ? dCore : -dCore; }
+          atoms.push({ i: coreI[mC], j: N2 + cdj + dj, k: N2 + cdk + dk, Z: (CHOM ? NCORE : 1), el: 'Li' });
+          Z.push(CHOM ? NCORE : 1); Znuc.push(0); zeff.push(ZE); rcs.push(0);
+          cSplitT.push(5); cSplitI.push(0); cSplitR.push(CR); cAx.push([1, 0, 0]);
+          cylOrg.push([N2, N2 + cdj, N2 + cdk]);
+        }
       }
     }
     // nsh=<n>: n shell electrons over N ion sites, so the carrier lattice has period N*a/n and the
@@ -382,34 +406,48 @@ window.onerror = function (msg, url, line) {
     // 8 -> 13 -> 21, which separates commensurability from substrate strength -- the confound that
     // made the earlier filling scan uninterpretable.
     var nShell = (NSH > 0) ? NSH : N, stepS = N / nShell;
-    for (var mS = 0; mS < nShell; mS++) {               // shell seeds, standing off the axis
+    for (var cB = 0; cB < NCAB; cB++) {
+     var sdj = cabOff[cB][0], sdk = cabOff[cB][1];
+     for (var mS = 0; mS < nShell; mS++) {               // shell seeds, standing off the axis
       // FOLD the seed modulo the chain, exactly as the label index folds. Without this the seeds
       // run off the end as d grows while their labelled regions wrap back to the left, so each
       // domain's psi is seeded outside its own region and E(d) climbs monotonically instead of
       // being periodic -- the run that reached +15.6 eV at d = 7.5.
       var xSeed = ((stepS * (mS + 0.5) + DFRAC) % N + N) % N;
       atoms.push({ i: Math.round(coreI[0] + xSeed * A / h),
-                   j: N2 + rShell, k: N2, Z: 1, el: 'Li' });
+                   j: N2 + sdj + rShell, k: N2 + sdk, Z: 1, el: 'Li' });
       Z.push(1); Znuc.push(0); zeff.push(ZE); rcs.push(0);
       cSplitT.push(5); cSplitI.push(1); cSplitR.push(CR); cAx.push([1, 0, 0]);
+      // the seed sits OFF the axis by rShell, so the cylinder origin cannot be read from the
+      // atom's own position -- it is carried explicitly
+      cylOrg.push([N2, N2 + sdj, N2 + sdk]);
+     }
     }
     // kmul>1 subdivides each site into kmul kernels of charge kq/kmul, holding the total charge
     // and the standoff fixed while moving the lowest harmonic to 2*pi*kmul/a. The corrugation then
     // has to fall as exp(-2*pi*kmul*cr/a), and at kmul large the line is homogeneous and the slide
     // must cost EXACTLY nothing -- which is the noise floor of every corrugation measured here.
-    for (var mK3 = 0; mK3 < N * KMUL; mK3++) {
+    for (var cC = 0; cC < NCAB; cC++) {
+     var kdj = cabOff[cC][0], kdk = cabOff[cC][1];
+     for (var mK3 = 0; mK3 < N * KMUL; mK3++) {
       // NOT rounded. These carry Znuc, so they are the ions whose corrugation is being measured:
       // rounding them puts the positive lattice on whole cells, and since a/h = 8.0129 here the
       // spacings come out 8, 8, 8, ..., 9, irregular by up to half a cell. The core positions were
       // made continuous earlier and these were missed, which left the cable with exact cores on a
       // quantised ion lattice -- the worse of the two states, since it looked corrected.
-      atoms.push({ i: coreI[0] + mK3 * (A / h) / KMUL, j: N2, k: N2, Z: 0, el: 'Li' });
+      atoms.push({ i: coreI[0] + mK3 * (A / h) / KMUL, j: N2 + kdj, k: N2 + kdk, Z: 0, el: 'Li' });
       Z.push(0); Znuc.push(KQ / KMUL); zeff.push(ZE); rcs.push(RC);
       cSplitT.push(0); cSplitI.push(0); cSplitR.push(0); cAx.push([1, 0, 0]);
+      cylOrg.push([N2, N2 + kdj, N2 + kdk]);   // splitType 0: unused, but keeps the arrays aligned
+     }
     }
-    window.USER_FIRST_SHELL = (CHOM ? 1 : NCORE) * N;   // shell domains start here; used by kins
+    // Shell domains start here; used by kins to stiffen the CARRIERS only. With an array the
+    // cores of every cable come first, so this must count all of them -- otherwise kins would
+    // stiffen the second cable's cores instead of the first cable's carriers.
+    window.USER_FIRST_SHELL = NCAB * (CHOM ? 1 : NCORE) * N;
     window.USER_SPLIT_TYPE = cSplitT; window.USER_SPLIT_IDX = cSplitI;
     window.USER_SPLIT_ROT = cSplitR;  window.USER_SPLIT_AXIS = cAx;
+    window.USER_SPLIT_CYL_ORG = cylOrg;
   }
 
   if (KLINE > 0) {
@@ -787,6 +825,19 @@ window.onerror = function (msg, url, line) {
     // coax: inside cr, the core slab holding that kernel; outside, the shell slab, offset by d.
     if (COAX) {
       var crCell = CR / h, oX = coreI[0];
+      // Which cable owns each transverse cell, and its radius from THAT cable's axis. Nearest
+      // axis wins, which tiles the plane into the Voronoi cells of the cable lattice and so
+      // keeps the partition a partition. Precomputed once: it depends on (j,k) only.
+      var cabWho = new Int32Array(S * S), cabRy = new Float32Array(S * S), cabRz = new Float32Array(S * S);
+      for (var jT = 0; jT < S; jT++) for (var kT = 0; kT < S; kT++) {
+        var bW = 0, bD = Infinity, bY = 0, bZ = 0;
+        for (var cT = 0; cT < NCAB; cT++) {
+          var yy = jT - (N2 + cabOff[cT][0]), zz = kT - (N2 + cabOff[cT][1]);
+          var dd = yy * yy + zz * zz;
+          if (dd < bD) { bD = dd; bW = cT; bY = yy; bZ = zz; }
+        }
+        cabWho[jT * S + kT] = bW; cabRy[jT * S + kT] = bY; cabRz[jT * S + kT] = bZ;
+      }
       for (var iX = 0; iX < S; iX++) {
         var mcRaw = Math.floor((iX - oX + 0.5 * aG) / aG);
         var mCore = WRAP ? (((mcRaw % N) + N) % N) : Math.min(N - 1, Math.max(0, mcRaw));
@@ -803,7 +854,8 @@ window.onerror = function (msg, url, line) {
         var mRaw = Math.floor((iX - oX - (inWin ? DFRAC : 0) * aG + 0.5 * stS) / stS);
         var mShell = WRAP ? (((mRaw % nSh) + nSh) % nSh) : Math.min(nSh - 1, Math.max(0, mRaw));
         for (var jX = 0; jX < S; jX++) for (var kX = 0; kX < S; kX++) {
-          var ry = jX - N2, rz = kX - N2;
+          var tI = jX * S + kX, cAB = cabWho[tI];
+          var ry = cabRy[tI], rz = cabRz[tI];
           // cr2 gives the shell a genuine OUTER bound -- the wire's surface. Without it the shell
           // domain runs to the box face, its charge piles against the inner edge and the standoff
           // is just cr with no thickness to average over. With it, cores live inside cr, the shell
@@ -816,7 +868,11 @@ window.onerror = function (msg, url, line) {
           var cIdx = (nCD === 1) ? mCore
                    : (nCD === 2) ? (2 * mCore + ((ry >= 0) ? 0 : 1))
                    : (nCD * mCore + ((ry >= 0) ? 0 : 2) + ((rz >= 0) ? 0 : 1));
-          lab[iX * S2 + jX * S + kX] = inCore ? cIdx : ((CHOM ? 1 : NCORE) * N + mShell);
+          // Domain indices must match the push order exactly: every cable's cores first
+          // (cable-major), then every cable's carriers. cab=1x1 reduces to cIdx and nCD*N+mShell.
+          lab[iX * S2 + jX * S + kX] = inCore
+            ? (cAB * nCD * N + cIdx)
+            : (NCAB * nCD * N + cAB * nSh + mShell);
         }
       }
       return lab;
@@ -1049,8 +1105,8 @@ window.onerror = function (msg, url, line) {
   if (q.get('lockcar') === '1' && COAX) {
     // recomputed here from the top-level parameters rather than read from the coax block, so the
     // count cannot drift out of step with the construction
-    var nCoreDom  = N * (CHOM ? 1 : NCORE);
-    var nShellDom = (NSH > 0) ? NSH : N;
+    var nCoreDom  = NCAB * N * (CHOM ? 1 : NCORE);
+    var nShellDom = NCAB * ((NSH > 0) ? NSH : N);
     var carrierGroup = [];
     for (var mLC = 0; mLC < nShellDom; mLC++) carrierGroup.push(nCoreDom + mLC);
     window.USER_LOCKED_GROUPS = [carrierGroup];
@@ -1375,6 +1431,9 @@ window.onerror = function (msg, url, line) {
            + (q.get('kins') !== null ? '_KS' + parseFloat(q.get('kins')).toFixed(2) : '')
            + (SWIN > 0 ? '_SW' + SWIN : '')
            + (COAX ? '_COAX' + CR.toFixed(2) + 'q' + KQ.toFixed(3) + (NCORE > 1 ? 'c' + NCORE : '') + (CHOM ? 'h' : '') + (NSH > 0 ? 'n' + NSH : '') + (KMUL > 1 ? 'x' + KMUL : '') : '')
+           // only when there IS an array, so cab=1x1 keeps the single cable's key and the
+           // regression compares like with like
+           + (NCAB > 1 ? '_CAB' + NCY + 'x' + NCZ + 's' + CSEP.toFixed(1) : '')
            + (KLINE > 0 ? '_KL' + KLINE + 'q' + KQ.toFixed(2) + 'e' + ERAD.toFixed(1) : '')
            + (NK > 0 && q.get('split') === '0' ? '_NS' : '')
            + (NK > 0 ? '_NK' + NK + 'q' + KQ.toFixed(2) + 'r' + KRAD.toFixed(1) + 'e' + ERAD.toFixed(1) + 'g' + ESTAG.toFixed(2) : '')
