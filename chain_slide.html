@@ -236,6 +236,15 @@ window.onerror = function (msg, url, line) {
   // becomes a property of the structure -- and the coupling between cables can be read off by
   // running one cable with and without neighbours. The box is already 77.5 a0 across and almost
   // empty transversally, so an array costs no extra grid.
+  // hlat=<nY>x<nZ>: nY*nZ parallel chains of N hydrogen atoms, hsep apart, so the nuclei form a
+  // three-dimensional lattice. Hydrogen has no core, hence no standoff and no minimum spacing:
+  // hsep defaults to the chain spacing a and the lattice is cubic. Then n = 1/a^3 is the density
+  // of the structure rather than a convention for reporting a line as a bulk.
+  var HLSPEC = (q.get('hlat') || '1x1').split('x');
+  var HLY   = (q.get('hlat') !== null) ? Math.max(1, parseInt(HLSPEC[0]) || 1) : 0;
+  var HLZ   = (q.get('hlat') !== null) ? Math.max(1, parseInt(HLSPEC.length > 1 ? HLSPEC[1] : HLSPEC[0]) || 1) : 0;
+  var NHL   = HLY * HLZ;
+  var hlOff = [];
   var CABSPEC = (q.get('cab') || '1x1').split('x');
   var NCY   = Math.max(1, parseInt(CABSPEC[0]) || 1);
   var NCZ   = Math.max(1, parseInt(CABSPEC.length > 1 ? CABSPEC[1] : CABSPEC[0]) || 1);
@@ -361,6 +370,23 @@ window.onerror = function (msg, url, line) {
   if (COAX && q.get('kq') === null) {
     KQ = NCORE + (q.get('nsh') !== null ? parseInt(q.get('nsh')) / N : 1);          // neutrality: N*kq = N cores + nsh shell
   }
+  if (NHL > 0) {
+    // HSEP needs h, which is known by now; the offsets are in cells and may be fractional.
+    var HSEP = parseFloat(q.get('hsep') || '0') || A;
+    for (var hY = 0; hY < HLY; hY++) for (var hZ = 0; hZ < HLZ; hZ++) {
+      hlOff.push([(hY - (HLY - 1) / 2) * HSEP / h, (hZ - (HLZ - 1) / 2) * HSEP / h]);
+    }
+    atoms.length = 0; Z.length = 0; Znuc.length = 0; zeff.length = 0; rcs.length = 0;
+    for (var hC = 0; hC < NHL; hC++) {
+      for (var hM = 0; hM < N; hM++) {
+        // one electron on its own kernel, no core and no cutoff: the chain of Sec 4, repeated
+        atoms.push({ i: coreI[hM], j: N2 + hlOff[hC][0], k: N2 + hlOff[hC][1], Z: 1, el: 'H' });
+        Z.push(1); Znuc.push(1); zeff.push(ZE); rcs.push(0);
+      }
+    }
+    window.HLAT_SEP = HSEP;
+  }
+
   if (COAX) {
     atoms.length = 0; Z.length = 0; Znuc.length = 0; zeff.length = 0; rcs.length = 0;
     var cSplitT = [], cSplitI = [], cSplitR = [], cAx = [];
@@ -982,6 +1008,31 @@ window.onerror = function (msg, url, line) {
       return lab;
     }
     if (ONEDOM) { return lab; }   // all zeros: one domain, all space
+    if (NHL > 0) {
+      // Which chain owns each transverse cell. Precomputed: it depends on (j,k) only.
+      var hWho = new Int32Array(S * S);
+      for (var jH = 0; jH < S; jH++) for (var kH = 0; kH < S; kH++) {
+        var bWH = 0, bDH = Infinity;
+        for (var cH = 0; cH < NHL; cH++) {
+          var yyH = jH - (N2 + hlOff[cH][0]), zzH = kH - (N2 + hlOff[cH][1]);
+          var ddH = yyH * yyH + zzH * zzH;
+          if (ddH < bDH) { bDH = ddH; bWH = cH; }
+        }
+        hWho[jH * S + kH] = bWH;
+      }
+      // Along the chain, the slab index is the plain wrapped one, kshift included so that d=1 is
+      // identical to d=0 cell for cell and E(1)=E(0) is a property of the construction.
+      var kshiftH = Math.round(DFRAC);
+      for (var iH = 0; iH < S; iH++) {
+        var mH  = Math.floor((iH - c0cell + 0.5 * aG - DFRAC * aG) / aG) + kshiftH;
+        var dmH = ((mH % N) + N) % N;
+        for (var jH2 = 0; jH2 < S; jH2++) {
+          var bH = iH * S2 + jH2 * S;
+          for (var kH2 = 0; kH2 < S; kH2++) lab[bH + kH2] = hWho[jH2 * S + kH2] * N + dmH;
+        }
+      }
+      return lab;
+    }
     if (KWRAP) {
       // walls in SITE units: p_j = (j + 1/2) + S(j), then to cells; domain j owns kOwn[j].
       // Label in the SAME frame the owners were computed in: walls are left unwrapped in
@@ -1434,6 +1485,7 @@ window.onerror = function (msg, url, line) {
            // only when there IS an array, so cab=1x1 keeps the single cable's key and the
            // regression compares like with like
            + (NCAB > 1 ? '_CAB' + NCY + 'x' + NCZ + 's' + CSEP.toFixed(1) : '')
+           + (NHL > 1 ? '_HL' + HLY + 'x' + HLZ + 's' + (window.HLAT_SEP || 0).toFixed(1) : '')
            + (KLINE > 0 ? '_KL' + KLINE + 'q' + KQ.toFixed(2) + 'e' + ERAD.toFixed(1) : '')
            + (NK > 0 && q.get('split') === '0' ? '_NS' : '')
            + (NK > 0 ? '_NK' + NK + 'q' + KQ.toFixed(2) + 'r' + KRAD.toFixed(1) + 'e' + ERAD.toFixed(1) + 'g' + ESTAG.toFixed(2) : '')
