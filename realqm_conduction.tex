@@ -316,33 +316,7 @@ density-matrix renormalisation, auxiliary-field quantum Monte Carlo and coupled 
 \cite{simons17}, and its dimerisation and insulator-to-metal transition mapped \cite{simons20}.
 At the spacing used here the chain is far on the insulating side of that transition, which is the
 answer the corrugation below returns.
-
-A quantitative comparison against that equation of state has not been made here and should be, but
-two things stand in the way of it and both are worth stating.
-
-The first is the nuclear cutoff of \S9. It cancels between two configurations of one system, which
-is what the corrugation is and why the barriers survive it; it does \emph{not} cancel between a
-chain and a free atom, which is what a binding energy is. Measured, over a cutoff interval of
-$0.26\,a_0$, the chain moves $123$~meV per atom and the free atom $46$: the chain electron is
-pressed against its nucleus by its neighbours and carries more density inside the cutoff. Nor can
-the cutoff simply be made small. It is bounded below by twice the mesh spacing, so shrinking it
-means refining the grid, and at the smallest value reachable the chain comes out more bound per atom
-than the exact H$_2$ molecule --- which is not a prediction but a calculation that has stopped being
-trustworthy, the cutoff by then spanning about two cells. A comparison of binding energies therefore
-awaits the nuclear cusp being treated analytically rather than truncated, which is solver work not
-attempted here.
-
-The second is what such a comparison could establish even if the arithmetic were clean. Those calculations are the essentially
-exact solution of the non-relativistic clamped-nucleus problem, and for hydrogen that is as close to
-the physical answer as computation gets, relativistic corrections being of order $10^{-5}$~Ha. What
-they are not is a measurement, and what they represent is the prediction of the theory RealQM is
-offered as an alternative to. A disagreement would therefore be ambiguous in a way it would not be
-for an approximate solution of the same equations: it could mean this framework is wrong, or that
-the two descriptions differ for this arrangement, and no experiment on an eight-atom hydrogen chain
-exists to decide between them. It would be a consistency check against the best available solution
-of the standard theory, on a system where that theory is unusually trustworthy --- worth having, and
-worth not overstating. The tests against measurement are the ones already in the framework's record,
-and they are on bound matter. This is the simplest arrangement in which
+This is the simplest arrangement in which
 the carrier occupies its own kernel's region, and it is a real system rather than a model atom.
 
 \paragraph{The barrier.} Sliding the whole pattern by half a spacing costs
@@ -1025,6 +999,20 @@ it. An earlier version of this appendix stated that the clamp fixed the potentia
 at every mesh; that is not what the code does, and any comparison across meshes made under that
 assumption compares different ions rather than one ion at different resolutions. To hold the
 potential fixed, $r_{\rm sing}$ must be set above $2h$ at the finest mesh in use.
+
+What the cutoff costs, and where it cancels, is worth recording since it is the largest numerical
+error here. On a hydrogen atom at $r_{\rm sing}=0.6$ it is $89$~mHa, or $2.4$~eV --- more than any
+barrier in this article. It cancels between two configurations of one system at one cutoff, which is
+what a corrugation is: changing it from $0.6$ to $0.8\,a_0$ moves the chain's total by $6.2$~eV and
+its barrier by $40$~meV. It does \emph{not} cancel between different systems. Over a cutoff interval
+of $0.26\,a_0$ the chain moves $123$~meV per atom against the free atom's $46$, the chain electron
+being pressed toward its nucleus by its neighbours and so carrying more density inside the cutoff.
+Nor can the cutoff simply be shrunk: it is bounded below by $2h$, so reducing it means refining the
+grid, and at the smallest value reachable here the chain comes out more bound per atom than the
+exact H$_2$ molecule, the cutoff by then spanning some two cells. Every energy difference quoted in
+this article is therefore taken at one cutoff between configurations of one system; no binding
+energy or comparison with another method's number is quoted, and none could be without treating the
+nuclear cusp analytically rather than truncating it.
 Only the shell slides. All runs use the fixed-step protocol below, at $r_{\rm sing}=1.5\,a_0$
 (above $2h=1.123$). Windowed energies at $d=\half$, $W$ the number of displaced carriers:
 \begin{center}
