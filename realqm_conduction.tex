@@ -86,10 +86,12 @@ factor this article does not determine.
 
 This article computes the activation energy for charge transport in a solid from Coulomb interaction
 and kinetic energy alone, with nothing fitted --- a computation that does not appear to have been
-carried out before, for reasons \S2 sets out. What is computed is the energetics; converting an
-energy landscape into a current requires a theory of rates as well, which is brought in from
-outside here as it is everywhere else, and \S7 is exact about which parts of that import the
-framework might one day supply for itself. The framework is RealQM, an alternative to textbook quantum mechanics
+carried out before, for reasons \S2 sets out. What is computed is the energetics, and the
+limit of that is best put dimensionally: a minimisation of \eqref{eq:E} yields energies, while a
+current is charge per time and a conductivity is charge per time per field. No quantity of energy
+supplies a time. So a rate theory must be brought in from outside, here as everywhere else, and
+\S7 is exact about which parts of that import the framework might one day supply for itself ---
+the time scale being the part that a lattice already moving classically could provide. The framework is RealQM, an alternative to textbook quantum mechanics
 carrying no chosen functional and no fitted parameter. The phrase \emph{ab initio} is avoided here
 deliberately: it is used of methods that select an exchange--correlation functional, and the
 distinction that matters for this article is narrower and checkable --- what enters
@@ -225,6 +227,26 @@ V_0 = \max_d E(d) - \min_d E(d)
 is the corrugation: the barrier the partition must cross to advance one site. A field tilts this
 curve by $-NeFd$, so the pattern runs when the tilt exceeds the steepest slope of $E(d)$, and
 otherwise settles at a displacement and stops --- bounded polarisation, no current.
+
+Three energies are easily confused here and are worth separating at the outset. The barrier is
+\emph{invested and returned}: the pattern climbs to $d=\half$ and descends again, ending one site
+advanced, and the net cost of that advance is zero --- which is not an argument but the control
+$E(1)=E(0)$. The barrier therefore governs how \emph{often} an advance happens, not how much energy
+a conductor loses. What a conductor loses is the work done by the field, $eFa$ per site per advance,
+which passes into the lattice; it is present whether the barrier is large or small, and a good
+conductor dissipates more than a poor one because more charge moves. Only the first of the three is
+computed in this article. The second is verified. The third belongs to the driven regime and needs
+the dissipation channel \S6 says this framework does not supply.
+
+What is evaluated, here and throughout, is $E(d)$ at \emph{two} values of $d$, together with $d=1$
+as a control. Symmetry places stationary points at $d=0$ and $d=\half$ --- the curve is periodic and
+inversion-symmetric about a site, so $E(\half+x)=E(\half-x)$ --- and \eqref{eq:V0} is then read as
+$E(\half)-E(0)$. The barrier so obtained is a difference of two computed numbers and assumes nothing
+about the shape of the curve between them. Two later quantities do assume it: the curvature $K$ that
+sets the attempt frequency, and the steepest slope that sets the threshold field, both of which are
+taken from a sinusoid of the computed amplitude. A scan at intermediate $d$ would replace the
+assumption with a measurement, and would at the same time confirm that $d=\half$ is the maximum
+rather than a second minimum with the true peak between. That scan has not been made.
 
 \paragraph{The partition is imposed, not found.} Everything below evaluates $E(d)$ with the domains
 \emph{given}: the supports are specified as a cell-ownership map and held fixed, and only the wave
@@ -464,6 +486,18 @@ theory to make it. The sinusoid enters here
 as it does in $K$, and a scan of $E(d)$ at small $d$ would remove it, the threshold then following
 from the computed slope directly. What does \emph{not} enter is any rate theory.
 
+It is worth saying why the calculation stops at the threshold rather than continuing past it, since
+driving the system further is the obvious thing to try. Below the threshold a local minimum
+survives, so the pattern displaces a little and stops: that is an elastic response, the
+polarisability of \S4, and no charge is transferred. Above it there is no minimum left and nothing
+to stop the slide, so the field does work indefinitely and, in a conservative functional, that
+energy has nowhere to go. There is no steady state to compute, and therefore no drift velocity.
+The trap is that the solver will answer anyway. Driven past the threshold the partition does run and
+walls do advance, so a speed can be read off --- but the relaxation is gradient descent in imaginary
+time and its rate is the descent parameter, chosen rather than derived. The threshold is a property
+of $E(d)$ and survives refinement; a current past it is a property of the scheme and does not.
+Nothing in this article is computed above the threshold.
+
 \section{What this gives, and what it does not}
 
 In the activated regime the corrugation is the activation energy, and the conductivity of a hopping
@@ -509,6 +543,22 @@ $a=4.5\,a_0$ is $0.80$~eV\,\AA$^{-2}$. This is the one step that assumes a shape
 measuring one: the windowed slide was run at the two endpoints $d=0$ and $d=\half$, which fix the
 amplitude and not the curvature. A scan at small $d$ would replace the assumption, and until it is
 run the sinusoid stands in for it.
+
+There is a second assumption in the same expression, of a different kind, and it should be stated
+because no scan can remove it. Writing $\nu=\frac{1}{2\pi}\sqrt{K/M}$ is transition-state theory,
+and transition-state theory describes one damping regime out of three. Kramers' result is that the
+prefactor depends on the coupling $\gamma$ between the moving coordinate and the lattice, and
+non-monotonically: strongly damped it becomes $\omega_0\omega_b/2\pi\gamma$, the rate being set by
+how slowly the coordinate diffuses over the top; very weakly damped it is limited instead by how
+slowly energy arrives. Only at intermediate damping does $\gamma$ cancel and the well curvature
+alone set the rate. That intermediate case is the one assumed here, and it is assumed for a reason
+worth admitting plainly: it is the only regime whose prefactor can be had from a landscape and a set
+of masses. The other two require the coupling, which is the same quantity the driven regime needs
+and which a functional without a boundary velocity cannot supply. One consequence runs against the
+grain of the rest of this section --- transition-state theory \emph{over}estimates a rate, so this
+prefactor biases $\sigma$ upward where the upper-bound barrier biases it down. The exponent wins by
+orders of magnitude and the conductivities remain lower bounds, but the two errors do not point the
+same way.
 
 $M$ is part of the specification of the system rather than a parameter of the theory. Two masses
 must be kept apart here. The \emph{electron} mass is genuinely absent from \eqref{eq:E}: the
