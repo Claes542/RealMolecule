@@ -1091,8 +1091,20 @@ window.onerror = function (msg, url, line) {
         }
         return lab;
       }
+      // swin on the PLAIN chain, ported from the coax branch where it has always been. Displace
+      // only the middle SWIN domains and leave the rest at d=0: the energy difference is then
+      // SWIN * bulk + 2 * junction, and differencing two window sizes cancels the junctions
+      // exactly. Without it the chain slides GLOBALLY, and the two end domains own the box
+      // padding in shares that shift with d -- which is not corrugation and does not cancel.
+      // A d-scan exposed it: E(d) falls 10 eV below E(0) at d = 0.375 before rising to its
+      // d = 1/2 value, so E(1/2) - E(0) was a difference between two local maxima with a
+      // minimum neither of them saw. SWIN <= 0 reproduces the old global behaviour exactly.
+      var winLo = Math.floor((N - SWIN) / 2);
       for (var i = 0; i < S; i++) {
-        var m = Math.floor((i - c0cell + 0.5 * aG - DFRAC * aG) / aG) + kshift;
+        var mUn = Math.floor((i - c0cell + 0.5 * aG) / aG);         // index before displacement
+        var inWin = (SWIN <= 0) || (mUn >= winLo && mUn < winLo + SWIN);
+        var m = Math.floor((i - c0cell + 0.5 * aG - (inWin ? DFRAC : 0) * aG) / aG)
+                + (inWin ? kshift : 0);
         var dm = ((m % N) + N) % N;
         for (var j = 0; j < S; j++) {
           var base = i * S2 + j * S;
