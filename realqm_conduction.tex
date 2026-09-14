@@ -461,7 +461,7 @@ The barrier, evaluated by \eqref{eq:window} with windows of $W=4$ and $W=8$ carr
 \[
 \varepsilon_{\rm bulk} \approx 246~\text{meV per carrier},
 \]
-a factor of $2.6$ below the chain. The interaction is the same and the energy functional is the
+a factor of $1.6$ below the chain. The interaction is the same and the energy functional is the
 same; what has changed is where the carrier sits relative to its kernel.
 
 \begin{figure}[htb]
@@ -566,7 +566,7 @@ cable of Li ions & $246$~meV & $3.2\times10^{9}$\\
 \end{tabular}
 \end{center}
 \noindent Above that field charge advances without thermal help; below it, it does not advance at
-all without. The three divide, and the division is the point. The first two are an order above the
+all without. The three divide, and the division is the point. The first two are several times above the
 dielectric strength of silica, ${\sim}10^{9}$~V\,m$^{-1}$, so those arrangements would break down
 before they would slide --- which is what an insulator does. The stiffened cable is a factor of four
 below it, so that one would slide first. The same separation that \S6 states as a barrier against
@@ -723,7 +723,8 @@ cable of Li ions & $246$~meV & $5.5\times10^{12}$ & $10$ & intrinsic Ge, $2$\\
 live: as an energy $h\nu$, $23$~meV for the cable and $97$~meV for the hydrogen chain, the latter high because a proton
 is light. Nothing was arranged to make that so, and it is the check that the mass entering $\nu$ is
 the right kind of mass. The first two rows bracket the conductivity of ordinary semiconducting
-material, six orders of magnitude apart on a barrier ratio of $2.6$.
+material, two orders of magnitude apart on a barrier ratio of $1.6$ --- the exponential at work,
+since a difference of $148$~meV is $5.7\,kT$.
 
 The third row carries no numbers because it violates the first condition above. At $E_a=20$~meV
 against $kT=25.9$~meV the barrier is $0.77\,kT$ and $e^{-E_a/kT}=0.46$: the carriers are over the
@@ -1011,7 +1012,7 @@ ranges measurement gives, none of them arranged to: barriers of $246$--$394$~meV
 activation is measured at $50$--$500$; attempt frequencies at $h\nu=23$ and $97$~meV, which are
 lattice-vibration energies, and would have come out two orders higher had the mass been the
 electron's --- though computed from a sinusoid's curvature, which \S6 shows to be too sharp, so the
-frequencies themselves are overestimates even as their scale is right; and threshold fields an order above the dielectric strength of silica, so that these
+frequencies themselves are overestimates even as their scale is right; and threshold fields several times above the dielectric strength of silica, so that these
 arrangements would fail before they would slide, as insulators do. That is consistency in magnitude
 across three independent quantities from a calculation with nothing fitted in it. It is not a test,
 and it should not be read as one.
@@ -1032,7 +1033,7 @@ spacing rather than at registry, so the arrangement in which each electron is ce
 kernel is not the one the functional prefers.
 
 For a cable of Li ions with the carriers standing off closed cores it gives $246$~meV, a factor of
-$2.6$ less. The two cannot be built from the same ion, and the reason is instructive: a carrier can
+$1.6$ less. The two cannot be built from the same ion, and the reason is instructive: a carrier can
 stand off a core only if there is a core, and since the domains tile, one domain per kernel must
 contain its kernel --- so a standoff requires at least two electrons per site where the chain has
 one. The difference in ion is entailed by the difference in arrangement rather than chosen alongside
@@ -1054,15 +1055,21 @@ supplying a real one means windowing and scanning the lattice as the chain and c
 
 What the lattice also shows is where the cost of this method lies, since it bears on how far the
 calculation can be taken. Nine times the domains did not make the problem harder: at $d=0$ the
-lattice's residual is $5.3\times10^{-4}$, against $1.8\times10^{-3}$ for the chain and
-$4\times10^{-3}$ for the cable, the smallest in this article, a partition into compact cells being
+lattice's residual is $5.3\times10^{-4}$, against $1.8\times10^{-3}$ for the eight-site chain at
+the same mesh and $4\times10^{-3}$ for the cable, the smallest in this article, a partition into compact cells being
 evidently closer to what the functional would choose. The cost is set by the grid rather than by the
 number of atoms, and atoms added at fixed mesh are close to free. At the mesh used for the lattice,
 $h=0.281\,a_0$, a $200^3$ grid spans $56\,a_0$, which at this spacing holds of order a thousand
 atoms --- so a system of that size is a question of memory on a single GPU and not of a different
-method. What it is not is quick: the eight-thousand-step relaxations reported above ran for hours
-apiece on one machine, and a larger grid is proportionally worse. The limit on this calculation is
-patience and the constraints it has to impose, not dimension.
+method. What it is not is quick, and the cost divides in a way worth stating. A single relaxation step is
+cheap --- about $0.25$~s on the $138^3$ box and $0.6$~s on the $148^3$ lattice, so the eight-thousand
+step runs above take an hour and a half each, and a $200^3$ grid would be some two and a half times
+that per step. What is expensive is the number of steps the \emph{difference} requires. The energy
+settles long before the barrier does: on the cable a $200$-step run is already stable to look at and
+is $5.7$~Ha from its converged value, and on the lattice the ladder of \S8 still moves the barrier
+between $4000$ and $8000$ steps while $E(0)$ has stopped changing in the sixth figure. Shortening the
+relaxation is therefore not a dial that trades accuracy for time smoothly; it is what the step ladders
+are for. The limit on this calculation is patience and the constraints it has to impose, not dimension.
 
 Taking each barrier as an activation energy and closing the prefactor with an attempt frequency
 built from the same landscape and a nuclear mass puts the first two arrangements at $10^{-1}$ and
@@ -1253,8 +1260,9 @@ vibration, which is the argument for the ionic choice quite apart from the physi
 meV uncertainty on the middle row is a factor $3.2$ in $\sigma$.
 
 \paragraph{Convergence and resolution.} The states entering each windowed difference are relaxed
-but not fully converged, carrying Euler--Lagrange residuals of about $4\times10^{-3}$; the stiffened
-runs halve the timestep for stability and are less relaxed than the others. Every number
+but not fully converged, carrying Euler--Lagrange residuals of $2\times10^{-3}$ for the chain of
+\S4 and $4\times10^{-3}$ for the cable of \S5; the stiffened runs halve the timestep for stability
+and are less relaxed than the others. Every number
 reported is for the stated system at the stated mesh, with the nuclear cutoff held at an absolute
 radius above $2h$ so that it belongs to the model rather than to the grid. Whether the same numbers
 survive a different discretisation, or a different implementation of the same equations, is not
@@ -1265,8 +1273,7 @@ to nine digits ($E(0)=E(N)$ exactly) on the wrapped geometries. Repeat runs of o
 agree to nine digits, so the solver is deterministic and any discrepancy is attributable to the
 model or the input. Domains related by a symmetry must have equal eigenvalues: this is what exposed
 the terminal domains of a finite cable binding an electron-volt harder than the interior, and hence
-the necessity of \eqref{eq:window}. Euler--Lagrange residuals are $4\times10^{-3}$ for the chain and
-$2$--$3\times10^{-2}$ for the cable.
+the necessity of \eqref{eq:window}.
 
 \section*{On the use of computational assistance}
 
