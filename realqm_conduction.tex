@@ -131,11 +131,7 @@ whole electron distribution is a single solve; but the double sum in \eqref{eq:E
 what each electron must be given is the potential of all the \emph{others} --- the total less its own
 field --- and its own field is a different function for every $i$. A multigrid solve costs work
 proportional to the number of mesh points, so a relaxation step performs $N$ times the mesh of
-arithmetic. Measured time grows somewhat faster than the operation count: at a fixed $148^3$ grid on
-one GPU, going from $32$ domains to $72$ multiplied the time per step by $3.3$ where the domain
-count multiplied by $2.25$ --- an exponent near $1.5$, which is the price of carrying $N$ full-grid
-potentials in memory rather than of the arithmetic. The precise exponent is not what matters here.
-The single wave function of textbook quantum mechanics, by contrast, lives on a $3N$-dimensional
+arithmetic. The single wave function of textbook quantum mechanics, by contrast, lives on a $3N$-dimensional
 configuration space and costs one grid raised to the power $N$. Linear against
 exponential is the difference between a calculation that can be run and one that cannot, and it is
 why \S8 can put seventy-two atoms on a lattice with no change of method and no loss of accuracy ---
@@ -1068,10 +1064,10 @@ What the lattice also shows is where the cost of this method lies, since it bear
 calculation can be taken. Nine times the domains did not make the problem harder: at $d=0$ the
 lattice's residual is $5.3\times10^{-4}$, against $1.8\times10^{-3}$ for the eight-site chain at
 the same mesh and $4\times10^{-3}$ for the cable, the smallest in this article, a partition into compact cells being
-evidently closer to what the functional would choose. The scaling is the linear one of \S1 --- $N$ Poisson solves on one
-grid --- so atoms are paid for once each and not compounded. At the mesh used here, $h=0.281\,a_0$, a $200^3$ grid spans $56\,a_0$ and holds
-of order a thousand atoms at this spacing, which is within the memory of a single consumer GPU; by
-the same linear law such a run would take days rather than the hour and a half the lattice took. A
+evidently closer to what the functional would choose. The work is the one of \S1 --- $N$ Poisson solves on a single
+grid --- so atoms enter the count once each. At the mesh used here, $h=0.281\,a_0$, a $200^3$ grid spans $56\,a_0$ and holds
+of order a thousand atoms at this spacing, which is within the memory of a single consumer GPU, though
+such a run would take days rather than the hour and a half the lattice took. A
 system of that size is therefore a question of time and of memory, not of a different method. What it is not is quick, and the cost divides in a way worth stating. A single relaxation step is
 cheap --- about $0.25$~s on the $138^3$ box and $0.6$~s on the $148^3$ lattice, so the eight-thousand
 step runs above take an hour and a half each, and a $200^3$ grid would be some two and a half times
