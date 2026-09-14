@@ -44,8 +44,9 @@ $N$ of interest, so every route that can actually be followed first reduces the 
 repairs the reduction with modelled parameters --- a relaxation time, a transfer integral, an
 effective mass --- and the transport energy comes out of those parameters rather than out of the
 two terms it is made of. Working in three dimensions from
-the start removes the need for them. That is the new capability reported here: the quantity is
-computed rather than modelled.
+the start removes the need for them, at a cost that grows linearly in $N$ rather than exponentially:
+nine times the electrons on one and the same grid are measured here to cost $8.92$ times the time.
+That is the new capability reported here: the quantity is computed rather than modelled.
 
 Computationally the difficulty is one of scale. Atomic energies are tens of electron-volts,
 semiconductor activation is $50$--$500$~meV per carrier and metallic conduction sets in near
@@ -126,7 +127,15 @@ $1$~Ha${}=27.211$~eV.
 The ground state of the system is the configuration minimising this energy, the minimisation running
 over the supports as well as over the wave functions, so that the interfaces are unknowns of the
 problem and not inputs to it; excited states are the other stationary points of the same energy. The
-cost of minimising \eqref{eq:E} is polynomial of small power in $N$. That is the framework. The
+cost of minimising \eqref{eq:E} grows \emph{linearly} in $N$ at a fixed mesh, and that is measured
+here rather than asserted: nine times the electrons on one and the same $148^3$ grid --- the lattice
+of \S8 against a single chain drawn from it --- costs $8.92$ times the time per relaxation step.
+The reason is the representation. Each $\psi_i$ is a function on three dimensions, so $N$ of them
+cost $N$ grids, where the single wave function of textbook quantum mechanics lives on a
+$3N$-dimensional configuration space and costs one grid raised to the power $N$. Linear against
+exponential is the difference between a calculation that can be run and one that cannot, and it is
+why \S8 can put seventy-two atoms on a lattice with no change of method and no loss of accuracy ---
+indeed with the smallest residual in this article. That is the framework. The
 calculations reported here do not use it in full: they specify the supports and hold them, for the
 reasons \S3 gives, so what is computed is a constrained minimum over the wave functions at a stated
 partition.
@@ -1057,11 +1066,12 @@ What the lattice also shows is where the cost of this method lies, since it bear
 calculation can be taken. Nine times the domains did not make the problem harder: at $d=0$ the
 lattice's residual is $5.3\times10^{-4}$, against $1.8\times10^{-3}$ for the eight-site chain at
 the same mesh and $4\times10^{-3}$ for the cable, the smallest in this article, a partition into compact cells being
-evidently closer to what the functional would choose. The cost is set by the grid rather than by the
-number of atoms, and atoms added at fixed mesh are close to free. At the mesh used for the lattice,
-$h=0.281\,a_0$, a $200^3$ grid spans $56\,a_0$, which at this spacing holds of order a thousand
-atoms --- so a system of that size is a question of memory on a single GPU and not of a different
-method. What it is not is quick, and the cost divides in a way worth stating. A single relaxation step is
+evidently closer to what the functional would choose. The scaling is the linear one of \S1, measured on this system: nine
+times the electrons at one mesh cost $8.92$ times the time per step, so atoms are paid for once each
+and not compounded. At the mesh used here, $h=0.281\,a_0$, a $200^3$ grid spans $56\,a_0$ and holds
+of order a thousand atoms at this spacing, which is within the memory of a single consumer GPU; by
+the same linear law such a run would take days rather than the hour and a half the lattice took. A
+system of that size is therefore a question of time and of memory, not of a different method. What it is not is quick, and the cost divides in a way worth stating. A single relaxation step is
 cheap --- about $0.25$~s on the $138^3$ box and $0.6$~s on the $148^3$ lattice, so the eight-thousand
 step runs above take an hour and a half each, and a $200^3$ grid would be some two and a half times
 that per step. What is expensive is the number of steps the \emph{difference} requires. The energy
