@@ -1023,8 +1023,18 @@ window.onerror = function (msg, url, line) {
       // Along the chain, the slab index is the plain wrapped one, kshift included so that d=1 is
       // identical to d=0 cell for cell and E(1)=E(0) is a property of the construction.
       var kshiftH = Math.round(DFRAC);
+      // swin on the lattice, ported from the plain-chain branch above with the identical gate.
+      // The window is on the x index only, so the middle SWIN sites of ALL NHL chains displace
+      // together and d stays one collective coordinate. Each window then costs
+      // NHL*SWIN bulk + 2*NHL junctions, so differencing two window sizes gives
+      // eps_bulk = [E(W2) - E(W1)] / (NHL * (W2 - W1)). SWIN <= 0 is the old global slide,
+      // cell for cell -- that is the regression.
+      var winLoH = Math.floor((N - SWIN) / 2);
       for (var iH = 0; iH < S; iH++) {
-        var mH  = Math.floor((iH - c0cell + 0.5 * aG - DFRAC * aG) / aG) + kshiftH;
+        var mUnH   = Math.floor((iH - c0cell + 0.5 * aG) / aG);
+        var inWinH = (SWIN <= 0) || (mUnH >= winLoH && mUnH < winLoH + SWIN);
+        var mH  = Math.floor((iH - c0cell + 0.5 * aG - (inWinH ? DFRAC : 0) * aG) / aG)
+                  + (inWinH ? kshiftH : 0);
         var dmH = ((mH % N) + N) % N;
         for (var jH2 = 0; jH2 < S; jH2++) {
           var bH = iH * S2 + jH2 * S;
