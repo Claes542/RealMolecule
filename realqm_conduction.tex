@@ -21,7 +21,7 @@ non-overlapping supports meeting at free interfaces. The physics is carried by a
 functional: electron Coulomb potential energy without self-repulsion, plus kinetic energy. No other
 force enters it and nothing in it is fitted. The ground state is the configuration minimising that
 functional over the supports as well as over the wave functions, so the interfaces are unknowns of
-the problem rather than inputs to it. The cost of that minimisation increases linearly with $N$.
+the problem rather than inputs to it. The cost of that minimisation scales as $N$ times the number of mesh points.
 
 RealQM has already been applied to solids --- ionic crystals under melting and under shear,
 molecular solids including ice and solid nitrogen, a lithium lattice of a hundred atoms recovering
@@ -126,17 +126,17 @@ $1$~Ha${}=27.211$~eV.
 The ground state of the system is the configuration minimising this energy, the minimisation running
 over the supports as well as over the wave functions, so that the interfaces are unknowns of the
 problem and not inputs to it; excited states are the other stationary points of the same energy. The
-cost of minimising \eqref{eq:E} grows \emph{linearly} in $N$ at a fixed mesh, and that is measured
-here rather than asserted: nine times the electrons on one and the same $148^3$ grid --- the lattice
-of \S8 against a single chain drawn from it --- costs $8.92$ times the time per relaxation step.
-The reason is the representation. Each $\psi_i$ is a function on three dimensions, so $N$ of them
-cost $N$ grids, where the single wave function of textbook quantum mechanics lives on a
+cost of minimising \eqref{eq:E} is the cost of $N$ Poisson problems on the grid. The potential of the
+whole electron distribution is a single solve; but the double sum in \eqref{eq:E} omits $i=j$, so
+what each electron must be given is the potential of all the \emph{others} --- the total less its own
+field --- and its own field is a different function for every $i$. A multigrid solve costs a time
+proportional to the number of mesh points, so a relaxation step costs $N$ times the mesh: linear in
+$N$ at a fixed grid. The single wave function of textbook quantum mechanics, by contrast, lives on a
 $3N$-dimensional configuration space and costs one grid raised to the power $N$. Linear against
 exponential is the difference between a calculation that can be run and one that cannot, and it is
 why \S8 can put seventy-two atoms on a lattice with no change of method and no loss of accuracy ---
 indeed with the smallest residual in this article --- and why the lithium lattice cited below runs
-at a hundred atoms. The measurement is made on seventy-two electrons and should be read as such.
-That is the framework. The
+at a hundred atoms. That is the framework. The
 calculations reported here do not use it in full: they specify the supports and hold them, for the
 reasons \S3 gives, so what is computed is a constrained minimum over the wave functions at a stated
 partition.
@@ -1064,9 +1064,8 @@ What the lattice also shows is where the cost of this method lies, since it bear
 calculation can be taken. Nine times the domains did not make the problem harder: at $d=0$ the
 lattice's residual is $5.3\times10^{-4}$, against $1.8\times10^{-3}$ for the eight-site chain at
 the same mesh and $4\times10^{-3}$ for the cable, the smallest in this article, a partition into compact cells being
-evidently closer to what the functional would choose. The scaling is the linear one of \S1, measured on this system: nine
-times the electrons at one mesh cost $8.92$ times the time per step, so atoms are paid for once each
-and not compounded. At the mesh used here, $h=0.281\,a_0$, a $200^3$ grid spans $56\,a_0$ and holds
+evidently closer to what the functional would choose. The scaling is the linear one of \S1 --- $N$ Poisson solves on one
+grid --- so atoms are paid for once each and not compounded. At the mesh used here, $h=0.281\,a_0$, a $200^3$ grid spans $56\,a_0$ and holds
 of order a thousand atoms at this spacing, which is within the memory of a single consumer GPU; by
 the same linear law such a run would take days rather than the hour and a half the lattice took. A
 system of that size is therefore a question of time and of memory, not of a different method. What it is not is quick, and the cost divides in a way worth stating. A single relaxation step is
