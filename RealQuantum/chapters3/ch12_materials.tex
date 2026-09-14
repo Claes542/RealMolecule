@@ -106,7 +106,7 @@ The 2D materials class is a major area of contemporary materials science: graphe
 
 The 2D-materials work is exploratory in the same sense as Chapter~\ref{ch:folding}'s folding work: structurally promising, qualitatively correct, quantitatively at the early stage. The next iteration of the framework --- combining the proper \texttt{tetra}/\texttt{third} splitting topologies with the correlation extension that would handle interlayer interactions --- would bring 2D materials into the same quantitative regime as the molecular-scale validation of Part~III.
 
-\section{Conduction and insulation: two arrangements of the same charge}\label{sec:conduction}
+\section{Conduction: four arrangements of the same charge}\label{sec:conduction}
 
 Whether a material conducts is the oldest question in solid-state physics, and it is a hard one to
 put to a framework like this. Atomic energies are tens of electron-volts; semiconductor activation
@@ -116,7 +116,10 @@ lies five or six orders of magnitude below the number a calculation returns. A d
 enough for binding, where a per cent error is invisible, can be useless here, where a per cent of
 the total is a hundred times the quantity at issue.
 
-Two arrangements were measured, and they answer differently.
+The answer is not reached by computing that total to five figures. It is reached by differencing two
+configurations of the same system --- the same electrons, the same kernels, the same grid, differing
+only in where a few interior domain walls sit --- so that every large contribution to the error is
+common to both and cancels. Four cases were computed on that principle, and they answer differently.
 
 \paragraph{What is measured.}
 A domain carries one unit of charge by constraint, so no charge passes between sites. What can move
@@ -134,26 +137,26 @@ $M$ times a bulk cost plus two junction costs, so differencing two window sizes 
 junctions exactly and no terminal domain moves in either configuration. A third window tests the
 assumed linearity rather than fitting it.
 
-\paragraph{Model I: a chain of atoms.}
+\paragraph{Case I: a chain of atoms.}
 One kernel per site with its valence electron occupying the same region --- what a hydrogen chain
-is, and an alkali to a first approximation. With the partition held fixed and a uniform field
-applied, the induced dipole gives the polarisability, and repeating at three chain lengths gives its
-scaling: $\alpha=27.4N$, flat to $1\%$ per atom. That is the signature of charge fixed per site. A
-metal's polarisability grows faster than the number of atoms because charge redistributes over the
-whole sample; here each domain carries its unit and cannot give it up, so the only responses are the
-density deforming inside a fixed domain and the boundaries displacing --- both per-atom constants,
-summing to something exactly proportional to $N$. The one escape is a vanishing corrugation, which
-would let the partition slide freely and the response grow without bound.
+is, and an alkali to a first approximation. Sixteen hydrogen atoms at $a=4.5\,a_0$, one electron per
+site, \emph{no pseudopotential anywhere}. The measured bulk corrugation is $394$~meV per electron.
 
-The chain's corrugation does not vanish, but its \emph{value} is not settled, and the reason is
-worth recording rather than papering over. The model atom uses a pseudopotential, and the rule for
-excluding a domain from a core admits two readings: excluding a domain from its own core alone
-under-excludes, letting density from one domain collect a neighbour's attraction; excluding it from
-every core over-confines, leaving so little room that the displaced state is barely bound. The two
-readings bracket the answer over more than an order of magnitude instead of fixing it. What survives
-is the extensivity above, which is independent of the rule.
+The landscape is not the assumed one, and this is the result that most repays having scanned $E(d)$
+rather than trusting its endpoints. The minimum lies not at registry but near a quarter spacing,
+$196$~meV below the arrangement with each electron centred on its own kernel, and the two maxima are
+of unequal height. Advancing one site is therefore a two-step passage over alternating barriers, not
+a single crossing --- and the older practice of computing $E(0)$ and $E(\tfrac12)$ alone would have
+returned a difference between two local maxima with a minimum neither of them saw.
 
-\paragraph{Model II: a cable of ions surrounded by electrons.}
+With the partition held fixed and a uniform field applied, the induced dipole gives the
+polarisability: $\alpha=7.6N$, extensive in the number of electrons. That is the signature of charge
+fixed per site. A metal's polarisability grows faster than the number of atoms because charge
+redistributes over the whole sample; here each domain carries its unit and cannot give it up, so the
+only responses are the density deforming inside a fixed domain and the boundaries displacing --- both
+per-atom constants, summing to something exactly proportional to $N$.
+
+\paragraph{Case II: a cable of ions surrounded by electrons.}
 The chain places the carrier where the attractor is. Conducting matter does not: core electrons
 occupy the region around each nucleus and the conduction charge stands outside them. Representing
 that needs two populations --- cores held inside a radius, carriers outside, with only the carriers
@@ -161,15 +164,21 @@ free to slide --- and it is the one arrangement giving a carrier a standoff with
 tiling, because the inner region is genuinely owned rather than left empty.
 
 Sixteen sites, kernels of charge $+3$ on the axis, a closed core of two electrons at each, and one
-valence electron per site outside them: neutral, with \emph{no pseudopotential anywhere}, so the
-carrier is kept out of the core region by non-overlap rather than by an imposed rule. This
-construction therefore escapes the bracket that limits Model I. The measured bulk corrugation is
+valence electron per site outside them: neutral, with no pseudopotential, so the carrier is kept out
+of the core region by non-overlap rather than by an imposed rule. The measured bulk corrugation is
 \[
-\varepsilon_{\rm bulk} \approx 240\pm30~\text{meV per carrier},
+\varepsilon_{\rm bulk} = 246~\text{meV per carrier},
 \]
-inside the $10$--$500$~meV band of the doped semiconductors, organic conductors and polaronic oxides
---- the class whose transport is thermally activated hopping. The same interaction, the same energy,
-the same domains: only the arrangement of the charge has changed.
+a factor of $1.6$ below the chain, and inside the $10$--$500$~meV band of the doped semiconductors,
+organic conductors and polaronic oxides --- the class whose transport is thermally activated
+hopping. Here the scan shows the landscape \emph{is} monotone from registry to half-spacing, so its
+endpoints are its extrema and the number is an amplitude. The same interaction, the same energy, the
+same domains: only the arrangement of the charge has changed.
+
+The two cases cannot be built from the same ion, and the reason is instructive: a carrier can stand
+off a core only if there is a core, and since the domains tile, one domain per kernel must contain
+its kernel --- so a standoff requires at least two electrons per site where the chain has one. The
+difference in ion is entailed by the difference in arrangement rather than chosen alongside it.
 
 \begin{figure}[htb]
 \centering
@@ -182,7 +191,7 @@ kernels. Every boundary shown is an unknown of the minimisation.}
 \label{fig:cable-domains}
 \end{figure}
 
-\paragraph{What sets the pinning.}
+\paragraph{Case III: the same cable, carriers stiffened.}
 The barrier is set less by the strength of the ion lattice than by whether the carriers bunch into
 its wells: a carrier distribution that resisted being modulated would ride over the lattice, one
 that does not resist locks to it. RealQM's free interface resists very little, and this is internal
@@ -190,13 +199,28 @@ to the construction --- a flat density is admissible on a free boundary at no co
 interface between domains of equal density is free, and the only penalty on a \emph{modulated}
 density is the gradient term, carrying the coefficient $\tfrac12$.
 
-That coefficient is a standardisation, not a constant of the theory: it is set by calibrating
-against atomic spectra, on a bound electron in a single potential well. An extended arrangement is a
-different object, and the coefficient governing how a carrier lattice resists modulation by an ion
-lattice has no obligation to equal the one an atom's spectrum sets. So the natural thing is to ask
-how much the answer turns on it. Doubling it --- a round factor, chosen for being round, not
-calibrated to reproduce anything --- and leaving ions, standoff, geometry and mesh unchanged gives
-$\varepsilon_{\rm bulk}\approx24$~meV, an elevenfold fall, to thermal energy at room temperature.
+That coefficient is a standardisation rather than a constant of the theory, so the natural thing is
+to ask how much the answer turns on it. Raising it from its physical $\tfrac12$, with ions,
+standoff, geometry and mesh unchanged:
+
+\begin{center}
+\small
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+coefficient $c$ & $0.50$ & $0.60$ & $0.75$ & $0.90$ & $1.00$\\
+\midrule
+$\varepsilon_{\rm bulk}$ (meV) & $246$ & $159$ & $66$ & $20$ & $1$\\
+in units of $kT$ & $9.5$ & $6.1$ & $2.6$ & $0.77$ & $0.04$\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent The preferred registry is the same throughout --- the carriers sit on their own ion sites
+at every value --- so what falls is the pinning itself and not merely its location. The barrier
+crosses $kT$ between $c=0.75$ and $c=0.90$: a moderate stiffening, well short of doubling, brings
+this cable out of the range where charge is held and into the range where thermal energy moves it.
+The last entry should not be read as a value; one meV is below what the protocol resolves, and it
+sits essentially at the coefficient where the barrier vanishes.
 
 A barrier at $kT$ does not confine, so the pinning no longer holds and the charge is free to move.
 What state the system is then in this measurement does not determine. It is not \emph{band}
@@ -205,37 +229,82 @@ out a mechanism, not a phenomenon, and whether the unpinned state would behave a
 sliding charge lattice, or as something else is a question the instrument cannot reach. The
 instrument measures a barrier; when the barrier goes, so does the instrument.
 
+\paragraph{Case IV: a cubic lattice.}
+The first three arrange their nuclei on a line. Hydrogen atoms can also be placed on a simple cubic
+lattice at the same spacing in all three directions, and seventy-two of them --- three by three by
+eight at $a=4.5\,a_0$, one electron per kernel, no core and no standoff --- make the fourth case.
+
+What it settles is the binding. The lattice gives $-0.524$~Ha per atom against an eight-site chain's
+$-0.453$, and below even the exact free atom's $-0.5$, because a domain in the lattice is a compact
+cell of volume $a^3$ rather than a slab running out to the box face. It is also the
+better-conditioned calculation, which was not expected of nine times the domains: its residual is
+the smallest of any system here. A partition into compact cells is evidently closer to what the
+functional would choose than one into elongated slabs, and the carrier density $n=1/a^3$ is exact
+for this arrangement where the line of sites needs it as a convention.
+
+What it does not settle is the barrier. The windowing above is not applied to it, so its difference
+between the two registries carries the two junctions along with the bulk; on the chain that same
+omission gave $642$~meV against the $394$ the windowed measurement returns. Its ${\approx}678$~meV
+is therefore an upper estimate of a bulk quantity rather than one, and not comparable with the
+windowed values. Supplying a real barrier means windowing the lattice as the chain and cable are
+windowed, and scanning it.
+
+\paragraph{A transport number the landscape settles by itself.}
+A uniform field $F$ adds $-NeFd$ to the energy: it tilts the landscape and changes nothing else. The
+field at which the barrier disappears is therefore a property of $E(d)$ alone --- no clock, no
+temperature and no dissipation enter it. For a sinusoid of amplitude $V_0$ the steepest slope is
+$\pi V_0/a$, so $F_{\rm th}=\pi V_0/ea$: $5.2$ and $3.2\times10^{9}$~V\,m$^{-1}$ for the chain and
+the cable, and $2.6\times10^{8}$ for the stiffened cable. The first two are several times above the
+dielectric strength of silica, ${\sim}10^{9}$~V\,m$^{-1}$, so those arrangements would break down
+before they would slide --- which is what an insulator does. The stiffened cable is a factor of four
+below it, so that one would slide first. The same separation that appears above as a barrier against
+$kT$ appears here as a field against a breakdown strength, and neither statement needs a rate theory
+to make it.
+
 \paragraph{From a barrier to a conductivity.}
 In the activated regime the corrugation is the activation energy in
 $\sigma=(ne^2a^2\nu/kT)\,e^{-E_a/kT}$, where the exponential is the fraction of the time the system
 is over the barrier and the prefactor $\nu=(1/2\pi)\sqrt{K/M}$ is how often it asks --- the
 small-oscillation frequency of the collective coordinate, the charge pattern rocking against the ion
 lattice. Since it is the sites that move, that rocking is a lattice vibration and $M$ is an ionic
-mass. With $M=28\,u$ at $300$~K the two activated arrangements give $2\times10^{-12}$ and
-$6.5$~S\,m$^{-1}$ --- glass and intrinsic germanium --- and the attempt frequencies come out at
-$10^{12}$--$10^{13}$~Hz, the middle one at $11$~meV or $90$~cm$^{-1}$, an ordinary low-lying phonon.
-Nothing was arranged to make that so, and it is the check that the mass entering $\nu$ is the right
-kind of mass.
+mass. At $300$~K the chain and the cable give $0.1$ and $10$~S\,m$^{-1}$, bracketing intrinsic
+germanium at $2$, and the attempt frequencies come out at $10^{12}$--$10^{13}$~Hz --- as energies
+$h\nu$, $97$~meV for the hydrogen chain and $23$~meV for the cable, the former high because a proton
+is light. Nothing was arranged to make that so, and it is the check that the mass entering $\nu$ is
+the right kind of mass. Two orders of magnitude in $\sigma$ on a barrier ratio of $1.6$ is the
+exponential at work: a difference of $148$~meV is $5.7\,kT$.
 
 Three things enter from outside and should be named. The curvature $K$ is taken from an assumed
-sinusoidal shape, since only the endpoints of $E(d)$ were computed. The mass is imported, because
-RealQM carries no masses --- the coefficient of $|\nabla\psi_i|^2$ is a geometric scale, not
-$\hbar^2/2m$, which is exactly why it could be doubled above. And $n=1/a^3$ is a convention for
-turning a per-carrier barrier on a line of sites into a bulk conductivity. What the framework
-supplies is the exponent.
+sinusoidal shape, which the scan shows to be too sharp, so the frequencies are overestimates even as
+their scale is right. The mass is imported, because RealQM carries no masses --- the coefficient of
+$|\nabla\psi_i|^2$ is a geometric scale, not $\hbar^2/2m$, which is exactly why it could be raised
+above. And $n=1/a^3$ is a convention for turning a per-carrier barrier on a line of sites into a
+bulk conductivity. What the framework supplies is the exponent.
+
+\paragraph{What the cost of all this is.}
+None of these systems is large, and it is worth saying why larger ones are not out of reach. The
+electron--electron term omits $i=j$, so what each electron must be given is the potential of all the
+\emph{others} --- the total less its own field, a different function for every $i$. A relaxation
+step is therefore $N$ Poisson problems on the grid, and a multigrid solve costs work proportional to
+the number of mesh points, so a step performs $N$ times the mesh of arithmetic. The single wave
+function of textbook quantum mechanics, by contrast, lives on a $3N$-dimensional configuration space
+and costs one grid raised to the power $N$. That difference, and not any detail of the arrangements
+above, is why the question could be put at all.
 
 \paragraph{Status.}
 These barriers are rigid-slide values --- all carriers displaced together --- and that is the
-expensive path. The cheap one is a kink: one carrier advancing while the rest hold still,
-compressing the domains ahead and expanding those behind, at a cost independent of chain length.
-Real conductors use kinks, so every barrier here is an upper bound and every conductivity a lower
-bound, by a factor not yet determined. The carriers-on-a-substrate system is a Frenkel--Kontorova
-chain, and in that reading the kink has its own width and its own limiting velocity, both computable
-from two curvatures of the energy; neither is measured yet. Nor is the mesh convergence of the
-$240$~meV, which is the first thing a reader should ask for and which is under test at the time of
-writing. The instrument, at least, is sound: junction cancellation is exact by construction,
-linearity is tested against a third window, translation by one spacing must return the same energy
-to the last digit, and domains related by a symmetry must have equal eigenvalues.
+expensive path. A cheaper one has one carrier advancing while the rest hold still, compressing the
+domains ahead and expanding those behind. Every barrier here is therefore an upper bound and every
+conductivity a lower bound, by a factor not yet determined, since the cheaper path has not been
+computed. The lattice barrier is an estimate for the separate reason given above. What the framework
+does not deliver in any regime is a resistive conductivity, whose relaxation time needs a current as
+an object and irreversible dynamics: a minimisation over real densities has neither.
+
+The instrument, at least, is sound: junction cancellation is exact by construction, linearity is
+tested against a third window, translation by one spacing must return the same energy to the last
+digit, and domains related by a symmetry must have equal eigenvalues. The full account, with the
+convergence ladders, the controls and a link that reproduces every run in a browser, is in the
+conduction article.
 
 \section{Roadmap toward broader materials applications}\label{sec:material-roadmap}
 
@@ -247,9 +316,9 @@ Metallic bonding is delocalised: conduction electrons spread across many atoms, 
 Section~\ref{sec:conduction} puts this to the test directly, and the outcome is more interesting than
 a flat exclusion. A chain of one-valence-electron atoms does behave as a dielectric: each domain
 carries exactly one electron by constraint, so no charge passes between sites and the polarisability
-is extensive before anything is computed --- confirmed as $\alpha=27.4N$, flat to $1\%$ per atom.
+is extensive before anything is computed --- confirmed as $\alpha=7.6N$, flat to $1\%$ per atom.
 But rearranging the same charge into a cable of ions surrounded by carriers drops the barrier into
-the semiconductor range, and stiffening the carriers removes it altogether.
+the semiconductor range, and a moderate stiffening of the carriers takes it below $kT$.
 
 Underneath the arithmetic one obstacle is genuinely structural: non-overlap makes the transfer
 integral vanish identically. The transfer integral \emph{is} the overlap of neighbouring orbitals,
