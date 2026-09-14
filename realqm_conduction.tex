@@ -129,10 +129,14 @@ problem and not inputs to it; excited states are the other stationary points of 
 cost of minimising \eqref{eq:E} is the cost of $N$ Poisson problems on the grid. The potential of the
 whole electron distribution is a single solve; but the double sum in \eqref{eq:E} omits $i=j$, so
 what each electron must be given is the potential of all the \emph{others} --- the total less its own
-field --- and its own field is a different function for every $i$. A multigrid solve costs a time
-proportional to the number of mesh points, so a relaxation step costs $N$ times the mesh: linear in
-$N$ at a fixed grid. The single wave function of textbook quantum mechanics, by contrast, lives on a
-$3N$-dimensional configuration space and costs one grid raised to the power $N$. Linear against
+field --- and its own field is a different function for every $i$. A multigrid solve costs work
+proportional to the number of mesh points, so a relaxation step performs $N$ times the mesh of
+arithmetic. Measured time grows somewhat faster than the operation count: at a fixed $148^3$ grid on
+one GPU, going from $32$ domains to $72$ multiplied the time per step by $3.3$ where the domain
+count multiplied by $2.25$ --- an exponent near $1.5$, which is the price of carrying $N$ full-grid
+potentials in memory rather than of the arithmetic. The precise exponent is not what matters here.
+The single wave function of textbook quantum mechanics, by contrast, lives on a $3N$-dimensional
+configuration space and costs one grid raised to the power $N$. Linear against
 exponential is the difference between a calculation that can be run and one that cannot, and it is
 why \S8 can put seventy-two atoms on a lattice with no change of method and no loss of accuracy ---
 indeed with the smallest residual in this article --- and why the lithium lattice cited below runs
