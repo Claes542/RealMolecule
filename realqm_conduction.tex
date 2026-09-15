@@ -842,7 +842,7 @@ made of, and no choice of stiffness produces one. Neither of these tells us what
 of \S5 is. They say only that if it conducts, it does not do so by filling bands, and that this
 framework will not supply the rate at which it does.
 
-\section{Further studies}\label{sec:further}
+\section{A first three-dimensional lattice, and further studies}\label{sec:further}
 
 The nuclei of \S4 and \S5 lie on a line. The calculation does not: it is three-dimensional
 throughout, and what is restricted is the lattice, not the electronic problem. A line is the
@@ -1161,6 +1161,20 @@ $c_r=2.4\,a_0$ of the axis, one valence electron per site outside that radius: $
 and no pseudopotential, so the carrier is excluded from the core region by non-overlap alone. Mesh $8$ cells per spacing, box $=(N-1)a+10=77.5\,a_0$, grid $138^3$,
 $h=77.5/138=0.5616\,a_0$; the box is the chain span plus a fixed pad and so does not depend on the
 mesh. Only differences between the two registries of this system are used; its total energy is not.
+Only the shell slides; the cores and kernels are held. All runs use the fixed-step protocol below,
+at $r_{\rm sing}=1.5\,a_0$ (above $2h=1.123$). Windowed energies at $d=\half$, $W$ the number of
+displaced carriers:
+\begin{center}
+\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & $W=4$ & $W=8$\\
+\midrule
+$E$ (Ha), $4000$ steps & $-149.542323$ & $-149.506148$\\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent Equation \eqref{eq:window} then gives $\varepsilon_{\rm bulk}=246.1$~meV per carrier.
 
 \paragraph{The nuclear cutoff, and a correction.} A bare $-Z/r$ well cannot be represented on a
 grid, so it is clamped at a radius $R_{\rm sing}$. The solver sets
@@ -1189,29 +1203,18 @@ treating the nuclear cusp analytically rather than truncating it. The two per-at
 in \S8 are RealQM values at one mesh and one cutoff, and the clamp does not cancel exactly between
 them, the two arrangements being different: the scale of that residue is the $123$ against
 $46$~meV per atom quoted just above, against a gap of $1930$.
-Only the shell slides. All runs use the fixed-step protocol below, at $r_{\rm sing}=1.5\,a_0$
-(above $2h=1.123$). Windowed energies at $d=\half$, $W$ the number of displaced carriers:
-\begin{center}
-\small
-\begin{tabular}{@{}lrr@{}}
-\toprule
- & $W=4$ & $W=8$\\
-\midrule
-$E$ (Ha), $4000$ steps & $-149.542323$ & $-149.506148$\\
-$E$ (Ha), stiffened, $8000$ steps & $-157.965427$ & $-157.965275$\\
-\bottomrule
-\end{tabular}
-\end{center}
-\noindent Equation \eqref{eq:window} gives $\varepsilon_{\rm bulk}=+246.1$~meV per carrier
-unstiffened and $+1.04$~meV stiffened.
-
 \paragraph{Stiffened carriers.} Identical geometry, mesh and ion lattice, with the coefficient of
 $|\grad\psi_i|^2$ raised from $\half$ to $1$ for the shell domains only, the cores keeping $\half$.
 The coefficient enters three places --- the imaginary-time step, the $H\psi$ diagnostic and the
 energy sum --- and all three must carry it or the reported energy does not belong to the state
 produced. The explicit step requires the diffusion number below $1/6$, so the timestep is halved in
 proportion, and the stiffened runs are given $8000$ steps rather than $4000$ to cover the same
-relaxation.
+relaxation. The coefficient is set by \texttt{\&kins=}$c$ and was run at
+$c=0.50,\ 0.60,\ 0.75,\ 0.90$ and $1.00$, giving the sensitivity tabulated in \S6. The value the
+body quotes is the one at $c=0.90$, $\varepsilon_{\rm bulk}=19.9$~meV, which is resolved. At the
+doubling, $c=1.00$, the windowed pair is $E(W{=}4)=-157.965427$ and $E(W{=}8)=-157.965275$~Ha and
+\eqref{eq:window} returns $1.04$~meV; that is $1.5\times10^{-4}$~Ha out of $158$, below what this
+protocol resolves, and it is reported here only to complete the record.
 
 \paragraph{The cubic lattice.} $72$ hydrogen atoms, $3\times3\times8$ at $a=4.5\,a_0$ in all three
 directions, nuclear charge $+1$, one electron per site, no core, no standoff and no pseudopotential.
@@ -1245,11 +1248,13 @@ $4.0\times10^{-3}$ from $2000$ steps onward --- $0.0233$, $0.0059$, $0.00404$, $
 along the same ladder --- while at $2000$ steps the energy is still $1.98$~eV from its $4000$-step
 value, so the residual detects gross non-convergence but cannot be the sole test.
 
-This ladder also sets the scale against which the stiffened result of \S6 must be read. A single
-total energy still moves $5$~meV between $4000$ and $8000$ steps, and the stiffened barrier is
-$1$~meV. The windowed difference removes what the two configurations have in common, and both are
-run to the same step count so most of that drift is common; but no test here establishes that the
-remainder is below $1$~meV, which is why \S6 claims the collapse and not the value.
+This ladder also sets the scale against which the stiffening of \S6 must be read. A single total
+energy still moves $5$~meV between $4000$ and $8000$ steps. The windowed difference removes what the
+two configurations have in common, and both are run to the same step count, so most of that drift is
+common to them; but no test here bounds the remainder below a few meV. The value \S6 quotes,
+$19.9$~meV at $c=0.90$, stands clear of that scale by a factor of four. The $1.04$~meV at the
+doubling does not, which is the second reason --- alongside its being $1.5\times10^{-4}$~Ha out of
+$158$ --- that it is reported as a record rather than as a barrier.
 
 \paragraph{The rate estimate of \S6.} Equation \eqref{eq:sigma} evaluated at $T=300$~K
 ($kT=25.9$~meV) with $a=4.5\,a_0=2.381$~\AA, $n=1/a^3=7.4\times10^{28}$~m$^{-3}$, the nuclear mass of the moving species, and
