@@ -117,6 +117,14 @@ if (vIdx < variants.length) {
   window.USER_STEPS = STEPS;
   window.NO_AUTO_DYNAMICS = true;
   window.USER_DYNAMICS = false;                 // clamp nuclei -> E(R)
+  // Exclude self-interaction EXACTLY, every step. Without this, NELEC=24 selects the
+  // total-Poisson+SIC path with SIC_INTERVAL=5 frames = every 250 steps: in between, PotherBuf
+  // holds the TOTAL potential, so each electron feels its own charge, and E_ee is read off that
+  // buffer regardless. Whether the stopping frame happened to be a SIC frame is arbitrary -- which
+  // is a candidate for both the +-0.5-0.8 scatter and the ~100x magnitude. The direct path builds
+  // P_direct[m] = sum_{n != m} 0.5/r per electron per step, so i != j is exact and always applied.
+  // Costs N Poisson solves per step; at 24 domains on 160^3 that is affordable.
+  window.USER_DIRECT_POTHER = true;
   window.USER_Z = zList;
   window.USER_RC = rcList;
   window.CONVERGENCE_THRESHOLD = 0;             // OFF -- see FIXED-STEP PROTOCOL above
