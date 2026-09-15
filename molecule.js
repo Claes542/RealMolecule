@@ -5977,6 +5977,23 @@ function draw() {
       circle(at.sx, at.sy, sz);
     }
 
+    // Named atom markers, for figures that need a specific atom called out:
+    //   window.USER_MARK_ATOMS = [{ i: 15, label: 'Ca', col: [255,220,0] }]
+    // Drawn after the atoms so the ring sits on top; hidden atoms are skipped with them.
+    if (window.USER_MARK_ATOMS) {
+      for (const mk of window.USER_MARK_ATOMS) {
+        const at = atomList.find(a => a.n === mk.i);
+        if (!at) continue;                               // hidden, or index out of range
+        const c = mk.col || [255, 220, 0];
+        noFill(); stroke(c[0], c[1], c[2], 235); strokeWeight(2);
+        circle(at.sx, at.sy, (at.z <= 1 ? 5 : 10) + 11);
+        noStroke(); fill(c[0], c[1], c[2], 245);
+        textSize(13); textAlign(LEFT, CENTER);
+        text(mk.label !== undefined ? mk.label : ('#' + mk.i), at.sx + 13, at.sy - 11);
+      }
+      noStroke();
+    }
+
     // Draw highlighted bond pair lines in 3D
     if (window.USER_BOND_PAIRS) {
       const bp = window.USER_BOND_PAIRS;
