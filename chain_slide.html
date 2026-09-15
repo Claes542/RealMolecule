@@ -1540,7 +1540,19 @@ window.onerror = function (msg, url, line) {
           E_reported: Number(Number(E).toFixed(9)),
           terms: res.terms,
           E_nn: Number(Enn.toFixed(9)),
-          E_total: Number(Etot.toFixed(9))
+          E_total: Number(Etot.toFixed(9)),
+          // Electronic force on every kernel, x-component first. The corrugation is currently
+          // read from ENERGIES, which is why the windowing of Sec 3 exists at all: a finite
+          // chain's energy is dominated by its ends, so two window sizes must be differenced to
+          // cancel the junctions. A force on an INTERIOR kernel has no such contamination -- it
+          // comes from the charge around it, not from the box faces. And it converges far
+          // earlier: on the GAD65 system the energy moved 51 then 818 mHa over 2000->6000 steps
+          // while a force drifted 0.33% in total. If the summed x-force over the displaced
+          // carriers reproduces dE/dd, the corrugation can be measured without windowing and the
+          // threshold field without assuming a sinusoid.
+          fElec: (window._nucForceElec || []).slice(0, (window.USER_ATOMS || []).length).map(function (f) {
+            return f ? [Number(f[0].toPrecision(6)), Number(f[1].toPrecision(6)), Number(f[2].toPrecision(6))] : null;
+          })
         };
         localStorage.setItem('realqm_resid', JSON.stringify(rs));
         console.log('EL residual rMax=' + res.rMax.toExponential(3)
