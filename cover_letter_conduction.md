@@ -13,7 +13,9 @@ one lattice site -- the activation energy for charge transport -- directly from 
 energy, for four arrangements: a chain of sixteen hydrogen atoms, 394 meV per electron; a cable
 of sixteen lithium ions with the carriers standing off closed cores, 246 meV; that same cable
 with its carriers stiffened, 20 meV, which is below room-temperature kT so the charge is no
-longer held; and a simple cubic lattice of seventy-two hydrogen atoms. From the same landscapes
+longer held; and a simple cubic lattice of seventy-two hydrogen atoms, which settles the binding --
+-0.524 Ha per atom against a chain's -0.453, a compact cell binding better than a slab -- but yields
+a barrier only as an estimate, for the reason given below. From the same landscapes
 follow threshold fields of 5.2, 3.2 and 0.26 GV/m, the field at which the barrier disappears
 being a property of E(d) alone. Closing the prefactor with an attempt frequency built from the
 same landscape puts the first two arrangements at 0.1 and 10 S/m, bracketing intrinsic
