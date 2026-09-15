@@ -3,6 +3,13 @@
 <pre id="log">GAD65 crystal-derived active site — building…</pre>
 <script src="gad65_site_atoms.js"></script>
 <script>
+// surface failures instead of sitting at "relaxing..." forever
+window.onerror = function(m,u,l){
+  var el=document.getElementById('log'); if(el) el.textContent += '\nERROR: '+m+' (line '+l+')';
+};
+window.addEventListener('unhandledrejection', function(e){
+  var el=document.getElementById('log'); if(el) el.textContent += '\nGPU REJECTED: '+(e.reason&&e.reason.message||e.reason);
+});
 // ===========================================================================
 //  GAD65 ACTIVE SITE FROM THE CRYSTAL STRUCTURE (PDB 2OKK, Fenalti et al.)
 //
@@ -61,16 +68,27 @@ var coords = buildAtoms(MODEL, R);
 // mesh h = scr/gridN would change with the reaction coordinate and energies at different R
 // would be computed on different grids and not be comparable. Same reason the step count is
 // fixed: every point in a series must be relaxed the same way on the same mesh.
-var R_MAX = 6.0;
-var scr = 2*(SITE_EXTENT + R_MAX) * A2AU + 12;
-var gridN = 192, h = scr/gridN, gN2 = Math.round(gridN/2);
+// R_MAX and gridN are set by MEMORY, not by taste. The direct per-electron path allocates two
+// full-grid buffers per electron: 2 * N * gridN^3 * 4 bytes. At 192^3 with 26 electrons that is
+// ~1.5 GB of storage buffers and the device silently fails to start -- the page sits at
+// "relaxing..." with the GPU at 0%. The gas-phase model that works is ~0.79 GB. Keep under that.
+// The box is CENTRED ON THE SITE CENTROID, not on Ca. Centring on Ca made Asp364's capped
+// methyl (10.6 A away, chemically irrelevant) size the box and coarsen the mesh for everything;
+// about the centroid the extent is 6.5 A. SITE_BOX is a fixed constant so that A and B -- and
+// every R -- sit on exactly the same grid.
+var scr = SITE_BOX;
+// grid 128, not 144. Memory is the binding constraint and it is MEASURED, not guessed:
+// 0.79 GB runs, 1.11 GB stalls (page sits at "relaxing..." with the GPU at 0%). Model B at
+// 144^3 needs 0.81 GB -- right on the boundary; at 128^3 it needs 0.57 GB. h = 0.270 against
+// the gas-phase model's 0.2375 is slightly coarser, not a different regime.
+var gridN = 128, h = scr/gridN, gN2 = Math.round(gridN/2);
 var Zof = { H:1, C:4, N:3, O:2 }, RCof = { H:0, C:0.3, N:0.3, O:0.8 };
 var atoms = [], zList = [], rcList = [];
 for (var n = 0; n < coords.length; n++) {
   var el = coords[n][0];
-  atoms.push({ i: Math.round(gN2 + coords[n][1]*A2AU/h),
-               j: Math.round(gN2 + coords[n][2]*A2AU/h),
-               k: Math.round(gN2 + coords[n][3]*A2AU/h), Z: Zof[el], el: el });
+  atoms.push({ i: Math.round(gN2 + (coords[n][1]-SITE_CENTRE[0])*A2AU/h),
+               j: Math.round(gN2 + (coords[n][2]-SITE_CENTRE[1])*A2AU/h),
+               k: Math.round(gN2 + (coords[n][3]-SITE_CENTRE[2])*A2AU/h), Z: Zof[el], el: el });
   zList.push(Zof[el]); rcList.push(RCof[el]);
 }
 document.getElementById('log').textContent =

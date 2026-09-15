@@ -38,6 +38,9 @@ var SITE_ASP_B = [
   ];
 var SITE_UP = [-0.866070,-0.355494,0.351493];   // Dunathan axis: the carboxylate leaves along +up
 var SITE_E1 = [-0.160288,0.863435,0.478318];   // in-plane reference for the two carboxyl O
+var SITE_CENTRE = [-0.791031,3.873622,1.224103];  // centroid of the FULL site (A+Asp), in the Ca-origin frame.
+                                     // Both models must use this same centre, or A and B sit on different grids.
+var SITE_BOX = 34.6153;                 // a.u., fixed: sized once for model B at R_MAX=3.0
 var SITE_EXTENT = 9.59;
 // indices into the built atom list (the fixed frame comes first, then C(=O)O and its two O)
 var SITE_IDX = {"CA": 17, "C4P": 8, "N1": 0, "N1H": 9, "N7": 16};
