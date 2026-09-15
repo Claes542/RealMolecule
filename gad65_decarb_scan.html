@@ -19,12 +19,29 @@
 //  EXPLORATORY: hand-built geometry, gas-phase, no protein/phosphate/water.
 // ===========================================================================
 var variants = ['PLP', 'free'];
+// steps=<n> in the URL drives the convergence ladder; default is the production count.
+var STEPS = parseInt((location.search.match(/[?&]steps=(\d+)/) || [])[1] || '4000', 10);
 var Rlist = [1.55, 2.00, 2.60, 3.30, 4.20, 5.00, 6.00];   // Ca-CO2 distance (Angstrom)  [7 pts -> 14 runs; reaches separation to see the sink saturate]
+// Targeted runs for the convergence ladder and the quinonoid readout:
+//   ?only=PLP&R=6.00&steps=4000   runs ONE point instead of all 14.
+(function(){
+  var q = location.search;
+  var o = (q.match(/[?&]only=(PLP|free)/) || [])[1];
+  if (o) variants = [o];
+  var r = (q.match(/[?&]R=([\d.]+)/) || [])[1];
+  if (r) Rlist = [parseFloat(r)];
+})();
 var A = 1.8897;
 
 var vIdx = 0, rIdx = 0, results = { PLP:{}, free:{} };
+// The quinonoid question: after CO2 departs, does the charge sit on Ca or on C4'?  Those are the
+// two protonation sites -- Ca gives product and regenerates PLP, C4' gives PMP and the APO enzyme.
+// Atom indices in buildAtoms(): Ca = 0 always; C4' = 21 in the PLP variant (core is 0..8, then the
+// PLP block: N9, C10-14, H15-18, O19, H20, C21=C4', H22, N23=N7).  The free variant has no C4'.
+var IDX_CA = 0, IDX_C4P = 21;
+var extras = { PLP:{}, free:{} };
 (function(){ var s = sessionStorage.getItem('gadScan');
-  if (s){ var st = JSON.parse(s); vIdx=st.vIdx; rIdx=st.rIdx; results=st.results; sessionStorage.removeItem('gadScan'); } })();
+  if (s){ var st = JSON.parse(s); vIdx=st.vIdx; rIdx=st.rIdx; results=st.results; if (st.extras) extras=st.extras; sessionStorage.removeItem('gadScan'); } })();
 
 function buildAtoms(withPLP, R) {
   // [el, x, y, z] Angstrom.  glutamate core + CO2 unit at z=R; PLP ring (sink) in xy-plane.
@@ -91,11 +108,18 @@ if (vIdx < variants.length) {
   window.USER_NN = gridN;
   window.USER_ATOMS = atoms;
   window.USER_SCREEN = scr;
-  window.USER_STEPS = 6000;                     // HARD CAP: fallback onSweepDone at 6000 steps (room for slow points to converge before cap)
+  // FIXED-STEP PROTOCOL. The energy-plateau test ("3 frames within 0.01") halted at a different
+  // step count for every one of the 14 runs, so no two points were relaxed to the same degree --
+  // that is the whole +-0.5-0.8 scatter, and it is not physics. Stop every run at the SAME step
+  // count instead. CONVERGENCE_THRESHOLD must be falsy to disable the plateau test (molecule.js
+  // 5699), and NO_AUTO_DYNAMICS guards the branch that would otherwise switch on dynamics at
+  // 10000 steps (molecule.js 5693). onSweepDone then fires at phaseSteps >= TOTAL_STEPS (5722).
+  window.USER_STEPS = STEPS;
+  window.NO_AUTO_DYNAMICS = true;
   window.USER_DYNAMICS = false;                 // clamp nuclei -> E(R)
   window.USER_Z = zList;
   window.USER_RC = rcList;
-  window.CONVERGENCE_THRESHOLD = 0.01;          // looser: 3 consecutive frames within this -> done (else cap above fires)
+  window.CONVERGENCE_THRESHOLD = 0;             // OFF -- see FIXED-STEP PROTOCOL above
 }
 
 function render() {
@@ -135,13 +159,27 @@ render();
 
 window.onSweepDone = function(E){
   results[variants[vIdx]][Rlist[rIdx]] = E;
+  // electronic force on each nucleus is the cheap proxy for where the density went; the dipole
+  // components are already computed every run (ring lies in xy, CO2 departs along +z).
+  try {
+    var fE = window._nucForceElec || [], v = variants[vIdx];
+    extras[v][Rlist[rIdx]] = {
+      fCa:  fE[IDX_CA]  ? fE[IDX_CA].slice()  : null,
+      fC4p: (v === 'PLP' && fE[IDX_C4P]) ? fE[IDX_C4P].slice() : null,
+      dip:  [window._dip_x, window._dip_y, window._dip_z],
+      steps: STEPS
+    };
+    console.log('EXTRAS ' + v + ' R=' + Rlist[rIdx] + ' ' + JSON.stringify(extras[v][Rlist[rIdx]]));
+  } catch (e) { console.warn('extras capture failed', e); }
   render();
   rIdx++; if (rIdx>=Rlist.length){ rIdx=0; vIdx++; }
   if (vIdx < variants.length){
-    sessionStorage.setItem('gadScan', JSON.stringify({vIdx:vIdx, rIdx:rIdx, results:results}));
+    sessionStorage.setItem('gadScan', JSON.stringify({vIdx:vIdx, rIdx:rIdx, results:results, extras:extras}));
     setTimeout(function(){ location.reload(); }, 600);
   } else {
     console.log('=== GAD65 decarb scan done ===', JSON.stringify(results));
+    console.log('=== EXTRAS (charge readout) ===', JSON.stringify(extras));
+    try { localStorage.setItem('gad65_extras', JSON.stringify({results:results, extras:extras, steps:STEPS})); } catch(e){}
   }
 };
 
