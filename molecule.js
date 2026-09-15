@@ -4796,7 +4796,13 @@ async function doLOBPCGStep() {
 async function moveNuclei(gpuForces) {
   // Start with electron density gradient forces from GPU
   for (let a = 0; a < NELEC; a++) {
-    if (Z[a] === 0) { nucForce[a] = [0,0,0]; nucForceElec[a] = [0,0,0]; continue; }
+    // A BARE NUCLEUS (Z=0, Z_nuc>0) is a real object here -- proton_transfer.html models H+ exactly
+    // that way -- and it must feel a force. Testing Z alone zeroed it, so a bare proton released
+    // under dynamics never moved: force identically [0,0,0] through 100 nuclear steps. The force
+    // readback path at 4255 already uses the correct test, (Z>0 || Z_nuc>0); these two disagreed.
+    if (Z[a] === 0 && !(window.USER_BARE_NUCLEI_MOVE && (Z_nuc[a] || 0) > 0)) {
+      nucForce[a] = [0,0,0]; nucForceElec[a] = [0,0,0]; continue;
+    }
     nucForce[a] = [gpuForces[a*3], gpuForces[a*3+1], gpuForces[a*3+2]];
     nucForceElec[a] = [gpuForces[a*3], gpuForces[a*3+1], gpuForces[a*3+2]];
   }

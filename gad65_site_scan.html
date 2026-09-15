@@ -148,12 +148,24 @@ if (RELAX) {
   window.USER_N_MOVE = 20;
   window.USER_DAMPING = 0.85;            // settle rather than ring; we want the minimum
   window.USER_NUC_MASS = 1836;           // a proton, not the default
+  // moveNuclei() zeroes the force on any atom with Z === 0, ignoring Z_nuc -- so a bare proton
+  // never moves under dynamics (measured: force identically [0,0,0] through 100 nuclear steps,
+  // displacement 2e-5 A). The force-readback path at molecule.js:4255 uses the correct test,
+  // (Z > 0 || Z_nuc > 0); the two disagreed. Opt in rather than change it globally: bare nuclei
+  // are also used as fixed KERNELS elsewhere (the conduction cable's ions), where being immovable
+  // may be relied upon.
+  window.USER_BARE_NUCLEI_MOVE = true;
   delete window.NO_AUTO_DYNAMICS;        // let the built-in two-stage protocol run
 } else {
   window.NO_AUTO_DYNAMICS = true;        // pure fixed-step runs stay clamped throughout
 }
 window.USER_DIRECT_POTHER = true;         // exact i != j every step (see gad65_decarb_scan.html)
-window.USER_STEPS = STEPS;                // fixed-step protocol — no energy-plateau test
+// In relax mode the run must NOT stop at STEPS: the auto-release at molecule.js:5693 needs 10000
+// clamped steps first, so any STEPS below that ends the run before the nuclei are freed --
+// probeStart == probeEnd, which is exactly what the first attempt returned. Follow the
+// interactive proton pages: run effectively forever and let the poller close it, counting
+// NUCLEAR moves, which only accumulate once dynamics is actually on.
+window.USER_STEPS = RELAX ? 1000000 : STEPS;                // fixed-step protocol — no energy-plateau test
 window.CONVERGENCE_THRESHOLD = 0;         // must stay falsy or the auto-release at 5693 is skipped
 window.USER_BOND_PAIRS = [[SITE_IDX.CA, SITE_FIXED_A.length, 'Ca-CO2:']];
 // Ring and label the atoms the chemistry turns on. The probe NEEDS a marker: molecule.js colours
@@ -177,7 +189,8 @@ if (PROBE_IDX >= 0) {
 // nuclei moving we have to close the run ourselves: poll the nuclear step counter and fire the
 // same record once it reaches the target. window._E and window._nucStepCount are exposed.
 if (RELAX) {
-  var targetNucSteps = Math.floor(STEPS / 20);        // nuclear moves AFTER the 10000-step clamped stage
+  var targetNucSteps = Math.floor(STEPS / 20);
+  document.getElementById('log').textContent += '\nrelax: 10000 clamped steps, then ' + targetNucSteps + ' nuclear moves';        // nuclear moves AFTER the 10000-step clamped stage
   var fired = false;
   setInterval(function(){
     if (fired) return;
