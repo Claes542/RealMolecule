@@ -44,6 +44,16 @@ var q = location.search;
 var MODEL = (q.match(/[?&]model=([AB])/) || [])[1] || 'A';
 var R     = parseFloat((q.match(/[?&]R=([\d.]+)/) || [])[1] || '1.53');   // Ca-CO2 distance, A
 var STEPS = parseInt((q.match(/[?&]steps=(\d+)/) || [])[1] || '2000', 10);
+// PROTON PROBE. The branch is decided by where a proton lands -- Ca regenerates the enzyme,
+// C4' destroys its cofactor -- so the quantity that matters is the force on the INCOMING PROTON,
+// not on the carbon nuclei (a nucleus in a symmetric cloud feels no force however much charge
+// surrounds it). A bare nucleus, Z=0 with Z_nuc=1, IS a proton: HAS_BARE_NUCLEI supports it.
+// Both probe positions give the same atoms, same charge, same grid -- only the probe moves --
+// so this is a difference within ONE system, the construction where errors cancel.
+//   probe=ca   : on the face Ca presents after CO2 leaves (+up; its H is on -up)
+//   probe=c4p  : on the face C4' presents opposite its own H (-up)
+var PROBE = (q.match(/[?&]probe=(ca|c4p)/) || [])[1] || '';
+var DP    = parseFloat((q.match(/[?&]dp=([\d.]+)/) || [])[1] || '2.0');   // probe stand-off, A
 var A2AU  = 1.8897;
 
 function buildAtoms(model, R) {
@@ -63,7 +73,20 @@ function buildAtoms(model, R) {
   return c;
 }
 
-var coords = buildAtoms(MODEL, R);
+// index of the probe in the final list, or -1
+var PROBE_IDX = -1;
+function addProbe(c, which, dp) {
+  if (!which) return c;
+  var host = (which === 'ca') ? SITE_FIXED_A[SITE_IDX.CA] : SITE_FIXED_A[SITE_IDX.C4P];
+  var sgn  = (which === 'ca') ? +1 : -1;     // Ca's free face is +up, C4's is -up
+  PROBE_IDX = c.length;
+  c.push(['H', host[1] + SITE_UP[0]*dp*sgn,
+               host[2] + SITE_UP[1]*dp*sgn,
+               host[3] + SITE_UP[2]*dp*sgn]);
+  return c;
+}
+
+var coords = addProbe(buildAtoms(MODEL, R), PROBE, DP);
 // FIXED box, sized once for the largest R in the series -- it must NOT depend on R, or the
 // mesh h = scr/gridN would change with the reaction coordinate and energies at different R
 // would be computed on different grids and not be comparable. Same reason the step count is
@@ -77,19 +100,24 @@ var coords = buildAtoms(MODEL, R);
 // about the centroid the extent is 6.5 A. SITE_BOX is a fixed constant so that A and B -- and
 // every R -- sit on exactly the same grid.
 var scr = SITE_BOX;
-// grid 128, not 144. Memory is the binding constraint and it is MEASURED, not guessed:
-// 0.79 GB runs, 1.11 GB stalls (page sits at "relaxing..." with the GPU at 0%). Model B at
-// 144^3 needs 0.81 GB -- right on the boundary; at 128^3 it needs 0.57 GB. h = 0.270 against
-// the gas-phase model's 0.2375 is slightly coarser, not a different regime.
+// grid 128. NOTE: an earlier comment here claimed a measured memory ceiling (0.79 GB runs,
+// 1.11 GB stalls). That was wrong -- all three "stalls" were this page failing to load p5, so
+// nothing ever ran at any size. The direct path does allocate 2 full-grid buffers per domain
+// (0.57 GB for model B here), so size remains worth watching, but no limit has been measured.
+// h = 0.270 against the gas-phase model's 0.2375; 2h = 0.54 sets the kernel clamp.
 var gridN = 128, h = scr/gridN, gN2 = Math.round(gridN/2);
 var Zof = { H:1, C:4, N:3, O:2 }, RCof = { H:0, C:0.3, N:0.3, O:0.8 };
-var atoms = [], zList = [], rcList = [];
+var atoms = [], zList = [], rcList = [], zNucList = [];
 for (var n = 0; n < coords.length; n++) {
   var el = coords[n][0];
+  var isProbe = (n === PROBE_IDX);
   atoms.push({ i: Math.round(gN2 + (coords[n][1]-SITE_CENTRE[0])*A2AU/h),
                j: Math.round(gN2 + (coords[n][2]-SITE_CENTRE[1])*A2AU/h),
-               k: Math.round(gN2 + (coords[n][3]-SITE_CENTRE[2])*A2AU/h), Z: Zof[el], el: el });
-  zList.push(Zof[el]); rcList.push(RCof[el]);
+               k: Math.round(gN2 + (coords[n][3]-SITE_CENTRE[2])*A2AU/h),
+               Z: isProbe ? 0 : Zof[el], el: el });
+  zList.push(isProbe ? 0 : Zof[el]);          // no electron of its own
+  zNucList.push(isProbe ? 1 : Zof[el]);       // but a unit positive kernel -> a bare proton
+  rcList.push(isProbe ? 0 : RCof[el]);
 }
 document.getElementById('log').textContent =
   'GAD65 site from 2OKK — model ' + MODEL + '  R=' + R.toFixed(2) + ' A  steps=' + STEPS +
@@ -100,6 +128,7 @@ window.USER_NN = gridN;
 window.USER_ATOMS = atoms;
 window.USER_SCREEN = scr;
 window.USER_Z = zList;
+window.USER_Z_NUC = zNucList;
 window.USER_RC = rcList;
 window.USER_DYNAMICS = false;             // clamped nuclei: only the charge relaxes
 window.USER_DIRECT_POTHER = true;         // exact i != j every step (see gad65_decarb_scan.html)
@@ -112,11 +141,20 @@ window.USER_MARK_ATOMS = [
   { i: SITE_IDX.C4P, label: "C4'",     col: [90,200,255] }
 ];
 
-window.onSweepDone = function(E){
+window.onSweepDone = async function(E){
+  // Capture the Euler-Lagrange residual, not just the energy. Without it there is no way to tell
+  // a converged run from one stopped at an arbitrary point on its trajectory -- which is exactly
+  // how model A came out at -4.7 Ha at one geometry and -20.1 Ha at another.
+  var res = null;
+  try { res = await window.readELResidual(); } catch (e) { console.warn('residual unavailable', e); }
   var fE = window._nucForceElec || [];
   var rec = { model: MODEL, R: R, steps: STEPS, E: E,
+              rMax: res ? Number(res.rMax.toPrecision(4)) : null,
+              intFrac: res ? Number(res.interiorFrac.toFixed(3)) : null,
               fCa:  fE[SITE_IDX.CA]  ? fE[SITE_IDX.CA].slice()  : null,
               fC4p: fE[SITE_IDX.C4P] ? fE[SITE_IDX.C4P].slice() : null,
+              probe: PROBE || null, dp: PROBE ? DP : null,
+              fProbe: (PROBE_IDX >= 0 && fE[PROBE_IDX]) ? fE[PROBE_IDX].slice() : null,
               dip:  [window._dip_x, window._dip_y, window._dip_z],
               nAtoms: coords.length };
   try { localStorage.setItem('gad65_site_result', JSON.stringify(rec)); } catch(e){}
@@ -124,8 +162,22 @@ window.onSweepDone = function(E){
   document.getElementById('log').textContent += '\nDONE  E=' + E.toFixed(6) + ' Ha';
 };
 
+// molecule.js defines setup() and draw(); p5 is what CALLS them. Without p5 the page loads,
+// prints "relaxing..." and does nothing at all, at 0% CPU, forever -- which is exactly how the
+// first three attempts at this page failed. Load p5 AFTER molecule.js, as the working scans do.
 var s = document.createElement('script');
 s.src = 'molecule.js?t=' + Date.now();
+s.onload = function(){
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p.onerror = function(){
+    var el=document.getElementById('log'); if(el) el.textContent += '\nERROR: p5 failed to load (offline?)';
+  };
+  document.body.appendChild(p);
+};
+s.onerror = function(){
+  var el=document.getElementById('log'); if(el) el.textContent += '\nERROR: molecule.js failed to load';
+};
 document.body.appendChild(s);
 </script>
 </body></html>
