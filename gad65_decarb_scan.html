@@ -21,6 +21,13 @@
 var variants = ['PLP', 'free'];
 // steps=<n> in the URL drives the convergence ladder; default is the production count.
 var STEPS = parseInt((location.search.match(/[?&]steps=(\d+)/) || [])[1] || '4000', 10);
+// relaxall=1 : release EVERY nucleus and see how far the hand-built geometry moves.
+// This model's coordinates were typed in as idealised bond lengths and angles and have never
+// been relaxed against this functional. If they sit far from any minimum of it, then every
+// number the model has produced was computed somewhere the functional does not want to be.
+// The answer is a displacement, in Angstrom -- not an energy, so it does not depend on the
+// energy scale that is in doubt.
+var RELAXALL = /[?&]relaxall=1/.test(location.search);
 var Rlist = [1.55, 2.00, 2.60, 3.30, 4.20, 5.00, 6.00];   // Ca-CO2 distance (Angstrom)  [7 pts -> 14 runs; reaches separation to see the sink saturate]
 // Targeted runs for the convergence ladder and the quinonoid readout:
 //   ?only=PLP&R=6.00&steps=4000   runs ONE point instead of all 14.
@@ -116,7 +123,13 @@ if (vIdx < variants.length) {
   // 10000 steps (molecule.js 5693). onSweepDone then fires at phaseSteps >= TOTAL_STEPS (5722).
   window.USER_STEPS = STEPS;
   window.NO_AUTO_DYNAMICS = true;
-  window.USER_DYNAMICS = false;                 // clamp nuclei -> E(R)
+  window.USER_DYNAMICS = RELAXALL;              // clamped -> E(R), unless we are testing the geometry
+  if (RELAXALL) {
+    window.USER_N_MOVE = 20;
+    window.USER_DAMPING = 0.85;                 // settle, do not ring
+    window._startPos = atoms.map(function(a){ return [a.i, a.j, a.k]; });
+    window._hA = h / A;                          // Angstrom per cell
+  }
   // Exclude self-interaction EXACTLY, every step. Without this, NELEC=24 selects the
   // total-Poisson+SIC path with SIC_INTERVAL=5 frames = every 250 steps: in between, PotherBuf
   // holds the TOTAL potential, so each electron feels its own charge, and E_ee is read off that
@@ -167,6 +180,21 @@ render();
 
 window.onSweepDone = function(E){
   results[variants[vIdx]][Rlist[rIdx]] = E;
+  if (RELAXALL && window._nucPos && window._startPos) {
+    // how far did the hand-built geometry travel once released?
+    var n = window._startPos.length, sum = 0, mx = 0, worst = -1, per = [];
+    for (var i = 0; i < n; i++) {
+      var p0 = window._startPos[i], p1 = window._nucPos[i];
+      var d = Math.sqrt(Math.pow(p1[0]-p0[0],2)+Math.pow(p1[1]-p0[1],2)+Math.pow(p1[2]-p0[2],2)) * window._hA;
+      per.push(Number(d.toFixed(3))); sum += d*d;
+      if (d > mx) { mx = d; worst = i; }
+    }
+    var rec = { relaxall: true, steps: STEPS, E: E, nAtoms: n,
+                rmsd: Number(Math.sqrt(sum/n).toFixed(4)),
+                maxDisp: Number(mx.toFixed(4)), worstAtom: worst, per: per };
+    try { localStorage.setItem('gad65_relaxall', JSON.stringify(rec)); } catch(e){}
+    console.log('=== RELAXALL ===', JSON.stringify(rec));
+  }
   // electronic force on each nucleus is the cheap proxy for where the density went; the dipole
   // components are already computed every run (ring lies in xy, CO2 departs along +z).
   try {
