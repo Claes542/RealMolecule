@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#ddd;font-family:monospace">
+<pre id="log">GAD65 crystal-derived active site — building…</pre>
+<script src="gad65_site_atoms.js"></script>
+<script>
+// ===========================================================================
+//  GAD65 ACTIVE SITE FROM THE CRYSTAL STRUCTURE (PDB 2OKK, Fenalti et al.)
+//
+//  The gas-phase scan (gad65_decarb_scan.html) contains no enzyme at all: it
+//  measures the COFACTOR's effect and cannot distinguish GAD65 from any other
+//  PLP decarboxylase. This page adds the enzyme, one residue at a time.
+//
+//    model=A   PLP core + substrate, on crystal geometry     (no enzyme)
+//    model=B   the same + Asp364                             (enzyme)
+//
+//  Asp364's carboxylate sits 2.46 A from the pyridine N1 in the crystal — it
+//  is what holds the ring nitrogen protonated, and therefore what keeps the
+//  sink electron-poor. B minus A is that residue's contribution, with ring,
+//  imine, substrate and Dunathan alignment held identical.
+//
+//  GEOMETRY. Ring, O3, C2', C4' and the imine N are crystal coordinates. The
+//  substrate is grafted at the positions the lysine vacates on forming the
+//  external aldimine: imine N at the crystal NZ, Ca at the crystal CE. The
+//  breaking Ca-COO bond is placed along the MEASURED ring normal, so the
+//  Dunathan alignment comes out of the structure rather than being imposed
+//  (checked: 0.0 deg). Hydrogens are added — X-ray sees none.
+//
+//  CHARGE. Both models are neutral: pyridinium(+) balances the substrate
+//  carboxylate(-). Asp364 is therefore built as the NEUTRAL acid with its
+//  proton on OD1, pointing away from N1, so OD2 stays the acceptor. In the
+//  enzyme it is very likely ionised; that is an approximation, stated.
+//
+//  NOT INCLUDED: 5'-phosphate, Lys396 (displaced), the rest of the protein,
+//  water. Nuclei clamped; only the electrons relax.
+// ===========================================================================
+var q = location.search;
+var MODEL = (q.match(/[?&]model=([AB])/) || [])[1] || 'A';
+var R     = parseFloat((q.match(/[?&]R=([\d.]+)/) || [])[1] || '1.53');   // Ca-CO2 distance, A
+var STEPS = parseInt((q.match(/[?&]steps=(\d+)/) || [])[1] || '2000', 10);
+var A2AU  = 1.8897;
+
+function buildAtoms(model, R) {
+  var c = SITE_FIXED_A.map(function(a){ return a.slice(); });
+  // carboxylate: C along the Dunathan axis at distance R, then two O at 124 deg
+  var cx = SITE_UP[0]*R, cy = SITE_UP[1]*R, cz = SITE_UP[2]*R;
+  c.push(['C', cx, cy, cz]);
+  var ca = Math.cos(62*Math.PI/180), sa = Math.sin(62*Math.PI/180);
+  for (var s = 1; s >= -1; s -= 2) {
+    var dx = SITE_UP[0]*ca + s*SITE_E1[0]*sa,
+        dy = SITE_UP[1]*ca + s*SITE_E1[1]*sa,
+        dz = SITE_UP[2]*ca + s*SITE_E1[2]*sa;
+    var n = Math.sqrt(dx*dx+dy*dy+dz*dz);
+    c.push(['O', cx + 1.25*dx/n, cy + 1.25*dy/n, cz + 1.25*dz/n]);
+  }
+  if (model === 'B') c = c.concat(SITE_ASP_B.map(function(a){ return a.slice(); }));
+  return c;
+}
+
+var coords = buildAtoms(MODEL, R);
+// FIXED box, sized once for the largest R in the series -- it must NOT depend on R, or the
+// mesh h = scr/gridN would change with the reaction coordinate and energies at different R
+// would be computed on different grids and not be comparable. Same reason the step count is
+// fixed: every point in a series must be relaxed the same way on the same mesh.
+var R_MAX = 6.0;
+var scr = 2*(SITE_EXTENT + R_MAX) * A2AU + 12;
+var gridN = 192, h = scr/gridN, gN2 = Math.round(gridN/2);
+var Zof = { H:1, C:4, N:3, O:2 }, RCof = { H:0, C:0.3, N:0.3, O:0.8 };
+var atoms = [], zList = [], rcList = [];
+for (var n = 0; n < coords.length; n++) {
+  var el = coords[n][0];
+  atoms.push({ i: Math.round(gN2 + coords[n][1]*A2AU/h),
+               j: Math.round(gN2 + coords[n][2]*A2AU/h),
+               k: Math.round(gN2 + coords[n][3]*A2AU/h), Z: Zof[el], el: el });
+  zList.push(Zof[el]); rcList.push(RCof[el]);
+}
+document.getElementById('log').textContent =
+  'GAD65 site from 2OKK — model ' + MODEL + '  R=' + R.toFixed(2) + ' A  steps=' + STEPS +
+  '\n' + coords.length + ' atoms, ' + zList.reduce(function(a,b){return a+b;},0) + ' electrons, grid ' +
+  gridN + '^3, box ' + scr.toFixed(1) + ' a.u.\nrelaxing…';
+
+window.USER_NN = gridN;
+window.USER_ATOMS = atoms;
+window.USER_SCREEN = scr;
+window.USER_Z = zList;
+window.USER_RC = rcList;
+window.USER_DYNAMICS = false;             // clamped nuclei: only the charge relaxes
+window.USER_DIRECT_POTHER = true;         // exact i != j every step (see gad65_decarb_scan.html)
+window.USER_STEPS = STEPS;                // fixed-step protocol — no energy-plateau test
+window.NO_AUTO_DYNAMICS = true;
+window.CONVERGENCE_THRESHOLD = 0;
+window.USER_BOND_PAIRS = [[SITE_IDX.CA, SITE_FIXED_A.length, 'Ca-CO2:']];
+window.USER_MARK_ATOMS = [
+  { i: SITE_IDX.CA,  label: 'Cα', col: [255,220,0] },
+  { i: SITE_IDX.C4P, label: "C4'",     col: [90,200,255] }
+];
+
+window.onSweepDone = function(E){
+  var fE = window._nucForceElec || [];
+  var rec = { model: MODEL, R: R, steps: STEPS, E: E,
+              fCa:  fE[SITE_IDX.CA]  ? fE[SITE_IDX.CA].slice()  : null,
+              fC4p: fE[SITE_IDX.C4P] ? fE[SITE_IDX.C4P].slice() : null,
+              dip:  [window._dip_x, window._dip_y, window._dip_z],
+              nAtoms: coords.length };
+  try { localStorage.setItem('gad65_site_result', JSON.stringify(rec)); } catch(e){}
+  console.log('=== SITE RESULT ===', JSON.stringify(rec));
+  document.getElementById('log').textContent += '\nDONE  E=' + E.toFixed(6) + ' Ha';
+};
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+document.body.appendChild(s);
+</script>
+</body></html>
