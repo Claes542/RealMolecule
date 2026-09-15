@@ -24,7 +24,7 @@ sets, no fitted force field, GPU-accelerated) that resolves reactive chemistry c
 an enzyme active site. In preliminary work RealQM, given only the active-site nuclei, **spontaneously
 reproduced the textbook PLP electron-sink mechanism** of GAD65 decarboxylation: with the conjugated
 pyridinium ring present the carbanion left by departing CO₂ is progressively stabilized, while an
-identical free-amino-acid control (no ring) saturates — the two energy curves diverge cleanly. We
+identical free-amino-acid control (no ring) does not — the two energy curves diverge cleanly. We
 will (Aim 1) put this mechanism on a quantitative footing and extend it to the holo-vs-apo active
 site; (Aim 2) couple active-site electronics to catalytic-loop conformation and epitope exposure;
 and (Aim 3) build atomistic conformational-epitope models for GADA recognition. The result will be
@@ -104,8 +104,10 @@ identical free amino acid (no sink). RealQM relaxed the electron density at each
 
 *(model energy units; sign/trend interpreted, magnitudes not yet calibrated — see Rigor)*
 
-**The free curve saturates (≈ −3.5 beyond ~4 Å) while the PLP curve keeps descending (to −7.6 at
-6 Å); the sink stabilization grows monotonically to ~+4.** Given only coordinates and no built-in
+**The sink stabilization grows from +1.9 at 2 Å to +4.2 at 6 Å — about three times the
+run-to-run scatter of ±0.5–0.8 — and is still rising at the last point.** (The tempting reading
+that the free curve *saturates* while PLP keeps descending is consistent with the data but not
+resolved by it: the free curve's last three points span 0.46, inside the scatter.) Given only coordinates and no built-in
 reaction coordinate, the method reproduces PLP's electron-sink role, and the identical-substrate
 control attributes the effect specifically to the conjugated ring. *This establishes feasibility for
 Aim 1 and motivates the holo/apo contrast.*

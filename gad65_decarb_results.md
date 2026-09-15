@@ -71,13 +71,16 @@ energy plateau. Runs in-browser on WebGPU (Chrome).
 
 **The diagnostic signature is the divergence of the two curves:**
 
-- **Free glutamate saturates.** Once CO₂ is ~4 Å out the free curve flattens at ≈ −3.5
-  (−3.10 → −3.56 → −3.45). With no electron sink, the departing carbanion is a dead end — the
-  system can only relax so far.
-- **PLP keeps descending.** The conjugated curve shows no plateau (−6.6 → −6.9 → −7.6); the
-  pyridinium π-system absorbs the developing negative charge (the quinonoid), so stabilization
-  keeps accruing as CO₂ leaves.
-- **Net:** the sink term grows essentially monotonically to **+4.2 at 6 Å and is still climbing.**
+- **The sink term grows, and this is the robust result.** From **+1.90** at 2 Å to **+4.17** at
+  6 Å — a rise of **+2.3** against a per-point reproducibility of ±0.5–0.8, so roughly three times
+  the scatter. Two of the six steps are downward (−0.60 at 2.60 Å, −0.15 at 5.00 Å), both inside
+  that scatter: the growth is monotone within the resolution of the scan, not point by point.
+- **The separate shapes of the two curves are suggested, not established.** The natural reading is
+  that the free case *saturates* near ≈ −3.5 while PLP *keeps descending*. But the free curve's
+  last three points span only **0.46**, which is inside the scatter, so flatness cannot be
+  distinguished from slow descent; PLP's span **1.01** over the same range clears it by about half
+  again. The divergence is trustworthy because it accumulates over the whole range; the plateau is
+  not, because it rests on three points.
 
 **Interpretation.** Given nothing but the atomic coordinates — no reaction coordinate built in,
 no bias toward the "right" answer — the method spontaneously reproduces the textbook role of PLP:
@@ -88,8 +91,8 @@ between the two; the only difference is the presence of the sink.
 ## 4. Scope — what this does and does not show
 
 - **Qualitative, not quantitative.** Magnitudes are uncalibrated model units (and reproducible
-  only to ~±0.5–0.8 between runs). Read the **sign, the divergence, and the monotonic growth** —
-  not the numbers. No kcal/mol claim.
+  only to ~±0.5–0.8 between runs). Read the **sign and the divergence**, which accumulate over the
+  whole range — not the shape of either curve point by point. No kcal/mol claim.
 - **Thermodynamics, not kinetics.** A clamped, single-coordinate relaxed scan has no transition
   state; this shows carbanion/product stabilization, **not a catalytic rate or barrier**.
 - **Gas-phase, reduced core.** No protein electrostatics, no phosphate anchor, no water,
