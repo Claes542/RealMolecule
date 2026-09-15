@@ -213,7 +213,13 @@ window.onSweepDone = async function(E){
               fCa:  fE[SITE_IDX.CA]  ? fE[SITE_IDX.CA].slice()  : null,
               fC4p: fE[SITE_IDX.C4P] ? fE[SITE_IDX.C4P].slice() : null,
               probe: PROBE || null, dp: PROBE ? DP : null,
-              fProbe: (PROBE_IDX >= 0 && fE[PROBE_IDX]) ? fE[PROBE_IDX].slice() : null,
+              // fElec ALONE is not what moves a nucleus. The total is electronic + nuclear-nuclear,
+              // and a bare proton 2 A from Ca's kernel is pushed away hard by every kernel nearby.
+              // Recording only the electronic part made a proton sitting at a force BALANCE
+              // indistinguishable from one that could not move at all.
+              fProbe:    (PROBE_IDX >= 0 && fE[PROBE_IDX]) ? fE[PROBE_IDX].slice() : null,
+              fProbeTot: (PROBE_IDX >= 0 && (window._nucForceTotal||[])[PROBE_IDX]) ? window._nucForceTotal[PROBE_IDX].slice() : null,
+              fProbeNuc: (PROBE_IDX >= 0 && (window._nucForceNuc||[])[PROBE_IDX]) ? window._nucForceNuc[PROBE_IDX].slice() : null,
               relaxed: RELAX,
               // where the proton ENDED UP (grid coords), and how far it travelled from where it started
               probeEnd: (RELAX && window._nucPos && window._nucPos[PROBE_IDX]) ? window._nucPos[PROBE_IDX].slice() : null,
