@@ -53,6 +53,11 @@ var STEPS = parseInt((q.match(/[?&]steps=(\d+)/) || [])[1] || '2000', 10);
 //   probe=ca   : on the face Ca presents after CO2 leaves (+up; its H is on -up)
 //   probe=c4p  : on the face C4' presents opposite its own H (-up)
 var PROBE = (q.match(/[?&]probe=(ca|c4p)/) || [])[1] || '';
+// relax=1 : let the proton find its OWN place instead of being clamped where I put it.
+// A clamped probe reports a point on the approach curve; the quantity that ranks basic sites is
+// the BOUND state. The off-axis force (38-59% of the total) is the calculation saying the proton
+// would rather be somewhere else. So: dynamics on, every nucleus frozen except the probe.
+var RELAX = /[?&]relax=1/.test(q);
 var DP    = parseFloat((q.match(/[?&]dp=([\d.]+)/) || [])[1] || '2.0');   // probe stand-off, A
 var A2AU  = 1.8897;
 
@@ -130,16 +135,36 @@ window.USER_SCREEN = scr;
 window.USER_Z = zList;
 window.USER_Z_NUC = zNucList;
 window.USER_RC = rcList;
-window.USER_DYNAMICS = false;             // clamped nuclei: only the charge relaxes
+window.USER_DYNAMICS = RELAX;             // clamped nuclei, unless the proton is being released
+if (RELAX) {
+  if (PROBE_IDX < 0) { throw new Error('relax=1 requires probe=ca or probe=c4p'); }
+  var frozen = [];
+  for (var fi = 0; fi < coords.length; fi++) if (fi !== PROBE_IDX) frozen.push(fi);
+  window.USER_FROZEN_ATOMS = frozen;     // everything but the proton
+  window.USER_N_MOVE = 20;               // electronic steps between nuclear moves
+  window.USER_DAMPING = 0.85;            // settle rather than oscillate; we want the minimum
+  window.USER_NUC_MASS = 1836;           // a proton, not the default
+}
 window.USER_DIRECT_POTHER = true;         // exact i != j every step (see gad65_decarb_scan.html)
 window.USER_STEPS = STEPS;                // fixed-step protocol — no energy-plateau test
 window.NO_AUTO_DYNAMICS = true;
 window.CONVERGENCE_THRESHOLD = 0;
 window.USER_BOND_PAIRS = [[SITE_IDX.CA, SITE_FIXED_A.length, 'Ca-CO2:']];
+// Ring and label the atoms the chemistry turns on. The probe NEEDS a marker: molecule.js colours
+// by electron count, and a bare nucleus (Z=0 -> [255,80,80]) is the same red as oxygen
+// (Z=2 -> [255,50,50]). Only the dot size differs (5 vs 10), which is not enough to find it among
+// three or five oxygens.
 window.USER_MARK_ATOMS = [
-  { i: SITE_IDX.CA,  label: 'Cα', col: [255,220,0] },
-  { i: SITE_IDX.C4P, label: "C4'",     col: [90,200,255] }
+  { i: SITE_IDX.CA,  label: 'C\u03B1',  col: [255,220,0] },
+  { i: SITE_IDX.C4P, label: "C4'", col: [90,200,255] }
 ];
+if (PROBE_IDX >= 0) {
+  window.USER_MARK_ATOMS.push({
+    i: PROBE_IDX,
+    label: 'H\u207A probe  (' + PROBE + ', ' + DP.toFixed(1) + ' \u00C5)',
+    col: [255,0,255]                       // magenta: used by nothing else in the palette
+  });
+}
 
 window.onSweepDone = async function(E){
   // Capture the Euler-Lagrange residual, not just the energy. Without it there is no way to tell
@@ -155,6 +180,11 @@ window.onSweepDone = async function(E){
               fC4p: fE[SITE_IDX.C4P] ? fE[SITE_IDX.C4P].slice() : null,
               probe: PROBE || null, dp: PROBE ? DP : null,
               fProbe: (PROBE_IDX >= 0 && fE[PROBE_IDX]) ? fE[PROBE_IDX].slice() : null,
+              relaxed: RELAX,
+              // where the proton ENDED UP (grid coords), and how far it travelled from where it started
+              probeEnd: (RELAX && window._nucPos && window._nucPos[PROBE_IDX]) ? window._nucPos[PROBE_IDX].slice() : null,
+              probeStart: (PROBE_IDX >= 0) ? [atoms[PROBE_IDX].i, atoms[PROBE_IDX].j, atoms[PROBE_IDX].k] : null,
+              hA: h/A2AU,                 // Angstrom per cell, to convert the displacement
               dip:  [window._dip_x, window._dip_y, window._dip_z],
               nAtoms: coords.length };
   try { localStorage.setItem('gad65_site_result', JSON.stringify(rec)); } catch(e){}
