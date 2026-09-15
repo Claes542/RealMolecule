@@ -178,6 +178,17 @@ function render() {
 }
 render();
 
+// Same problem here: onSweepDone is never called while dynamics is on (molecule.js 5699/5722).
+if (RELAXALL) {
+  var _tgt = Math.floor(STEPS / 20), _fired = false;
+  setInterval(function(){
+    if (_fired) return;
+    if ((window._nucStepCount || 0) >= _tgt && window._E !== undefined) {
+      _fired = true; window.onSweepDone(window._E);
+    }
+  }, 2000);
+}
+
 window.onSweepDone = function(E){
   results[variants[vIdx]][Rlist[rIdx]] = E;
   if (RELAXALL && window._nucPos && window._startPos) {

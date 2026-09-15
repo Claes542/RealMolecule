@@ -135,20 +135,26 @@ window.USER_SCREEN = scr;
 window.USER_Z = zList;
 window.USER_Z_NUC = zNucList;
 window.USER_RC = rcList;
-window.USER_DYNAMICS = RELAX;             // clamped nuclei, unless the proton is being released
+// CONVERGE FIRST, THEN RELEASE -- the protocol proton_transfer.html uses ("converge first,
+// press D"), and molecule.js implements it: at 5693 it auto-enables dynamics after 10000 clamped
+// steps, provided CONVERGENCE_THRESHOLD is falsy and NO_AUTO_DYNAMICS is unset. Starting dynamics
+// at step 0 pushes the nuclei with forces from a half-solved density (rMax was ~2 at 2000 steps).
+window.USER_DYNAMICS = false;             // always start clamped
 if (RELAX) {
   if (PROBE_IDX < 0) { throw new Error('relax=1 requires probe=ca or probe=c4p'); }
   var frozen = [];
   for (var fi = 0; fi < coords.length; fi++) if (fi !== PROBE_IDX) frozen.push(fi);
-  window.USER_FROZEN_ATOMS = frozen;     // everything but the proton
-  window.USER_N_MOVE = 20;               // electronic steps between nuclear moves
-  window.USER_DAMPING = 0.85;            // settle rather than oscillate; we want the minimum
+  window.USER_FROZEN_ATOMS = frozen;     // when dynamics does switch on, only the proton moves
+  window.USER_N_MOVE = 20;
+  window.USER_DAMPING = 0.85;            // settle rather than ring; we want the minimum
   window.USER_NUC_MASS = 1836;           // a proton, not the default
+  delete window.NO_AUTO_DYNAMICS;        // let the built-in two-stage protocol run
+} else {
+  window.NO_AUTO_DYNAMICS = true;        // pure fixed-step runs stay clamped throughout
 }
 window.USER_DIRECT_POTHER = true;         // exact i != j every step (see gad65_decarb_scan.html)
 window.USER_STEPS = STEPS;                // fixed-step protocol — no energy-plateau test
-window.NO_AUTO_DYNAMICS = true;
-window.CONVERGENCE_THRESHOLD = 0;
+window.CONVERGENCE_THRESHOLD = 0;         // must stay falsy or the auto-release at 5693 is skipped
 window.USER_BOND_PAIRS = [[SITE_IDX.CA, SITE_FIXED_A.length, 'Ca-CO2:']];
 // Ring and label the atoms the chemistry turns on. The probe NEEDS a marker: molecule.js colours
 // by electron count, and a bare nucleus (Z=0 -> [255,80,80]) is the same red as oxygen
@@ -164,6 +170,21 @@ if (PROBE_IDX >= 0) {
     label: 'H\u207A probe  (' + PROBE + ', ' + DP.toFixed(1) + ' \u00C5)',
     col: [255,0,255]                       // magenta: used by nothing else in the palette
   });
+}
+
+// molecule.js only calls onSweepDone when dynamics is OFF -- BOTH call sites are gated on
+// !dynamicsEnabled (5699, 5722). So a relax run computes happily and never reports. With the
+// nuclei moving we have to close the run ourselves: poll the nuclear step counter and fire the
+// same record once it reaches the target. window._E and window._nucStepCount are exposed.
+if (RELAX) {
+  var targetNucSteps = Math.floor(STEPS / 20);        // nuclear moves AFTER the 10000-step clamped stage
+  var fired = false;
+  setInterval(function(){
+    if (fired) return;
+    if ((window._nucStepCount || 0) >= targetNucSteps && window._E !== undefined) {
+      fired = true; window.onSweepDone(window._E);
+    }
+  }, 2000);
 }
 
 window.onSweepDone = async function(E){
