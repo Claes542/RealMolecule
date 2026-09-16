@@ -118,6 +118,16 @@ window.USER_Z = zList;
 window.USER_Z_NUC = zNucList;
 window.USER_RC = rcList;
 if (SPLIT) {
+  // sic=1 : treat the three N lobes as ONE shell for self-interaction -- each lobe is given the
+  // potential of every domain OUTSIDE the group, so siblings do not repel. Without it, splitting
+  // one domain of charge 3 into three of charge 1 ADDS their full pairwise repulsion: measured
+  // 4.94 Ha on this molecule, against 4.33 estimated for three unit charges 120 deg apart at a
+  // lobe radius of 0.4 a0. That is why the split runs would not settle.
+  if (/[?&]sic=1/.test(q)) {
+    var grp = [];
+    for (var gi = 0; gi < coords.length; gi++) grp.push(SPLIT_OF[gi] >= 0 ? 1000 : gi);
+    window.USER_SPLIT_GROUP = grp;
+  }
   window.USER_SPLIT_TYPE = splitType;
   window.USER_SPLIT_IDX  = splitIdx;
   window.USER_SPLIT_AXIS = splitAxis;
@@ -140,7 +150,8 @@ window.onSweepDone = async function(E){
               box: scr, gridN: gridN };
   rec.zn = ZN;
   rec.split = SPLIT;
-  try { localStorage.setItem('pyridine_pa_' + WHAT + '_zn' + ZN + (SPLIT?'_s':''), JSON.stringify(rec)); } catch(e){}
+  rec.sic = !!window.USER_SPLIT_GROUP;
+  try { localStorage.setItem('pyridine_pa_' + WHAT + '_zn' + ZN + (SPLIT?'_s':'') + (rec.sic?'_g':''), JSON.stringify(rec)); } catch(e){}
   console.log('=== PA RESULT ===', JSON.stringify(rec));
   document.getElementById('log').textContent += '\nDONE  E=' + E.toFixed(6) + ' Ha  rMax=' + (rec.rMax||'n/a');
 };

@@ -943,12 +943,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 // Compute rho of all electrons EXCEPT the target label (for direct Pother solve)
 const computeRhoOtherWGSL = `
 ${paramStructWGSL}
-struct DomIdx { idx: u32, _p0: u32, _p1: u32, _p2: u32 }
+struct DomIdx { idx: u32, _p0: u32, grp: u32, _p2: u32 }
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read> U: array<f32>;
 @group(0) @binding(2) var<storage, read_write> rhoOther: array<f32>;
 @group(0) @binding(3) var<storage, read> label: array<u32>;
 @group(0) @binding(4) var<uniform> dom: DomIdx;
+@group(0) @binding(5) var<storage, read> domGroup: array<u32>;
 
 ${cellIdxWGSL}
 @compute @workgroup_size(256)
@@ -962,7 +963,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = (cell / (NM * NM)) + 1u;
   let id = i * p.S2 + j * p.S + k;
   let u = U[id];
-  rhoOther[id] = select(u * u, 0.0, label[id] == dom.idx);
+  // exclude every domain in the SAME GROUP, not only this one. With groups unset each domain is
+  // its own group and domGroup[label] == dom.grp reduces to label == dom.idx.
+  rhoOther[id] = select(u * u, 0.0, domGroup[label[id]] == dom.grp);
 }
 `;
 
@@ -2182,7 +2185,7 @@ let device, paramsBuf, atomBuf, K_buf, sumsBuf, sumsReadBuf, sliceBuf, sliceRead
 let normAtomicBuf, normFloatBuf, initOffsetBuf, bestR2Buf, initRangeBuf;
 let U_buf = [], P_buf = [], labelBuf, label2Buf, W_buf;
 let rhoTotalBuf, residualBuf, Pc_buf = [], coarseRhsBuf;
-let PotherBuf, PselfScratchBuf, sicBuf, sicResidualBuf, domainBufs = [];
+let PotherBuf, PselfScratchBuf, sicBuf, sicResidualBuf, domainBufs = [], domGroupBuf = null;
 let updatePL, evolveBoundaryPL, fixBoundaryUPL, jacobiSmoothPL;
 let restoreOuterPL, restoreOuterBG, labelInitBuf, winBuf;
 let reduceEnergyPL, finalizeEnergyPL, accumNormsPL, decodeNormsPL, normalizePL, extractPL;
@@ -3111,13 +3114,32 @@ async function initGPU() {
     PselfScratchBuf = device.createBuffer({ size: bs, usage });
     sicBuf = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     sicResidualBuf = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    // Shared-SIC group table. USER_SPLIT_GROUP[n] = an integer shared by domains that are angular
+    // pieces of ONE physical shell (the three lobes of a 3-split N, say). Members do not feel each
+    // other: each is given the potential of every domain OUTSIDE its group, not of every other
+    // domain. Without this, splitting one domain of charge Z into Z lobes ADDS their full pairwise
+    // repulsion -- measured at 4.94 Ha for a 3-split pyridine nitrogen, against 4.33 estimated for
+    // three unit charges 120 deg apart at a lobe radius of 0.4 a0 -- because the unsplit domain's
+    // self-repulsion was excluded entirely by i != j while the split lobes' mutual repulsion is not.
+    // Unset: every domain is its own group, and the test below reduces EXACTLY to label == m.
+    const _splitGroup = (function(){
+      const g = window.USER_SPLIT_GROUP;
+      const out = new Uint32Array(NELEC);
+      for (let n = 0; n < NELEC; n++) out[n] = (g && g[n] !== undefined && g[n] !== null) ? g[n] : n;
+      return out;
+    })();
+    if (!domGroupBuf) {
+      domGroupBuf = device.createBuffer({ size: Math.max(16, NELEC*4),
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+      device.queue.writeBuffer(domGroupBuf, 0, _splitGroup);
+    }
     // Domain index uniform buffers (needed for SIC and direct Pother)
     for (let m = 0; m < NELEC; m++) {
       if (!domainBufs[m]) {
         domainBufs[m] = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
         const _zf = new Float32Array([Z[m]]);
         const _zu = new Uint32Array(_zf.buffer);
-        device.queue.writeBuffer(domainBufs[m], 0, new Uint32Array([m, _zu[0], 0, 0]));
+        device.queue.writeBuffer(domainBufs[m], 0, new Uint32Array([m, _zu[0], _splitGroup[m], 0]));
       }
     }
     if (USE_DIRECT_POTHER) {
@@ -3509,6 +3531,7 @@ async function initGPU() {
             { binding: 2, resource: { buffer: rhoTotalBuf } },  // reuse as rhoOther output
             { binding: 3, resource: { buffer: labelBuf } },
             { binding: 4, resource: { buffer: domainBufs[m] } },
+            { binding: 5, resource: { buffer: domGroupBuf } },
           ]});
         }
         // Jacobi: P_direct[m] <-> P_directScratch, sourced from rhoTotalBuf
