@@ -34,6 +34,17 @@ var ZN    = parseInt((q.match(/[?&]zn=(\d)/) || [])[1] || '3', 10);
 var SPLIT = /[?&]split=1/.test(q);
 var SIC   = /[?&]sic=1/.test(q);
 var STEPS = parseInt((q.match(/[?&]steps=(\d+)/) || [])[1] || '4000', 10);
+// sym=1 : the T_d-symmetric NH4+. Built as NH3 + a bare proton, three hydrogens own a domain and
+// the fourth does not, so the four bonds are inequivalent BY CONSTRUCTION and the symmetry that
+// makes NH4+ the cleanest test in this family is thrown away. Take the missing electron from
+// NITROGEN instead: N with 4 electrons on a +5 kernel, four ordinary H. Then all four bonds are
+// identical, the four nitrogen lobes are equivalent by symmetry -- which is a CONTROL, since any
+// difference between them is numerical error -- and both sides of the proton affinity carry the
+// same 8 electrons.
+//    NH4+  N Z=4 kernel +5, 4H Z=1  -> 8 electrons, 9 kernel, charge +1, T_d
+//    NH3   N Z=5 kernel +5, 3H Z=1  -> 8 electrons, 8 kernel, neutral
+var SYM = /[?&]sym=1/.test(q);
+if (SYM) { ZN = (WHAT === 'nh4') ? 4 : 5; }
 
 var A = 1.8897;
 // NH3: N-H = 1.012 A, HNH = 106.7 deg. Pyramid about +z; the lone pair points -z,
@@ -43,12 +54,26 @@ var bNH = 1.012, ang = 106.7*Math.PI/180;
 var ct = Math.cos(ang), th = Math.acos(Math.sqrt((1+2*ct)/3));   // angle from +z
 var sx = Math.sin(th), cz = Math.cos(th);
 var coords = [['N', 0,0,0, 'N']];
-for (var k = 0; k < 3; k++) {
-  var phi = 2*Math.PI*k/3;
-  coords.push(['H', bNH*sx*Math.cos(phi), bNH*sx*Math.sin(phi), bNH*cz, 'H']);
+if (WHAT === 'nh4' && SYM) {
+  // NH4+ is T_d: four EQUAL bonds of 1.021 A at the tetrahedral angle 109.47 deg, not NH3's
+  // pyramid with a fourth atom bolted on. Three in a cone about +z, one along -z.
+  var b4 = 1.021, c4 = 1/3, s4 = Math.sqrt(1 - 1/9);
+  for (var k = 0; k < 3; k++) {
+    var ph4 = 2*Math.PI*k/3;
+    coords.push(['H', b4*s4*Math.cos(ph4), b4*s4*Math.sin(ph4), b4*c4, 'H']);
+  }
+  coords.push(['H', 0, 0, -b4, 'H']);
+} else {
+  for (var k = 0; k < 3; k++) {
+    var phi = 2*Math.PI*k/3;
+    coords.push(['H', bNH*sx*Math.cos(phi), bNH*sx*Math.sin(phi), bNH*cz, 'H']);
+  }
 }
 var PROTON_IDX = -1;
-if (WHAT === 'nh4') { PROTON_IDX = coords.length; coords.push(['H', 0, 0, -1.021, 'Hp']); }
+if (WHAT === 'nh4' && !SYM) {      // asymmetric: a bare proton, owning no domain
+  coords.push(['H', 0, 0, -1.021, 'Hp']);
+  PROTON_IDX = coords.length - 1;
+}
 
 var BOX = 20.0;                       // a.u., fixed for every variant
 var gridN = 128, h = BOX/gridN, gN2 = Math.round(gridN/2);
@@ -72,7 +97,11 @@ for (var n = 0; n < coords.length; n++) {
                k: Math.round(gN2 + coords[n][3]*A/h),
                Z: isP ? 0 : (isL ? 1 : Zof[el]), el: (el === 'Hp' ? 'H' : el) });
   zList.push(isP ? 0 : (isL ? 1 : Zof[el]));
-  zNucList.push(isP ? 1 : (isL ? 1 : Zof[el]));
+  // kernel != electron count for nitrogen in sym mode: the core is homogenized into a +5 kernel
+  // whatever the valence occupancy, and it is the ELECTRON count that drops from 5 to 4 on
+  // protonation. That is what makes NH4+ a cation while leaving all four bonds equivalent.
+  var kern = isP ? 1 : (isL ? 1 : ((SYM && el === 'N') ? 5 : Zof[el]));
+  zNucList.push(kern);
   rcList.push((isP || isL) ? 0 : RCof[el]);
   splitType.push(isL ? 'tetra' : 'sphere');
   splitIdx.push(isL ? sct : 0);
@@ -105,10 +134,10 @@ window.NO_AUTO_DYNAMICS = true;
 window.CONVERGENCE_THRESHOLD = 0;
 if (PROTON_IDX >= 0) window.USER_MARK_ATOMS = [{ i: PROTON_IDX, label: 'H⁺', col: [255,0,255] }];
 
-var KEY = 'nh3pa_' + WHAT + '_zn' + ZN + (SPLIT?'_s':'') + (SIC?'_g':'');
+var KEY = 'nh3pa_' + WHAT + '_zn' + ZN + (SPLIT?'_s':'') + (SIC?'_g':'') + (SYM?'_y':'');
 window.onSweepDone = async function(E){
   var res = null; try { res = await window.readELResidual(); } catch(e) {}
-  var rec = { what: WHAT, zn: ZN, split: SPLIT, sic: SIC, steps: STEPS, E: E,
+  var rec = { what: WHAT, zn: ZN, split: SPLIT, sic: SIC, sym: SYM, steps: STEPS, E: E,
               rMax: res ? Number(res.rMax.toPrecision(4)) : null,
               nAtoms: coords.length, nElec: zList.reduce(function(a,b){return a+b;},0) };
   try { localStorage.setItem(KEY, JSON.stringify(rec)); } catch(e){}
