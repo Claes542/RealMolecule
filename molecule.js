@@ -360,6 +360,7 @@ let nucForceElec = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
 let nucForceNuc = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
 let nucForceTotal = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
 window._nucForceTotal = nucForceTotal;
+window._nucForce = nucForce;          // what the INTEGRATOR actually uses (4839); the total above is a display copy
 window._nucForceElec = nucForceElec;
 window._nucForceNuc  = nucForceNuc;
 let nucStepCount = 0, dynamicsEnabled = window.USER_DYNAMICS || false;

@@ -145,7 +145,17 @@ if (RELAX) {
   var frozen = [];
   for (var fi = 0; fi < coords.length; fi++) if (fi !== PROBE_IDX) frozen.push(fi);
   window.USER_FROZEN_ATOMS = frozen;     // when dynamics does switch on, only the proton moves
-  window.USER_N_MOVE = 20;
+  // N_MOVE does double duty: it is the nuclear-move interval AND the force-readback interval
+  // (molecule.js:3953). Forces are read back with a full GPU sync every N_MOVE steps, INCLUDING
+  // through the 10000-step clamped stage where no nucleus is moving -- 500 pipeline stalls for
+  // nothing, which made model B ~10x slower and timed out all four overnight runs. Keep it large
+  // while converging, then drop it to 20 once dynamics is on.
+  window.USER_N_MOVE = 500;
+  setTimeout(function relaxTick(){
+    if (window._nucStepCount > 0 || (window.__relaxArmed && window.__phaseSteps > 10000)) {
+      window.USER_N_MOVE = 20;   // released: move often
+    } else setTimeout(relaxTick, 5000);
+  }, 5000);
   window.USER_DAMPING = 0.85;            // settle rather than ring; we want the minimum
   window.USER_NUC_MASS = 1836;           // a proton, not the default
   // moveNuclei() zeroes the force on any atom with Z === 0, ignoring Z_nuc -- so a bare proton
@@ -218,6 +228,9 @@ window.onSweepDone = async function(E){
               // Recording only the electronic part made a proton sitting at a force BALANCE
               // indistinguishable from one that could not move at all.
               fProbe:    (PROBE_IDX >= 0 && fE[PROBE_IDX]) ? fE[PROBE_IDX].slice() : null,
+              fProbeInt: (PROBE_IDX >= 0 && (window._nucForce||[])[PROBE_IDX]) ? window._nucForce[PROBE_IDX].slice() : null,
+              // nucForceTotal is the DISPLAY copy; molecule.js:4839 says nucForce is what the
+              // integrator uses. Record whichever is exposed, and note which.
               fProbeTot: (PROBE_IDX >= 0 && (window._nucForceTotal||[])[PROBE_IDX]) ? window._nucForceTotal[PROBE_IDX].slice() : null,
               fProbeNuc: (PROBE_IDX >= 0 && (window._nucForceNuc||[])[PROBE_IDX]) ? window._nucForceNuc[PROBE_IDX].slice() : null,
               relaxed: RELAX,
