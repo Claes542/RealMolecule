@@ -79,23 +79,41 @@ and is not observed, because nothing keeps a flow in it. So the first horn of th
 describes solutions that are mathematically available and physically absent, and the second
 describes solutions that do not occur.
 
-\paragraph{The normalisation is legitimate, and that makes the objection worse.} It might be thought
+\paragraph{The normalisation is legitimate; what is wrong is the quantifier.} It might be thought
 that setting $\nu=1$ removes the phenomenon, since all the structure in \eqref{eq:grad} is structure
-in $\nu$. It does not. Navier--Stokes rescales as
+in $\nu$. Taken as an objection to the normalisation itself, that is wrong. Navier--Stokes rescales
+as
 \[
 v(x,t)=\alpha\,u(\beta x,\alpha\beta t),\qquad \nu'=\nu\beta/\alpha,
 \]
-so any viscosity can be set to one by rescaling the data, and small $\nu$ with moderate data is the
-same problem as $\nu=1$ with large data. Fefferman asks about \emph{all} Schwartz-class initial
-data, so arbitrarily high Reynolds number is inside the hypotheses.
+so any viscosity can be set to one by rescaling the data: small $\nu$ with data of size one is the
+\emph{same problem} as $\nu=1$ with large data. Since Fefferman quantifies over all Schwartz-class
+data, arbitrarily high Reynolds number is inside the hypotheses, and the family of problems is the
+right one.
 
-The consequence is not that the formulation is saved but that it is worse off. Turbulent data are
-covered, and a turbulent solution that never blows up is, in the technical sense, \emph{smooth}. So
-the first horn of the dichotomy would come out true --- and say nothing whatever, because smoothness
-does not distinguish laminar flow from turbulence. A theorem asserting global smoothness with
-derivatives bounded by an iterated exponential is a theorem about a fluid in the way that a bound of
-$10^{10^{10}}$ metres is a statement about the diameter of this room. The vacuity is in what the
-dichotomy asks for, not in the normalisation.
+The defect is what is asked of that family. Fefferman asks, \emph{for each} datum separately, whether
+a global smooth solution exists. Turbulence is not a property of any one member; it is a property of
+the family as the Reynolds number grows, and a question about it must be asked \emph{uniformly}. Put
+the family in its natural coordinates --- data of size one, $\nu>0$ with no positive lower bound ---
+and the distinction is immediate:
+\begin{center}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+quantity & bounded for each fixed $\nu>0$? & bounded uniformly as $\nu\to0$?\\
+\midrule
+velocity $\|u\|$ & yes & \textbf{yes} (energy)\\
+gradient $\|\grad u\|$ & yes & \textbf{no} --- grows as $\nu^{-1/2}$\\
+mean-value output $M(u)$ & yes & \textbf{yes} --- and this is the content\\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent Read down the first column and every answer is yes, which is Fefferman's question and
+which settles nothing. Read down the second and the three quantities separate, which is the question
+about fluids. A theorem of the form ``for each $\nu$ the solution is smooth, with derivatives bounded
+by an iterated exponential'' is true in the first column and empty in the second, since the bound
+degenerates precisely in the limit at issue. That is the vacuity, and it survives the scaling
+argument rather than depending on it.
 
 \paragraph{The quantitative results confirm rather than relieve this.} Work in the analytic
 tradition has produced conditional regularity bounds of the form: if the velocity is bounded by $A$,
@@ -129,6 +147,23 @@ nothing as the viscosity is removed has answered the Euler question --- itself o
 --- and not the one asked. The same test applies to any claimed blowup: does the singular structure
 survive at fixed $\nu>0$ with data satisfying the stated decay, or does it exist only in a limit, or
 only with a forcing term the formulation excludes?
+
+\paragraph{The alternatives are not complementary, and the prize can be won without settling
+anything.} Fefferman's four statements do not form two pairs of negations. (A) and (B) are posed with
+$f\equiv0$ and quantify over \emph{all} admissible data: does every datum give a global smooth
+solution? (C) and (D) ask instead for the \emph{existence} of admissible data \emph{together with an
+admissible smooth forcing} $f$ for which smoothness fails. So (C) is not $\neg$(A). A blowup driven
+by an external force leaves (A) untouched --- it does not show that a fluid tears itself into a
+singularity, only that something can be done to it that does.
+
+This is not hypothetical. In September 2026 a machine-generated and Lean-verified proof of (C) was
+announced, constructing, for \emph{every} positive viscosity, a flow starting from rest and driven by
+a smooth compactly supported force whose velocity becomes unbounded in finite time at bounded kinetic
+energy. Whether it stands is for the referees. What it already shows is the present point: an
+alternative the problem itself offers has been discharged, and the question everyone means by the
+Navier--Stokes problem --- can the equations, unforced, produce a singularity --- is exactly where it
+was. A formulation whose horns can be satisfied without bearing on its subject is a formulation in
+need of repair, and that is an observation about the statement, not about the proof.
 
 \section{What should replace it: wellposedness}
 
@@ -180,18 +215,22 @@ treats as the failure case.
 We state the replacement plainly.
 
 \begin{quote}
-\textbf{Problem.} For the incompressible Navier--Stokes equations at small viscosity, with smooth
-divergence-free initial data, show that the weak solution is \emph{wellposed in mean-value outputs}:
-that functionals of the form \eqref{eq:output} depend continuously on the data, with quantitative
-error control, even though the pointwise solution does not. Equivalently: establish the second law
-of thermodynamics for fluids --- that a turbulent solution dissipates kinetic energy at a rate which
-does not vanish with the viscosity, and that this dissipation is what makes the outputs stable.
+\textbf{Problem.} Fix smooth divergence-free initial data of size one, and let $\nu>0$ be arbitrary
+with no positive lower bound. Show that the weak solution is \emph{wellposed in mean-value outputs,
+uniformly in $\nu$}: that functionals of the form \eqref{eq:output} depend continuously on the data
+with quantitative error control, by bounds that do not degenerate as $\nu\to0$, even though the
+pointwise solution does not and its gradients diverge as $\nu^{-1/2}$. Equivalently: establish the
+second law of thermodynamics for fluids --- that a turbulent solution dissipates kinetic energy at a
+rate which does not vanish with the viscosity, and that this dissipation is what makes the outputs
+stable.
 \end{quote}
 
-Two features of this statement are worth marking. It contains the viscosity, so it is a statement
-about fluids and not about a normalised abstraction. And it asks for stability rather than
-regularity, so it can be answered affirmatively for the solutions that actually occur instead of
-being answered vacuously for solutions that do not.
+Three features of this statement are worth marking. The \emph{data} are normalised rather than the
+viscosity, which is the coordinate choice that keeps $\nu$ as a parameter and so allows a limit to be
+taken at all. The bounds are required \emph{uniformly} in $\nu$, which is what makes it a question
+about turbulence rather than about one Reynolds number at a time. And it asks for stability rather
+than regularity, so it can be answered affirmatively for the solutions that occur instead of being
+answered vacuously for solutions that do not.
 
 \section{In what sense this constitutes a solution}
 
