@@ -44,3 +44,4 @@ var SITE_BOX = 34.6153;                 // a.u., fixed: sized once for model B a
 var SITE_EXTENT = 9.59;
 // indices into the built atom list (the fixed frame comes first, then C(=O)O and its two O)
 var SITE_IDX = {"CA": 17, "C4P": 8, "N1": 0, "N1H": 9, "N7": 16};
+var SITE_ASP_OD2 = 2;   // index of OD2 within SITE_ASP_B -- the atom that H-bonds N1

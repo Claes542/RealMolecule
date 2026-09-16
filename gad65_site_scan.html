@@ -58,6 +58,14 @@ var PROBE = (q.match(/[?&]probe=(ca|c4p)/) || [])[1] || '';
 // the BOUND state. The off-axis force (38-59% of the total) is the calculation saying the proton
 // would rather be somewhere else. So: dynamics on, every nucleus frozen except the probe.
 var RELAX = /[?&]relax=1/.test(q);
+// aspd=<A> : slide the whole Asp364 block along its OD2->N1 axis so that d(OD2,N1) takes the
+// requested value. The crystal difference between the isoforms -- GAD65 2.46 A, GAD67 2.76 -- is
+// 0.30 A against a combined coordinate error of 0.26 A and B-factors of 40 on the GAD65 side, so
+// it is NOT established and a calculation resting on it would rest on refinement noise. Scanning
+// the distance instead asks the question the structures cannot: how much does the branch depend
+// on this bond at all? Insensitive over 2.4-2.8 A kills the sink-tuning hypothesis regardless of
+// the true distances; strongly sensitive makes better structures worth having.
+var ASPD = parseFloat((q.match(/[?&]aspd=([\d.]+)/) || [])[1] || '0');   // 0 = crystal position
 var DP    = parseFloat((q.match(/[?&]dp=([\d.]+)/) || [])[1] || '2.0');   // probe stand-off, A
 var A2AU  = 1.8897;
 
@@ -74,7 +82,23 @@ function buildAtoms(model, R) {
     var n = Math.sqrt(dx*dx+dy*dy+dz*dz);
     c.push(['O', cx + 1.25*dx/n, cy + 1.25*dy/n, cz + 1.25*dz/n]);
   }
-  if (model === 'B') c = c.concat(SITE_ASP_B.map(function(a){ return a.slice(); }));
+  if (model === 'B') {
+    var asp = SITE_ASP_B.map(function(a){ return a.slice(); });
+    if (ASPD > 0) {
+      // unit vector from OD2 toward N1, and the current separation
+      var od2 = null;
+      for (var k = 0; k < SITE_ASP_B.length; k++) if (k === SITE_ASP_OD2) od2 = SITE_ASP_B[k];
+      var n1 = SITE_FIXED_A[SITE_IDX.N1];
+      var vx = n1[1]-od2[1], vy = n1[2]-od2[2], vz = n1[3]-od2[3];
+      var cur = Math.sqrt(vx*vx+vy*vy+vz*vz);
+      var shift = cur - ASPD;                       // >0 moves Asp toward N1
+      var ux = vx/cur, uy = vy/cur, uz = vz/cur;
+      for (var k = 0; k < asp.length; k++) {        // translate the WHOLE group, rigidly
+        asp[k][1] += ux*shift; asp[k][2] += uy*shift; asp[k][3] += uz*shift;
+      }
+    }
+    c = c.concat(asp);
+  }
   return c;
 }
 
@@ -222,6 +246,7 @@ window.onSweepDone = async function(E){
               intFrac: res ? Number(res.interiorFrac.toFixed(3)) : null,
               fCa:  fE[SITE_IDX.CA]  ? fE[SITE_IDX.CA].slice()  : null,
               fC4p: fE[SITE_IDX.C4P] ? fE[SITE_IDX.C4P].slice() : null,
+              aspd: ASPD || null,
               probe: PROBE || null, dp: PROBE ? DP : null,
               // fElec ALONE is not what moves a nucleus. The total is electronic + nuclear-nuclear,
               // and a bare proton 2 A from Ca's kernel is pushed away hard by every kernel nearby.
