@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#ddd;font-family:monospace">
+<pre id="log">pyridine proton affinity — building…</pre>
+<script>
+// ===========================================================================
+//  PYRIDINE PROTON AFFINITY -- the first quantity in this line with a KNOWN
+//  experimental value. Everything computed for GAD65 so far has been checked
+//  against nothing.
+//
+//     PA  =  E(pyridine)  -  E(pyridinium)          [ B + H+ -> BH+ ]
+//
+//  E(H+) = 0: a bare proton carries no electrons. So the two runs have the
+//  SAME electron count and differ by one kernel -- a difference within one
+//  system in everything but that proton, which is the construction where this
+//  framework's errors cancel.
+//
+//  Pyridinium's proton is a bare nucleus (Z=0, Z_nuc=1), exactly as
+//  proton_transfer.html models H+.
+//
+//  Both runs MUST share box and grid or the difference includes a change of
+//  mesh. Neither depends on R, so the box is a constant.
+//
+//  what=pyr | pyrH      steps=<n>
+// ===========================================================================
+window.onerror = function(m,u,l){ var e=document.getElementById('log'); if(e) e.textContent += '\nERROR: '+m+' ('+l+')'; };
+window.addEventListener('unhandledrejection', function(e){ var el=document.getElementById('log'); if(el) el.textContent += '\nGPU REJECTED: '+(e.reason&&e.reason.message||e.reason); });
+
+var q = location.search;
+// NOTE the alternation order: regex alternation is ordered, so (pyr|pyrH) matches "pyr" inside
+// "pyrH" and the H is silently dropped -- which made what=pyrH build neutral pyridine and would
+// have returned PA = 0 from two identical runs. Longer alternative first.
+var WHAT  = (q.match(/[?&]what=(pyrH|pyr)/) || [])[1] || 'pyr';
+var STEPS = parseInt((q.match(/[?&]steps=(\d+)/) || [])[1] || '4000', 10);
+var A2AU  = 1.8897;
+
+// Experimental pyridine geometry, planar, ring in the xy-plane.
+// N1-C2 = 1.345, C2-C3 = 1.391, C3-C4 = 1.390 A -- checked against the standard values.
+var RING = [
+  ['N',  0.0000,  1.4230, 0.0],   // N1
+  ['C',  1.1400,  0.7100, 0.0],   // C2
+  ['C',  1.1950, -0.6800, 0.0],   // C3
+  ['C',  0.0000, -1.3900, 0.0],   // C4
+  ['C', -1.1950, -0.6800, 0.0],   // C5
+  ['C', -1.1400,  0.7100, 0.0],   // C6
+  ['H',  2.0600,  1.2900, 0.0],
+  ['H',  2.1500, -1.1900, 0.0],
+  ['H',  0.0000, -2.4700, 0.0],
+  ['H', -2.1500, -1.1900, 0.0],
+  ['H', -2.0600,  1.2900, 0.0]
+];
+var coords = RING.map(function(a){ return a.slice(); });
+var PROTON_IDX = -1;
+if (WHAT === 'pyrH') {
+  PROTON_IDX = coords.length;
+  coords.push(['H', 0.0000, 1.4230 + 1.02, 0.0]);   // N-H+ along the lone-pair direction, in plane
+}
+
+// FIXED box: sized once for the larger system, shared by both, so h cannot differ between them.
+var BOX_A = 15.0;                       // Angstrom
+var scr = BOX_A * A2AU;                 // a.u.
+var gridN = 128, h = scr/gridN, gN2 = Math.round(gridN/2);
+var Zof = { H:1, C:4, N:3 }, RCof = { H:0, C:0.3, N:0.3 };
+var atoms = [], zList = [], zNucList = [], rcList = [];
+for (var n = 0; n < coords.length; n++) {
+  var el = coords[n][0], isP = (n === PROTON_IDX);
+  atoms.push({ i: Math.round(gN2 + coords[n][1]*A2AU/h),
+               j: Math.round(gN2 + coords[n][2]*A2AU/h),
+               k: Math.round(gN2 + coords[n][3]*A2AU/h),
+               Z: isP ? 0 : Zof[el], el: el });
+  zList.push(isP ? 0 : Zof[el]);
+  zNucList.push(isP ? 1 : Zof[el]);     // bare proton: kernel but no electron
+  rcList.push(isP ? 0 : RCof[el]);
+}
+document.getElementById('log').textContent =
+  'pyridine PA — ' + (WHAT === 'pyr' ? 'PYRIDINE (neutral)' : 'PYRIDINIUM (+1, bare proton on N)') +
+  '\n' + coords.length + ' atoms, ' + zList.reduce(function(a,b){return a+b;},0) + ' electrons, grid ' +
+  gridN + '^3, box ' + scr.toFixed(1) + ' a.u., h=' + (h/A2AU).toFixed(4) + ' A' +
+  '\nsteps=' + STEPS + '\nrelaxing…';
+
+window.USER_NN = gridN;
+window.USER_ATOMS = atoms;
+window.USER_SCREEN = scr;
+window.USER_Z = zList;
+window.USER_Z_NUC = zNucList;
+window.USER_RC = rcList;
+window.USER_DYNAMICS = false;
+window.USER_DIRECT_POTHER = true;       // exact i != j every step
+window.USER_STEPS = STEPS;
+window.NO_AUTO_DYNAMICS = true;
+window.CONVERGENCE_THRESHOLD = 0;
+if (PROTON_IDX >= 0) window.USER_MARK_ATOMS = [{ i: PROTON_IDX, label: 'H⁺', col: [255,0,255] }];
+
+window.onSweepDone = async function(E){
+  var res = null;
+  try { res = await window.readELResidual(); } catch(e) { console.warn('residual unavailable', e); }
+  var rec = { what: WHAT, steps: STEPS, E: E,
+              rMax: res ? Number(res.rMax.toPrecision(4)) : null,
+              nAtoms: coords.length, nElec: zList.reduce(function(a,b){return a+b;},0),
+              box: scr, gridN: gridN };
+  try { localStorage.setItem('pyridine_pa_' + WHAT, JSON.stringify(rec)); } catch(e){}
+  console.log('=== PA RESULT ===', JSON.stringify(rec));
+  document.getElementById('log').textContent += '\nDONE  E=' + E.toFixed(6) + ' Ha  rMax=' + (rec.rMax||'n/a');
+};
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function(){                                  // p5 CALLS setup()/draw(); without it nothing runs
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p.onerror = function(){ document.getElementById('log').textContent += '\nERROR: p5 failed to load'; };
+  document.body.appendChild(p);
+};
+s.onerror = function(){ document.getElementById('log').textContent += '\nERROR: molecule.js failed to load'; };
+document.body.appendChild(s);
+</script>
+</body></html>
