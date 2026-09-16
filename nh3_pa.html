@@ -127,6 +127,13 @@ if (SPLIT) {
   window.USER_INIT_ZEFF = initZeff;
   if (SIC) window.USER_SPLIT_GROUP = grp;
 }
+// frc=1 : USER_FULL_RC -- every cell within r_c of ANY kernel is excluded from every domain, so
+// the electrons form a SHELL OUTSIDE r_c rather than sitting on top of the kernel. This is the
+// construction the conduction runs use (their storage keys carry _FULLRC_, chain_slide.html
+// defaults it on), and it was missing from every proton-affinity run so far -- molecule.js has it
+// OFF by default. For NH3 it carves a 0.3 a0 sphere out of the nitrogen: the three N electrons
+// become a -3 shell outside 0.3, which is what a homogenized inner shell should look like.
+if (/[?&]frc=1/.test(q)) window.USER_FULL_RC = true;
 window.USER_DYNAMICS = false;
 window.USER_DIRECT_POTHER = true;
 window.USER_STEPS = STEPS;
@@ -134,10 +141,10 @@ window.NO_AUTO_DYNAMICS = true;
 window.CONVERGENCE_THRESHOLD = 0;
 if (PROTON_IDX >= 0) window.USER_MARK_ATOMS = [{ i: PROTON_IDX, label: 'H⁺', col: [255,0,255] }];
 
-var KEY = 'nh3pa_' + WHAT + '_zn' + ZN + (SPLIT?'_s':'') + (SIC?'_g':'') + (SYM?'_y':'');
+var KEY = 'nh3pa_' + WHAT + '_zn' + ZN + (SPLIT?'_s':'') + (SIC?'_g':'') + (SYM?'_y':'') + (window.USER_FULL_RC?'_f':'');
 window.onSweepDone = async function(E){
   var res = null; try { res = await window.readELResidual(); } catch(e) {}
-  var rec = { what: WHAT, zn: ZN, split: SPLIT, sic: SIC, sym: SYM, steps: STEPS, E: E,
+  var rec = { what: WHAT, zn: ZN, split: SPLIT, sic: SIC, sym: SYM, frc: !!window.USER_FULL_RC, steps: STEPS, E: E,
               rMax: res ? Number(res.rMax.toPrecision(4)) : null,
               nAtoms: coords.length, nElec: zList.reduce(function(a,b){return a+b;},0) };
   try { localStorage.setItem(KEY, JSON.stringify(rec)); } catch(e){}
