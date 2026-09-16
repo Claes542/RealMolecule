@@ -1,0 +1,222 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,authblk,url}
+\newcommand{\grad}{\nabla}
+\newcommand{\half}{\tfrac12}
+\newcommand{\eps}{\varepsilon}
+
+\title{The Clay Navier--Stokes Problem:\\[0.3em]
+\large Formulation and Solution}
+\author[1]{Claes Johnson}
+\affil[1]{KTH Royal Institute of Technology, SE-100 44 Stockholm, Sweden \\
+\texttt{claesjohnson@gmail.com}}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent The official formulation of the Clay Millennium Problem on the Navier--Stokes equations
+asks whether smooth initial data give a solution that stays smooth for all time, or whether the
+velocity can blow up in finite time. The alternative is exhaustive only if those are the two
+possibilities. They are not. The solutions of physical interest are \emph{turbulent}: not smooth,
+because velocity gradients grow as $\nu^{-1/2}$ and are enormous at the Reynolds numbers of any
+real flow, and not singular, because the velocity itself stays bounded. A dichotomy that omits the
+only case that matters cannot be answered in a way that says anything about fluids, and the case it
+does cover --- persistent smoothness --- is either trivial or false depending on how it is read.
+
+This article argues that the problem as posed is mis-posed, and states what should replace it.
+The replacement is Hadamard's criterion: not global smoothness, but \emph{wellposedness}. A
+solution concept earns physical meaning when the quantities computed from it are stable under
+perturbation. For turbulent solutions those quantities are not pointwise velocities, which are
+indeterminate, but mean-value outputs such as drag and lift, which are not. We set out the
+distinction, the evidence that turbulent solutions are wellposed in outputs while smooth solutions
+are not wellposed at all, and the sense in which computation --- finite element solution with
+residual-based stabilisation, error control by duality --- constitutes an answer. The reformulated
+problem has a solution, and the solution is that turbulence is what Navier--Stokes has to say.
+\end{abstract}
+
+\section{The official formulation}
+
+The Clay Mathematics Institute problem, as set out by Fefferman \cite{fefferman}, concerns the
+incompressible Navier--Stokes equations
+\begin{equation}\label{eq:ns}
+\dot u + (u\cdot\grad)u - \nu\Delta u + \grad p = f,\qquad \grad\cdot u = 0,
+\end{equation}
+on $\mathbb{R}^3$ or a periodic box, with $u(\cdot,0)=u^0$ smooth and divergence free, and with the
+viscosity $\nu$ normalised to one. Four statements are offered, of which a proof of any one settles
+the prize: existence and smoothness on $\mathbb{R}^3$; the same with periodic data; or a
+counterexample to either --- a solution which is initially smooth and whose velocity becomes
+unbounded in finite time.
+
+The structure of the question is therefore a dichotomy. Either the solution is smooth for all time,
+or it is not, and the only stated way for it not to be is blowup. \emph{Tertium non datur.}
+
+\section{Why the dichotomy is empty}
+
+\paragraph{The physical solution is neither.} A fluid at a Reynolds number of interest --- $10^6$
+and upward for an aircraft, a ship, a weather system, a pipe --- is turbulent. Turbulent flow is not
+smooth in any useful sense: the velocity varies on a length scale that shrinks with viscosity, and
+the gradients scale as
+\begin{equation}\label{eq:grad}
+|\grad u| \sim \nu^{-1/2},
+\end{equation}
+so that at $\nu=10^{-6}$ they are of order $10^{3}$ times the velocity scale, and at the viscosity of
+air over a wing, larger still. Nor is it singular: the velocity stays bounded, the kinetic energy
+stays finite, and nothing goes to infinity anywhere. Kolmogorov's scaling, in the form Onsager gave
+it, puts the velocity field at H\"older continuity $1/3$ --- continuous, with unbounded derivatives
+in the limit. That is precisely the case the official alternative does not contain.
+
+\paragraph{The smooth case is trivial or false.} If smoothness is to be read as ``the solution
+exists and is smooth for a short time'', the statement is classical and was not worth a prize. If it
+is to be read as ``the solution stays smooth for all time'', then for the flows of interest it is
+false, and not because of blowup: a smooth solution of \eqref{eq:ns} at small viscosity is
+\emph{unstable}. Perturb potential flow around a bluff body and it does not stay potential flow; it
+develops rotational separation and becomes turbulent. The smooth solution exists as a formal object
+and is not observed, because nothing keeps a flow in it. So the first horn of the dichotomy
+describes solutions that are mathematically available and physically absent, and the second
+describes solutions that do not occur.
+
+\paragraph{The normalisation removes the phenomenon.} Setting $\nu=1$ is harmless if one is asking
+about existence in the abstract and fatal if one is asking about fluids. All of the structure in
+\eqref{eq:grad} is structure in $\nu$. A formulation that normalises the viscosity away has
+normalised away turbulence, which is to say it has normalised away the subject.
+
+\paragraph{The quantitative results confirm rather than relieve this.} Work in the analytic
+tradition has produced conditional regularity bounds of the form: if the velocity is bounded by $A$,
+then the derivatives are bounded by an expression exponential in $A$ iterated several times. As a
+theorem this is real. As a statement about a fluid it is empty: a bound of the size
+$\exp\exp\exp A$ is not a bound that any flow can be said to respect, and no measurement could
+distinguish it from no bound at all. Tartar's objection to the problem's framing --- that the
+selected questions have almost no physical content, and appear to have been chosen by specialists in
+harmonic analysis rather than by anyone studying continuum mechanics --- is, on this evidence, well
+taken \cite{tartar}.
+
+\section{What should replace it: wellposedness}
+
+The defect in the official formulation is not that it asks a hard question. It is that it asks about
+the wrong property. Smoothness is not what makes a solution concept physically meaningful.
+Wellposedness is.
+
+Hadamard's criterion has three parts: a solution exists, it is unique, and it depends continuously
+on the data. The third is the one that carries the physical content, because data are never exact.
+A problem whose solution is not stable under perturbation of the data is not a model of anything
+measurable, whatever its smoothness.
+
+\paragraph{Weak solutions exist.} Leray showed in 1934 that weak solutions of \eqref{eq:ns} exist
+globally in time \cite{leray}. What was left open was not existence but whether the weak solution
+concept is \emph{wellposed} --- whether it determines anything. That is the question worth asking,
+and it is not the question the Clay problem asks.
+
+\paragraph{Wellposedness is a property of outputs, not of solutions.} Here is the point on which the
+reformulation turns. For a turbulent solution, the pointwise velocity at a given place and time is
+not determined: perturb the data in the last decimal and the pointwise field is different
+everywhere within a short time. In that sense the solution is not wellposed and never will be.
+
+But nobody measures the pointwise velocity of a turbulent flow, and no engineering question depends
+on it. What is measured, and what is asked for, are \emph{mean-value outputs}: the drag on a body,
+the lift on a wing, a pressure averaged over a surface, a flux through a section. These are
+functionals of the solution, and the question of wellposedness must be asked of them:
+\begin{equation}\label{eq:output}
+M(u) = \int_Q u\cdot\psi\,dx\,dt
+\end{equation}
+for a given weight $\psi$. The claim is that $M(u)$ is stable for turbulent solutions even though
+$u$ is not.
+
+\paragraph{The mechanism, and why it inverts the classical expectation.} Stability of an output is
+governed by an associated dual, or adjoint, problem: linearise about the computed solution, run it
+backward from the output functional, and the growth of the dual solution measures how strongly a
+perturbation of the data or of the residual can move the output. What the dual problem shows is the
+reverse of what intuition suggests. Over a \emph{turbulent} velocity field --- oscillating rapidly in
+space and time --- the dual solution grows only modestly, because the linearised coefficients
+oscillate and their effect largely cancels. Over a \emph{smooth} field the dual solution grows,
+because there is nothing to cancel. Turbulence stabilises the outputs that smoothness destabilises.
+
+This is the sense in which the reformulated problem has an answer, and the answer is not the one the
+dichotomy anticipates. Smooth solutions are not wellposed. Turbulent solutions are wellposed in
+mean-value outputs. The physically meaningful solution concept is the one the official formulation
+treats as the failure case.
+
+\section{The reformulated problem}
+
+We state the replacement plainly.
+
+\begin{quote}
+\textbf{Problem.} For the incompressible Navier--Stokes equations at small viscosity, with smooth
+divergence-free initial data, show that the weak solution is \emph{wellposed in mean-value outputs}:
+that functionals of the form \eqref{eq:output} depend continuously on the data, with quantitative
+error control, even though the pointwise solution does not. Equivalently: establish the second law
+of thermodynamics for fluids --- that a turbulent solution dissipates kinetic energy at a rate which
+does not vanish with the viscosity, and that this dissipation is what makes the outputs stable.
+\end{quote}
+
+Two features of this statement are worth marking. It contains the viscosity, so it is a statement
+about fluids and not about a normalised abstraction. And it asks for stability rather than
+regularity, so it can be answered affirmatively for the solutions that actually occur instead of
+being answered vacuously for solutions that do not.
+
+\section{In what sense this constitutes a solution}
+
+\paragraph{The solutions are constructed, not assumed.} A finite element method for \eqref{eq:ns}
+with residual-based stabilisation --- Galerkin least squares on a mesh, piecewise polynomial
+velocity and pressure, no turbulence model supplied by the user --- produces solutions which become
+turbulent even when initiated from smooth potential data, and which stay bounded. The stabilisation
+supplies dissipation in proportion to the residual, so the dissipation is generated by the
+computation rather than prescribed by a model. In the vanishing-viscosity limit the same scheme is
+an Euler solver whose turbulent dissipation appears automatically. The non-smooth,
+non-singular third case is therefore not a conjecture: it is what the equations produce when they
+are solved.
+
+\paragraph{The residual behaves as the theory requires.} For such solutions the Navier--Stokes
+residual $R(U,P)$ is small in a weak norm and large in a strong one. Small weakly is what makes the
+computed field a solution; large strongly is the statement that it is not smooth. A method whose
+residual were small in both would be computing something that does not exist.
+
+\paragraph{The error is controlled by duality, not by asserted convergence.} An a posteriori error
+estimate of the form
+\begin{equation}\label{eq:apost}
+|M(u) - M(U)| \;\le\; \int_Q R(U,P)\cdot\varphi\,dx\,dt \;\le\; S\,\|R(U,P)\|_{-1},
+\end{equation}
+with $\varphi$ the dual solution and $S$ its stability factor, converts a computed solution into a
+statement with a bound attached. The stability factor is not assumed; it is computed by solving the
+dual problem. It is through \eqref{eq:apost} that the wellposedness claim becomes quantitative: $S$
+is moderate for mean-value outputs over turbulent solutions and large for pointwise outputs and for
+smooth solutions, which is the distinction of \S3 expressed as a number.
+
+\paragraph{Computation as proof.} That an answer rests on computation is not a defect peculiar to
+this problem. The four-colour theorem was settled the same way, and the settlement was accepted
+because the computation was reproducible and its error controlled. The same standard applies here,
+and \eqref{eq:apost} is what meets it: the claim is not that a particular simulation looked
+turbulent, but that the output of the computation comes with a bound which can be evaluated, and
+which is small.
+
+\section{What the answer says about the original question}
+
+To the official question --- do smooth data give solutions that remain smooth for all time --- the
+answer implied by the above is no, and not by blowup. Smooth data give solutions that become
+turbulent: non-smooth, with gradients growing as $\nu^{-1/2}$, bounded in velocity, dissipating at a
+rate which does not vanish as $\nu\to0$. Blowup, the only failure mode the official formulation
+admits, does not occur and is not the interesting question. The interesting question is the one the
+formulation leaves out.
+
+This does not claim the prize, and it is not intended to. It claims something less procedural and
+more useful: that the problem as posed cannot be answered in a way that illuminates fluid mechanics,
+because the alternative it offers is not exhaustive over the cases that occur; and that the
+adjacent, answerable question --- wellposedness of mean-value outputs of turbulent weak solutions
+--- is both the physically meaningful one and one to which the answer is affirmative and
+computable.
+
+\begin{thebibliography}{9}
+\bibitem{fefferman} C.~Fefferman, \emph{Existence and smoothness of the Navier--Stokes equation},
+Official Problem Description, Clay Mathematics Institute, 2000.
+\bibitem{leray} J.~Leray, \emph{Sur le mouvement d'un liquide visqueux emplissant l'espace},
+Acta Math.\ \textbf{63} (1934) 193--248.
+\bibitem{tartar} L.~Tartar, remarks on the selection of the Millennium Problems, quoted in
+discussion of the Clay problem formulation.
+\bibitem{cfd} J.~Hoffman and C.~Johnson, \emph{Computational Turbulent Incompressible Flow},
+Applied Mathematics: Body and Soul, vol.~4, Springer, 2007.
+\bibitem{blog} C.~Johnson, posts under the label \emph{clay problem},
+\url{https://claesjohnson.blogspot.com/search/label/clay\%20problem}.
+\end{thebibliography}
+
+\end{document}
