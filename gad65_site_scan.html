@@ -261,6 +261,19 @@ window.onSweepDone = async function(E){
               relaxed: RELAX,
               // where the proton ENDED UP (grid coords), and how far it travelled from where it started
               probeEnd: (RELAX && window._nucPos && window._nucPos[PROBE_IDX]) ? window._nucPos[PROBE_IDX].slice() : null,
+              // where it ended up relative to BOTH carbons -- the branch answering itself
+              endToCa:  (RELAX && window._nucPos) ? Number((Math.sqrt(
+                  Math.pow(window._nucPos[PROBE_IDX][0]-atoms[SITE_IDX.CA].i,2) +
+                  Math.pow(window._nucPos[PROBE_IDX][1]-atoms[SITE_IDX.CA].j,2) +
+                  Math.pow(window._nucPos[PROBE_IDX][2]-atoms[SITE_IDX.CA].k,2))*h/A2AU).toFixed(3)) : null,
+              endToC4p: (RELAX && window._nucPos) ? Number((Math.sqrt(
+                  Math.pow(window._nucPos[PROBE_IDX][0]-atoms[SITE_IDX.C4P].i,2) +
+                  Math.pow(window._nucPos[PROBE_IDX][1]-atoms[SITE_IDX.C4P].j,2) +
+                  Math.pow(window._nucPos[PROBE_IDX][2]-atoms[SITE_IDX.C4P].k,2))*h/A2AU).toFixed(3)) : null,
+              travelled: (RELAX && window._nucPos) ? Number((Math.sqrt(
+                  Math.pow(window._nucPos[PROBE_IDX][0]-atoms[PROBE_IDX].i,2) +
+                  Math.pow(window._nucPos[PROBE_IDX][1]-atoms[PROBE_IDX].j,2) +
+                  Math.pow(window._nucPos[PROBE_IDX][2]-atoms[PROBE_IDX].k,2))*h/A2AU).toFixed(4)) : null,
               probeStart: (PROBE_IDX >= 0) ? [atoms[PROBE_IDX].i, atoms[PROBE_IDX].j, atoms[PROBE_IDX].k] : null,
               hA: h/A2AU,                 // Angstrom per cell, to convert the displacement
               dip:  [window._dip_x, window._dip_y, window._dip_z],
