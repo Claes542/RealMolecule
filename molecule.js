@@ -447,6 +447,32 @@ fn inSplitAtom(dx: f32, dy: f32, dz: f32, r: f32, n: u32) -> bool {
     let sector = u32(floor((th + 3.14159265) / 2.09439510)) % 3u;
     return sector == atoms[n].splitIdx;
   }
+  if (st == 4u) {
+    // TETRAHEDRAL: four lobes. idx 3 points along -axis (the lone pair of an sp3 centre);
+    // idx 0,1,2 at the tetrahedral polar angle 70.53 deg from +axis, 120 deg apart in azimuth,
+    // offset by splitRot. A cell belongs to whichever of the four directions it is nearest to.
+    // 'tetra' was already in the JS code map (stCode) but had no branch here, so it silently
+    // fell through to 'return true' -- four co-located spheres with no angular separation.
+    var e1x: f32; var e1y: f32; var e1z: f32;
+    if (abs(a2) < 0.9) { e1x = a1; e1y = -a0; e1z = 0.0; } else { e1x = 0.0; e1y = a2; e1z = -a1; }
+    let e1L = max(sqrt(e1x*e1x+e1y*e1y+e1z*e1z), 1e-12);
+    e1x = e1x/e1L; e1y = e1y/e1L; e1z = e1z/e1L;
+    let e2x = a1*e1z - a2*e1y; let e2y = a2*e1x - a0*e1z; let e2z = a0*e1y - a1*e1x;
+    let ux = dx/r; let uy = dy/r; let uz = dz/r;
+    let ct = 0.33333333;                 // cos(70.53 deg)
+    let stt = 0.94280904;                // sin(70.53 deg)
+    var best: u32 = 3u;
+    var bestDot: f32 = -(ux*a0 + uy*a1 + uz*a2);     // direction 3 = -axis
+    for (var kq: u32 = 0u; kq < 3u; kq = kq + 1u) {
+      let ph = atoms[n].splitRot + 2.09439510 * f32(kq);
+      let dxk = ct*a0 + stt*(cos(ph)*e1x + sin(ph)*e2x);
+      let dyk = ct*a1 + stt*(cos(ph)*e1y + sin(ph)*e2y);
+      let dzk = ct*a2 + stt*(cos(ph)*e1z + sin(ph)*e2z);
+      let dd = ux*dxk + uy*dyk + uz*dzk;
+      if (dd > bestDot) { bestDot = dd; best = kq; }
+    }
+    return best == atoms[n].splitIdx;
+  }
   return true;
 }
 `;

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#ddd;font-family:monospace">
+<pre id="log">formamide H-bond binding energy — building…</pre>
+<script>
+// ===========================================================================
+//  FORMAMIDE DIMER BINDING ENERGY -- does the protein line's ENERGETICS hold?
+//
+//  The protein validation suite (alanine dipeptide, this dimer, the alpha
+//  helix) checked bond lengths, H-bond GEOMETRY and helix stability. All
+//  geometric or force observables, all sound. No energy in that line was ever
+//  compared to a reference -- the notes say the totals are "not comparable".
+//
+//  Pyridine's proton affinity then came out at -1300 kcal/mol against +222
+//  measured. But that adds a BARE +1 kernel 1.9 a0 from a bare +3 kernel and
+//  asks for 6.6 Ha of electronic attraction: an extreme test. An H-bond is two
+//  NEUTRAL molecules approaching, no bare charge introduced, so the errors have
+//  a far better chance of cancelling. Untested either way.
+//
+//     E_bind = E(dimer) - E(mono1) - E(mono2)
+//
+//  References already on record: PySCF -2.83 (STO-3G), -4.87 (6-31G*)
+//  kcal/mol; literature ~7 for a single H-bond; the dimer file's own header
+//  says ~14 for the double H-bond.
+//
+//  All three runs share ONE box and grid, and each monomer sits at its dimer
+//  position, so the only difference between dimer and monomer is the presence
+//  of the other molecule. Same construction as the pyridine test: a difference
+//  within one geometry, which is where this framework's errors cancel.
+//
+//  what=dimer | mono1 | mono2     steps=<n>
+// ===========================================================================
+window.onerror = function(m,u,l){ var e=document.getElementById('log'); if(e) e.textContent += '\nERROR: '+m+' ('+l+')'; };
+window.addEventListener('unhandledrejection', function(e){ var el=document.getElementById('log'); if(el) el.textContent += '\nGPU REJECTED: '+(e.reason&&e.reason.message||e.reason); });
+
+var q = location.search;
+var WHAT  = (q.match(/[?&]what=(dimer|mono1|mono2)/) || [])[1] || 'dimer';
+var STEPS = parseInt((q.match(/[?&]steps=(\d+)/) || [])[1] || '4000', 10);
+
+var gridN = 200, scr = 16, N2 = 100, h = scr/gridN, A = 1.8897;
+var csep = 5.5 * A, x1 = -csep/2, x2 = csep/2;
+
+// exactly the geometry of formamide_dimer.html
+var MOL1 = [
+  ['C', x1,              0,        0,        4],
+  ['O', x1 - 1.22*A,     0,        0,        2],
+  ['H', x1,              0,        1.09*A,   1],
+  ['N', x1 + 1.34*A,     0.3*A,    0,        3],
+  ['H', x1 + 2.21*A,    -0.2*A,    0,        1],   // HN1a, the H-bond donor
+  ['H', x1 + 1.64*A,     1.2*A,    0,        1]
+];
+var MOL2 = [
+  ['C', x2,              0,        0,        4],
+  ['O', x2 - 1.22*A,     0,        0,        2],   // O2, the acceptor
+  ['H', x2,              0,       -1.09*A,   1],
+  ['N', x2 + 1.34*A,    -0.3*A,    0,        3],
+  ['H', x2 + 2.21*A,     0.2*A,    0,        1],
+  ['H', x2 + 1.64*A,    -1.2*A,    0,        1]
+];
+var coords = (WHAT === 'dimer') ? MOL1.concat(MOL2) : (WHAT === 'mono1' ? MOL1 : MOL2);
+
+var RCof = { H:0, C:0.3, N:0.3, O:0.8 };
+var atoms = [], zList = [], rcList = [];
+for (var n = 0; n < coords.length; n++) {
+  var c = coords[n];
+  atoms.push({ i: Math.round(N2 + c[1]/h), j: Math.round(N2 + c[2]/h), k: Math.round(N2 + c[3]/h),
+               Z: c[4], el: c[0] });
+  zList.push(c[4]); rcList.push(RCof[c[0]]);
+}
+document.getElementById('log').textContent =
+  'formamide ' + WHAT + ' — ' + coords.length + ' atoms, ' +
+  zList.reduce(function(a,b){return a+b;},0) + ' electrons, grid ' + gridN + '^3, box ' + scr +
+  ' a.u., h=' + (h/A).toFixed(4) + ' A\nsteps=' + STEPS + '\nrelaxing…';
+
+window.USER_NN = gridN;
+window.USER_ATOMS = atoms;
+window.USER_SCREEN = scr;
+window.USER_Z = zList;
+window.USER_RC = rcList;
+window.USER_DYNAMICS = false;          // clamped: the geometry is the dimer's, held
+window.USER_DIRECT_POTHER = true;      // exact i != j every step
+window.USER_STEPS = STEPS;
+window.NO_AUTO_DYNAMICS = true;
+window.CONVERGENCE_THRESHOLD = 0;
+
+window.onSweepDone = async function(E){
+  var res = null;
+  try { res = await window.readELResidual(); } catch(e) {}
+  var rec = { what: WHAT, steps: STEPS, E: E,
+              rMax: res ? Number(res.rMax.toPrecision(4)) : null,
+              nAtoms: coords.length, nElec: zList.reduce(function(a,b){return a+b;},0) };
+  try { localStorage.setItem('formamide_bind_' + WHAT, JSON.stringify(rec)); } catch(e){}
+  console.log('=== BIND RESULT ===', JSON.stringify(rec));
+  document.getElementById('log').textContent += '\nDONE  E=' + E.toFixed(6) + ' Ha  rMax=' + (rec.rMax||'n/a');
+};
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function(){
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p.onerror = function(){ document.getElementById('log').textContent += '\nERROR: p5 failed to load'; };
+  document.body.appendChild(p);
+};
+s.onerror = function(){ document.getElementById('log').textContent += '\nERROR: molecule.js failed to load'; };
+document.body.appendChild(s);
+</script>
+</body></html>

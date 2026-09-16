@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#ddd;font-family:monospace">
+<pre id="log">NH3 proton affinity — building…</pre>
+<script>
+// ===========================================================================
+//  NH3 PROTON AFFINITY -- the cheap calibration system.
+//
+//     PA = E(NH3) - E(NH4+)        experiment: 204 kcal/mol = 0.325 Ha
+//
+//  Four atoms against pyridine's eleven, the same nitrogen acceptor, the same
+//  bare-proton construction proton_transfer_nh3.html already uses (Z=0 with
+//  Z_nuc=1). Both runs carry the same electron count and differ by one kernel.
+//
+//  Variants, to separate the hypotheses that pyridine could not:
+//    zn=3  (default)  N as the house reduced map: 3 electrons, 3 bonds, no lone pair
+//    zn=5             full valence: core 1s^2 in the kernel, 5 valence electrons
+//    split=1          N as FOUR tetrahedral lobes -- 3 toward the H's, 1 free.
+//                     This is the direct analogue of the 3-split water model
+//                     (2 lobes to the H's, 1 lone pair) that gives 99% of the
+//                     measured dipole. Needs zn=4.
+//    sic=1            lobes share a group: siblings do not repel.
+//                     NOTE: on the pyridine evidence and the pair-counting
+//                     argument, siblings SHOULD repel -- three unit charges give
+//                     three pairs, each counted once by the i != j sum, and there
+//                     is nothing to double count. sic=1 is here to be refuted,
+//                     not assumed.
+// ===========================================================================
+window.onerror = function(m,u,l){ var e=document.getElementById('log'); if(e) e.textContent += '\nERROR: '+m+' ('+l+')'; };
+window.addEventListener('unhandledrejection', function(e){ var el=document.getElementById('log'); if(el) el.textContent += '\nGPU REJECTED: '+(e.reason&&e.reason.message||e.reason); });
+
+var q = location.search;
+var WHAT  = (q.match(/[?&]what=(nh4|nh3)/) || [])[1] || 'nh3';
+var ZN    = parseInt((q.match(/[?&]zn=(\d)/) || [])[1] || '3', 10);
+var SPLIT = /[?&]split=1/.test(q);
+var SIC   = /[?&]sic=1/.test(q);
+var STEPS = parseInt((q.match(/[?&]steps=(\d+)/) || [])[1] || '4000', 10);
+
+var A = 1.8897;
+// NH3: N-H = 1.012 A, HNH = 106.7 deg. Pyramid about +z; the lone pair points -z,
+// and the incoming proton goes there, at the N-H distance of NH4+ (1.021 A).
+var bNH = 1.012, ang = 106.7*Math.PI/180;
+// solve for the polar angle theta from the apex such that HNH = 106.7
+var ct = Math.cos(ang), th = Math.acos(Math.sqrt((1+2*ct)/3));   // angle from +z
+var sx = Math.sin(th), cz = Math.cos(th);
+var coords = [['N', 0,0,0, 'N']];
+for (var k = 0; k < 3; k++) {
+  var phi = 2*Math.PI*k/3;
+  coords.push(['H', bNH*sx*Math.cos(phi), bNH*sx*Math.sin(phi), bNH*cz, 'H']);
+}
+var PROTON_IDX = -1;
+if (WHAT === 'nh4') { PROTON_IDX = coords.length; coords.push(['H', 0, 0, -1.021, 'Hp']); }
+
+var BOX = 20.0;                       // a.u., fixed for every variant
+var gridN = 128, h = BOX/gridN, gN2 = Math.round(gridN/2);
+var Zof = { N:ZN, H:1 }, RCof = { N:0.3, H:0 };
+
+// nitrogen split into FOUR tetrahedral lobes: three along the N-H bonds, one on -z
+var SPLIT_OF = [], expand = [];
+coords.forEach(function(c, i) {
+  if (i === 0 && SPLIT) { for (var s = 0; s < 4; s++) { expand.push(c.slice()); SPLIT_OF.push(s); } }
+  else { expand.push(c.slice()); SPLIT_OF.push(-1); }
+});
+coords = expand;
+if (SPLIT) PROTON_IDX = (WHAT === 'nh4') ? coords.length - 1 : -1;
+
+var atoms = [], zList = [], zNucList = [], rcList = [];
+var splitType = [], splitIdx = [], splitAxis = [], splitRot = [], initZeff = [], grp = [];
+for (var n = 0; n < coords.length; n++) {
+  var el = coords[n][0], isP = (n === PROTON_IDX), sct = SPLIT_OF[n], isL = (sct >= 0);
+  atoms.push({ i: Math.round(gN2 + coords[n][1]*A/h),
+               j: Math.round(gN2 + coords[n][2]*A/h),
+               k: Math.round(gN2 + coords[n][3]*A/h),
+               Z: isP ? 0 : (isL ? 1 : Zof[el]), el: (el === 'Hp' ? 'H' : el) });
+  zList.push(isP ? 0 : (isL ? 1 : Zof[el]));
+  zNucList.push(isP ? 1 : (isL ? 1 : Zof[el]));
+  rcList.push((isP || isL) ? 0 : RCof[el]);
+  splitType.push(isL ? 'tetra' : 'sphere');
+  splitIdx.push(isL ? sct : 0);
+  splitAxis.push([0,0,1]);
+  splitRot.push(0);
+  initZeff.push(isL ? 3 : (isP ? 1 : Zof[el]));
+  grp.push(isL ? 999 : n);
+}
+document.getElementById('log').textContent =
+  'NH3 PA — ' + WHAT + '  zn=' + ZN + (SPLIT?' 4-split':'') + (SIC?' sharedSIC':'') +
+  '\n' + coords.length + ' entries, ' + zList.reduce(function(a,b){return a+b;},0) + ' electrons, grid ' +
+  gridN + '^3, box ' + BOX + ' a.u., h=' + (h/A).toFixed(4) + ' A\nsteps=' + STEPS + '\nrelaxing…';
+
+window.USER_NN = gridN;
+window.USER_ATOMS = atoms;
+window.USER_SCREEN = BOX;
+window.USER_Z = zList;
+window.USER_Z_NUC = zNucList;
+window.USER_RC = rcList;
+if (SPLIT) {
+  window.USER_SPLIT_TYPE = splitType; window.USER_SPLIT_IDX = splitIdx;
+  window.USER_SPLIT_AXIS = splitAxis; window.USER_SPLIT_ROT = splitRot;
+  window.USER_INIT_ZEFF = initZeff;
+  if (SIC) window.USER_SPLIT_GROUP = grp;
+}
+window.USER_DYNAMICS = false;
+window.USER_DIRECT_POTHER = true;
+window.USER_STEPS = STEPS;
+window.NO_AUTO_DYNAMICS = true;
+window.CONVERGENCE_THRESHOLD = 0;
+if (PROTON_IDX >= 0) window.USER_MARK_ATOMS = [{ i: PROTON_IDX, label: 'H⁺', col: [255,0,255] }];
+
+var KEY = 'nh3pa_' + WHAT + '_zn' + ZN + (SPLIT?'_s':'') + (SIC?'_g':'');
+window.onSweepDone = async function(E){
+  var res = null; try { res = await window.readELResidual(); } catch(e) {}
+  var rec = { what: WHAT, zn: ZN, split: SPLIT, sic: SIC, steps: STEPS, E: E,
+              rMax: res ? Number(res.rMax.toPrecision(4)) : null,
+              nAtoms: coords.length, nElec: zList.reduce(function(a,b){return a+b;},0) };
+  try { localStorage.setItem(KEY, JSON.stringify(rec)); } catch(e){}
+  console.log('=== NH3 PA ===', JSON.stringify(rec));
+  document.getElementById('log').textContent += '\nDONE  E=' + E.toFixed(6) + ' Ha  rMax=' + (rec.rMax||'n/a');
+};
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function(){ var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  p.onerror = function(){ document.getElementById('log').textContent += '\nERROR: p5 failed'; };
+  document.body.appendChild(p); };
+s.onerror = function(){ document.getElementById('log').textContent += '\nERROR: molecule.js failed'; };
+document.body.appendChild(s);
+</script>
+</body></html>
