@@ -48,29 +48,63 @@ var RING = [
   ['H', -2.1500, -1.1900, 0.0],
   ['H', -2.0600,  1.2900, 0.0]
 ];
-var coords = RING.map(function(a){ return a.slice(); });
+// split=1 : nitrogen as THREE co-located domains in angular thirds, the construction the water
+// model uses (three entries at the O site, 'third' split, two toward the H's and one lone pair).
+// Without it, Z=3 on one atom entry is ONE domain carrying three units of charge -- NELEC counts
+// atoms, not electrons (molecule.js:12), and the normalisation sets integral U^2 = Z_eff per
+// DOMAIN -- so nitrogen is a symmetric blob with no lone-pair lobe. A proton then has nothing
+// directional to bind to, which is what PA = -1280 kcal/mol was measuring. It also explains why
+// N:5 was WORSE by exactly the extra kernel repulsion: a bigger symmetric blob adds no
+// directional charge.
+// Geometry: the three bond directions from N lie at -32, +90 and -148 degrees in the ring plane,
+// i.e. ~120 apart -- a trigonal sp2 nitrogen. With axis = ring normal and rot = 0 the shader's
+// sectors (molecule.js:~437) land as C2 -> 0, lone pair -> 1, C6 -> 2.
+var SPLIT = /[?&]split=1/.test(q);
+var coords = [], SPLIT_OF = [];      // SPLIT_OF[i] = sector index, or -1 for a plain sphere
+RING.forEach(function(a, k) {
+  if (k === 0 && SPLIT) {            // the nitrogen
+    for (var sct = 0; sct < 3; sct++) { coords.push(a.slice()); SPLIT_OF.push(sct); }
+  } else { coords.push(a.slice()); SPLIT_OF.push(-1); }
+});
 var PROTON_IDX = -1;
 if (WHAT === 'pyrH') {
   PROTON_IDX = coords.length;
   coords.push(['H', 0.0000, 1.4230 + 1.02, 0.0]);   // N-H+ along the lone-pair direction, in plane
+  SPLIT_OF.push(-1);
 }
 
 // FIXED box: sized once for the larger system, shared by both, so h cannot differ between them.
 var BOX_A = 15.0;                       // Angstrom
 var scr = BOX_A * A2AU;                 // a.u.
 var gridN = 128, h = scr/gridN, gN2 = Math.round(gridN/2);
-var Zof = { H:1, C:4, N:3 }, RCof = { H:0, C:0.3, N:0.3 };
+// zn=<n> : nitrogen's electron count. The house map uses N:3 -- two sigma bonds plus ONE
+// non-bonding electron -- where nitrogen's valence is 5 (2 sigma + 1 pi + a lone PAIR). A proton
+// binds to that lone pair, so the reduced map has half of what protonation needs, facing a bare
+// +3 kernel. At N:3 this page returns PA = -1280 kcal/mol against +222 measured: wrong sign,
+// stable across a 2000/4000/8000 ladder, so not a convergence artefact. This parameter tests
+// whether the valence is the cause.
+var ZN = parseInt((q.match(/[?&]zn=(\d)/) || [])[1] || '3', 10);
+var Zof = { H:1, C:4, N:ZN }, RCof = { H:0, C:0.3, N:0.3 };
 var atoms = [], zList = [], zNucList = [], rcList = [];
+var splitType = [], splitIdx = [], splitAxis = [], splitRot = [], initZeff = [];
 for (var n = 0; n < coords.length; n++) {
-  var el = coords[n][0], isP = (n === PROTON_IDX);
+  var el = coords[n][0], isP = (n === PROTON_IDX), sct = SPLIT_OF[n];
   atoms.push({ i: Math.round(gN2 + coords[n][1]*A2AU/h),
                j: Math.round(gN2 + coords[n][2]*A2AU/h),
                k: Math.round(gN2 + coords[n][3]*A2AU/h),
                Z: isP ? 0 : Zof[el], el: el });
-  zList.push(isP ? 0 : Zof[el]);
-  zNucList.push(isP ? 1 : Zof[el]);     // bare proton: kernel but no electron
-  rcList.push(isP ? 0 : RCof[el]);
+  var isSplitN = (sct >= 0);
+  zList.push(isP ? 0 : (isSplitN ? 1 : Zof[el]));       // each N lobe carries ONE unit
+  zNucList.push(isP ? 1 : (isSplitN ? 1 : Zof[el]));    // three +1 kernels at the shared N site
+  rcList.push((isP || isSplitN) ? 0 : RCof[el]);        // no core cutoff on the lobes, as in water
+  splitType.push(isSplitN ? 'third' : 'sphere');
+  splitIdx.push(isSplitN ? sct : 0);
+  splitAxis.push([0, 0, 1]);                            // ring normal
+  splitRot.push(0);
+  initZeff.push(isSplitN ? 3 : (isP ? 1 : Zof[el]));    // lobes peaked, as the water model does
 }
+// fix the Z of the split entries: with SPLIT the atom list is longer, so Zof['N'] is not used there
+if (SPLIT) for (var n = 0; n < coords.length; n++) if (SPLIT_OF[n] >= 0) atoms[n].Z = 1;
 document.getElementById('log').textContent =
   'pyridine PA — ' + (WHAT === 'pyr' ? 'PYRIDINE (neutral)' : 'PYRIDINIUM (+1, bare proton on N)') +
   '\n' + coords.length + ' atoms, ' + zList.reduce(function(a,b){return a+b;},0) + ' electrons, grid ' +
@@ -83,6 +117,13 @@ window.USER_SCREEN = scr;
 window.USER_Z = zList;
 window.USER_Z_NUC = zNucList;
 window.USER_RC = rcList;
+if (SPLIT) {
+  window.USER_SPLIT_TYPE = splitType;
+  window.USER_SPLIT_IDX  = splitIdx;
+  window.USER_SPLIT_AXIS = splitAxis;
+  window.USER_SPLIT_ROT  = splitRot;
+  window.USER_INIT_ZEFF  = initZeff;
+}
 window.USER_DYNAMICS = false;
 window.USER_DIRECT_POTHER = true;       // exact i != j every step
 window.USER_STEPS = STEPS;
@@ -97,7 +138,9 @@ window.onSweepDone = async function(E){
               rMax: res ? Number(res.rMax.toPrecision(4)) : null,
               nAtoms: coords.length, nElec: zList.reduce(function(a,b){return a+b;},0),
               box: scr, gridN: gridN };
-  try { localStorage.setItem('pyridine_pa_' + WHAT, JSON.stringify(rec)); } catch(e){}
+  rec.zn = ZN;
+  rec.split = SPLIT;
+  try { localStorage.setItem('pyridine_pa_' + WHAT + '_zn' + ZN + (SPLIT?'_s':''), JSON.stringify(rec)); } catch(e){}
   console.log('=== PA RESULT ===', JSON.stringify(rec));
   document.getElementById('log').textContent += '\nDONE  E=' + E.toFixed(6) + ' Ha  rMax=' + (rec.rMax||'n/a');
 };
