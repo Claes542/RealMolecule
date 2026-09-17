@@ -40,6 +40,14 @@ var q = location.search;
 var WHAT  = (q.match(/[?&]what=(nh4|nh3|natom|hatom)/) || [])[1] || 'nh3';
 var ZN    = parseInt((q.match(/[?&]zn=(\d)/) || [])[1] || '3', 10);
 var SPLIT = /[?&]split=1/.test(q);
+// spl=<n> : split nitrogen's valence into n SEPARATE one-electron domains instead of one -n blob.
+// This is the clean RealQM answer to the self-repulsion question: n unit charges on non-overlapping
+// supports give n(n-1)/2 pairs, each counted once by the i!=j rule -- exact, with no ad hoc (Z-1)/Z
+// factor and no kinetic fudge. Precedent: 3-split oxygen gave H2O a dipole of 1.836 D against
+// 1.85 experimental. n=3 uses splitType 'third' (3-fold azimuthal about the C3 axis, one lobe per
+// N-H bond), n=2 uses 'hemi', n=4 uses 'tetra'. Siblings are NOT grouped: they are genuine separate
+// electrons and must repel each other, so shared-SIC is left off.
+var SPL = parseInt((q.match(/[?&]spl=(\d)/) || [])[1] || '0', 10);
 var SIC   = /[?&]sic=1/.test(q);
 var STEPS = parseInt((q.match(/[?&]steps=(\d+)/) || [])[1] || '4000', 10);
 // sym=1 : the T_d-symmetric NH4+. Built as NH3 + a bare proton, three hydrogens own a domain and
@@ -53,6 +61,52 @@ var STEPS = parseInt((q.match(/[?&]steps=(\d+)/) || [])[1] || '4000', 10);
 //    NH3   N Z=5 kernel +5, 3H Z=1  -> 8 electrons, 8 kernel, neutral
 var SYM = /[?&]sym=1/.test(q);
 if (SYM) { ZN = (WHAT === 'nh4') ? 4 : 5; }
+// shr=<R> : HOMOGENISED SHELL. Nitrogen keeps its +3 kernel clamped at r_c but its three valence
+// electrons stop being a relaxing DOMAIN and become a fixed -3 charge smeared uniformly over a
+// sphere of radius R. By Newton's theorem the pair is exactly neutral outside R and a bare +3
+// kernel inside it, so any binding must come from hydrogen charge that PENETRATES the shell.
+//
+// The point is what it removes. Every proton-affinity run so far let nitrogen's domain relax, and
+// it relaxes DIFFERENTLY in NH3 than in NH4+ -- that shape change is the one error the user's
+// cancellation argument does NOT cover, since the clamp and the core are identical on both sides
+// but the shape is not. Freezing nitrogen makes it literally the same object in both molecules,
+// so it cannot contribute to the difference at all. What is left is the hydrogens and the proton.
+// Cost drops too: 3 electrons instead of 6, since nitrogen no longer carries domains.
+var SHR = parseFloat((q.match(/[?&]shr=([\d.]+)/) || [])[1] || '0');
+var SHELL = SHR > 0;
+// shq=<q> : shell charge, default = the kernel charge so the atom is neutral outside R.
+// For NH4+ the bare-proton construction cannot be tetrahedral -- three electrons over four
+// equivalent protons is asymmetric BY CONSTRUCTION, and the run reports a 5.36 D dipole where
+// T_d demands exactly zero. Booking the cation as shell -2 with four ordinary hydrogens keeps
+// the same six valence electrons, keeps nitrogen frozen, and restores T_d.
+// hom=1 : nitrogen's charge is homogenised inside its own FREE DOMAIN, not smeared into a fixed
+// external potential. The difference is a boundary. A shell potential has none: hydrogen electrons
+// pass straight through it into the clamp well, which is why the frozen-shell NH3 dipole came out
+// 4.0 D against 1.47 experimental. A homogenised DOMAIN tiles against the hydrogen domains, so the
+// hydrogens MEET it and non-overlap excludes them -- while uniform density still prevents nitrogen
+// from distorting its shape. Free boundary, frozen shape.
+var HOMDOM = /[?&]hom=1/.test(q);
+// nq=<Z> : nitrogen's DOMAIN charge. The plain RealQM construction and nothing else -- one -Z
+// charge density on N, one -1 on each H, non-overlapping supports whose boundaries are free.
+// NH3 is nq=3, NH4+ is nq=2 with four ordinary hydrogens, which makes the cation T_d and keeps
+// six valence electrons on both sides. No shell, no fixed outer radius, no frozen shape: the
+// only imposed length is the inner cutoff r_c, exactly as in every other molecule run.
+// Pairs with mocc, since a -Z domain must carry its self-repulsion reduced by (Z-1)/Z.
+// kn=<c> : kinetic coefficient for NITROGEN's domain only. The physical value is 1/2. A domain
+// holding Z electrons in ONE smooth psi under-counts kinetic energy -- Z electrons forced into
+// orthogonal orbitals carry more gradient than a single lumped function -- and kinetic energy is
+// what resists compression, i.e. it IS a form of self-repulsion. Thomas-Fermi puts the excess at
+// about Z^(2/3) per electron, so 3^(2/3) = 2.08, i.e. kn ~ 1.0, is the first guess for a -3 domain.
+// Implemented via FIRST_SHELL=1: labels >= 1 are the hydrogens and keep KIN_S = 0.5, label 0 is
+// nitrogen and takes KIN_C = kn. Nitrogen is coords[0] by construction.
+// NOT a physical knob: it corresponds to a lighter carrier and rescales every length, so read
+// trends against the dipole, not total energies.
+var KN = parseFloat((q.match(/[?&]kn=([\d.]+)/) || [])[1] || '');
+var NQ = parseFloat((q.match(/[?&]nq=([\d.]+)/) || [])[1] || '');
+var HASNQ = !isNaN(NQ);
+var SHQ = parseFloat((q.match(/[?&]shq=([\d.]+)/) || [])[1] || '');
+var SHQV = isNaN(SHQ) ? ZN : SHQ;
+var SHELL_SYM = (SHELL || HOMDOM) && !isNaN(SHQ);  // explicit shq => no bare proton, all H own an electron
 
 var A = 1.8897;
 // NH3: N-H = 1.012 A, HNH = 106.7 deg. Pyramid about +z; the lone pair points -z,
@@ -63,7 +117,15 @@ var ct = Math.cos(ang), th = Math.acos(Math.sqrt((1+2*ct)/3));   // angle from +
 var sx = Math.sin(th), cz = Math.cos(th);
 var FRAG = (WHAT === 'natom' || WHAT === 'hatom');
 var coords = [['N', 0,0,0, 'N']];
-if (WHAT === 'nh4' && SYM) {
+// GEOMETRY IS A PROPERTY OF THE SPECIES, NOT OF THE CHARGE BOOKKEEPING. The T_d coordinates were
+// reachable only under sym=1, so every asymmetric NH4+ run so far was NH3's pyramid with a proton
+// bolted on at -z -- the wrong geometry for the cation. Experimental NH4+ is T_d, four equal
+// 1.021 A bonds at 109.47 deg. Shell mode uses it too.
+// GEOMETRY IS UNCONDITIONAL. Gating T_d on (SYM || SHELL) meant 10 of the 15 NH4+ runs in this
+// project were computed on NH3's pyramid with a proton bolted at -z -- the wrong shape AND the
+// wrong size for the cation. Every nh4 run gets the tetrahedron now; only the ELECTRON booking
+// (bare proton vs shell charge vs sym) is a switch.
+if (WHAT === 'nh4') {
   // NH4+ is T_d: four EQUAL bonds of 1.021 A at the tetrahedral angle 109.47 deg, not NH3's
   // pyramid with a fourth atom bolted on. Three in a cone about +z, one along -z.
   var b4 = 1.021, c4 = 1/3, s4 = Math.sqrt(1 - 1/9);
@@ -82,9 +144,17 @@ if (WHAT === 'nh4' && SYM) {
     coords.push(['H', bNH*sx*Math.cos(phi), bNH*sx*Math.sin(phi), bNH*cz, 'H']);
   }
 }
-var PROTON_IDX = -1;
-if (WHAT === 'nh4' && !SYM) {      // asymmetric: a bare proton, owning no domain
-  coords.push(['H', 0, 0, -1.021, 'Hp']);
+var PROTON_IDX = -1, zList_isProtonAtTd = false;
+if (WHAT === 'nh4' && SHELL && !SHELL_SYM) {
+  // bare-proton booking: fourth hydrogen of the T_d cage owns no domain. Breaks T_d in the charge.
+  PROTON_IDX = coords.length - 1;
+  zList_isProtonAtTd = true;
+} else if (WHAT === 'nh4' && (SHELL_SYM || HASNQ)) {
+  // shell-charge booking: all four hydrogens are ordinary, the cation comes from shell = ZN-1.
+  PROTON_IDX = -1;
+} else if (WHAT === 'nh4' && !SYM) {
+  // asymmetric booking on the T_d cage: the fourth vertex is the bare proton. Previously this
+  // branch APPENDED a fifth hydrogen at NH3's apex distance, giving a 5-coordinate cation.
   PROTON_IDX = coords.length - 1;
 }
 
@@ -99,32 +169,49 @@ var Zof = { N:ZN, H:1 }, RCof = { N:RCN, H:0 };
 
 // nitrogen split into FOUR tetrahedral lobes: three along the N-H bonds, one on -z
 var SPLIT_OF = [], expand = [];
+var NLOBE = SPL >= 2 ? SPL : (SPLIT ? 4 : 0);
 coords.forEach(function(c, i) {
-  if (i === 0 && SPLIT) { for (var s = 0; s < 4; s++) { expand.push(c.slice()); SPLIT_OF.push(s); } }
+  if (i === 0 && NLOBE >= 2) { for (var s = 0; s < NLOBE; s++) { expand.push(c.slice()); SPLIT_OF.push(s); } }
   else { expand.push(c.slice()); SPLIT_OF.push(-1); }
 });
 coords = expand;
 // NOT in sym mode -- there the fourth H is an ordinary hydrogen owning a domain. Setting
 // PROTON_IDX here regardless of SYM turned it into a bare proton and the sym 4-split run came
 // out with 7 electrons instead of 8.
-if (SPLIT && !SYM) PROTON_IDX = (WHAT === 'nh4') ? coords.length - 1 : -1;
+// PROTON_IDX is computed BEFORE the split expands coords, so it must be remapped afterwards --
+// with spl=3 the pre-expansion index 4 lands on the second hydrogen instead of the T_d apex.
+// Only when the cation is actually booked with a bare proton (not SYM, not shq, not nq).
+if (NLOBE >= 2 && WHAT === 'nh4' && !SYM && !SHELL_SYM && !HASNQ) PROTON_IDX = coords.length - 1;
+else if (NLOBE >= 2 && WHAT !== 'nh4') PROTON_IDX = -1;
 
-var atoms = [], zList = [], zNucList = [], rcList = [];
+var atoms = [], zList = [], zNucList = [], rcList = [], shqList = [], shrList = [], homList = [];
 var splitType = [], splitIdx = [], splitAxis = [], splitRot = [], initZeff = [], grp = [];
 for (var n = 0; n < coords.length; n++) {
   var el = coords[n][0], isP = (n === PROTON_IDX), sct = SPLIT_OF[n], isL = (sct >= 0);
-  atoms.push({ i: Math.round(gN2 + coords[n][1]*A/h),
-               j: Math.round(gN2 + coords[n][2]*A/h),
-               k: Math.round(gN2 + coords[n][3]*A/h),
+  // NO ROUNDING. Snapping kernels to integer cells broke the tetrahedron: the four NH4+ bonds
+  // came out 1.0459 / 1.0194 / 1.0194 / 0.9922 A, a 2.8% spread, so T_d was destroyed before the
+  // solver ran and the "dipole must be 0 by symmetry" control had a floor of unknown size.
+  // Positions reach the GPU as f32 and are never used as array indices -- the only integer use is
+  // a display-only density line plot that rounds locally -- so fractional cells are exact here.
+  atoms.push({ i: gN2 + coords[n][1]*A/h,
+               j: gN2 + coords[n][2]*A/h,
+               k: gN2 + coords[n][3]*A/h,
                Z: isP ? 0 : (isL ? 1 : Zof[el]), el: (el === 'Hp' ? 'H' : el) });
-  zList.push(isP ? 0 : (isL ? 1 : Zof[el]));
+  var isShellN = SHELL && !HOMDOM && el === 'N' && !isL;
+  var isHomN   = HOMDOM && el === 'N' && !isL;
+  // nitrogen carries NO electron domain in shell mode: its charge is the fixed smeared shell
+  var isNqN = HASNQ && el === 'N' && !isL;
+  zList.push((isP || isShellN) ? 0 : (isL ? 1 : (isHomN ? SHQV : (isNqN ? NQ : Zof[el]))));
+  homList.push(isHomN ? 1 : 0);
+  shqList.push(isShellN ? SHQV : 0);
+  shrList.push(isShellN ? SHR : 0);
   // kernel != electron count for nitrogen in sym mode: the core is homogenized into a +5 kernel
   // whatever the valence occupancy, and it is the ELECTRON count that drops from 5 to 4 on
   // protonation. That is what makes NH4+ a cation while leaving all four bonds equivalent.
   var kern = isP ? 1 : (isL ? 1 : ((SYM && el === 'N') ? 5 : Zof[el]));
   zNucList.push(kern);
   rcList.push((isP || isL) ? 0 : RCof[el]);
-  splitType.push(isL ? 'tetra' : 'sphere');
+  splitType.push(isL ? (NLOBE === 3 ? 'third' : NLOBE === 2 ? 'hemi' : 'tetra') : 'sphere');
   splitIdx.push(isL ? sct : 0);
   splitAxis.push([0,0,1]);
   splitRot.push(0);
@@ -133,6 +220,14 @@ for (var n = 0; n < coords.length; n++) {
 }
 document.getElementById('log').textContent =
   'NH3 PA — ' + WHAT + '  zn=' + ZN + (SPLIT?' 4-split':'') + (SIC?' sharedSIC':'') +
+  (SHELL&&!HOMDOM?(' hom-shell q=-' + SHQV + ' R=' + SHR + (SHELL_SYM?' T_d-sym':' bare-proton')):'') +
+  // hom mode has the SAME atom and electron counts as the plain model, so without this the banner
+  // is identical and a run cannot be identified from the page at all.
+  (HOMDOM?(' HOMOGENISED DOMAIN q=-' + SHQV + ' free outer boundary, r_c=' + RCN):'') +
+  (HASNQ&&!HOMDOM?(' N domain -' + NQ + ', free supports, r_c=' + RCN):'') +
+  (!isNaN(KN)?(' KIN(N)=' + KN + ' vs 0.5 on H'):'') +
+  (SPL?(' N split into ' + SPL + ' x -1 lobes, no shared-SIC'):'') +
+  (window.USER_FULL_RC?' frc':'') + (window.USER_MULTI_OCC?' mocc':'') +
   '\n' + coords.length + ' entries, ' + zList.reduce(function(a,b){return a+b;},0) + ' electrons, grid ' +
   gridN + '^3, box ' + BOX + ' a.u., h=' + (h/A).toFixed(4) + ' A\nsteps=' + STEPS + '\nrelaxing…';
 
@@ -142,7 +237,9 @@ window.USER_SCREEN = BOX;
 window.USER_Z = zList;
 window.USER_Z_NUC = zNucList;
 window.USER_RC = rcList;
-if (SPLIT) {
+if (SHELL && !HOMDOM) { window.USER_SHELL_Q = shqList; window.USER_SHELL_R = shrList; }
+if (HOMDOM) { window.USER_HOMOG = homList; }
+if (NLOBE >= 2) {
   window.USER_SPLIT_TYPE = splitType; window.USER_SPLIT_IDX = splitIdx;
   window.USER_SPLIT_AXIS = splitAxis; window.USER_SPLIT_ROT = splitRot;
   window.USER_INIT_ZEFF = initZeff;
@@ -160,6 +257,13 @@ if (/[?&]frc=1/.test(q)) window.USER_FULL_RC = true;
 // none, which over-binds; NH3's binding energy comes out 2.22x too large, which is the right sign
 // for a missing repulsion. This is the one diagnosed candidate for the systematic error in E.
 if (/[?&]mocc=1/.test(q)) window.USER_MULTI_OCC = true;
+// A homogenised domain is ONE charge density of total charge Z, and its self-repulsion must be
+// INCLUDED, reduced by (Z-1)/Z: Z smeared electrons have Z(Z-1)/2 real pairs where the naive
+// integral counts Z^2/2. q=3 keeps 2/3, q=2 keeps 1/2. Excluding it outright -- what the i!=j
+// rule does -- is the wrong limit for a multi-occupancy domain, so mocc is not optional here.
+// Ad hoc, in that it is a mean-field pair count for a blob, not a derivation.
+if (HOMDOM) window.USER_MULTI_OCC = true;
+if (!isNaN(KN)) { window.USER_KIN = KN; window.USER_KIN_SHELL = 0.5; window.USER_FIRST_SHELL = 1; }
 window.USER_DYNAMICS = false;
 window.USER_DIRECT_POTHER = true;
 window.USER_STEPS = STEPS;
@@ -167,12 +271,24 @@ window.NO_AUTO_DYNAMICS = true;
 window.CONVERGENCE_THRESHOLD = 0;
 if (PROTON_IDX >= 0) window.USER_MARK_ATOMS = [{ i: PROTON_IDX, label: 'H⁺', col: [255,0,255] }];
 
-var KEY = 'nh3pa_' + WHAT + '_zn' + ZN + (SPLIT?'_s':'') + (SIC?'_g':'') + (SYM?'_y':'') + (window.USER_FULL_RC?'_f':'') + (RCN!==0.3?'_rc'+RCN:'') + (window.USER_MULTI_OCC?'_m':'');
+var KEY = 'nh3pa_' + WHAT + '_zn' + ZN + (SPLIT?'_s':'') + (SIC?'_g':'') + (SYM?'_y':'') + (window.USER_FULL_RC?'_f':'') + (RCN!==0.3?'_rc'+RCN:'') + (window.USER_MULTI_OCC?'_m':'') + (SPL?'_spl'+SPL:'') + (HASNQ&&!HOMDOM?'_nq'+NQ:'') + (!isNaN(KN)?'_kn'+KN:'') + (HOMDOM?'_hom':'') + (SHELL&&!HOMDOM?'_sh'+SHR:'') + (SHELL_SYM?'_q'+SHQV:'') + '_n' + STEPS;   // ALWAYS stamp the step count. Omitting it at the 4000 default meant a
+// harness polling '..._n4000' watched a key the page never wrote, and sat until its timeout.
+// A key that always carries every varied parameter fails loudly (timeout) instead of silently
+// returning a stale value from a different configuration.
 window.onSweepDone = async function(E){
   var res = null; try { res = await window.readELResidual(); } catch(e) {}
   var rec = { what: WHAT, zn: ZN, split: SPLIT, sic: SIC, sym: SYM, frc: !!window.USER_FULL_RC, steps: STEPS, E: E,
               rMax: res ? Number(res.rMax.toPrecision(4)) : null,
-              mocc: !!window.USER_MULTI_OCC, rcN: RCN, nAtoms: coords.length, nElec: zList.reduce(function(a,b){return a+b;},0) };
+              mocc: !!window.USER_MULTI_OCC, rcN: RCN, shr: SHR,
+              // The dipole is the one quantity here checkable against experiment: NH3 = 1.47 D.
+              // A frozen spherical shell contributes no dipole of its own, so what survives is the
+              // hydrogens' polarisation alone. MEASURED 2026-09-17: that is LARGER, not smaller --
+              // frozen 1.923 D vs relaxing 1.706 D vs experiment 1.470 D. Freezing nitrogen removes
+              // what was pushing the hydrogen electrons back, so they move further in. There is no
+              // "lone-pair share" to subtract; both variants overshoot experiment.
+              dipD: window._dipole_D, spl: SPL, kn: isNaN(KN)?0.5:KN, nq: HASNQ?NQ:0, shq: (SHELL||HOMDOM) ? SHQV : 0, hom: HOMDOM,
+              // energy breakdown, so a PA can be attributed rather than just reported
+              eT: window._E_T, eeK: window._E_eK, eee: window._E_ee, eKK: window._E_KK, nAtoms: coords.length, nElec: zList.reduce(function(a,b){return a+b;},0) };
   try { localStorage.setItem(KEY, JSON.stringify(rec)); } catch(e){}
   console.log('=== NH3 PA ===', JSON.stringify(rec));
   document.getElementById('log').textContent += '\nDONE  E=' + E.toFixed(6) + ' Ha  rMax=' + (rec.rMax||'n/a');

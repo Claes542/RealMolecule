@@ -215,6 +215,20 @@ for (let e = 0; e < _atoms.length; e++) {
   else _nucMap.set(key, { idx: _nucMap.size, Z_eff: zNucVal || zEl, elecIndices: [e] });
 }
 const uniqueNuclei = [..._nucMap.values()]; // [{idx, Z_eff, elecIndices}, ...]
+// Homogenised shells, grouped the same way the kernels are. A shell is a FIXED external charge,
+// so it must enter V_KK as well as the electron potential K -- otherwise a kernel approaching a
+// shelled atom feels the bare Z_nuc and none of the screening, which is the whole point of the
+// shell. With q = Z_nuc the atom is neutral outside R and a passing proton must feel exactly zero.
+const _shQ = window.USER_SHELL_Q || [], _shR = window.USER_SHELL_R || [];
+for (const nuc of uniqueNuclei) {
+  nuc.shQ = 0; nuc.shR = 0;
+  for (const e of nuc.elecIndices) {
+    if ((_shR[e] || 0) > 0 && (_shQ[e] || 0) !== 0) { nuc.shQ += _shQ[e]; nuc.shR = _shR[e]; }
+  }
+}
+// Potential at distance d from a uniform shell of charge q at radius R (Newton): q/d outside,
+// q/R inside. Exact against a POINT charge, which is the only case used here (one shelled atom).
+function _shellPot(q, R, d) { return R > 0 && q !== 0 ? q / (d > R ? d : R) : 0; }
 // Map electron index -> unique nucleus index
 const elecToNuc = new Array(_atoms.length).fill(-1);
 for (const nuc of uniqueNuclei) for (const e of nuc.elecIndices) elecToNuc[e] = nuc.idx;
@@ -411,7 +425,7 @@ struct P {
   beta: f32, fieldX: f32, _pad1: f32, _pad2: f32,
 }`;
 
-const ATOM_STRIDE = 17; // 8 base + 6 split + 3 cylinder-axis origin (cylOX/Y/Z, cell units)
+const ATOM_STRIDE = 20; // 8 base + 6 split + 3 cylinder origin + 2 shell (q,R) + 1 homog flag
 const ATOM_BUF_BYTES = MAX_ATOMS * ATOM_STRIDE * 4;
 const atomStructWGSL = `
 struct Atom {
@@ -420,6 +434,7 @@ struct Atom {
   splitType: u32, splitIdx: u32, splitAxX: f32, splitAxY: f32,
   splitAxZ: f32, splitRot: f32,
   cylOX: f32, cylOY: f32, cylOZ: f32,
+  shellQ: f32, shellR: f32, homog: f32,
 }`;
 
 // Angular shell-split test (ported from mol_fast.js). A split sibling only owns
@@ -1594,8 +1609,14 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
   let lbl = label[id];
   let n = normFloat[lbl];
   let Zeff = atoms[lbl].Z;
+  // HOMOGENISED DOMAIN: flatten to a constant here, then let the ordinary scaling set the
+  // amplitude. Writing 1.0 and scaling by sqrt(Zeff/n) reaches the correct uniform value
+  // sqrt(Zeff/V) within two passes and is a fixed point thereafter, because this scaling
+  // PRESERVES uniformity. V is the domain's own volume, which keeps moving -- the outer
+  // boundary is free, set by non-overlap with the neighbouring domains, and only r_c is imposed.
+  let uh = select(U[id], 1.0, atoms[lbl].homog > 0.5);
   // Normalize so that ∫U² dV = Z_eff
-  if (n > 0.0 && Zeff > 0.0) { U[id] *= sqrt(Zeff / n); }
+  if (n > 0.0 && Zeff > 0.0) { U[id] = uh * sqrt(Zeff / n); }
 }
 `;
 
@@ -1859,6 +1880,16 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // Bare atoms (rc=0): clamp at R_SING. Pseudopotential (rc>0): hard cutoff at rc.
     let r_eff = select(max(sqrt(r2), ${R_SING}), max(sqrt(r2), atoms[n].rc), atoms[n].rc > 0.0);
     Kval += Zn / r_eff;
+    // HOMOGENISED SHELL (USER_SHELL_Q / USER_SHELL_R). A charge shellQ spread uniformly over a
+    // sphere of radius shellR screens the kernel OUTSIDE shellR and contributes only a CONSTANT
+    // inside it -- Newton's theorem. With shellQ == Z_nuc the atom is exactly neutral outside
+    // shellR, so binding can only come from charge that PENETRATES the shell. This is not the
+    // same as reducing Z_nuc: a reduced point charge gets the monopole right and the interior
+    // wrong. Inert when shellR is 0, so every existing run is unaffected.
+    if (atoms[n].shellR > 0.0 && atoms[n].shellQ != 0.0) {
+      let rsh = max(sqrt(r2), ${R_SING});
+      Kval -= select(atoms[n].shellQ / atoms[n].shellR, atoms[n].shellQ / rsh, rsh > atoms[n].shellR);
+    }
   }
   K[id] = Kval;
 }
@@ -1911,6 +1942,16 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // Bare atoms (rc=0): clamp at R_SING. Pseudopotential (rc>0): hard cutoff at rc.
     let r = select(max(sqrt(r2), ${R_SING}), max(sqrt(r2 + 0.04 * p.h2), atoms[n].rc), atoms[n].rc > 0.0);
     Kval += Zn / r;
+    // HOMOGENISED SHELL (USER_SHELL_Q / USER_SHELL_R). A charge shellQ spread uniformly over a
+    // sphere of radius shellR screens the kernel OUTSIDE shellR and contributes only a CONSTANT
+    // inside it -- Newton's theorem. With shellQ == Z_nuc the atom is exactly neutral outside
+    // shellR, so binding can only come from charge that PENETRATES the shell. This is not the
+    // same as reducing Z_nuc: a reduced point charge gets the monopole right and the interior
+    // wrong. Inert when shellR is 0, so every existing run is unaffected.
+    if (atoms[n].shellR > 0.0 && atoms[n].shellQ != 0.0) {
+      let rsh = max(sqrt(r2), ${R_SING});
+      Kval -= select(atoms[n].shellQ / atoms[n].shellR, atoms[n].shellQ / rsh, rsh > atoms[n].shellR);
+    }
     // Normalized trial: ∫U²dV = Z_eff analytically (U = Zeff²/√π · exp(-Zeff·r))
     // Domains assigned by highest normalized density
     // Skip wavefunction init for bare protons (Za=0): no electron domain
@@ -2419,6 +2460,16 @@ function fillAtomBuf() {
     af[off + 14] = org ? org[0] : NN * 0.5;
     af[off + 15] = org ? org[1] : NN * 0.5;
     af[off + 16] = org ? org[2] : NN * 0.5;
+    // Homogenised shell: charge USER_SHELL_Q[n] smeared over radius USER_SHELL_R[n]. Absent => 0.
+    af[off + 17] = (window.USER_SHELL_Q && window.USER_SHELL_Q[n]) || 0;
+    af[off + 18] = (window.USER_SHELL_R && window.USER_SHELL_R[n]) || 0;
+    // USER_HOMOG[n]: this domain's density is uniform inside its own FREE boundary. Unlike the
+    // shell POTENTIAL (shellQ/shellR), which is an external field with no boundary at all and
+    // which hydrogen electrons pass straight through, a homogenised DOMAIN tiles against its
+    // neighbours -- so the hydrogens meet it and non-overlap excludes them, which is the whole
+    // point. Pair it with USER_MULTI_OCC: a uniform domain of charge Z has Z(Z-1)/2 real pairs,
+    // not Z^2/2, and the i!=j rule throws away all of it.
+    af[off + 19] = (window.USER_HOMOG && window.USER_HOMOG[n]) ? 1 : 0;
   }
   device.queue.writeBuffer(atomBuf, 0, ab);
 }
@@ -4254,16 +4305,31 @@ async function doSteps(n) {
   {
     let dip_x = 0, dip_y = 0, dip_z = 0;
     // Nuclear contribution: Σ Z_a · R_a  (in grid coords * h = au)
+    // KERNEL charge, not the domain's electron count. Using Z[a] understated any nucleus whose
+    // kernel differs from its occupancy (N with a -2 domain contributed +2, not +3) and the
+    // `Z[a] === 0` test skipped BARE PROTONS altogether. Both made the nuclear total match the
+    // electron total, so the code returned the dipole of a fictitious NEUTRAL molecule -- a
+    // well-defined number for the wrong system, which is why the T_d control read 3.96 D.
+    let zSum = 0, r0x = 0, r0y = 0, r0z = 0;
     for (let a = 0; a < NELEC; a++) {
-      if (Z[a] === 0) continue;
-      dip_x += Z[a] * nucPos[a][0] * hGrid;
-      dip_y += Z[a] * nucPos[a][1] * hGrid;
-      dip_z += Z[a] * nucPos[a][2] * hGrid;
+      const zk = (Z_nuc[a] || 0) > 0 ? Z_nuc[a] : Z[a];
+      if (!(zk > 0)) continue;
+      dip_x += zk * nucPos[a][0] * hGrid;
+      dip_y += zk * nucPos[a][1] * hGrid;
+      dip_z += zk * nucPos[a][2] * hGrid;
+      zSum += zk;
+      r0x += zk * nucPos[a][0] * hGrid; r0y += zk * nucPos[a][1] * hGrid; r0z += zk * nucPos[a][2] * hGrid;
     }
+    // An ION's dipole is origin-dependent. Report it about the centre of nuclear charge, which
+    // leaves neutral molecules unchanged (there the dipole is origin-independent) and makes the
+    // T_d control meaningful: a symmetric NH4+ about that centre must give exactly zero.
+    if (zSum > 0) { r0x /= zSum; r0y /= zSum; r0z /= zSum; }
+    const _netQ = zSum - N_ELECTRONS;
     // Electronic contribution (negative charge)
     dip_x -= sumsData[3];
     dip_y -= sumsData[4];
     dip_z -= sumsData[5];
+    dip_x -= _netQ * r0x; dip_y -= _netQ * r0y; dip_z -= _netQ * r0z;
     dipole_au = Math.sqrt(dip_x * dip_x + dip_y * dip_y + dip_z * dip_z);
     dipole_D = dipole_au * 2.5417;  // au to Debye
     window._dip_x = dip_x;
@@ -4281,6 +4347,17 @@ async function doSteps(n) {
   E_KK = 0;
   if (addNucRepulsion) {
     const soft_nuc = 0.04 * h2v;
+    // SHELL SELF-ENERGY. The homogenised shell enters everywhere else as an external potential,
+    // so the mutual repulsion of the charge WITHIN it is never counted. That is a constant for a
+    // given (q, R) and cancels between two runs sharing the same shell -- but NOT between runs
+    // with different shell charges, where it is q(q-1)/2R and the q=3 vs q=2 difference is 2.2 Ha
+    // (1400 kcal/mol). Omitting it would silently wreck any comparison across shell charges, the
+    // same way the Z-dependent self-repulsion exclusion wrecks the sym booking.
+    // q(q-1)/2R, not q^2/2R: q smeared electrons have q(q-1)/2 real pairs, not q^2/2.
+    for (let a = 0; a < uniqueNuclei.length; a++) {
+      const q = uniqueNuclei[a].shQ, R = uniqueNuclei[a].shR;
+      if (R > 0 && q > 0) E_KK += q * (q - 1) / (2 * R);
+    }
     for (let a = 0; a < uniqueNuclei.length; a++) {
       const ea = uniqueNuclei[a].elecIndices[0]; // representative electron index for position
       for (let b = a + 1; b < uniqueNuclei.length; b++) {
@@ -4290,6 +4367,15 @@ async function doSteps(n) {
           ((nucPos[ea][1]-nucPos[eb][1])*hGrid)**2 +
           ((nucPos[ea][2]-nucPos[eb][2])*hGrid)**2 + soft_nuc);
         E_KK += uniqueNuclei[a].Z_eff * uniqueNuclei[b].Z_eff / d;
+        // shell of a against kernel of b, and vice versa (negative: shells carry electron charge)
+        E_KK -= _shellPot(uniqueNuclei[a].shQ, uniqueNuclei[a].shR, d) * uniqueNuclei[b].Z_eff;
+        E_KK -= _shellPot(uniqueNuclei[b].shQ, uniqueNuclei[b].shR, d) * uniqueNuclei[a].Z_eff;
+        // shell against shell. Zero in every run here (only one atom is shelled); the point-shell
+        // form is used rather than the exact sphere-sphere overlap integral, so if two shells ever
+        // come within R of each other this term is approximate. Flagged rather than assumed.
+        if (uniqueNuclei[a].shR > 0 && uniqueNuclei[b].shR > 0) {
+          E_KK += _shellPot(uniqueNuclei[a].shQ, Math.max(uniqueNuclei[a].shR, uniqueNuclei[b].shR), d) * uniqueNuclei[b].shQ;
+        }
       }
     }
   }
@@ -4567,8 +4653,12 @@ async function doLOBPCGStep() {
     device.queue.submit([enc.finish()]);
   }
 
+  const _HOMOG = window.USER_HOMOG || [];
   for (let m = 0; m < NELEC; m++) {
     if (Z[m] === 0) continue;
+    // Homogenised domains are never reshaped by the eigensolver: their density is uniform by
+    // construction. Their LABEL still competes for cells every step, so the boundary is free.
+    if (_HOMOG[m]) continue;
 
     for (let iter = 0; iter < LOBPCG_ITERS; iter++) {
       const hasP = frameCount > 0 || iter > 0;
@@ -4810,13 +4900,28 @@ async function doLOBPCGStep() {
   }
   {
     let dip_x = 0, dip_y = 0, dip_z = 0;
+    // KERNEL charge, not the domain's electron count. Using Z[a] understated any nucleus whose
+    // kernel differs from its occupancy (N with a -2 domain contributed +2, not +3) and the
+    // `Z[a] === 0` test skipped BARE PROTONS altogether. Both made the nuclear total match the
+    // electron total, so the code returned the dipole of a fictitious NEUTRAL molecule -- a
+    // well-defined number for the wrong system, which is why the T_d control read 3.96 D.
+    let zSum = 0, r0x = 0, r0y = 0, r0z = 0;
     for (let a = 0; a < NELEC; a++) {
-      if (Z[a] === 0) continue;
-      dip_x += Z[a] * nucPos[a][0] * hGrid;
-      dip_y += Z[a] * nucPos[a][1] * hGrid;
-      dip_z += Z[a] * nucPos[a][2] * hGrid;
+      const zk = (Z_nuc[a] || 0) > 0 ? Z_nuc[a] : Z[a];
+      if (!(zk > 0)) continue;
+      dip_x += zk * nucPos[a][0] * hGrid;
+      dip_y += zk * nucPos[a][1] * hGrid;
+      dip_z += zk * nucPos[a][2] * hGrid;
+      zSum += zk;
+      r0x += zk * nucPos[a][0] * hGrid; r0y += zk * nucPos[a][1] * hGrid; r0z += zk * nucPos[a][2] * hGrid;
     }
+    // An ION's dipole is origin-dependent. Report it about the centre of nuclear charge, which
+    // leaves neutral molecules unchanged (there the dipole is origin-independent) and makes the
+    // T_d control meaningful: a symmetric NH4+ about that centre must give exactly zero.
+    if (zSum > 0) { r0x /= zSum; r0y /= zSum; r0z /= zSum; }
+    const _netQ = zSum - N_ELECTRONS;
     dip_x -= sumsData[3]; dip_y -= sumsData[4]; dip_z -= sumsData[5];
+    dip_x -= _netQ * r0x; dip_y -= _netQ * r0y; dip_z -= _netQ * r0z;
     dipole_au = Math.sqrt(dip_x*dip_x + dip_y*dip_y + dip_z*dip_z);
     dipole_D = dipole_au * 2.5417;
     window._dip_x = dip_x;
@@ -4834,6 +4939,17 @@ async function doLOBPCGStep() {
   E_KK = 0;
   if (addNucRepulsion) {
     const soft_nuc = 0.04 * h2v;
+    // SHELL SELF-ENERGY. The homogenised shell enters everywhere else as an external potential,
+    // so the mutual repulsion of the charge WITHIN it is never counted. That is a constant for a
+    // given (q, R) and cancels between two runs sharing the same shell -- but NOT between runs
+    // with different shell charges, where it is q(q-1)/2R and the q=3 vs q=2 difference is 2.2 Ha
+    // (1400 kcal/mol). Omitting it would silently wreck any comparison across shell charges, the
+    // same way the Z-dependent self-repulsion exclusion wrecks the sym booking.
+    // q(q-1)/2R, not q^2/2R: q smeared electrons have q(q-1)/2 real pairs, not q^2/2.
+    for (let a = 0; a < uniqueNuclei.length; a++) {
+      const q = uniqueNuclei[a].shQ, R = uniqueNuclei[a].shR;
+      if (R > 0 && q > 0) E_KK += q * (q - 1) / (2 * R);
+    }
     for (let a = 0; a < uniqueNuclei.length; a++) {
       const ea = uniqueNuclei[a].elecIndices[0];
       for (let b = a + 1; b < uniqueNuclei.length; b++) {
@@ -4843,6 +4959,15 @@ async function doLOBPCGStep() {
           ((nucPos[ea][1]-nucPos[eb][1])*hGrid)**2 +
           ((nucPos[ea][2]-nucPos[eb][2])*hGrid)**2 + soft_nuc);
         E_KK += uniqueNuclei[a].Z_eff * uniqueNuclei[b].Z_eff / d;
+        // shell of a against kernel of b, and vice versa (negative: shells carry electron charge)
+        E_KK -= _shellPot(uniqueNuclei[a].shQ, uniqueNuclei[a].shR, d) * uniqueNuclei[b].Z_eff;
+        E_KK -= _shellPot(uniqueNuclei[b].shQ, uniqueNuclei[b].shR, d) * uniqueNuclei[a].Z_eff;
+        // shell against shell. Zero in every run here (only one atom is shelled); the point-shell
+        // form is used rather than the exact sphere-sphere overlap integral, so if two shells ever
+        // come within R of each other this term is approximate. Flagged rather than assumed.
+        if (uniqueNuclei[a].shR > 0 && uniqueNuclei[b].shR > 0) {
+          E_KK += _shellPot(uniqueNuclei[a].shQ, Math.max(uniqueNuclei[a].shR, uniqueNuclei[b].shR), d) * uniqueNuclei[b].shQ;
+        }
       }
     }
   }
