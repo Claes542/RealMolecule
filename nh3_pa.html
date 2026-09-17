@@ -29,7 +29,15 @@ window.onerror = function(m,u,l){ var e=document.getElementById('log'); if(e) e.
 window.addEventListener('unhandledrejection', function(e){ var el=document.getElementById('log'); if(el) el.textContent += '\nGPU REJECTED: '+(e.reason&&e.reason.message||e.reason); });
 
 var q = location.search;
-var WHAT  = (q.match(/[?&]what=(nh4|nh3)/) || [])[1] || 'nh3';
+// what=natom | hatom : the isolated fragments, for the ATOMIZATION energy
+//     E_atz = E(N) + 3 E(H) - E(NH3)
+// This is the quantity the multi-occupancy correction was diagnosed from: NH3's binding comes out
+// 2.22x too large, and missing intra-atomic repulsion over-binds. It is also where the correction
+// CAN act, unlike the proton affinity -- there nitrogen sits on both sides with the same Z_eff=3
+// domain, so its restored repulsion cancels. Here the nitrogen domain goes from a free sphere to
+// one distorted toward three hydrogens, which is a large shape change and does not cancel.
+// Fragments are computed in the SAME box at their molecular positions, so the grid is common.
+var WHAT  = (q.match(/[?&]what=(nh4|nh3|natom|hatom)/) || [])[1] || 'nh3';
 var ZN    = parseInt((q.match(/[?&]zn=(\d)/) || [])[1] || '3', 10);
 var SPLIT = /[?&]split=1/.test(q);
 var SIC   = /[?&]sic=1/.test(q);
@@ -53,6 +61,7 @@ var bNH = 1.012, ang = 106.7*Math.PI/180;
 // solve for the polar angle theta from the apex such that HNH = 106.7
 var ct = Math.cos(ang), th = Math.acos(Math.sqrt((1+2*ct)/3));   // angle from +z
 var sx = Math.sin(th), cz = Math.cos(th);
+var FRAG = (WHAT === 'natom' || WHAT === 'hatom');
 var coords = [['N', 0,0,0, 'N']];
 if (WHAT === 'nh4' && SYM) {
   // NH4+ is T_d: four EQUAL bonds of 1.021 A at the tetrahedral angle 109.47 deg, not NH3's
@@ -63,6 +72,10 @@ if (WHAT === 'nh4' && SYM) {
     coords.push(['H', b4*s4*Math.cos(ph4), b4*s4*Math.sin(ph4), b4*c4, 'H']);
   }
   coords.push(['H', 0, 0, -b4, 'H']);
+} else if (WHAT === 'natom') {
+  // nitrogen alone, at the same place in the same box
+} else if (WHAT === 'hatom') {
+  coords = [['H', bNH*sx, 0, bNH*cz, 'H']];     // one hydrogen, at its molecular position
 } else {
   for (var k = 0; k < 3; k++) {
     var phi = 2*Math.PI*k/3;
