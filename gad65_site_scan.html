@@ -1,7 +1,13 @@
 <!DOCTYPE html>
 <html><body style="margin:0;background:#000;color:#ddd;font-family:monospace">
 <pre id="log">GAD65 crystal-derived active site — building…</pre>
-<script src="gad65_site_atoms.js"></script>
+<script>
+// iso=67 loads the GAD67 site instead of GAD65's. Same 23 fixed atoms, same index map, same box --
+// so the two differ in GEOMETRY at FIXED COMPOSITION, which is the construction this framework
+// supports. Written before the page's own script so SITE_* are defined when it runs.
+document.write('<scr' + 'ipt src="gad' +
+  (/[?&]iso=67/.test(location.search) ? '67' : '65') + '_site_atoms.js"></scr' + 'ipt>');
+</script>
 <script>
 // surface failures instead of sitting at "relaxing..." forever
 window.onerror = function(m,u,l){
@@ -40,6 +46,7 @@ window.addEventListener('unhandledrejection', function(e){
 //  NOT INCLUDED: 5'-phosphate, Lys396 (displaced), the rest of the protein,
 //  water. Nuclei clamped; only the electrons relax.
 // ===========================================================================
+var _t0 = Date.now();
 var q = location.search;
 var MODEL = (q.match(/[?&]model=([AB])/) || [])[1] || 'A';
 var R     = parseFloat((q.match(/[?&]R=([\d.]+)/) || [])[1] || '1.53');   // Ca-CO2 distance, A
@@ -224,7 +231,21 @@ if (PROBE_IDX >= 0) {
 // same record once it reaches the target. window._E and window._nucStepCount are exposed.
 if (RELAX) {
   var targetNucSteps = Math.floor(STEPS / 20);
-  document.getElementById('log').textContent += '\nrelax: 10000 clamped steps, then ' + targetNucSteps + ' nuclear moves';        // nuclear moves AFTER the 10000-step clamped stage
+  document.getElementById('log').textContent += '\nrelax: 10000 clamped steps, then ' + targetNucSteps + ' nuclear moves';
+  // PUBLISH PROGRESS TO THE DOM. AppleScript runs in an isolated world and cannot read window.*,
+  // so a driver polling window._nucStepCount always sees undefined -- indistinguishable from a
+  // run that has not started. The page can see its own globals; write them where the driver can
+  // read them. Without this a stalled run and a slow run look identical from outside.
+  var _p0 = document.createElement('pre'); _p0.id = 'progress'; _p0.style.color = '#8f8';
+  document.body.appendChild(_p0);
+  setInterval(function(){
+    _p0.textContent = 'phase=' + (window._phaseSteps === undefined ? '?' : window._phaseSteps) +
+      '  nucSteps=' + (window._nucStepCount === undefined ? 'undef' : window._nucStepCount) +
+      '/' + targetNucSteps +
+      '  E=' + (window._E === undefined ? 'undef' : window._E.toFixed(4)) +
+      '  dyn=' + (window._dynOn ? 'ON' : 'off') +
+      '  t=' + Math.round((Date.now() - _t0)/1000) + 's';
+  }, 3000);        // nuclear moves AFTER the 10000-step clamped stage
   var fired = false;
   setInterval(function(){
     if (fired) return;
@@ -278,6 +299,7 @@ window.onSweepDone = async function(E){
               hA: h/A2AU,                 // Angstrom per cell, to convert the displacement
               dip:  [window._dip_x, window._dip_y, window._dip_z],
               nAtoms: coords.length };
+  rec.iso = /[?&]iso=67/.test(q) ? 67 : 65;
   try { localStorage.setItem('gad65_site_result', JSON.stringify(rec)); } catch(e){}
   console.log('=== SITE RESULT ===', JSON.stringify(rec));
   document.getElementById('log').textContent += '\nDONE  E=' + E.toFixed(6) + ' Ha';

@@ -77,7 +77,12 @@ if (WHAT === 'nh4' && !SYM) {      // asymmetric: a bare proton, owning no domai
 
 var BOX = 20.0;                       // a.u., fixed for every variant
 var gridN = 128, h = BOX/gridN, gN2 = Math.round(gridN/2);
-var Zof = { N:ZN, H:1 }, RCof = { N:0.3, H:0 };
+// rc=<A> : nitrogen's shell radius. The house 0.3 is only 1.9 cells at h = 0.156, so FULL_RC
+// carves a hole below the grid's resolution and changes nothing -- measured: identical energies to
+// 15 digits with and without frc=1. A meaningful shell needs r_c several cells across, and the
+// physical radius of nitrogen's 2s/2p is about 0.9 a0, which is 5.8 cells here.
+var RCN = parseFloat((q.match(/[?&]rc=([\d.]+)/) || [])[1] || '0.3');
+var Zof = { N:ZN, H:1 }, RCof = { N:RCN, H:0 };
 
 // nitrogen split into FOUR tetrahedral lobes: three along the N-H bonds, one on -z
 var SPLIT_OF = [], expand = [];
@@ -86,7 +91,10 @@ coords.forEach(function(c, i) {
   else { expand.push(c.slice()); SPLIT_OF.push(-1); }
 });
 coords = expand;
-if (SPLIT) PROTON_IDX = (WHAT === 'nh4') ? coords.length - 1 : -1;
+// NOT in sym mode -- there the fourth H is an ordinary hydrogen owning a domain. Setting
+// PROTON_IDX here regardless of SYM turned it into a bare proton and the sym 4-split run came
+// out with 7 electrons instead of 8.
+if (SPLIT && !SYM) PROTON_IDX = (WHAT === 'nh4') ? coords.length - 1 : -1;
 
 var atoms = [], zList = [], zNucList = [], rcList = [];
 var splitType = [], splitIdx = [], splitAxis = [], splitRot = [], initZeff = [], grp = [];
@@ -134,6 +142,11 @@ if (SPLIT) {
 // OFF by default. For NH3 it carves a 0.3 a0 sphere out of the nitrogen: the three N electrons
 // become a -3 shell outside 0.3, which is what a homogenized inner shell should look like.
 if (/[?&]frc=1/.test(q)) window.USER_FULL_RC = true;
+// mocc=1 : keep (Z_eff-1)/Z_eff of a multi-occupancy domain's own potential -- the intra-atomic
+// pair repulsion that excluding the whole domain throws away. N:3 should keep 2/3 of it and keeps
+// none, which over-binds; NH3's binding energy comes out 2.22x too large, which is the right sign
+// for a missing repulsion. This is the one diagnosed candidate for the systematic error in E.
+if (/[?&]mocc=1/.test(q)) window.USER_MULTI_OCC = true;
 window.USER_DYNAMICS = false;
 window.USER_DIRECT_POTHER = true;
 window.USER_STEPS = STEPS;
@@ -141,12 +154,12 @@ window.NO_AUTO_DYNAMICS = true;
 window.CONVERGENCE_THRESHOLD = 0;
 if (PROTON_IDX >= 0) window.USER_MARK_ATOMS = [{ i: PROTON_IDX, label: 'H⁺', col: [255,0,255] }];
 
-var KEY = 'nh3pa_' + WHAT + '_zn' + ZN + (SPLIT?'_s':'') + (SIC?'_g':'') + (SYM?'_y':'') + (window.USER_FULL_RC?'_f':'');
+var KEY = 'nh3pa_' + WHAT + '_zn' + ZN + (SPLIT?'_s':'') + (SIC?'_g':'') + (SYM?'_y':'') + (window.USER_FULL_RC?'_f':'') + (RCN!==0.3?'_rc'+RCN:'') + (window.USER_MULTI_OCC?'_m':'');
 window.onSweepDone = async function(E){
   var res = null; try { res = await window.readELResidual(); } catch(e) {}
   var rec = { what: WHAT, zn: ZN, split: SPLIT, sic: SIC, sym: SYM, frc: !!window.USER_FULL_RC, steps: STEPS, E: E,
               rMax: res ? Number(res.rMax.toPrecision(4)) : null,
-              nAtoms: coords.length, nElec: zList.reduce(function(a,b){return a+b;},0) };
+              mocc: !!window.USER_MULTI_OCC, rcN: RCN, nAtoms: coords.length, nElec: zList.reduce(function(a,b){return a+b;},0) };
   try { localStorage.setItem(KEY, JSON.stringify(rec)); } catch(e){}
   console.log('=== NH3 PA ===', JSON.stringify(rec));
   document.getElementById('log').textContent += '\nDONE  E=' + E.toFixed(6) + ' Ha  rMax=' + (rec.rMax||'n/a');

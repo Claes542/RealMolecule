@@ -289,6 +289,9 @@ const W_CUTOFF = window.USER_W_CUTOFF || 0;  // smooth ψ cutoff near other nucl
 //
 // Off by default so the change can be MEASURED against the old behaviour rather than assumed.
 const FULL_RC = !!window.USER_FULL_RC;
+// USER_MULTI_OCC: keep (Z_eff-1)/Z_eff of a multi-occupancy domain's own potential, which is the
+// intra-atomic pair repulsion the i!=j exclusion otherwise throws away with the self-interaction.
+const MULTI_OCC = !!window.USER_MULTI_OCC;
 const rcAllLoopWGSL = FULL_RC ? `
   for (var nrc: u32 = 0u; nrc < ${NELEC}u; nrc++) {
     if (atoms[nrc].rc > 0.0 && atoms[nrc].Z_nuc > 0.0) {
@@ -360,6 +363,9 @@ let nucForceElec = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
 let nucForceNuc = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
 let nucForceTotal = Array.from({length: MAX_ATOMS}, () => [0, 0, 0]);
 window._nucForceTotal = nucForceTotal;
+// Published for DOM-visible progress reporting: AppleScript cannot read page globals, so a driver
+// has no way to tell a slow run from a stalled one unless the PAGE writes these somewhere visible.
+Object.defineProperty(window, '_dynOn', { get() { return dynamicsEnabled; }, configurable: true });
 window._nucForce = nucForce;          // what the INTEGRATOR actually uses (4839); the total above is a display copy
 window._nucForceElec = nucForceElec;
 window._nucForceNuc  = nucForceNuc;
@@ -969,7 +975,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 // Compute rho of all electrons EXCEPT the target label (for direct Pother solve)
 const computeRhoOtherWGSL = `
 ${paramStructWGSL}
-struct DomIdx { idx: u32, _p0: u32, grp: u32, _p2: u32 }
+struct DomIdx { idx: u32, zeff_bits: u32, grp: u32, _p2: u32 }
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read> U: array<f32>;
 @group(0) @binding(2) var<storage, read_write> rhoOther: array<f32>;
@@ -989,9 +995,20 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = (cell / (NM * NM)) + 1u;
   let id = i * p.S2 + j * p.S + k;
   let u = U[id];
-  // exclude every domain in the SAME GROUP, not only this one. With groups unset each domain is
+  // Exclude every domain in the SAME GROUP, not only this one. With groups unset each domain is
   // its own group and domGroup[label] == dom.grp reduces to label == dom.idx.
-  rhoOther[id] = select(u * u, 0.0, domGroup[label[id]] == dom.grp);
+  //
+  // MULTI-OCCUPANCY PAIR COUNTING. A domain holding Z_eff = N electrons in one shape has Hartree
+  // self-energy proportional to N^2, but only N(N-1) of those pairs are real. Removing the WHOLE
+  // domain therefore deletes the genuine intra-atomic repulsion along with the spurious
+  // self-repulsion; the correct fraction to keep is (N-1)/N. The house map makes every heavy atom
+  // multi-occupancy -- C:4 should keep 0.75, N:3 0.67, O:2 0.50 -- and all kept zero, which
+  // over-binds. mol_fast.js has carried this as fm = 1/N_m since the split-water work.
+  // Guarded: unset, keep = 0 and the behaviour is exactly as before.
+  let ownGroup = (domGroup[label[id]] == dom.grp);
+  let zeff = bitcast<f32>(dom.zeff_bits);
+  let keep = select(0.0, max(zeff - 1.0, 0.0) / max(zeff, 1.0), ${MULTI_OCC} && zeff > 1.0);
+  rhoOther[id] = select(u * u, u * u * keep, ownGroup);
 }
 `;
 
@@ -3679,7 +3696,9 @@ async function initGPU() {
         domainBufs[m] = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
         const _zf = new Float32Array([Z[m]]);
         const _zu = new Uint32Array(_zf.buffer);
-        device.queue.writeBuffer(domainBufs[m], 0, new Uint32Array([m, _zu[0], 0, 0]));
+        // slot 2 is the shared-SIC group id -- must match the write at the main setup site, or a
+        // buffer created here (LOBPCG fallback) would carry group 0 for every domain.
+        device.queue.writeBuffer(domainBufs[m], 0, new Uint32Array([m, _zu[0], (window.USER_SPLIT_GROUP && window.USER_SPLIT_GROUP[m] != null) ? window.USER_SPLIT_GROUP[m] : m, 0]));
       }
     }
 
@@ -5775,6 +5794,7 @@ function draw() {
         window._prevE = E;
       }
 
+      window._phaseSteps = phaseSteps;
       if (!dynamicsEnabled && phaseSteps >= TOTAL_STEPS) {
         console.log("=== DONE: E=" + E.toFixed(6) + " ===");
         phase = 1;  // done
