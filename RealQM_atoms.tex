@@ -9,112 +9,171 @@
 
 \newcommand{\TODO}[1]{\textbf{[TO MEASURE: #1]}}
 
-\title{A 3D Multiphase Continuum Computational Model for Atoms}
+\title{A 3D Multiphase Continuum Model for Atoms}
 
 \author[1]{Claes Johnson}
 \affil[1]{KTH Royal Institute of Technology, Stockholm, Sweden \\
 \texttt{claesjohnson@gmail.com}}
 \date{\today \\[0.4em]
-\small\textit{Mathematical formulation by the author; implementation developed} \\
-\small\textit{with AI assistance (Claude, Anthropic).}}
+\small\textit{Mathematical formulation and the p5.js templates by the author;} \\
+\small\textit{developed from them with AI assistance (Claude, Anthropic).}}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-RealQM is a general, in-principle parameter-free, low-cost computational method for
-quantum mechanics, formulated as three-dimensional continuum mechanics. The electrons
-form a sum of one-electron components, each carrying unit charge on a non-overlapping
-domain separated by free (Bernoulli) boundaries, and the ground state minimises the
-standard Coulomb energy over both the components and the domain partition. The method is
-applied here to the periodic table, computing total energies and first ionization
-energies of all atoms in spherical symmetry, with the whole table covered in about a
-minute on a laptop. Each electron carries its own energy, so the first ionization energy
-is read directly as the valence-electron energy, without a separate ion calculation.
-Total energies fall within about one to two percent across the table and ionization
-energies within ten to twenty percent, with the correct ionization ordering throughout,
-including 4s before 3d across the transition series.
+RealQM is a model of atoms and molecules in the form of free-boundary multiphase continuum
+mechanics in three space dimensions, based on non-overlapping unit electron charge densities
+meeting with continuity at free interfaces and interacting by Coulomb potentials without self-repulsion and with kernel potentials. The ground state is computed as the steady state of a \emph{parabolic
+relaxation}, which decreases the Coulomb energy while maintaining continuity of charge density
+across the interfaces, their position being an unknown of the same dynamics. The model is parameter-free: its
+inputs are the nuclear charge and the number of electrons, and the energy minimised is the
+Coulomb energy alone, with no constant adjusted anywhere. Work scales as $N$ times the mesh,
+$N$ being the number of electrons, so the cost is linear in $N$ at fixed resolution; RealQM
+applied to molecules, to condensed phases and to nuclei is presented in companion articles.
+
+We here let RealQM derive a \emph{periodic table from scratch} --- the ground states of the
+neutral atoms, nothing fitted --- and compare it with the textbook table. The shell structure,
+meaning how many charges occupy each shell, is \emph{not} a result of energy minimisation
+\emph{only}: left free to choose the packing the energy is monotone in it, its minimiser
+absorbing the core into the valence, wrong in kind and worsening with $Z$. The structure comes
+instead from the build-up, each new charge continuing the outermost shell or, that shell being
+complete, starting the next, a filled shell being more rigid than the charge arriving at it.
+Given the structure, the same energy is accurate to one or two per cent across the first three
+periods. The rule recovers Li, Be, B and C with no empirical input, and we report it as
+established to carbon and open beyond.
+
+The capacities follow from the packings themselves. The octet appears as $4{+}4$, two dual
+tetrahedra forming a cube, never as a single shell of eight, which over-binds by $9$--$22\%$
+--- and not as the $2{+}6$ of the orbital picture: the same eight, decomposed differently, and
+the decomposition is what bonding geometry depends on;
+and composing rows from that octet together with the antipodal pair gives the row lengths
+$2,8,8,18,18$ and the closures $2,10,18,36,54$, the fourth row being $2{+}8{+}8$ rather than
+$9{+}9$. The account is exact through xenon and open at the sixth row. We do not claim the
+familiar $2n^2$ as a result of this model, that count being the hydrogenic degeneracy. Computed directly from the shell
+energies, the Allen configuration energy reproduces the electronegativity ordering across
+period~2 exactly, with a gradient too steep by a factor of about two.
+
+Results are computed in spherical symmetry, a specialisation available because atoms are
+spherical; the three-dimensional form displays qualitative features of the solution --- a bond,
+and an electron arriving at a closed core wrapping around it rather than entering. Every atom
+is solved all-electron, with no core radius and no fitted length. From the fourth row the
+shells interpenetrate, the $3d$ lying inside the $4s$ that fills after it, so that the
+build-up ceases to reach the configuration from $Z\approx21$, which bounds the calculation at
+argon. Ionization and excitation are
+treated elsewhere.
 \end{abstract}
 
 \medskip
 \noindent\textbf{Keywords:} atomic structure; real-space methods; multiphase wave
-functions; free-boundary problems; ionization energies; imaginary-time propagation;
-electron packing.
+functions; free-boundary problems; electron packing; Aufbau principle;
+electronegativity; imaginary-time propagation.
 
 \section{Introduction}\label{sec:intro}
 
-This paper applies \textbf{RealQM} --- a 3D continuum-mechanical model of the atom in
-which the $N$ electrons are represented not as a single antisymmetric wave function on
-$3N$-dimensional configuration space but as a sum of $N$ one-electron components on
-mutually non-overlapping domains of physical three-dimensional space, separated by a free
-boundary, both the components and the partition being unknowns of a single Coulomb-energy
-minimisation --- \emph{in spherical symmetry}, as a detailed test on the \textbf{periodic
-table}: the total atomic energies, electron packing, and ionization energies of the atoms
-across all periods, taken from the outset as its own subject. The model and its wider
-development --- molecules, bonding, atomization energies, reactions --- are given in the
-de Broglie article~\cite{Johnson-RealQM} and the accompanying monograph; the present
-paper takes the \emph{atoms} themselves as its subject, in periodic-table detail.
+\textbf{RealQM} is a model of atoms and molecules in the form of free-boundary multiphase
+continuum mechanics in three space dimensions, based on non-overlapping unit electron charge
+densities meeting with continuity at free interfaces and interacting by Coulomb potentials
+without self-repulsion and with kernel potentials. The ground
+state is computed as the steady state of a \emph{parabolic relaxation}, or imaginary time
+stepping, which decreases the Coulomb energy while maintaining continuity of charge density
+across the interfaces, their position being an unknown of the same dynamics. What is reached is the equilibrium accessible from the
+state one starts in, so the minimisation is \emph{path dependent} --- ordinarily an invisible
+distinction, since that equilibrium is the minimum, but the one that decides the shell structure of atoms. The model is parameter-free: its inputs are the
+nuclear charge and the number of electrons, and the energy minimised is the Coulomb energy
+alone, with no constant adjusted anywhere. Computational work scales as
+$N$ times the mesh, $N$ being the number of electrons, since each density requires one Poisson
+solve on a grid in three space dimensions; the cost is thus linear in $N$ at fixed resolution,
+which allows the simulation of large molecules and, with successive model reduction, opens to
+clusters of molecules; RealQM applied to molecules, to condensed phases and to nuclei is
+presented in companion articles~\cite{Johnson-RealQM}.
 
-\paragraph{Context: one method across the whole table.} High-accuracy atomic reference
-data are assembled from a family of specialised treatments, each chosen to suit the
-system at hand: correlated non-relativistic wave-function methods for the light
-atoms~\cite{SzaboOstlund,ClementiRoetti,Chakravorty}, relativistic Dirac--Fock for the
-heavy ones~\cite{Desclaux}, density-functional and real-space approaches for large-scale
-work~\cite{HK64,KS65,Beck2000}, alongside tabulated experimental values~\cite{NIST-ASD};
-these reach accuracies far beyond the present model. The test reported here is of a
-different kind. A single, in-principle parameter-free scheme is applied uniformly to
-\emph{every} atom --- solved the same way for hydrogen and for uranium, with no
-per-element adjustment and no fitted functional --- and asked to reproduce the gross
-electronic structure of the whole table at once. What a uniform test of this sort can
-establish is not competitive accuracy on any one atom but \emph{structural correctness
-across scope}: that one Coulomb-energy minimisation recovers the shell filling, the
-total-energy trend to a few percent, and --- the more discriminating outcome --- the
-ionization-energy periodicity and ordering, including $4s$ before $3d$ across the
-transition series. Uniformity across the table, rather than precision on a single atom,
-is the property put to the test.
+We here take the different route, to \emph{maximal simplicity}: the model entire, in its
+smallest implementation and on the smallest systems, with nothing fitted and nothing carried
+over from the conventional account.
 
-\paragraph{Ionization energy as a per-electron quantity.} The feature that makes
-atoms a natural target is that, in this multiphase formulation, each electron
-satisfies its own one-electron eigenproblem and therefore carries its own energy
-$E_i$ (Section~\ref{sec:model}). The ionization energy is then the energy of the
-valence electron \emph{directly},
-\begin{equation}\label{eq:IE-direct}
-\mathrm{IE} \;=\; |E_{\rm valence}|,
-\end{equation}
-not a difference $E(\mathrm{A}^+)-E(\mathrm{A})$ of two large total energies. This
-is consequential numerically. An atomic total energy is large (e.g.\ Ne:
-$\approx -128.9$ Ha) while an ionization energy is small ($\mathrm{IE}_1$ of Ne
-$\approx 0.79$ Ha); computing the latter as a difference of the former demands the
-total energy to absolute accuracy far beyond $1\%$. The per-electron route avoids
-this entirely: the spectator core never enters~\eqref{eq:IE-direct}, so ionization
-energies can be accurate even when absolute total energies are only at the
-${\sim}1\%$ level. This division --- loose total energies, sharp ionization
-energies --- is the organising idea of the paper.
+In an atom the densities arrange themselves about the kernel in \emph{shells}: an inner
+region of tightly bound charge, then successive outer layers, each shell holding a definite
+number of densities and separated from the next by a free interface. This shell structure ---
+how many charges occupy each shell --- is \emph{not} a result of energy minimisation
+\emph{only}. It comes from the packing, electron by electron, as the atom is built: a dynamic Aufbau in which
+each new charge either continues to fill the outermost shell or, if that shell is complete,
+starts the next. A filled shell is shut to it: the charge in a complete shell is a
+more rigid arrangement than that of an arriving electron, and resists its inclusion. Given the structure, the
+minimisation then settles the interfaces and the energy (Section~\ref{sec:aufbau}).
 
-\paragraph{Contributions.} (i) A statement of the multiphase 3D atom model and of
-the per-electron energy $E_i$ as the computed ionization energy
-(Section~\ref{sec:model}); (ii) a two-scale solution architecture pairing a
-spherical inner-shell solve with a valence solve in the resulting pseudo-kernel ---
-spherical for all results here, full 3D~\cite{Johnson-RealQM} for the two geometries
-that require it (Section~\ref{sec:twoscale}); (iii) the solution algorithm
-(Section~\ref{sec:algorithm}); and (iv) validation
-across the periodic table --- first and second ionization energies against NIST,
-and total energies at the ${\sim}1\%$ level --- together with the numerical
-properties of the solver (Sections~\ref{sec:results}--\ref{sec:convergence}).
+An atom is spherically symmetric and its shells are concentric. The model therefore admits a
+reduction to a single radial dimension, and it is in that form that the table is computed
+here. The reduction is a specialisation of the same Coulomb energy, not a second model; but
+radial averaging keeps only the number of charges in a shell and discards their angular
+arrangement, which is where the packing lives, so it is the three-dimensional form that
+decides a packing question (Section~\ref{sec:radialsolver}).
+
+\paragraph{Codes.} We consider here a \emph{minimal implementation} --- minimal in the code,
+not in the model, which is carried in full --- essentially three lines expressing the update of
+the charge densities, the update of the potentials and the update of the free boundary,
+iterated to a joint steady state (Section~\ref{sec:algorithm}). It is used in two
+forms: spherically symmetric in one dimension, some $175$ lines, covering all $Z$; and fully
+three-dimensional, some $300$ lines, used at small $Z$ (Section~\ref{sec:code}). The three-dimensional form is the general one, and the one that
+extends to molecules. Both are short enough to be read end to end, so the
+claim that nothing is fitted can be checked rather than taken on trust.
+
+\paragraph{Objective.} Let RealQM compute a periodic table from scratch: the \emph{neutral
+ground states}, and for each of them the \emph{total energy}, the \emph{shell structure}, and
+the \emph{Aufbau} by which that structure forms. The result is compared
+against the high-accuracy atomic data assembled from specialised
+treatments~\cite{SzaboOstlund,ClementiRoetti,Chakravorty,Desclaux,HK64,KS65,Beck2000,NIST-ASD},
+each suited to its own range; RealQM does not attempt that kind of accuracy, and the test is of
+a different kind: one parameter-free model, based on Coulomb physics, applied uniformly to
+every element and asked for the gross structure of the whole table at once. Every atom is
+solved all-electron, with the bare nuclear term throughout and no fitted length anywhere. What
+the heavier elements require is not a parameter but resolution: the innermost shell contracts
+as $1/Z$, so the mesh is refined where it must be, and nothing else changes. What is computed throughout is the
+\emph{ground states}, which is what a periodic table is about. Ionization and excitation are
+treated elsewhere, as are molecules, condensed phases of thousands of atoms, and nuclei, with
+larger implementations of the same three updates~\cite{Johnson-RealQM}.
+
+\paragraph{Comparison with textbook quantum mechanics.} The two rest on the same ingredients
+--- kinetic energy and Coulomb interaction, and nothing else --- and differ in the form taken by
+the wave function. Textbook quantum mechanics uses a single global wave function over a
+$3N$-dimensional configuration space, and the Schr\"odinger equation for it is \emph{linear}.
+RealQM uses a sum of one-electron wave functions with local, non-overlapping supports in
+three-dimensional physical space, the supports themselves being unknowns, which makes it a
+\emph{nonlinear} free-boundary problem. The physics put in is the same; the form of the
+description is not, and the difference is worth stating plainly rather than as a verdict.
+
+Density functional theory is the nearer comparison, since it too works in three dimensions. The
+difference is that in RealQM the electrons retain their individuality, by occupying separate
+regions of space, and in density functional theory they do not, the state being a single common
+density.
+
+Exclusion is realised differently in each --- by
+antisymmetry of a function on configuration space, or by non-overlap of domains in
+three-space --- and neither is shown here to be an approximation to the other. What is
+compared in this paper is what each produces for the periodic table. The reader should take
+the wider ontological reading advanced elsewhere~\cite{Johnson-RealQM} as speculative,
+pending evidence stronger than atomic energetics can supply; nothing here depends on it.
 
 \section{The multiphase atom model}\label{sec:model}
 
-We summarise only what is needed here; derivations are
-in~\cite{Johnson-RealQM}. For an atom of nuclear charge $Z$ the $N$-electron wave
-function is
+RealQM models Coulomb interaction between non-overlapping unit electron charge densities
+and point-like kernels, posed as a multiphase free-boundary problem of continuum
+mechanics. Each electron is one unit of charge spread as a density
+over a domain of three-dimensional space; the domains tile space without overlapping; the
+densities meet with continuity on a free boundary, its position determined by the solution
+rather than imposed; and the only interaction is the ordinary Coulomb one, between the densities
+themselves and between each density and the kernels: the kinetic energy of the densities and
+their Coulomb energy are the whole of the functional. We summarise below only what is
+needed here; derivations are in~\cite{Johnson-RealQM}. For an atom of nuclear charge $Z$ the
+$N$-electron wave function $\Psi\in H^1(\mathbb{R}^3)$ has the form
 \begin{equation}\label{eq:Psi-sum}
 \Psi(\mathbf{x}) = \sum_{i=1}^{N} \psi_i(\mathbf{x}),
 \qquad \psi_i \in H^1(\Omega_i),
 \qquad \int_{\Omega_i} \psi_i^2 \, d\mathbf{x} = 1,
 \end{equation}
 on a partition of $\mathbb{R}^3$ into non-overlapping domains $\Omega_i$ with free
-boundaries $\Gamma_i=\partial\Omega_i$. The total energy is the standard Coulomb
-functional
+boundaries $\Gamma_i=\partial\Omega_i$. Hartree atomic units are used throughout. The total
+energy is the standard Coulomb functional
 \begin{equation}\label{eq:TE}
 TE(\Psi)=\underbrace{\tfrac12\sum_i\int_{\Omega_i}|\nabla\psi_i|^2}_{\text{kinetic}}
 \;+\;\underbrace{\int_{\mathbb{R}^3} W\,\Psi^2}_{\text{kernel--electron}}
@@ -124,6 +183,16 @@ with kernel potential $W(\mathbf{x})=-Z/|\mathbf{x}|$ and per-electron Hartree
 potentials
 $V_j(\mathbf{x})=\tfrac12\int_{\Omega_j}\psi_j^2(\mathbf{y})/|\mathbf{x}-\mathbf{y}|\,d\mathbf{y}$;
 self-repulsion is excluded by construction ($j\ne i$ on disjoint domains).
+
+What holds a density against its kernel is then the first term. For a single electron the last
+term is empty and~\eqref{eq:TE} reduces to the kinetic energy against the kernel attraction
+alone, $-\tfrac12\Delta$ against $-Z/r$: that balance, and nothing else, fixes the size of the
+density, and for $Z=1$ it is the hydrogen problem. A functional built instead on one common
+density $\rho=\sum_i\psi_i^2$ integrates $\rho$ against itself, so the same balance carries a
+repulsion of the electron with its own field and the density comes out too diffuse; removing
+that term afterwards is what a self-interaction correction is for. Here there is nothing to
+remove.
+
 Stationarity in $\psi_i$ at fixed $\Omega_i$ gives the one-electron eigenproblem
 \begin{equation}\label{eq:Hi}
 \mathcal{H}_i\psi_i\equiv\Bigl(-\tfrac12\Delta + W + 2\!\sum_{j\ne i}V_j\Bigr)\psi_i = E_i\psi_i
@@ -135,121 +204,126 @@ Neumann condition together constituting the \textbf{Bernoulli free-boundary
 condition}. Spatial exclusion plays the role of the Pauli principle: the electrons
 occupy disjoint territories rather than antisymmetrised orbitals.
 
-\paragraph{The per-electron energy is the ionization energy.} Equation~\eqref{eq:Hi}
-gives each electron a well-defined energy $E_i$ --- its kinetic energy plus its
-attraction to the kernel plus its interaction with the field of the other
-electrons. For the valence electron, $|E_{\rm valence}|$ is the energy required to
-remove it, i.e.\ the ionization energy~\eqref{eq:IE-direct}. The second ionization
-energy is obtained from the valence energy of the singly-ionized atom, recomputed
-with the outer electron removed and the remaining partition relaxed. Because the
-inner electrons are spectators to this process, the accuracy of $\mathrm{IE}$ is
-controlled by the valence solve and not by the (looser) accuracy of the core.
+For an atom the model reduces to spherical symmetry --- a specialisation available because
+atoms are spherical --- with $\Psi$ a function of $r$ alone, the domains $\Omega_i$ concentric
+shells, the free interfaces $\Gamma_i$ radii $R_s$, and the same-shell self-term of a shell
+holding $N_s$ charges reduced by $(N_s{-}1)/N_s$ (Section~\ref{sec:radialsolver}); the reduced
+equations are exhibited by the code of Section~\ref{sec:code}. Every atom reported here is
+solved all-electron, the nuclear term the bare $-Z/r$ throughout, with no core radius, no
+screened kernel and no fitted length anywhere.
 
-\section{Two-scale solution: spherical core, 3D valence}\label{sec:twoscale}
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{fig_essence.pdf}
+\caption{The model in three dimensions: charge density as surface elevation over the plane
+through the kernels, one colour per electron domain, kernels marked in yellow on the base
+plane. \textbf{H}: a single domain. \textbf{He}: two one-electron domains on one $+2$ kernel,
+meeting at a free interface through the nucleus. \textbf{H$_2$}: the same two domains with the
+kernels drawn apart to the bond length. He and H$_2$ differ only in where the kernels sit,
+which is this model's account of what a bond is. The quantity drawn is $|\psi_i|^2$ on the
+territory domain $i$ holds, unowned cells left unpainted, so the interface appears as the ridge
+between the two surfaces rather than as overlapping clouds. Cartesian grid, $120^3$ over a box
+of $8$~a.u., $\varepsilon=h$. The figure is of the partition; total energies are in
+Table~\ref{tab:TE}.}
+\label{fig:essence}
+\end{figure}
 
-The per-electron structure permits a computation that mirrors the physics: the
-spectator core is treated cheaply in spherical symmetry, and only the valence
-electrons --- which determine the ionization energies --- are treated explicitly in
-3D.
+\section{What the spherical reduction costs}\label{sec:radialsolver}
 
-\paragraph{Inner shells (spherical).} The closed inner shells are solved by a
-one-dimensional radial reduction of \eqref{eq:Psi-sum}--\eqref{eq:Hi}: radial
-densities $u(r)$ with free boundaries between shells set by continuity of $u$. The
-converged core supplies an effective \textbf{pseudo-kernel}
-\begin{equation}\label{eq:pseudokernel}
-V_{\rm kernel}(r) = -\frac{Z_{\rm kernel}}{r}\ \ (r>r_c),
-\qquad Z_{\rm kernel} = Z - N_{\rm core},
-\end{equation}
-smoothly softened for $r\le r_c$, where $Z_{\rm kernel}$ is the nuclear charge
-screened by the $N_{\rm core}$ core electrons and the softening radius $r_c$ is read
-off the converged core density. Crucially, $r_c$ is thereby \emph{determined by the
-core solve rather than fitted}, so the valence calculation carries no per-element
-empirical parameter.
+\paragraph{What the $(N_s{-}1)/N_s$ factor is, and what the reduction costs.}
+The factor is not a correction added to the model: it is forced by the reduction. In
+3D the $N_s$ electrons of a shell occupy $N_s$ separate one-electron domains and the
+$i\neq j$ rule counts $N_s(N_s{-}1)/2$ pairs. Smearing them into one spherical density
+of charge $N_s$ makes the Hartree self-energy count $N_s^2$ pairs, of which $N_s$ are
+spurious self-pairs; multiplying by $(N_s{-}1)/N_s$ removes exactly those. Nothing is
+fitted, and the parameter-free character of the model is untouched.
 
-\paragraph{Valence electrons.} In the general two-scale method the valence electrons
-are solved explicitly on a 3D grid in the pseudo-kernel~\eqref{eq:pseudokernel},
-retaining the angular (sub-shell) structure the radial reduction cannot represent.
-\emph{In this paper the valence is solved in the same spherical reduction}
-(Section~\ref{sec:radialsolver}); the full 3D solve is reserved for the two geometries
-that require it (the closed octet and the interpenetrating $4s/3d$). Either way the
-per-electron energies $E_i$ from~\eqref{eq:Hi} give the ionization energies
-through~\eqref{eq:IE-direct}, and the loose ${\sim}1\%$ accuracy of the spherical core
-enters only through the effective potential it presents to the valence, to which
-$\mathrm{IE}$ is far less sensitive than to the core energy itself.
+Smearing does a second thing, however, and this one is a genuine loss. It replaces the
+actual pair \emph{separations} by their spherical average. The charges of a shell sit
+as far apart as the shell allows --- antipodal for $N_s=2$, trigonal for $3$,
+tetrahedral for $4$ --- and those arrangements repel less than the angular average. For
+unit charges at a common radius $R$ (units of $1/R$):
+\begin{center}\small
+\begin{tabular}{ccccc}
+\hline
+$N_s$ & homogenised, $q=N_s$ & $\times(N_s{-}1)/N_s$ & packed & ratio \\
+\hline
+2 & 2.000 & 1.000 & 0.500 & 2.00 \\
+3 & 4.500 & 3.000 & 1.732 & 1.73 \\
+4 & 8.000 & 6.000 & 3.674 & 1.63 \\
+\hline
+\end{tabular}
+\end{center}
+So the reduced homogenised shell has the pair \emph{count} right and the pair
+\emph{geometry} wrong, overestimating intra-shell repulsion by a factor $1.6$--$2$. Most
+of that is absorbed by the shell radius, which is free and expands until the energy
+re-minimises; what survives appears as a systematic under-binding, and it is largest at
+$N_s=2$, where the ratio is largest. Helium is the clean test --- one shell, two
+electrons, no core, no $r_c$, and an exact reference --- and it under-binds by $2.0\%$
+(Table~\ref{tab:TE}), with the sign the table predicts.
 
-\subsection{The spherically-reduced solver}\label{sec:radialsolver}
-
-Every result in this paper is computed with the spherical (1D radial) reduction of the
-model, which we state explicitly. The atom has shells $s=0,\dots,S{-}1$; shell $s$
-carries $N_s$ electrons as a radial amplitude $u_s(r)$ on $[R_{s-1},R_s]$ (with
-$R_{-1}=0$, $R_{S-1}=\infty$). With the $s$-wave radial Laplacian
-$\Delta u = u'' + \tfrac{2}{r}u'$ and Hartree atomic units, the per-electron operator,
-its imaginary-time relaxation to the ground state, and the per-electron Hartree
-potential of the \emph{other} shells are
-\begin{align}
-H_s &= -\tfrac12\Delta - \frac{Z}{r} + W_s(r), &
-\frac{\partial u_s}{\partial\tau} &= -H_s u_s, \label{eq:radial-itp}\\
--\Delta W_s &= 4\pi\!\!\sum_{t\neq s}\! |u_t|^2, &
-&W_s(r)=\tfrac1r\!\int_0^r\!\!\rho_{\neq s}4\pi r'^2dr' + \!\int_r^\infty\!\!\rho_{\neq s}4\pi r'dr', \label{eq:radial-hartree}
-\end{align}
-the same-shell self-term reduced by $(N_s{-}1)/N_s$. The interfaces $R_s$ are free
-(Bernoulli) boundaries, fixed by continuity of the amplitude, and each shell is
-normalised:
-\begin{equation}\label{eq:radial-bc}
-u_s(R_s)=u_{s+1}(R_s), \qquad 4\pi\!\int_0^\infty |u_s|^2 r^2\,dr = N_s .
-\end{equation}
-The total energy (half-Hartree, no double counting) and the per-electron eigenvalue
-(full Hartree) --- the latter the ionization energy of Section~\ref{sec:model} --- are
-\begin{equation}\label{eq:radial-E}
-E=\sum_s 4\pi\!\int\!\Big[\tfrac12|u_s'|^2-\tfrac{Z}{r}|u_s|^2+\tfrac12 W_s|u_s|^2\Big]r^2dr,
-\qquad \varepsilon_s=\frac{\langle u_s|H_s|u_s\rangle}{N_s},\ \ \mathrm{IE}=|\varepsilon_{\rm valence}|.
-\end{equation}
-The scheme is discretised on a uniform grid $r_i=ih$ with an explicit step
-$\Delta\tau=\tfrac12 h^2$ (first order, cusp-limited; Section~\ref{sec:convergence}).
-For $Z>18$ the nuclear term is replaced by the pseudo-kernel
-$Z/r\to Z_{\rm ker}/\max(r,r_c)$ of~\eqref{eq:pseudokernel} with a Neumann inner
-boundary $u'(r_c)=0$, confining the valence outside the core.
+The thing discarded is precisely the angular correlation, which is what packing
+\emph{means}. This is why the radial reduction cannot adjudicate a packing question on
+energetic grounds --- it has no angles with which to tell $4{+}4$ from a single
+$8$-shell --- and why the capacities of Section~\ref{sec:packing} are established by the
+counting argument and the 3D solve rather than by the radial energies.
 
 \section{Algorithm: the three-line solver}\label{sec:algorithm}
 
-The radial system of Section~\ref{sec:radialsolver} is solved by three coupled
-relaxations to a joint steady state --- the \emph{three-line solver}. At each time step,
-for every shell $s$:
+The system is solved by three coupled relaxations to a joint steady state --- the
+\emph{three-line solver}. We state them for the general case of
+Section~\ref{sec:model}; the spherical reduction stated there is the
+special case in which the domains are concentric shells and each $\psi_i$ depends on $r$ alone.
+At each step, for every domain $\Omega_i$:
 \begin{enumerate}\setlength{\itemsep}{1pt}
-\item \textbf{Imaginary-time propagation} of the amplitude,
-$\partial_\tau u_s=-H_s u_s$~\eqref{eq:radial-itp}, relaxing $u_s$ toward the lowest
-eigenfunction of $H_s$;
-\item a \textbf{Poisson / shell-theorem solve} for the per-electron Hartree potential
-$W_s$~\eqref{eq:radial-hartree};
-\item a \textbf{boundary move}: each shell radius $R_s$ is shifted in the direction that
-\emph{decreases the jump} of $u$ across it, driving the interface toward the
-continuity~\eqref{eq:radial-bc} --- the Bernoulli free-boundary condition.
+\item \textbf{Imaginary time stepping} of the amplitude --- parabolic relaxation ---
+$\partial_\tau \psi_i=-\mathcal{H}_i \psi_i$ with $\mathcal{H}_i$ from~\eqref{eq:Hi}, relaxing
+$\psi_i$ toward the lowest eigenfunction of $\mathcal{H}_i$; $\tau$ is an artificial time
+carrying the relaxation and has no physical meaning, only the steady state being used;
+\item a \textbf{Poisson solve} for the per-electron potential $V_i$, which in spherical
+symmetry is the shell-theorem integral over the other shells;
+\item a \textbf{boundary move}: each interface $\Gamma_i$ is shifted in the direction that
+\emph{decreases the jump} of $\Psi$ across it, driving it toward the continuity that
+$\Psi\in H^1$ demands --- the Bernoulli free-boundary condition.
 \end{enumerate}
-After each step $u_s$ is renormalised~\eqref{eq:radial-bc}; at convergence the boundaries
-are stationary and the per-electron energy is the Rayleigh quotient
-$\varepsilon_s$~\eqref{eq:radial-E}, supplying the ionization energy
-through~\eqref{eq:IE-direct}. Each of the three is a single one-dimensional grid sweep on
-$r_i=ih$, so every atom converges in a fraction of a second and the whole periodic table
+After each step $\psi_i$ is renormalised; at convergence the boundaries are stationary and the
+per-electron energy is the Rayleigh quotient, supplying the per-shell energies.
+In the spherical case the scheme is discretised on a uniform grid $r_i=ih$ with an explicit
+step $\Delta\tau=\tfrac12 h^2$ (first order, cusp-limited; Section~\ref{sec:convergence}), and
+each of the three is a single one-dimensional grid sweep on $r_i=ih$, so every atom converges in a fraction of a second and the whole periodic table
 in about a minute on a laptop.
 
-\section{Results: total energies, packing, and ionization across the periodic table}\label{sec:results}
+\paragraph{The algorithm is a relaxation, not a global minimisation.} This is worth stating
+at the outset because it governs how the results below should be read. None of the three
+updates searches the space of configurations; each is a parabolic relaxation --- the
+amplitude down the gradient of $H_s$, the potential toward its Poisson source, the interface
+toward continuity --- and what they reach together is a \emph{steady state}, a configuration
+at which all three forces balance. Such a state is a critical point of the Coulomb functional,
+and the ground state is one; but the relaxation arrives at whichever equilibrium lies at the
+end of the path it is on, and there is no step at which a lower configuration elsewhere in the
+space is offered and refused. Energy minimisation here is therefore \emph{path dependent}:
+what is computed is the equilibrium reachable from the initial state, not the infimum over all
+states.
+
+Ordinarily this distinction is invisible, because the reachable equilibrium \emph{is} the
+minimum. It becomes the whole point in Section~\ref{sec:aufbau}, where a lower configuration
+exists, is never reached, and is not the physical one either --- so that the path, and not the
+infimum, is what selects the structure of the atom.
+
+\section{Results: total energies, packing, and electronegativity}\label{sec:results}
 
 We report three results. The electron packing (Section~\ref{sec:packing}) and the
 all-electron total energies of the first three periods (Section~\ref{sec:TEexplicit})
-come from the spherically-reduced (1D radial) solver applied to every electron. The
-full main-group periodic table (Section~\ref{sec:frozencore}) is then reached by the
-two-scale frozen-core decomposition of Section~\ref{sec:twoscale}: an inner core taken
-from reference data~\cite{ClementiRoetti,Desclaux} plus the RealQM valence computed in
-its pseudo-kernel. The
-transition and inner-transition elements (the $d$- and $f$-blocks) enter only as closed
-buried cores --- physically appropriate, since their electrons lie \emph{inside} the
-valence and barely participate in chemistry --- and are not resolved individually;
-``main group'' below means groups 1--2 and 13--18. Ionization energies
-(Section~\ref{sec:ie}) are summarised last.
+come from the spherically-reduced (1D radial) solver applied to every electron, with the
+bare nuclear charge and no fitted length. The electronegativities
+(Section~\ref{sec:chi}) follow from the same shell energies. Periods~1--3 are covered in
+full, hydrogen through argon; beyond argon the shells cease to nest and the radial
+reduction fails (Section~\ref{sec:dblock}).
 
 \subsection{Electron packing: 4+4, not 8}\label{sec:packing}
 
-For each atom the shell packing is determined by total energy. Two findings are
+The shell packing of each atom is supplied by the build-up of
+Section~\ref{sec:aufbau}, not chosen by fitting energies. Two findings are
 robust across $Z=2$--$18$. \emph{First}, comparing shells of capacity 2, 4, 6, 8,
 the \textbf{cap-4} packing matches reference total energies best everywhere: a
 capacity-8 shell over-binds by $+9\%$ to $+22\%$ (worsening with $Z$), and a closed
@@ -268,11 +342,214 @@ importantly --- the \emph{unconstrained} energy minimum is \emph{not} the physic
 configuration: in the 1D solver it favours the over-packed capacity-8 shell, the radial
 model lacking the angular exclusion that makes 8-on-a-shell unstable (a first signal
 that the closed shell is intrinsically three-dimensional). The physical packing is fixed
-instead by the build-up (Aufbau) of the atom, electron by electron. In this paper we
-therefore take the packing as the classic cap-4 configurations, selected by best fit to
-the total energies, and defer a \emph{dynamical} Aufbau --- one that would select the
-physical packing intrinsically --- to later work; RealQM's task here is to compute the
-energies of the chosen packings accurately.
+instead by the build-up (Aufbau) of the atom, electron by electron, which is the subject of
+Section~\ref{sec:aufbau}: the constraint that the inner shells are already filled removes
+the over-packed arrangements from the search, and among what remains the energy selects
+correctly. The capacities themselves are not fitted either --- $2$ and $4{+}4$ are the
+$n=1$ and $n=2$ cases of the counting argument of Section~\ref{sec:discussion}.
+
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{fig_octet.pdf}
+\caption{The octet as $4{+}4$. Four unit charges on a shell settle as a tetrahedron, the
+arrangement that puts them as far apart as a sphere allows. A second four cannot join them ---
+the tetrahedron is closed --- but they can occupy the \emph{dual} tetrahedron, and the eight
+together are the corners of a cube. The two interleave rather than stack: on a cube of side $2$
+the charges within one tetrahedron are $2.83$ apart while the nearest charge of the other is at
+$2.00$, so every charge's neighbours belong to the opposite four. This is why the closed octet
+is $4{+}4$ and never a single shell of eight, which over-binds by $9$--$22\%$
+(Section~\ref{sec:packing}); and it is the $n=2$ case of the counting of
+Section~\ref{sec:discussion}, the $n=1$ case being the antipodal pair.
+
+The orbital picture makes the same eight as $2{+}6$, an $s$ pair and three $p$ lobes. The two
+accounts agree on the number and differ in the decomposition, and it is the decomposition that
+bonding geometry sees: $sp^3$ hybridisation exists to turn $2{+}6$ back into four tetrahedral
+directions, which $4{+}4$ supplies at the outset.}
+\label{fig:octet}
+\end{figure}
+
+\subsection{Aufbau: how the shell structure forms}\label{sec:aufbau}
+
+The shell structure of an atom is not a static fact to be looked up but something that
+\emph{forms}, electron by electron, as the atom is built. Why the structure cannot instead be
+obtained by minimising over packings is worth stating precisely, because it turns out to be a
+structural property of the model rather than a weakness of the search.
+
+\paragraph{The energy is monotone in the packing.} Comparing candidate packings of the
+same atom, the energy decreases without interior minimum as the electrons are gathered
+into fewer, more compact shells. The unconstrained minimum is therefore always the most
+compact arrangement, in which the core is absorbed into the valence, and it is far from
+the reference value:
+
+\begin{center}\footnotesize
+\begin{tabular}{llrr@{\qquad}llrr}
+\toprule
+ & minimum & $E$ (Ha) & err & & physical & $E$ (Ha) & err \\
+\midrule
+Li & $3$       & $-8.499$  & $13.7\%$ & Li & $2{+}1$       & $-7.444$  & $0.45\%$ \\
+Be & $4$       & $-18.893$ & $28.8\%$ & Be & $2{+}2$       & $-14.607$ & $0.41\%$ \\
+B  & $5$       & $-35.450$ & $43.8\%$ & B  & $2{+}2{+}1$   & $-24.020$ & $2.6\%$  \\
+C  & $6$       & $-59.214$ & $56.5\%$ & C  & $2{+}2{+}2$   & $-37.420$ & $1.1\%$  \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent The physical configuration is, in each case, the \emph{least} bound of the
+candidates and simultaneously the closest to the reference. A variational search over
+packings is thus not merely unhelpful here; it is anti-correlated with the answer.
+
+\paragraph{What a build-up supplies.} The failure is specific: it occurs only where the
+search is free to dissolve an already-formed core. An Aufbau construction never offers
+that. Electrons are added one at a time; the parent configuration is inherited; and a
+filled packing admits no more. Imposing only those three conditions --- and letting the
+energy choose among what remains --- recovers the physical configuration of Li, Be, B and
+C with no empirical input, the energy merely breaking ties. Nothing is frozen
+numerically: every candidate is solved with all shells, radii and amplitudes relaxed.
+
+This is where the path dependence of Section~\ref{sec:algorithm} becomes the physics rather
+than a caveat. The three conditions are not restrictions imposed on a search; they are a
+description of the \emph{path} the atom takes as it forms. An electron arriving at an atom
+whose inner shells are already occupied cannot reach them --- not because a rule forbids it,
+but because a filled shell is the more rigid of the two. What decides is \emph{relative}
+rigidity, and nothing else could: the interface moves only where one domain's amplitude locally
+exceeds the other's, so the comparison is between the two charges and not a property of either
+alone. The compact charge of a complete shell wins against the diffuse charge arriving at it;
+the newcomer is turned aside and takes the room outside instead. Figure~\ref{fig:lisnaps}
+shows this happening --- the core unchanged and centred while the arriving charge is deflected
+around it. The merged configuration remains a legitimate
+state of lower energy; it is simply not reachable from where the arriving charge starts. The
+build-up is thus not a constraint added to repair the minimisation. It \emph{is} the
+minimisation, carried out along the path the atom actually takes, and the physical
+configuration is the equilibrium at the end of it.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.62\textwidth]{fig_li_wrap.pdf}
+\caption{The build-up as a dynamics: Li$^+$ with one electron added. The arriving charge is
+launched as a \emph{half-shell} outside the core --- its density concentrated on one side, so
+that no shell is present at $\tau=0$ --- and the interface between the two is free thereafter.
+Plotted is the distance of the arriving charge's centroid from the kernel against imaginary
+time. It falls from $0.84$ to $0.014$ --- essentially through the centre --- then swings back
+out: a damped oscillation about the closed shell rather than a decay onto it. The charge wraps
+\emph{around} the core rather than merging into it. Dotted lines mark the four times shown in
+Figure~\ref{fig:lisnaps}. A longer run of the same case carries the oscillation through a
+second pass and down to $4.5\%$ of the launch value; the run plotted here stops partway through
+the second swing, which is why it ends at $0.24$ rather than near zero. Merging is available to the relaxation and
+is the lower state --- a single $3$-shell lies $1.055$~Ha below $2{+}1$ --- so it is declined
+because the path cannot reach it, not because any constraint forbids it. All-electron, no
+$r_c$, $200^3$; the core is under-bound at this resolution, so no energy or radius is quoted
+from the run and none is needed for the statement made.}
+\label{fig:liwrap}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{fig_li_snaps.pdf}
+\caption{The same run as Figure~\ref{fig:liwrap}, seen in space: sections through the kernel at
+four times, with the Li$^+$ core in blue and the arriving charge in red, intensity following
+density on its own territory. At $\tau=6$ the arriving charge is a half-shell on one side and
+there is no shell anywhere; it then sweeps around the core and closes into one. The core is
+unchanged throughout --- centred, compact, holding exactly its two charges at
+$r_{50}=0.66$~a.u. --- and at no time does the arriving charge enter it. This is what the
+non-overlap condition does in practice: the interface moves only where a domain's amplitude
+locally wins, and against a formed core it does not, so the only direction available to the
+incoming charge is around.}
+\label{fig:lisnaps}
+\end{figure}
+
+
+For Be the two conditions already decide the outcome the energy would also choose:
+$2{+}2$ lies below $2{+}1{+}1$ by $0.13$~eV, and $2{+}2$ is the physical $1s^2 2s^2$. For
+B and C the closure condition is doing the work, since the energy alone would continue to
+fill the inner shell.
+
+\paragraph{Where the construction is incomplete.} Two limits should be stated plainly, since
+neither is apparent from the results above.
+
+\emph{The build-up is exhibited as a dynamics only at its first step.} Figures~\ref{fig:liwrap}
+and~\ref{fig:lisnaps} add one charge to Li$^+$ and follow it, and what they illustrate is one of
+the two cases: the \emph{opening of a new shell}, the arriving charge finding the inner shell
+closed and taking up position outside it. The other case --- a charge joining a shell already
+open, which must then rearrange to share it --- is not shown. Beryllium is its first instance,
+$2{+}1$ going to $2{+}2$ with the resident outer charge pushed into an antipodal pair, and it is
+the natural next step. Nothing here carries the construction further up the row. What supports
+Li through C is the comparison of \emph{converged} configurations reported above --- the energy
+selecting correctly among those a build-up would leave available --- which is a statement about
+the outcome, not a simulation of the process. We therefore offer the dynamic Aufbau as
+something the model makes explorable, opened at the first step, rather than as a mechanism
+already carried through the table.
+
+\emph{And from nitrogen onward even the static rule is undetermined.} A shell holding two
+charges may be a closed antipodal pair or a half-filled tetrahedron, and nothing in the present
+model distinguishes them; the build-up then either opens a spurious further shell or over-fills
+the existing one. We report the rule as established for Li through C and open beyond, rather
+than extrapolate it. It follows that there is no break at $Z=18$ in the Aufbau, which stops far
+earlier; $Z=18$ bounds the \emph{energies}, whose configurations come from the capacities and
+the balanced rule.
+
+\paragraph{Where the capacities come from.} Two accounts are available and they differ in
+provenance, which matters more than the arithmetic.
+
+The first is the familiar one. If a shell divides into two half-shells, each roughly a square,
+and a square subdivides as $n\times n$, the capacity is $2n^2$: the sequence
+$2,\ 8,\ 18,\ 32$, with each $n$ serving two periods except the first, giving period lengths
+$2,8,8,18,18,32,32$ and closures at $Z=2,10,18,36,54,86$. It reaches radon and reproduces every
+noble gas. But it should be said plainly what this count is: $n^2=\sum_{\ell=0}^{n-1}(2\ell+1)$
+is the degeneracy of a hydrogen shell, doubled by spin. Offering $2n^2$ as RealQM's own
+derivation of the capacities would be borrowing the answer from the theory being compared
+against. It also asks for $3\times3$ and $4\times4$ tilings, and the packing has no way to build
+them --- a $3\times3$ tiling is not assembled from $2\times2$ blocks.
+
+The second account uses nothing but what this model has measured. The basic filled units are the
+\emph{antipodal pair}, $2$, and the \emph{dual tetrahedra}, $8=4{+}4$, each established above and
+neither imported. Composing rows from those two:
+\begin{center}\small
+\begin{tabular}{clcr}
+\hline
+row & composition & length & closes at \\
+\hline
+1 & $2$                        & 2  & 2  \\
+2 & $4{+}4$                    & 8  & 10 \\
+3 & $4{+}4$                    & 8  & 18 \\
+4 & $2+(4{+}4)+(4{+}4)$        & 18 & 36 \\
+5 & $2+(4{+}4)+(4{+}4)$        & 18 & 54 \\
+\hline
+\end{tabular}
+\end{center}
+The first five row lengths and all four closures through xenon follow from the two packings
+alone, with no appeal to an orbital count and no tile the model cannot build. On this reading
+$18$ is not $9{+}9$ but $2{+}8{+}8$ --- a pair together with two octets --- which is also how the
+fourth row divides in fact, two elements then sixteen.
+
+The octet rule is then doing more work than it is usually given. It is not merely the rule for
+the second and third rows: it is the unit out of which the fourth and fifth are built as well,
+$18$ being a pair and two octets rather than a capacity of its own. Four row lengths, $2$, $8$,
+$8$, $18$, from one packing and one pair --- and argon itself is the same composition read
+cumulatively, its eighteen charges arranged as $2{+}(4{+}4)+(4{+}4)$, which is what the solver
+returns for it without being told.
+
+The disagreement with the orbital account is then the same at both row lengths, and it is a
+disagreement about decomposition rather than about number. Where that account makes the octet
+$2{+}6$, an $s$ pair and three $p$ lobes, this one makes it $4{+}4$; where it makes the fourth
+row $2{+}10{+}6$, a pair with five $d$ and three $p$, this one makes it $2{+}8{+}8$, a pair and
+two octets. Both give $8$ and both give $18$. What differs is what the eight and the eighteen
+are \emph{made of}, and that is what bonding geometry reads.
+
+It runs out at the sixth row. Thirty-two is not $2{+}8{+}8$ repeated ($54+18=72$, not $86$), and
+composing it from the same units requires either four octets with no leading pair or a unit the
+scheme does not contain. We therefore report the packing account as exact through xenon and open
+beyond, and we do not claim $2n^2$ as a result of this model. Which of the two is the right
+reading of the fourth row --- $9{+}9$ or $(2{+}8){+}8$ --- is not settled here; it is worth
+recording that they are distinguishable in principle, since only the second is expressible in
+the packings this model possesses --- and that the energy does not distinguish them in practice.
+Composing krypton as the third row's structure twice over, $2{+}4{+}4{+}4{+}4$ repeated, against
+the same $36$ charges packed as $2{+}4{+}4{+}4{+}4\,|\,4{+}3{+}3{+}2{+}3{+}3$, the two differ by
+$1.6$~Ha in $2662$, or $0.06\%$; for zinc the corresponding difference is $0.04\%$. Both are a
+hundred times smaller than either configuration's distance from the reference, so the comparison
+selects nothing. That is the same finding as Section~\ref{sec:aufbau}'s, one row further up: the
+energy is not what fixes the structure, and two arrangements of the same charges can sit within
+a twentieth of a per cent of each other.
 
 \subsection{All-electron total energies, periods 1--3}\label{sec:TEexplicit}
 
@@ -316,236 +593,112 @@ the opposite sign of error (RealQM over-binds the heavier atoms of the third per
 under-binds through missing correlation) --- obtained from a 1D radial solve with no
 basis sets, no antisymmetry, and no two-electron integrals.
 
-\subsection{Frozen-core total energies: the floor and the variation}\label{sec:frozencore}
-
-A total energy is meaningful only relative to a reference level. The absolute number is
-dominated by the deep inner shells and conveys little on its own; chemistry and
-periodicity live in the \emph{changes} of energy across groups and down periods. The
-two-scale decomposition of Section~\ref{sec:twoscale} makes this floor explicit,
-\begin{equation}\label{eq:frozencore}
-TE(Z) \;=\; \underbrace{E_{\rm core}(Z)}_{\text{floor (reference)}} \;+\; \underbrace{E_{\rm val}(Z)}_{\text{RealQM valence}},
-\end{equation}
-with $E_{\rm core}$ the energy of the closed noble-gas-like core --- the floor that sets
-the level --- and $E_{\rm val}$ the RealQM valence energy from the spherical
-pseudo-kernel solve, the valence held outside the core radius $r_c$ by a Neumann
-boundary $u'(r_c)=0$ (Section~\ref{sec:radialsolver}). For period~2 the floor is the two-electron He-like core,
-known analytically as $-Z^2+\tfrac58 Z-0.158$; for periods 3--6 it is taken from
-reference data. A single $r_c$ per period and block sets the level from one reference
-energy --- the alkaline-earth valence energy for the $s$-block, the noble-gas valence
-energy for the $p$-block --- so the remaining six atoms of each period are predictions.
-
-\begin{table}[t]
-\centering
-\caption{Frozen-core total energies \eqref{eq:frozencore} for representative main-group
-atoms versus reference. Every atom with $Z\ge 11$ lies within $0.5\%$, periods 4--6
-within $0.05\%$ (floor-dominated). The period-2 $p$-block is the exception (text).}
-\label{tab:frozencore}
-\begin{tabular}{llrrr}
-\toprule
-period & atom & $TE$ RealQM (Ha) & reference (Ha) & error \\
-\midrule
-2 & Be & $-14.672$   & $-14.667$   & $+0.03\%$ \\
-2 & Ne & $-129.321$  & $-128.938$  & $+0.30\%$ \\
-3 & Na & $-162.286$  & $-162.255$  & $+0.02\%$ \\
-3 & Ar & $-527.308$  & $-527.540$  & $-0.04\%$ \\
-4 & K  & $-599.185$  & $-599.165$  & $+0.00\%$ \\
-4 & Kr & $-2752.08$  & $-2752.06$  & $+0.00\%$ \\
-5 & Xe & $-7232.19$  & $-7232.14$  & $+0.00\%$ \\
-6 & Rn & $-21566.7$  & $-21566.7$  & $+0.00\%$ \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Table~\ref{tab:frozencore} reports the absolute total energies: every main-group atom
-from $Z=11$ (Na) to $Z=86$ (Rn) is within $0.5\%$, periods 4--6 within $0.05\%$. This
-precision is, as it must be, carried by the floor --- the valence is a small fraction
-of the deep total, so once the core is referenced the absolute total follows. The
-substantive content is therefore not the absolute number but $E_{\rm val}$ and its
-variation across the table, which RealQM supplies and which the ionization energies of
-Section~\ref{sec:ie} test directly.
-
-Two points sharpen the picture. \emph{Period~2 is the exception}: its He floor is so
-shallow that the valence is a large fraction of the total, and the absolute error rises
-to $2$--$3\%$ for the lightest $p$-block atoms (B, F, Ne; C, N, O remain near $1\%$).
-There the all-electron solve of Table~\ref{tab:TE} is actually more accurate, and the
-two methods cross over cleanly --- explicit wins for period~2 (shallow floor), frozen
-core wins decisively for periods 3+ (e.g.\ Si: $+0.3\%$ frozen versus $+4.6\%$
-explicit). \emph{The transition elements are absorbed into the floor}: a period-4
-$p$-block atom sits on an [Ar]$3d^{10}$ core, a period-6 one on an [Xe]$4f^{14}5d^{10}$
-core. These buried shells are not resolved; they serve as the reference level, which is
-exactly their physical role.
-
-Table~\ref{tab:master} collects the full main-group result --- total energy and first
-ionization energy, each with its error, for every atom from Li to Rn. It is the
-periodic table in RealQM: total energies within $1\%$ for $Z\ge 11$ (the period-2
-$p$-block the $2$--$6\%$ exception), and first ionization energies within $10$--$20\%$
-for the $s$-block and the heavier $p$-block, with the light $p$-block under-binding (the
-radial-octet ceiling of Section~\ref{sec:ie}). Total energies and ionization energies
-are obtained from their own $r_c$ calibrations (valence-energy and ionization-energy
-respectively), so the two error columns reflect two separate fits to one reference each
-per period.
-
-\begin{table}[p]
-\centering
-\footnotesize
-\caption{Total energies (frozen core) and first ionization energies (pseudo-kernel) for
-all main-group atoms, with errors. Totals: within $1\%$ for $Z\ge11$, period-2
-$p$-block the exception. Ionization energies versus NIST~\cite{NIST-ASD}: $s$-block and
-heavy $p$-block within $10$--$20\%$, light $p$-block the radial-octet limit.}
-\label{tab:master}
-\begin{tabular}{rl rr rrr}
-\toprule
-$Z$ & atom & $TE$ (Ha) & err & $\mathrm{IE}_1$ (eV) & NIST & err \\
-\midrule
-3  & Li & $-7.540$    & $+0.8\%$ & $5.39$  & $5.39$  & $0\%$   \\
-4  & Be & $-14.672$   & $+0.0\%$ & $6.81$  & $9.32$  & $-27\%$ \\
-5  & B  & $-26.217$   & $+6.3\%$ & $4.52$  & $8.30$  & $-45\%$ \\
-6  & C  & $-39.756$   & $+5.1\%$ & $7.68$  & $11.26$ & $-32\%$ \\
-7  & N  & $-57.742$   & $+5.8\%$ & $7.47$  & $14.53$ & $-49\%$ \\
-8  & O  & $-77.697$   & $+3.5\%$ & $10.41$ & $13.62$ & $-24\%$ \\
-9  & F  & $-102.888$  & $+3.2\%$ & $9.07$  & $17.42$ & $-48\%$ \\
-10 & Ne & $-129.321$  & $+0.3\%$ & $11.29$ & $21.57$ & $-48\%$ \\
-\midrule
-11 & Na & $-162.286$  & $+0.0\%$ & $5.12$  & $5.14$  & $0\%$   \\
-12 & Mg & $-200.057$  & $+0.0\%$ & $6.40$  & $7.65$  & $-16\%$ \\
-13 & Al & $-243.126$  & $+0.3\%$ & $4.52$  & $5.99$  & $-24\%$ \\
-14 & Si & $-290.235$  & $+0.3\%$ & $7.68$  & $8.15$  & $-6\%$  \\
-15 & P  & $-342.725$  & $+0.4\%$ & $7.47$  & $10.49$ & $-29\%$ \\
-16 & S  & $-399.211$  & $+0.3\%$ & $10.41$ & $10.36$ & $+1\%$  \\
-17 & Cl & $-461.385$  & $+0.3\%$ & $9.07$  & $12.97$ & $-30\%$ \\
-18 & Ar & $-527.308$  & $-0.0\%$ & $11.29$ & $15.76$ & $-28\%$ \\
-\midrule
-19 & K  & $-599.185$  & $+0.0\%$ & $4.33$  & $4.34$  & $0\%$   \\
-20 & Ca & $-676.761$  & $+0.0\%$ & $5.24$  & $6.11$  & $-14\%$ \\
-31 & Ga & $-1923.63$  & $+0.0\%$ & $4.52$  & $6.00$  & $-25\%$ \\
-32 & Ge & $-2075.73$  & $+0.0\%$ & $7.68$  & $7.90$  & $-3\%$  \\
-33 & As & $-2235.12$  & $+0.0\%$ & $7.47$  & $9.79$  & $-24\%$ \\
-34 & Se & $-2400.58$  & $+0.0\%$ & $10.41$ & $9.75$  & $+7\%$  \\
-35 & Br & $-2573.36$  & $+0.0\%$ & $9.07$  & $11.81$ & $-23\%$ \\
-36 & Kr & $-2752.08$  & $+0.0\%$ & $11.29$ & $14.00$ & $-19\%$ \\
-\midrule
-37 & Rb & $-2938.37$  & $+0.0\%$ & $4.18$  & $4.18$  & $0\%$   \\
-38 & Sr & $-3131.55$  & $-0.0\%$ & $5.03$  & $5.70$  & $-12\%$ \\
-49 & In & $-5740.36$  & $+0.0\%$ & $4.41$  & $5.79$  & $-24\%$ \\
-50 & Sn & $-6023.09$  & $+0.0\%$ & $7.12$  & $7.34$  & $-3\%$  \\
-51 & Sb & $-6313.96$  & $+0.0\%$ & $7.18$  & $8.61$  & $-17\%$ \\
-52 & Te & $-6612.09$  & $+0.0\%$ & $9.02$  & $9.01$  & $0\%$   \\
-53 & I  & $-6917.86$  & $-0.0\%$ & $9.58$  & $10.45$ & $-8\%$  \\
-54 & Xe & $-7232.19$  & $+0.0\%$ & $12.19$ & $12.13$ & $+1\%$  \\
-\midrule
-55 & Cs & $-7553.94$  & $+0.0\%$ & $3.91$  & $3.89$  & $+1\%$  \\
-56 & Ba & $-7883.54$  & $-0.0\%$ & $4.66$  & $5.21$  & $-10\%$ \\
-81 & Tl & $-18408.96$ & $-0.0\%$ & $4.21$  & $6.11$  & $-31\%$ \\
-82 & Pb & $-19013.89$ & $-0.0\%$ & $6.85$  & $7.42$  & $-8\%$  \\
-83 & Bi & $-19632.76$ & $+0.0\%$ & $6.57$  & $7.29$  & $-10\%$ \\
-84 & Po & $-20263.87$ & $-0.0\%$ & $8.91$  & $8.42$  & $+6\%$  \\
-85 & At & $-20909.04$ & $+0.0\%$ & $9.22$  & $9.32$  & $-1\%$  \\
-86 & Rn & $-21566.72$ & $+0.0\%$ & $10.46$ & $10.75$ & $-3\%$  \\
-\bottomrule
-\end{tabular}
-\end{table}
-
 \subsection{Boundary of the spherical model: where radial nesting fails}\label{sec:dblock}
 
-The spherically-reduced solver is valid exactly as long as the packing is a nested
-sequence of radial shells. This holds for the first three periods --- the first 18
-electrons, packed as $2,\ 4{+}4,\ 4{+}4$ --- and through the next two additions
-(Z=19,20). It breaks at $Z\approx 21$, where the optimal packing ceases to be
-radially nested: the electrons added there are \emph{not} the outermost, as shown
-model-independently by the ionisation order (they are not the first removed). They
-take a more compact, \emph{interpenetrating} arrangement that a model ordering shells
-strictly by radius cannot represent, so the radial solver mis-binds and then
-diverges. This is not a numerical accident but the periodic table's first departure
-from radial nesting --- the region conventional orbital theory labels the d-block,
-though RealQM invokes no angular-momentum orbitals, only packing. Interpenetrating
-packings are intrinsically three-dimensional and require the explicit 3D valence
-solve. The all-electron results of Section~\ref{sec:TEexplicit} are confined to this
-radially-nested regime ($Z\le 18$); the frozen-core results of
-Section~\ref{sec:frozencore} reach the full main group by absorbing the $d$- and
-$f$-blocks into the reference core.
+The reach of the parameter-free calculation is set by the shape of the table itself. The first
+three rows have lengths $2,\ 8,\ 8$, and the reduction covers them exactly: the packings
+$2,\ 4{+}4,\ 4{+}4$ nest, one shell inside the next, and the radial description is the whole of
+the arrangement. The fourth row is $18$ long. What lengthens it is the entry of the transition
+elements, and with them a filling that is no longer a simple outward sequence --- the added
+charges take the \emph{inner} position, beneath the pair that completes the row above. That
+placement, and not the reach of the calculation, is what bounds the \emph{build-up}: the
+energies run on past argon, parameter-free, once the mesh is refined.
 
-\subsection{Ionization energies}\label{sec:ie}
+It is worth being exact about what fails, because it is not the geometry. The arrangement
+beyond argon remains a nested sequence of radial shells: the $3d$ charges sit at a smaller
+radius than the $4s$ pair outside them, which is an ordinary nesting and one the radial solver
+represents without difficulty --- given that configuration it returns the observed removal order
+across the series (Section~\ref{sec:limitations}). What fails is the \emph{order of filling}.
+Through $Z=20$ each added charge goes outside what is already there, and a build-up that adds
+outward reaches the right configuration. At $Z\approx21$ the charge added belongs to a shell
+\emph{inside} the one already occupied --- shown model-independently by the ionisation order,
+since the $4s$ electrons are the first removed and are therefore the outer ones. A build-up
+that only adds outward has no such move, so it opens a further outer shell instead.
 
-The per-electron route of Section~\ref{sec:model} gives the first ionization energy
-directly as the valence-electron energy, $\mathrm{IE}=|\varepsilon_{\rm valence}|$,
-with no separate ion calculation. For the two atoms whose valence is a single
-outermost shell it is accurate (Table~\ref{tab:ie}): He and Li to ${\sim}1\%$,
-validating the method.
+The distinction matters for what may be claimed, and two boundaries must be kept apart. The
+\emph{energies} of Section~\ref{sec:TEexplicit} run to $Z=18$, computed all-electron with no
+fitted length; but the configurations they are computed in come from the balanced cap-4 rule
+together with the capacities of Section~\ref{sec:discussion}, not from a build-up carried out
+element by element. The \emph{Aufbau} proper --- the configuration arrived at by adding one
+charge at a time --- is demonstrated only at its first step and established only through carbon
+(Section~\ref{sec:aufbau}). There is accordingly no sharp break at $Z=18$ in the build-up;
+$Z=18$ is where the arrangement stops being reachable outward, which is a different statement
+and a weaker one.
 
-\begin{table}[t]
-\centering
-\caption{First ionization energy as the valence-electron energy
-$|\varepsilon_{\rm valence}|$ (balanced cap-4 packing), versus NIST~\cite{NIST-ASD}.}
-\label{tab:ie}
-\begin{tabular}{llrrr}
+Nor is $Z=18$ a computational boundary. On a uniform mesh the innermost shell contracts as
+$1/Z$ --- measured here as $r_{1s}Z \approx 4.3$, constant to $\pm9\%$ from carbon to argon ---
+so at fixed $N$ it is eventually spanned by too few cells and the energies degrade, turning
+positive around iron. That is resolution and not physics, and refining the mesh removes it: at
+$N=800$ the all-electron total energies run from argon to zinc within $1$--$5\%$, with no trend
+in $Z$, and nothing is fitted anywhere. The relaxation step is explicit, $\Delta\tau=\tfrac12
+h^2$, so the step count must be scaled as $h^{-2}$ alongside; a refinement taken without that
+returns a \emph{less} converged answer and is easily mistaken for a mesh effect.
+
+The reader can see all of this directly. The Atom Simulator runs the whole table in a browser,
+at either mesh, and needs no installation:
+\begin{center}
+\url{https://claes542.github.io/RealMolecule/atom_simulator.html}
+\end{center}
+We would encourage the reader to open it alongside this section. Setting $Z$ through the first
+three rows reproduces the configurations of Section~\ref{sec:TEexplicit}. Continuing past argon
+is more instructive still, because \emph{nothing appears to go wrong}: the solver goes on
+producing neatly nested shells and converging. Scandium comes out as
+$2{+}4{+}4{+}4{+}4{+}1{+}1{+}1$ --- having no move that puts a charge inside an existing shell,
+the build-up opens a further outer shell to hold one, and then another. Physically scandium is
+$[\mathrm{Ar}]\,3d^1 4s^2$, one of those three charges lying \emph{inside} the other two.
+
+The distinction worth drawing is between representing that arrangement and reaching it. The
+model represents it without difficulty: told to place the $d$ charges inside and the $s$ pair
+outside, it returns the observed removal order for the whole series, which is the calculation
+of Section~\ref{sec:limitations} and the reason we there call the placement imposed rather than
+derived. What the model cannot do is \emph{arrive} at it. The build-up adds outward, so it
+never offers the inner position, and it fails silently --- converging, reporting nothing amiss,
+and answering the wrong question accurately. Only the reference energies and the removal order
+reveal it.
+
+\subsection{Electronegativity from the shell energies}\label{sec:chi}
+
+The per-electron energies make one further quantity immediate. Allen's configuration
+energy --- the mean binding energy of the valence electrons,
+\begin{equation}\label{eq:chi}
+\chi \;=\; \frac{n_s\,\varepsilon_s + n_p\,\varepsilon_p}{n_s+n_p},
+\end{equation}
+written here as the occupancy-weighted mean over the valence shells, since the model has
+no $s/p$ distinction --- is a state property of the neutral atom. It needs no ion, no
+anion, and no calibration, and it is the quantity that bond polarity is built from. The
+values below use the all-electron balanced packings with no $r_c$ anywhere.
+
+\begin{center}\footnotesize
+\begin{tabular}{lrrrrrrrr}
 \toprule
-$Z$ & atom & $\mathrm{IE}_1$ RealQM (eV) & NIST (eV) & error \\
+ & Li & Be & B & C & N & O & F & Ne \\
 \midrule
-2 & He & 24.27 & 24.59 & $-1.3\%$ \\
-3 & Li & 5.46  & 5.39  & $+1.3\%$ \\
+$\chi$ this work (eV) & 7.26 & 10.18 & 14.49 & 20.68 & 28.81 & 36.69 & 47.93 & 58.39 \\
+$\chi$ Allen (eV)     & 5.39 &  9.32 & 12.13 & 15.05 & 18.13 & 21.36 & 24.80 & 28.31 \\
+ratio                 & 1.35 &  1.09 &  1.19 &  1.37 &  1.59 &  1.72 &  1.93 &  2.06 \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{center}
 
-On a bare nucleus the eigenvalue degrades beyond Li because the outer shell is placed
-at over-screened large radius. The pseudo-kernel of Section~\ref{sec:twoscale} removes
-this: with the core replaced by its reference field and the valence held outside $r_c$
-by the Neumann boundary $u'(r_c)=0$, the per-electron route extends across the
-table. The ionization energy is the \emph{change} of energy on removing the outermost
-electron --- the prototypical periodic observable --- and the model reproduces its two
-defining trends: $\mathrm{IE}$ falls monotonically down every group and rises across
-every period. Quantitatively (Table~\ref{tab:ieperiodic}) it is within $10$--$20\%$ for
-the $s$-block (alkaline earths to a few percent) and for the heavier $p$-block (periods
-5--6, several atoms within a few percent).
+\noindent The \emph{ordering} is reproduced exactly, element for element, across the
+period: the model places F above O above N above C, and so on down to Li. The
+\emph{gradient} is too steep by a factor $2.23$ (span $51.1$ against $22.9$~eV), and the
+discrepancy is not a constant scale --- the ratio climbs monotonically from $1.09$ at Be
+to $2.06$ at Ne.
 
-\begin{table}[t]
-\centering
-\caption{First ionization energy from the pseudo-kernel valence eigenvalue versus
-NIST~\cite{NIST-ASD}, representative atoms. The down-group and across-period trends are
-reproduced; the $s$-block and heavy $p$-block fall within $10$--$20\%$, the light
-$p$-block under-binds (radial-octet ceiling, text).}
-\label{tab:ieperiodic}
-\begin{tabular}{llrrr}
-\toprule
-block & atom & RealQM (eV) & NIST (eV) & error \\
-\midrule
-$s$ (group 1)        & Na & 5.1  & 5.14  & $\sim\!0\%$ \\
-$s$ (group 2)        & Mg & 6.4  & 7.65  & $-16\%$ \\
-$s$ (group 2)        & Ba & 4.7  & 5.21  & $-10\%$ \\
-$p$ heavy (period 5) & Sn & 7.1  & 7.34  & $-3\%$ \\
-$p$ heavy (period 5) & Xe & 12.2 & 12.13 & $+1\%$ \\
-$p$ light (period 3) & Ar & 8.0  & 15.76 & $-49\%$ \\
-$p$ light (period 2) & Ne & 10.9 & 21.57 & $-50\%$ \\
-\bottomrule
-\end{tabular}
-\end{table}
+The error is thus concentrated at the electronegative end, and its cause is the same one
+identified in Section~\ref{sec:dblock}. Radial nesting splits the valence into an inner
+shell bound too tightly and an outer shell too loosely: in nitrogen the middle shell comes
+out at $44.3$~eV where the physical $2s$ lies near $25$~eV, and with three of the five
+valence electrons in it, it dominates the mean. The same defect appears with the opposite
+sign in the outermost shell. One structural cause --- the outer tetrahedron placed at too
+large a radius --- therefore produces both the steep $\chi$ gradient and the light
+$p$-block limitation, and both are removed only by a solve that keeps the angular
+arrangement, that is by the three-dimensional form.
 
-\begin{figure}[t]
-\centering
-\includegraphics[width=\textwidth]{IE_all_final.png}
-\caption{First ionization energy across the periodic table: RealQM (coloured by block ---
-$s$ blue, $p$ red, $d$ green) versus NIST~\cite{NIST-ASD} (black). The periodic law is
-reproduced throughout --- the sawtooth of the main group and the flat transition-metal
-plateau. The $s$-block and heavy $p$-block are quantitative ($10$--$20\%$); the light
-$p$-block and the $d$-block are offset (the radial-octet ceiling and the missing $4s/3d$
-penetration), with the \emph{shapes} correct.}
-\label{fig:ie}
-\end{figure}
-
-The light $p$-block (periods 2--4) is the documented exception, under-binding by
-$35$--$50\%$. The cause is structural and was anticipated in Section~\ref{sec:dblock}:
-the closed octet, realised radially as $4{+}4$, places its outer tetrahedron at too
-large a radius. The radial octet has a hard ionization ceiling near $13$~eV --- it
-cannot reach Ne ($21.6$~eV) or Ar ($15.8$~eV) at any $r_c$ --- while the heavier noble
-gases, whose ionization energies fall below that ceiling, are recovered, with the
-crossover near Xe. This is not a tunable error but the signature of missing angular
-structure: the physical octet is two tetrahedra at one radius (compact, angularly
-separated), which only the 3D valence solve represents. Total energies are insensitive
-to it --- the misplaced outer electron is a small fraction of the floored total
-(Section~\ref{sec:frozencore}) --- but ionization energies, being precisely that
-electron, are not. Consistent with the floor argument of
-Section~\ref{sec:frozencore}, balanced filling (which spreads the outer electrons)
-slightly worsens the eigenvalue even as it improves the total energy.
+The result is accordingly strongest where the model is: at the electropositive end, with
+Be and B within $9$ and $19\%$. As a predictor of bond polarity it is the differences
+across a row that matter, and those inherit the same overestimate.
 
 \section{Discussion: packing versus orbitals}\label{sec:discussion}
 
@@ -569,23 +722,52 @@ regularities, not consequences of the Schr\"odinger equation, and the $4s$-befor
 ordering in particular has no first-principles derivation within the orbital picture. So
 standard quantum mechanics \emph{reproduces} the table with great economy, but its
 physical explanation is layered: exact angular momentum for one electron, plus fitted
-filling rules for many. RealQM relocates the capacities to geometry --- $2$ and $4$ and
-the octet $4{+}4$ follow from close-packing under Coulomb repulsion, the shell sizes from
-the size-versus-distance rule --- but, as in Section~\ref{sec:packing}, the selection of
-the physical packing (its own Aufbau) is likewise not yet derived and is here supplied by
-fit. Both frameworks thus explain the \emph{capacities} from genuine physics (harmonic
-counting; close-packing) while still leaning on an empirical element for the \emph{order}
-in which many-electron configurations are built.
+filling rules for many. RealQM relocates the capacities to geometry: $2$ and $4$ and the
+octet $4{+}4$ follow from close-packing under Coulomb repulsion, and composing rows from
+those units gives the lengths $2,8,8,18,18$ (Section~\ref{sec:aufbau}). The \emph{order} is
+then partly recovered rather than fitted --- a build-up that inherits the parent
+configuration and closes a filled packing selects the physical configuration of Li through
+C with no empirical input, the energy only breaking ties (Section~\ref{sec:aufbau}) ---
+though it is undetermined from nitrogen onward, and the doubling of each capacity across
+two periods is not derived here. So both frameworks explain the \emph{capacities} from
+genuine physics (harmonic counting; close-packing), and both still lean on an empirical
+element for part of the \emph{order}: the orbital picture on the Madelung rule
+throughout, the present one on an undetermined choice beyond carbon.
+
+A concrete difference is worth noting, because the two pictures decompose the \emph{same}
+number differently. The octet is $8$ in both, but the orbital picture splits it as $2+6$
+(an $s$ pair and a $p$ sextet, by angular momentum) while the packing splits it as $4+4$
+(two tetrahedra, by geometry). These are not notational variants: a single $8$-shell
+over-binds by $9$--$22\%$ here, so the model asserts that the physical division of the
+octet is the geometric one. The first shell is special in both readings for the same
+reason --- it admits no subdivision. In the orbital picture $n=1$ carries only $\ell=0$,
+so there is no second subshell to interleave with; in the packing picture $n=1$ is the
+minimal tiling, one cell per half-shell, the antipodal pair. That is consistent with its
+being the one capacity in the table that is not repeated.
 
 RealQM proceeds differently. There are no eigenmodes: the electrons are localised,
 non-overlapping charge clouds, and the ground state minimises the Coulomb energy under
 spatial exclusion. What emerges is geometric \emph{packing} --- the close-packing of
 mutually repelling charges on a shell (the Thomson problem), whose small-number optima are
-the antipodal pair (cap-2) and the tetrahedron (cap-4), the octet realised as $4{+}4$. The
-essential difference is in how exclusion is realised: antisymmetry in $3N$-dimensional
-configuration space (abstract) versus non-overlap of domains in three-space (physical).
-The angular eigenmodes --- the $p$ dumbbells, the $d$ cloverleaves --- follow from the
-former; the tetrahedra follow from the latter.
+the antipodal pair (cap-2) and the tetrahedron (cap-4), the octet realised as $4{+}4$.
+The two
+ways of realising exclusion, set out in Section~\ref{sec:intro}, have different consequences
+for shape: the angular eigenmodes --- the $p$ dumbbells, the $d$ cloverleaves --- follow from
+antisymmetry, the tetrahedra from non-overlap. We make no claim as to which account is the
+more fundamental. What can be said is that the second admits a directly physical reading:
+charges that cannot occupy the same place, arranging themselves as far apart as the
+available room allows.
+
+Spin illustrates the same point. In the orbital picture the factor $2$ in $2n^2$ is spin,
+two electrons sharing one spatial function; here it is the two half-shells, since
+non-overlap forbids two electrons from occupying the same region and a pair must therefore
+be spatially divided --- the cap-2 core being the antipodal counterpart of a filled $s$
+orbital. The electron count comes out the same by a different route. Spin plays no role in
+the present model, which is a real limitation and not merely an omission: singlet--triplet
+splitting, Hund's rules, and spin magnetic moments lie outside it entirely
+(Section~\ref{sec:limitations}). We note, without demonstrating it, that the
+\emph{spatial} content of Hund's first rule --- that electrons keep apart --- is enforced
+here unconditionally by non-overlap, whereas its energetic content is absent.
 
 A regularity of the packing, borne out by the table, sharpens the point: \textbf{every
 period closes as $4{+}4$, never as a single $4$}. The two are distinct objects. A single
@@ -598,15 +780,15 @@ rule is then geometric --- an atom closes its directional $4$ into the spherical
 --- and carbon's tetravalence is precisely the four bond directions of its single
 tetrahedron, completed to the cube by sharing one electron with each of four partners.
 (Equivalently, $8$ is two \emph{dual} tetrahedra forming one cubic shell, of which the
-radial $4{+}4$ is the 1D shadow --- which is why the radial octet under-binds the
-ionization energy of Section~\ref{sec:ie}.)
+radial $4{+}4$ is the 1D shadow --- which is why the radial model places the outer
+tetrahedron too far out, the limitation of Section~\ref{sec:dblock}.)
 
-RealQM moreover gives its \emph{own} rationale for the capacities $2n^2$, with no appeal
+RealQM moreover gives its \emph{own} rationale for the capacities, with no appeal
 to the harmonic count. Each shell is two \emph{dual half-shells} --- the pairing realised
 geometrically, the two interpenetrating tetrahedra of the octet being the $n=2$ instance
---- and each half divides regularly into $n^2$ cells as nested rings of
-$1,3,5,\dots,2n{-}1$ points, so $n^2=\sum_{\ell=0}^{n-1}(2\ell+1)$ and the shell holds
-$2n^2$. The ring counts $2\ell+1$ are the geometric counterpart of the angular
+--- and for the octet each half is $1{+}3$, an apex over a triangle. Whether that
+subdivision continues as $n^2$ for larger shells, and so returns $2n^2$, is the open question of
+Section~\ref{sec:aufbau}; the packings established here are the pair and the octet. The ring counts $2\ell+1$ are the geometric counterpart of the angular
 degeneracy: for $n=2$ a half is $1{+}3$ --- an apex over a triangle, i.e.\ a tetrahedron
 --- and the two duals form the cube. Packing alone thus yields both the magic numbers and
 their $2\ell+1$ substructure, with no angular-momentum operator.
@@ -624,8 +806,7 @@ The two pictures agree on the magic numbers $2,8,18,32$ because both count arran
 nested spheres in three dimensions --- the same geometry read spectrally (the harmonic
 count $2n^2$) or geometrically (the packing capacity) --- but they decompose them
 differently: $2{+}6{+}10{+}14$ into sub-shells versus $4{+}4$, $4{+}4{+}2$,
-$4{+}4{+}4{+}2$ into tetrahedra and pairs (the buried $d$- and $f$-shells of
-Section~\ref{sec:frozencore}). A closed shell is spherically symmetric either way; the
+$4{+}4{+}4{+}2$ into tetrahedra and pairs. A closed shell is spherically symmetric either way; the
 pictures part company in the angular correlation of open shells and, decisively, in
 \emph{bonding geometry}. There the geometric picture is the one chemistry already uses:
 VSEPR and $sp^3$ hybridisation are geometric repairs grafted onto the orbital model
@@ -666,9 +847,30 @@ The inner $1s$ contracts as $1/Z$, so a uniform grid must be refined in proporti
 resolve it: at the coarse $N$ above the Ne ($1s$ at $r\!\approx\!0.1$) and Ar
 ($r\!\approx\!0.056$) cores are unresolved and the energies diverge. This $1/Z$
 resolution requirement is the numerical face of the radial-nesting boundary
-(Section~\ref{sec:dblock}) and the practical reason heavy-atom total energies are
-obtained through the frozen core (Section~\ref{sec:frozencore}) rather than by direct
-all-electron refinement.
+(Section~\ref{sec:dblock}): it is a second reason, independent of the packing, why the
+all-electron table stops at argon.
+
+\paragraph{Where the error is.} It is worth saying plainly which approximation dominates. The
+kernel is the bare $-Z/r$, and near the nucleus a uniform grid does not resolve it: the
+innermost sampled value is $Z/h$, and the $1s$ it binds spans some eight cells at argon. The
+consequence is measurable. Argon's two-electron core comes out $69$~Ha too deep against the
+He-like value, a fifth of it, while the neutral atom lands within $0.1\%$ --- so that agreement
+is a cancellation of the core error against the rest, not accuracy; and the total moves
+$10.7$~Ha between $N=400$ and $N=800$, the relaxation being converged at both. In the light
+atoms the same effect appears as first-order behaviour, doubling when $h$ doubles. Beside this
+the packing, the free boundaries and the Coulomb sums are second-order effects: the unresolved
+$1/r$ singularity is the largest single contribution to the errors reported here.
+
+\paragraph{What convergence means in three dimensions.} The ladder above belongs to the radial
+solver, where a total energy is quoted and its limit is the question asked. The
+In the present setting --- the simplest possible implementation, on the smallest systems --- the
+three-dimensional calculations display \emph{qualitative} features of the solution rather than
+precise energies or geometry: which charge holds which region, where an interface stands,
+whether an arriving charge closes into a shell rather than merging inward.
+Figures~\ref{fig:essence} to~\ref{fig:lisnaps} are of that kind, and are reported as such. What
+is asked of refinement there is that these features do not change under it, the mesh
+representing shape rather than serving as a quadrature. The precise numbers in this paper come
+from the radial solver, where the ladder above applies.
 
 \paragraph{Iteration and free-boundary convergence.} The imaginary-time residual
 $\|\dot u_s\|$ and the boundary jumps $|u_s(R_s)-u_{s+1}(R_s)|$ both decay to steady
@@ -676,59 +878,140 @@ state; at convergence the jumps vanish, verifying the Bernoulli (continuity) con
 every interface.
 
 \paragraph{Throughput.} Each step is an $\mathcal{O}(N)$ one-dimensional grid sweep over
-the radial mesh; a single atom converges in a fraction of a second and the full
-main-group table in about a minute on a laptop CPU --- no basis sets, no two-electron
+the radial mesh; a single atom converges in a fraction of a second and the whole
+of periods~1--3 in seconds on a laptop CPU --- no basis sets, no two-electron
 integrals, no $N$-body configuration space.
 
 \section{Limitations}\label{sec:limitations}
+
+\paragraph{Spin.} The model contains no spin. Exclusion is realised geometrically, by
+non-overlap of domains, and the electron counts that spin supplies in the orbital picture
+are here supplied by the two half-shells (Section~\ref{sec:discussion}). This is a
+limitation of substance, not of presentation: singlet--triplet splitting and exchange
+energy as such, Hund's rules and multiplicity, spin magnetic moments, fine structure,
+Zeeman and ESR responses, and the ortho/para distinction in helium all lie outside the
+model as formulated. Nothing reported here depends on them --- ground-state energies and
+shell structure do not --- but any extension to magnetic properties or to multiplet
+spectra would require the model to be enlarged, not merely refined.
+
 
 Only the stationary (converged) solution is used, so the temporal order of the
 imaginary-time relaxation is immaterial. The relevant limitation is the \emph{spatial}
 discretisation: it is low order and cusp-limited (first order at the nucleus,
 Section~\ref{sec:convergence}), so the light-atom total energies retain a ${\sim}1$--$2\%$
-residual that a higher-order stencil or a logarithmic radial mesh would reduce. The core/valence split is a
-modelling choice. For the transition metals the valence is configured as the $d$-shell
-nested \emph{inside} the $s$-shell, which reproduces the correct ionization ordering
-($4s$ removed before $3d$) and, with a reference core, total energies to ${\sim}1\%$;
-the quantitative $d$-block ionization \emph{trends}, which require $4s$/$3d$
-interpenetration, remain a 3D effect. Open-shell and strongly non-spherical
-configurations test the angular representation of the 3D valence solve and are flagged
-where relevant. Electron affinities (negative ions) are a known difficult case and are
-outside the scope of this paper.
+residual that a higher-order stencil or a logarithmic radial mesh would reduce. For the
+transition metals the $d$-shell must be placed
+\emph{inside} the $s$-shell for the arrangement to be consistent at all; that placement is
+imposed, not derived, and we do not claim the ordering as a result. The interpenetrating
+$4s/3d$ structure is not sorted out here. Open-shell and strongly non-spherical
+configurations test the angular representation and are flagged where relevant; electron
+affinities are a known difficult case and lie outside this paper.
 
 \section{Conclusion}\label{sec:conclusion}
 
-The results organise into a single statement about symmetry. The \emph{inner} shells of
-every atom --- the closed, buried cap-2/cap-4 shells that carry most of the electrons
-and nearly all of the energy --- are always spherically symmetric, and the
-spherically-reduced solver computes them exactly. \emph{Most valence shells are
-spherically symmetric too}: the $s$-block, the single outermost electron, the
-radially-nested fillings, and the ionization \emph{ordering} throughout (including $4s$
-before $3d$) are all reproduced in spherical symmetry, and with a reference core the
-total energies follow to ${\sim}1\%$ across the whole periodic table, transition metals
-included. Only \emph{two specific valence geometries break spherical symmetry} and
-require the full 3D solve for their quantitative ionization energy: the \textbf{closed
-octet} --- two tetrahedra at one radius, which the radial $4{+}4$ under-binds against a
-${\sim}13$~eV ceiling (the light $p$-block) --- and the \textbf{interpenetrating
-$4s/3d$} valence of the transition metals, where the outer $s$ must penetrate the inner
-$d$ to give the rising ionization trend. Both are configurations in which electrons
-share one radius and are distinguished only by angle, which a radially-nested model
-cannot place.
+A periodic table has been computed from scratch: the ground states of the neutral atoms,
+every element solved the same way, with nothing fitted.
 
-The architecture and energetics of the periodic table are therefore \emph{radial}, and
-are captured by RealQM in spherical symmetry; its finest valence energetics are
-\emph{angular}, and are the task of the full 3D solve of Ref.~\cite{Johnson-RealQM}.
-The spherical model is not a provisional approximation awaiting the 3D one --- it is the
-correct description wherever the physics is radial, which is almost everywhere.
+Total energies come out within one to two percent across the first three periods, and the
+interface radii out of the minimisation. The result organises into one statement: packing forms
+the structure, the Aufbau selects which packing forms, and the energy realises it --- none of
+the three suffices alone.
+
+Two things follow from geometry alone and need no parameter: the octet as $4{+}4$, two dual
+tetrahedra forming a cube, which a single shell of eight over-binds; and, composing rows from
+that octet and the antipodal pair, the lengths $2,8,8,18,18$ with closures at the noble gases
+through xenon. The electronegativity ordering across period~2 follows from
+the shell energies directly.
+
+The reach of the calculation is set by the same geometry. The first three rows have a clear
+structure --- shells nesting simply, capacities $2,8,8$ --- and there the spherically reduced
+form captures the essence of the table, an atom being spherically symmetric. From the fourth
+row the shells interpenetrate, the $3d$ lying inside the $4s$ that fills after it; that
+structure we have not sorted out in detail, and the reduction fails there. The
+three-dimensional form of the model carries no such restriction, and it is the form that
+extends to molecules.
 
 \section{Code and reproducibility}\label{sec:code}
+
+The three relaxations of Section~\ref{sec:algorithm} are the whole algorithm, so the code
+implementing them is the simplest an atom admits. Two forms are used:
+
+\begin{center}\footnotesize
+\begin{tabular}{llr}
+\toprule
+ & scope & solver \\
+\midrule
+spherically symmetric (1D radial) & all $Z$                   & $\approx175$ lines \\
+Cartesian (3D)                    & small $Z$, no reduction   & $\approx300$ lines \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent The counts are of the solver proper --- the imaginary time stepping, the
+Poisson solve and the boundary move, with their initialisation. Each source file carries at its
+head the three updates \emph{quoted in their own code form}, with the line at which each
+appears, so that a reader can check the three-line claim against the lines that run rather than
+against a paraphrase of them. We would make a general point of this. A model whose content is
+three update rules is more honestly presented by exhibiting those rules as executable text than
+by transcribing them into display equations and asking the reader to trust that the program
+implements what is written: the code is where the approximations, the boundary handling and the
+discretisation actually live, and a short program is a stricter specification than a long
+derivation. Python or JavaScript of this size is, we think, a reasonable medium for
+computational physics, and the appropriate object of review alongside the text.
+
+The contrast with established practice is worth stating, and not as disparagement. The standard
+quantum-chemistry and electronic-structure packages run to hundreds of thousands or millions of
+lines, written by large teams of computational physicists over decades and without AI
+assistance of any kind, and they are mature and heavily validated. But no one reader holds such
+a code in view. In practice its physics is taken
+on the authority of the community that maintains it rather than read, and the distinction
+between what the model asserts and what the implementation does is not available for
+inspection. The codes here are short for a different reason, and not because anything has been
+conceded to get them short. They are short because the model is nothing but the physics:
+charge densities in space, the Coulomb interaction between them, and the three updates that
+carry them to equilibrium. No computational apparatus is laid over the physics to make it
+tractable, and the length of the code follows from that. Nothing is given up in reach --- the same three updates run from atoms to
+molecules to condensed phases --- nor in speed, the work scaling as $N$ times the mesh and so
+linearly in the number of electrons. Nor, measured as accuracy per unit of computation, in
+accuracy: the whole table to one or two per cent in about a minute on a laptop. What the size
+additionally buys is that the entire content of the calculation can be read by one person in an
+afternoon --- which for a paper claiming that a model reproduces a periodic table with nothing
+fitted is not a small thing, since the claim is worth no more than a reader's ability to
+confirm it.
+
+There is a practical side to this. The codes here were developed with AI assistance from
+p5.js templates written by the author, and those templates are essentially the three update
+lines displayed above: the content of the method was authored directly, and what assistance
+supplied is the scaffolding around it --- initialisation, plotting, batch drivers --- none of
+which enters a result. The reasonable worry about AI-assisted work is that the reasoning behind
+a program becomes unavailable for inspection, that the code turns into the part of a paper
+nobody reads. A program short enough to be read in full is the answer to that worry rather than
+an instance of it: what was written is on the page, in the form a referee reads it, and can be
+checked line by line against the physics it claims to implement. Not all coding should be
+hidden by AI, and least of all the few lines that carry the content of a model. The enclosing pages add
+plotting, a user interface and the batch harnesses that produce the tables, and are larger;
+nothing in them enters the computation. Neither solver uses a basis set, a library
+eigensolver, or a fitted functional, and both are short enough to be read end to end. That
+is the point of reporting their size: the claim that no parameter is adjusted anywhere is
+one a reader can check directly rather than take on trust.
+
+The molecular and condensed-phase work uses larger implementations of the same three
+relaxations --- a labelled-domain solver and a GPU solver, a few thousand lines each, which
+reach systems of thousands of atoms. Neither is used for any result reported here; both are
+described with the work in which they are applied~\cite{Johnson-RealQM}.
 
 The complete implementation, the validation suite, and an interactive gallery are
 publicly available:
 \begin{itemize}\setlength{\itemsep}{1pt}
   \item Source code: \url{https://github.com/Claes542/RealMolecule}
   \item Interactive gallery: \url{https://claes542.github.io/RealMolecule/}
+  \item Atom Simulator, the spherically reduced solver, running in a browser:
+        \url{https://claes542.github.io/RealMolecule/atom_simulator.html}
 \end{itemize}
+The last of these is the code whose three updates are quoted above, with a live display of the
+shells, their free boundaries and the energies as the relaxation proceeds. A reader who wants
+to know what the model does, rather than what we say it does, will learn more in ten minutes
+there than from this section.
 Every figure and table is reproducible from the published source on the hardware
 stated in Section~\ref{sec:convergence}.
 

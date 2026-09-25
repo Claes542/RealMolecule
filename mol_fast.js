@@ -28,9 +28,18 @@ console.log("[mol_fast.js] script loaded");
   const nuclei = rawNuclei.map(n => ({
     i: n.i, j: n.j, k: n.k, Z: n.Z,
     rc: n.rc || 0, r_out: n.r_out || 0, tilt_y: n.tilt_y || 0, tilt_x: n.tilt_x || 0, hs: n.hs || 0,
+    flat: n.flat || 0,        // init as CONSTANT density inside a sphere of this radius (0 = off)
+    halfx: n.halfx || 0,      // ±1: concentrate INITIAL density on one side of x (0 = off)
+    halfy: n.halfy || 0,      // ditto in y -- x+y together give a QUARTER shell
+    halfz: n.halfz || 0,      // ditto in z -- x+y+z give an OCTANT
     fixed: n.fixed === true,  // lock-in-place flag (preserved from USER_NUCLEI)
+    sph: n.sph === true,      // force this domain to a spherical shell of dynamic radius
+    shell_id: (n.shell_id !== undefined ? n.shell_id : null),  // domains sharing one RADIAL shell
+    core_n: n.core_n || 0,      // absorbed electrons represented as a frozen spherical density
+    core_r: n.core_r || 0.25,   // their radial scale (carries the periodic-column trend)
+    core_Z: n.core_Z || 0,      // full nuclear charge; 0 = feature off, use the bare Z
     z_init: (n.z_init !== undefined ? n.z_init : (n.Z > 0 ? n.Z : 1)),
-    // Shell-split fields: split_type ∈ {'sphere','hemi','third','tetra'}, split_idx = 0..N-1,
+    // Shell-split fields: split_type ∈ {'sphere','hemi','third','tetra','dirs'}, split_idx = 0..N-1,
     // split_axis = normalized 3-vector (default [1,0,0] for hemi, [0,0,1] for third).
     split: n.split || 'sphere',
     split_idx: n.split_idx || 0,
@@ -47,7 +56,11 @@ console.log("[mol_fast.js] script loaded");
   const hv = screenAu / NN;
   const h2v = hv * hv;
   const h3v = hv * hv * hv;
-  const dv = 0.12;
+  // Imaginary-time step factor: dt = dv*h^2. Explicit stability for -1/2 lap in 3D allows
+  // dv <= 1/3; 0.12 is conservative. Raising it buys imaginary time per step 1:1, which is
+  // what angular relaxation needs -- that mode decays as exp(-dE*tau) with dE ~ 1e-3, so tau
+  // is the whole cost. Do not exceed ~0.25 without checking the energy stays monotone.
+  const dv = (window.USER_DV !== undefined) ? window.USER_DV : 0.12;
   const dtv = dv * h2v;
   // Kinetic coefficient: H = -K_COEFF·∇². Standard 0.5.
   const KINETIC_COEFF = (window.USER_KINETIC_COEFF !== undefined) ? window.USER_KINETIC_COEFF : 0.5;
@@ -99,7 +112,8 @@ struct P {
   dt: f32, half_d: f32, h3: f32, TWO_PI: f32,
   R_out: f32, field_x: f32, alpha_TF: f32, full_self: f32,
   atoms: array<vec4<f32>, ${MAX_ATOMS}>,   // (i, j, k, Z)
-  rcs:   array<vec4<f32>, ${MAX_ATOMS}>,   // (rc, norm_target, _, _)
+  rcs:   array<vec4<f32>, ${MAX_ATOMS}>,   // (rc, norm_target, tilt_x, tilt_y)
+  shells: array<vec4<f32>, ${MAX_ATOMS}>,  // (r_in, r_out, _, _) -- DYNAMIC radial shell bounds
 }`;
 
   // Per-orbital outer-radius cutoff (optional). r_out > 0 confines orbital m to r < r_out around its atom.
@@ -107,10 +121,67 @@ struct P {
   const routArr = nuclei.map(n => (n.r_out || 0).toFixed(6)).join(', ');
   const hsArr = nuclei.map(n => (n.hs || 0).toFixed(1)).join(', ');
   // Split fields templated as const arrays for shader enforcement.
-  const splitTypeCode = { 'sphere': 0, 'hemi': 2, 'third': 3, 'tetra': 4, 'hemi_third': 5 };
+  // 'dirs' = DIRECTIONAL split: each sibling domain carries its OWN direction in split_axis and
+  // owns the cells whose radial direction is closest to it. The arrangement is then an INPUT set
+  // by the molecule's geometry (bonds and lone pairs), not a symmetric polyhedron imposed on the
+  // fragment. That is the difference between an atom and a fragment: the free atom is spherically
+  // symmetric so nothing distinguishes directions and the packing has to be chosen by energy
+  // (which in this model picks wrong -- the 1D scan drives O to a single 6-shell, 9.5% over-bound);
+  // in a molecule the partners break the symmetry and the bond directions are given.
+  // Reduces to hemi/third/tetra when the directions are the corresponding symmetric sets.
+  // KERNEL SOFTENING. r_soft = sqrt(r^2 + (SOFT*h)^2), i.e. eps = SOFT*h. Default 2 -- the
+  // inherited value, and NOT changed globally here because every page in this collection depends
+  // on it. Set window.USER_SOFT to override per page.
+  // The trade, computed for h = 0.06: eps = 2h leaves the attraction 6% too weak at Li's 1s peak
+  // and 28% too weak at O's, but caps the well at -Z/2h; eps = h halves those errors (2% / 10%)
+  // and DOUBLES the depth at the origin. A deeper finite well over-binds on a grid because the
+  // kinetic cost is capped at curvature ~1/h^2, so charge piles into the deepest cells where the
+  // continuum problem would be held off by the 1/r^2 kinetic term. Which error dominates depends
+  // on how many cells the 1s spans: Li 5.6, N 2.4, O 2.1.
+  // WEIGHTED DENSITY. The reduction gates the KINETIC term by w (`if (W>0.1)`) but integrates the
+  // norm, V_eK and the dipole over ALL space -- and since the u-update carries a factor w, a
+  // domain's amplitude is FROZEN at its seed value wherever it lost the territory competition.
+  // Those frozen tails are then counted as real charge, so the domains overlap in everything
+  // except the kinetic energy. With USER_WEIGHTED_DENSITY the three integrals are weighted by w
+  // too, so the density is u^2*w throughout, normalisation enforces int u^2 w = target, and the
+  // partition is genuine. Default OFF: every existing page in this collection was tuned against
+  // the unweighted behaviour.
+  const W_DENS = (typeof window !== 'undefined' && window.USER_WEIGHTED_DENSITY) ? 1.0 : 0.0;
+  // INTERFACE DIFFUSION. The w front is  dw = DIFF*dt*|cm|*lap(w) + dt*cm*|grad w|. The first term
+  // smooths the interface and the second advects it; since the advection is proportional to
+  // |grad w|, a broad interface moves SLOWER, so over-smoothing is self-defeating. Default 0.05
+  // is the inherited value.
+  const W_DIFF = (typeof window !== 'undefined' && window.USER_W_DIFF !== undefined)
+                 ? Number(window.USER_W_DIFF) : 0.05;
+  const SOFT_MULT = (typeof window !== 'undefined' && window.USER_SOFT !== undefined)
+                    ? Number(window.USER_SOFT) : 2.0;
+  const SOFT_SQ = SOFT_MULT * SOFT_MULT;
+  console.log('mol_fast kernel softening: eps = ' + SOFT_MULT + '*h');
+  const splitTypeCode = { 'sphere': 0, 'hemi': 2, 'third': 3, 'tetra': 4, 'hemi_third': 5, 'dirs': 6 };
   const splitTypeArr = nuclei.map(n => splitTypeCode[n.split] || 0).join('u, ') + 'u';
   const splitIdxArr = nuclei.map(n => (n.split_idx || 0)).join('u, ') + 'u';
   const splitFixArr = nuclei.map(n => n.split_fix ? '1u' : '0u').join(', ');
+  // SPHERICAL SHELL flag. A domain marked sph:true is forced to BE a sphere (or spherical annulus)
+  // of the dynamic radius in p.shells[m], exactly as every shell is in the 1D radial solver
+  // (atom_simulator.html:13, "spherically symmetric N-shell structure"). Core electrons are inert
+  // and spherical; letting a 3D core domain deform freely is both unphysical and what allows the
+  // valence to invade it. Here the SHAPE is fixed and only the RADIUS is free.
+  const sphArr = nuclei.map(n => n.sph ? '1u' : '0u').join(', ');
+  // FROZEN CORE SHAPE. n.core_n = number of ABSORBED electrons, n.core_r = their radial scale.
+  // The kernel then carries the FULL nuclear charge n.core_Z, screened by a fixed spherical core
+  // density, instead of a bare point charge with a hole punched round it.
+  //   Q_in(r) = core_n * [1 - (1 + 2r/a + 2(r/a)^2) exp(-2r/a)]      a = core_r
+  // which is the enclosed charge of a hydrogenic 1s-like shell -- 0 at the origin, -> core_n far
+  // out. So V -> -(Z - core_n)/r outside (the correct valence charge) and deepens smoothly inward
+  // as the screening falls away. That is the real screened potential, not an approximation to it.
+  // Why this and not a bigger r_c: r_c currently does TWO jobs -- encode the core's extent (wants
+  // to be large, element-specific) and avoid reversing the bond (wants to be small). Measured on
+  // OH, |mu| falls 0.470 -> 0.310 -> 0.110 for r_c = 0.1 -> 0.2 -> 0.3 and INVERTS near 0.25.
+  // Giving the first job to the core SHAPE leaves r_c as a universal numerical floor well under
+  // that threshold. The column trend (O vs S) then lives in core_r, with no wall anywhere.
+  const coreNArr = nuclei.map(n => (n.core_n || 0).toFixed(4)).join(', ');
+  const coreRArr = nuclei.map(n => (n.core_r || 0.25).toFixed(4)).join(', ');
+  const coreZArr = nuclei.map(n => (n.core_Z || 0).toFixed(4)).join(', ');
   const splitAxArr = nuclei.map(n => {
     const v = n.split_axis || [1, 0, 0];
     const L = Math.hypot(v[0], v[1], v[2]) || 1;
@@ -131,6 +202,15 @@ struct P {
   }).join('u, ') + 'u';
   console.log("mol_fast SHELL_MODE=" + SHELL_MODE + ", R_OUT=[" + routArr + "], HS=[" + hsArr + "]");
 
+  // Declared in EVERY shader module that needs them -- the K build lives in recomputeK_WGSL, a
+  // different module from updateWGSL, and a const declared in one is not visible in the other.
+  // (Getting that wrong fails WGSL compilation silently: no JS error, the page just sits at
+  // "loading…", which is indistinguishable from a slow start.)
+  const coreDeclWGSL = `
+const CORE_N = array<f32, ${NELEC}>(${coreNArr});        // absorbed electrons (frozen core density)
+const CORE_R = array<f32, ${NELEC}>(${coreRArr});        // their radial scale
+const CORE_Z = array<f32, ${NELEC}>(${coreZArr});        // full nuclear charge; 0 = feature off`;
+
   const updateWGSL = `
 ${paramStructWGSL}
 const R_OUT = array<f32, ${NELEC}>(${routArr});
@@ -142,6 +222,8 @@ const SPLIT_ROT = array<f32, ${NELEC}>(${splitRotArr});  // angular offset (rad)
 const R_IN = array<f32, ${NELEC}>(${rInArr});  // inner-shell boundary: w forced to 1 for r < r_in
 const SPLIT_GROUP = array<u32, ${NELEC}>(${splitGroupArr});  // group id — orbitals with same id share SIC (one shell)
 const SPLIT_FIX = array<u32, ${NELEC}>(${splitFixArr});  // 1=enforce every step, 0=init only
+const SPH = array<u32, ${NELEC}>(${sphArr});             // 1 = force this domain to a spherical shell
+${coreDeclWGSL}
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read> K: array<f32>;
 @group(0) @binding(2) var<storage, read> Ui: array<f32>;
@@ -185,7 +267,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let gy = (wjp - wjm) * p.inv_h;
   let gz = (wkp - wkm) * p.inv_h;
   var nw = wc
-    + 0.05 * p.dt * abs(cm) * lw
+    + ${W_DIFF.toFixed(6)} * p.dt * abs(cm) * lw
     + 1.0  * p.dt * cm * sqrt(gx * gx + gy * gy + gz * gz);
   nw = clamp(nw, 0.0, 1.0);
 
@@ -194,7 +276,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   // Shell mode — only this orbital's own rc applies, from its own atom center.
   // Also applies R_OUT (per-orbital outer-radius confinement) if set.
   let rc_m = p.rcs[m].x;              // rc always enforced (shell boundary fixed)
-  let ro_m = R_OUT[m] * p.R_out;      // r_out released after USER_R_OUT_RELEASE_STEP
+  let ro_m = p.shells[m].y * p.R_out;  // DYNAMIC outer shell bound (was the const R_OUT[m])
   {
     let atom_m = p.atoms[m];
     let dxm = f32(i) - atom_m.x;
@@ -206,10 +288,31 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       let t = clamp((r_m - edge) / (rc_m - edge), 0.0, 1.0);
       nw = min(nw, t * t * (3.0 - 2.0 * t));
     }
-    let rin_m = R_IN[m];  // kept for sector-skip check below
-    if (ro_m > 0.0 && r_m > ro_m) {
-      // Hard outer cutoff — orbital confined to r < ro_m (enforced every step).
-      nw = select(0.0, nw, r_m <= ro_m + p.h);
+    let rin_m = p.shells[m].x;   // DYNAMIC inner shell bound (was the const R_IN[m])
+    // SPHERICAL SHELLS and the inner bound.
+    // Until now R_IN was declared, read, and never applied -- its comment described behaviour that
+    // did not exist, so shells were bounded only from OUTSIDE and the valence was free to move
+    // inward and collapse into the kernel (isolated O came out 20 Ha too low).
+    // SPH[m]=1 forces the domain to BE the spherical annulus [rin_m, ro_m] -- the 1D solver's
+    // construction, where shape is fixed and only the radius is free. Otherwise the inner bound is
+    // applied as a smooth ramp, mirroring the r_c cusp.
+    // Either way the bound is a MOVING one: updateShellRadii() recomputes it from the current
+    // density each USER_SHELL_UPDATE steps, so when the valence presses inward the boundary follows
+    // instead of pinning. That is the difference from a fixed r_c.
+    // Radial band confinement. SPH[m]=1 means this domain owns its band exclusively, so it is
+    // enough to zero it OUTSIDE [rin_m, ro_m] -- it then fills the band by itself, through the
+    // normal non-overlap competition. Stamping nw=1 inside (the previous attempt) overrode the
+    // occupancy instead of participating in it, which broke the variational balance and left the
+    // isolated atom 31 Ha over-bound. Smooth ramps over 3h at both ends, mirroring the r_c cusp.
+    if (rin_m > 0.0) {
+      let edgeI = rin_m + 3.0 * p.h;
+      let ti = clamp((edgeI - r_m) / (edgeI - rin_m), 0.0, 1.0);
+      nw = min(nw, 1.0 - ti * ti * (3.0 - 2.0 * ti));
+    }
+    if (SPH[m] == 1u && ro_m > 0.0) {
+      let edgeO = ro_m - 3.0 * p.h;
+      let to = clamp((r_m - edgeO) / (ro_m - edgeO), 0.0, 1.0);
+      nw = min(nw, 1.0 - to * to * (3.0 - 2.0 * to));
     }
     // Enforce angular split (hemi/third/tetra) every step — keeps halves/sectors sharp.
     let s_type = SPLIT_TYPE[m];
@@ -265,6 +368,21 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             let sector = u32(floor((theta + 3.141592653589793) / 2.094395102393195)) % 3u;
             inSector = (sector == (sidx - 1u));
           }
+        }
+      } else if (s_type == 6u) {
+        // dirs: nearest sibling direction owns the cell. Siblings share SPLIT_GROUP (same kernel
+        // cell, same split type), and each carries its own direction in SPLIT_AX.
+        if (r_m > 1e-6) {
+          let ur = rel / r_m;
+          var bestN: u32 = m;
+          var bestD: f32 = -1e30;
+          for (var n: u32 = 0u; n < ${NELEC}u; n = n + 1u) {
+            if (SPLIT_TYPE[n] == 6u && SPLIT_GROUP[n] == SPLIT_GROUP[m]) {
+              let dn = dot(SPLIT_AX[n], ur);
+              if (dn > bestD) { bestD = dn; bestN = n; }
+            }
+          }
+          inSector = (bestN == m);
         }
       }
       if (!inSector) { nw = 0.0; }
@@ -390,7 +508,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
     for (var m: u32 = 0u; m < ${NELEC}u; m++) {
       let o = m * p.S3;
       let v = U[o + id];
-      sn[lid * NRED + m] = v * v * p.h3;
+      // wd = 1 normally; = w when USER_WEIGHTED_DENSITY, so density is u^2*w in EVERY integral
+      let wd = mix(1.0, W[o + id], ${W_DENS.toFixed(1)});
+      sn[lid * NRED + m] = wd * v * v * p.h3;
       if (W[o + id] > 0.1) {
         let a = U[o + id + p.S2] - v;
         let b = U[o + id + p.S]  - v;
@@ -399,9 +519,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
         let k_mult_T = select(1.0, ${KC_MULTI.toFixed(6)}, selfN_T > 1.0);
         T += k_mult_T * ${KINETIC_COEFF.toFixed(6)} * (a * a + b * b + c * c) * p.h;
       }
-      VeK -= K[id] * v * v * p.h3;
+      VeK -= wd * K[id] * v * v * p.h3;
       // Electronic dipole contribution: -∫ρ_m·r dV  (electron charge = -1)
-      let rho_cell = v * v * p.h3;
+      let rho_cell = wd * v * v * p.h3;
       dipEx -= rho_cell * xc;
       dipEy -= rho_cell * yc;
       dipEz -= rho_cell * zc;
@@ -564,6 +684,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   // --- Rebuild K from current atom positions (after nuclei move) ---
   const recomputeK_WGSL = `
 ${paramStructWGSL}
+${coreDeclWGSL}
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read_write> K: array<f32>;
 
@@ -581,8 +702,19 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let di = (f32(i) - p.atoms[a].x) * p.h;
     let dj = (f32(j) - p.atoms[a].y) * p.h;
     let dk = (f32(k) - p.atoms[a].z) * p.h;
-    let r_soft = sqrt(di*di + dj*dj + dk*dk + 4.0 * p.h2);  // softening ε² = 4·h²
-    Kval += Z_a / r_soft;
+    let r_soft = sqrt(di*di + dj*dj + dk*dk + ${SOFT_SQ.toFixed(6)} * p.h2);  // softening ε² = (SOFT·h)²
+    // FROZEN CORE SCREENING. With CORE_Z > 0 the kernel carries the full nuclear charge screened by
+    // a fixed spherical core density, so V -> -(Z - core_n)/r outside and deepens smoothly inward.
+    // No wall anywhere: the core's EXTENT is expressed as a potential, which is what lets the bond
+    // polarise. Must match the CPU build in initK exactly.
+    if (CORE_Z[a] > 0.0) {
+      let aa = CORE_R[a];
+      let x = sqrt(di*di + dj*dj + dk*dk) / aa;
+      let qin = CORE_N[a] * (1.0 - (1.0 + 2.0*x + 2.0*x*x) * exp(-2.0*x));
+      Kval += (CORE_Z[a] - qin) / r_soft;
+    } else {
+      Kval += Z_a / r_soft;
+    }
   }
   K[id] = Kval;
 }
@@ -803,6 +935,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let rhoSourceBG = [], residualPmBG = [], prolongCorrectPmBG = [];
   let restrictBG, coarseSmoothBG = [];
   let cur = 0, gpuReady = false, computing = false;
+  // Per-domain [r_in, r_out] actually in force. Seeded from the declared values, then rewritten
+  // from the density by updateShellRadii() so the radii are free but the radial ORDER is kept.
+  let shellBounds = [], lastShellUpd = -1e9;
+  const SHELL_ORDER = window.USER_SHELL_ORDER === true;          // opt in
+  const SHELL_UPD   = window.USER_SHELL_UPDATE || 250;           // steps between recomputations
   let tStep = 0, E = 0, lastMs = 0;
   let E_T = 0, E_eK = 0, E_ee = 0, E_KK = 0;
   let dipole = [0, 0, 0], dipoleMag = 0;  // total dipole in atomic units (1 au = 2.5417 Debye)
@@ -833,7 +970,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   // ===== PARAMS BUFFER =====
   // Layout: 80 bytes fixed header + MAX_ATOMS*16 (atoms) + MAX_ATOMS*16 (rcs)
-  const PARAM_BYTES = 80 + MAX_ATOMS * 16 * 2;
+  const PARAM_BYTES = 80 + MAX_ATOMS * 16 * 3;   // atoms + rcs + shells
 
   function writeParams() {
     const buf = new ArrayBuffer(PARAM_BYTES);
@@ -870,13 +1007,46 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
     // line-plot j offset (grid cells from N2) packed into last rcs slot .z
     f[rcsOff + (MAX_ATOMS - 1) * 4 + 2] = window.USER_LINE_J_OFFSET || 0;
+    // DYNAMIC SHELL BOUNDS. Seeded from the declared r_in/r_out; thereafter rewritten by
+    // updateShellRadii() from the CURRENT density, so the radii are free while the radial ORDER is
+    // kept. This is what the 1D radial solver (atom_simulator.html) gets for nothing: shell m
+    // occupies [M(m-1), M(m)], so a valence electron cannot be inside the core -- only the boundary
+    // position is free. In 3D nothing enforces that ordering, the valence wins core cells and falls
+    // into the kernel (isolated O came out 20.3 Ha too low). A hard r_c stops the collapse but
+    // blocks the retreat that correct polarity needs; free radii with kept ORDER do neither.
+    const shOff = rcsOff + MAX_ATOMS * 4;
+    for (let a = 0; a < MAX_ATOMS; a++) {
+      const off = shOff + a * 4;
+      if (a < N_ATOMS) {
+        f[off + 0] = (shellBounds[a] && shellBounds[a][0] !== undefined) ? shellBounds[a][0] : (nuclei[a].r_in || 0);
+        f[off + 1] = (shellBounds[a] && shellBounds[a][1] !== undefined) ? shellBounds[a][1] : (nuclei[a].r_out || 0);
+      }
+    }
     device.queue.writeBuffer(paramsBuf, 0, buf);
   }
 
   // Returns true if cell at (dx, dy, dz) relative to atom (r = distance, must be >0) is owned by
   // an orbital with given split_type, split_idx, split_axis. Default 'sphere' (no angular restriction).
-  function inSplit(dx, dy, dz, r, split, split_idx, split_axis, split_rot) {
+  function inSplit(dx, dy, dz, r, split, split_idx, split_axis, split_rot, nucList, selfIdx) {
     if (split === 'sphere' || split === 1 || r < 1e-6) return true;
+    if (split === 'dirs' || split === 6) {
+      // Nearest-direction wins among siblings (same kernel cell, same split type). Each sibling's
+      // own split_axis IS its direction, so a fragment is specified by listing where its domains
+      // point -- 3 N-H bonds plus 2 along the C3 axis for NH3, etc.
+      if (!nucList || selfIdx === undefined) return true;
+      const me = nucList[selfIdx];
+      const ur0 = dx / r, ur1 = dy / r, ur2 = dz / r;
+      let bestN = -1, bestDot = -Infinity;
+      for (let n = 0; n < nucList.length; n++) {
+        const s = nucList[n];
+        if (s.split !== 'dirs' || s.i !== me.i || s.j !== me.j || s.k !== me.k) continue;
+        const v = s.split_axis || [1, 0, 0];
+        const L = Math.hypot(v[0], v[1], v[2]) || 1;
+        const d = (v[0] * ur0 + v[1] * ur1 + v[2] * ur2) / L;
+        if (d > bestDot) { bestDot = d; bestN = n; }
+      }
+      return bestN === selfIdx;
+    }
     const ax = split_axis || [1, 0, 0];
     const axLen = Math.hypot(ax[0], ax[1], ax[2]) || 1;
     const a0 = ax[0] / axLen, a1 = ax[1] / axLen, a2 = ax[2] / axLen;
@@ -943,7 +1113,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     const Ud = new Float32Array(NELEC * S3);
     const Wd = new Float32Array(NELEC * S3);
     const Pd = new Float32Array(NELEC * S3);
-    const soft = 4 * h2v;  // kernel-smoothing ε² = 4·h²
+    const soft = SOFT_SQ * h2v;  // kernel-smoothing ε² = (SOFT·h)² — MUST match the shader
     const R_init = 3.0;  // au — initial u/w extent
 
     for (let i = 0; i <= NN; i++) {
@@ -961,14 +1131,43 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             const dz = (k - nuclei[a].k) * hv;
             const r_soft = Math.sqrt(dx * dx + dy * dy + dz * dz + soft);
             const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
-            K_acc += nuclei[a].Z / r_soft;
+            // screened by the frozen core density when core_Z > 0, else the bare kernel
+            if (nuclei[a].core_Z > 0) {
+              const aa = nuclei[a].core_r, x = Math.sqrt(dx*dx + dy*dy + dz*dz) / aa;
+              const qin = nuclei[a].core_n * (1 - (1 + 2*x + 2*x*x) * Math.exp(-2*x));
+              K_acc += (nuclei[a].core_Z - qin) / r_soft;
+            } else {
+              K_acc += nuclei[a].Z / r_soft;
+            }
             const zInit = nuclei[a].z_init;  // per-atom init decay rate (from user override or Z fallback)
-            const uHere = Math.exp(-zInit * r);
+            // `flat: R` starts the domain as CONSTANT density inside a sphere of radius R -- a
+            // uniform ball rather than a Slater exponential. Beyond R it decays, so the domain can
+            // still win the exterior in the best-wins partition below rather than ending at a cliff.
+            const flatR = nuclei[a].flat || 0;
+            let uHere = flatR > 0
+              ? (r <= flatR ? 1.0 : Math.exp(-zInit * (r - flatR)))
+              : Math.exp(-zInit * r);
+            // `halfx: ±1` launches the domain as a HALF-SHELL: its initial DENSITY is
+            // concentrated on one side of the nucleus while its TERRITORY is untouched.
+            // This is not what `hs` does -- hs hands out one half-space at init, which for a
+            // core carrying r_out leaves the far exterior owned by nobody and therefore
+            // permanently vacuum, so the charge could never wrap into it. Here the domain
+            // still claims the whole exterior (outer), there is no vacuum anywhere, and the
+            // question the run asks is whether a lopsided arrival wraps around into a
+            // complete shell or instead merges inward into a single occupied region.
+            // Composable wedge: x alone = half shell, x+y = quarter, x+y+z = octant.
+            const hx = nuclei[a].halfx || 0, hy = nuclei[a].halfy || 0, hz = nuclei[a].halfz || 0;
+            if (hx !== 0) uHere *= 0.02 + 0.98 / (1 + Math.exp(-hx * dx / 0.5));
+            if (hy !== 0) uHere *= 0.02 + 0.98 / (1 + Math.exp(-hy * dy / 0.5));
+            if (hz !== 0) uHere *= 0.02 + 0.98 / (1 + Math.exp(-hz * dz / 0.5));
             rList.push(r);
             uList.push(uHere);
             // Weight by Slater-normalized amplitude √(target·Z_init³) so inner shells (high Z·target)
             // correctly dominate near their nucleus. This gives physical shell boundaries automatically.
-            const uWeighted = Math.sqrt((normTargets[a] || 1) * zInit * zInit * zInit) * uHere;
+            // A flat ball is normalised as a uniform sphere instead: √(target / (4/3 πR³)).
+            const uWeighted = (flatR > 0
+              ? Math.sqrt((normTargets[a] || 1) / ((4/3) * Math.PI * flatR * flatR * flatR))
+              : Math.sqrt((normTargets[a] || 1) * zInit * zInit * zInit)) * uHere;
             // Skip atoms whose r_out is violated (cell beyond their confinement) — lets outer shells win there.
             const roa = nuclei[a].r_out || 0;
             const eligibleR = !(roa > 0 && r > roa + hv);
@@ -976,8 +1175,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             const hsa = nuclei[a].hs || 0;
             const midI0 = (nuclei[0].i + nuclei[N_ATOMS - 1].i) / 2;
             const eligibleHS = (hsa === 0) || ((hsa > 0) === (i > midI0));
-            // Split: check orbital's angular sector (sphere/hemi/third/tetra)
-            const eligibleSplit = inSplit(dx, dy, dz, r, nuclei[a].split, nuclei[a].split_idx, nuclei[a].split_axis, nuclei[a].split_rot);
+            // Split: check orbital's angular sector (sphere/hemi/third/tetra/dirs)
+            const eligibleSplit = inSplit(dx, dy, dz, r, nuclei[a].split, nuclei[a].split_idx, nuclei[a].split_axis, nuclei[a].split_rot, nuclei, a);
             if (eligibleR && eligibleHS && eligibleSplit && uWeighted > bestU) { bestU = uWeighted; bestM = a; }
           }
           Kd[id] = K_acc;
@@ -994,7 +1193,21 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             Ud[m * S3 + id] = uCut;
           }
           // w-init: best-wins hard partition (only the winner gets w=1; others 0).
-          if (bestM >= 0 && rList[bestM] < R_init) {
+          // R_init caps the initial territory at 3 au, which leaves everything beyond that
+          // UNOWNED (w = 0 for every domain) -- a vacuum shell created by initialisation. It is
+          // permanent: the amplitude update carries a factor w, so no domain can grow amplitude
+          // outside the territory it holds, and the w-front only advances where that domain's
+          // amplitude already wins. Neither field can move first, so the exterior is never
+          // claimed and the OUTERMOST electron is silently truncated. Measured on Li: the valence
+          // centroid came out at 0.80 au where <r>_2s ~ 4.7 au.
+          // An isolated atom has no outer free boundary -- the outermost density decays to
+          // infinity and the only genuine free surfaces are INTERNAL, between domains, where
+          // cm = u_self - u_other is already the right amplitude-matching condition. So a domain
+          // flagged `outer: true` is given the exterior at initialisation instead of having to
+          // advance into vacuum. This removes the artifact without touching the update rule and
+          // without exposing the unbounded-expansion mode that the w factor suppresses.
+          const outerB = bestM >= 0 && nuclei[bestM].outer;
+          if (bestM >= 0 && (rList[bestM] < R_init || outerB)) {
             const rc_b = nuclei[bestM].rc;
             const ro_b = nuclei[bestM].r_out || 0;
             let wCut = 1.0;
@@ -1313,6 +1526,315 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     dipoleMag = Math.hypot(dipole[0], dipole[1], dipole[2]);
     window._mu_x = dipole[0]; window._mu_y = dipole[1]; window._mu_z = dipole[2];
     window._mu_mag = dipoleMag;
+
+    // Recompute the radial shell bounds from the current density, if ordering is enabled.
+    // Guarded on the function existing because it is defined lazily below on the first pass.
+    window._tStep = tStep;
+    if (SHELL_ORDER && window.updateShellRadii && (tStep - lastShellUpd) >= SHELL_UPD) {
+      lastShellUpd = tStep;
+      try { await window.updateShellRadii(); } catch (e) { console.warn('shell-order update failed', e); }
+    }
+
+    // GRID READBACKS for molecular-electrostatic-potential work. Defined once, lazily, so they
+    // close over the live `cur` ping-pong index and read whichever slot is current at call time.
+    //
+    // Layout here is [electron][cell]: Pv[n*S3 + id], per the energy shader's own
+    //   "P_total at this cell": for n in 0..NELEC: P_tot += Pv[n*p.S3 + id]
+    // so the TOTAL electron potential is a plain sum over slots -- no (NELEC-1) division, unlike
+    // molecule.js's P_directBuf which stores "all electrons EXCEPT m". Getting that distinction
+    // wrong is silent: it rescales the whole field without making anything look broken.
+    // The factor 2 is the house convention (V_Hartree = 2*P_total, line ~290), so a unit positive
+    // test charge sees V = sum_a Z_a/r_a - 2*P_total.
+    //
+    // Why mol_fast rather than molecule.js for MEP: the angular splits are native and enforced in
+    // the shader every step, the outer boundary is free by construction with only r_c imposed, and
+    // the geometry relaxes. Reproducing those in molecule.js meant hand-drawing the partition with
+    // CUSTOM_LABEL_INIT and inheriting FREEZE_BOUNDARY, which cost a factor of 4 in the dipole.
+    if (!window.readPotTotal) {
+      const readSlots = async function(srcBuf, square) {
+        const rb = device.createBuffer({ size: NELEC * S3 * 4,
+          usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+        const enc = device.createCommandEncoder();
+        enc.copyBufferToBuffer(srcBuf, 0, rb, 0, NELEC * S3 * 4);
+        device.queue.submit([enc.finish()]);
+        await rb.mapAsync(GPUMapMode.READ);
+        const src = new Float32Array(rb.getMappedRange());
+        const out = new Float32Array(S3);
+        for (let n = 0; n < NELEC; n++) {
+          const base = n * S3;
+          if (square) for (let id = 0; id < S3; id++) { const v = src[base + id]; out[id] += v * v; }
+          else        for (let id = 0; id < S3; id++) { out[id] += src[base + id]; }
+        }
+        rb.unmap(); rb.destroy();
+        return out;
+      };
+      window.readPotTotal = async function() {
+        const out = await readSlots(P_buf[cur], false);
+        window._Pdata = out; window._PdataS = S;
+        window._PdataSrc = 'mol_fast sum P_buf[' + cur + '][0..' + (NELEC-1) + '] (exact total)';
+        return out;
+      };
+      // rho = sum_m u_m^2. Domains are non-overlapping, so each cell is carried by one orbital.
+      window.readDensity = async function() {
+        const out = await readSlots(U_buf[cur], true);
+        window._rhoData = out; window._rhoDataS = S;
+        return out;
+      };
+      window._gridS = S; window._gridH = hv; window._gridN2 = N2;
+      // PER-DOMAIN centroids. readDensity() sums u_n^2 over all slots, so it cannot say WHICH
+      // electron moved -- and the question "is O's bonding-side electron pushed back past the
+      // nucleus?" is precisely a per-domain one. Layout is [electron][cell], so each slot can be
+      // integrated on its own. Returns, for every domain: its charge (should be its norm target),
+      // its centroid in a.u., and the centroid's offset from its OWN kernel, which is the
+      // displacement that matters.
+      // PER-DOMAIN RADIAL PROFILE, reported BOTH ways.
+      // The solver's density is u^2: normalisation scales u so that sum u^2 h^3 = target, the
+      // Poisson source is u^2, and every energy integral uses v*v. The occupancy w gates the
+      // EVOLUTION only (the *wc factor on the u update) and never multiplies the density. Where a
+      // domain has lost the territory competition its amplitude is therefore frozen at whatever
+      // the initial seed left, not driven to zero -- so u^2 and u^2*w can differ, and which one
+      // you look at changes the answer. Both are returned; q_u is the quantity the solver
+      // actually normalises, q_uw is the charge inside the domain's own territory.
+      // WALL POSITION along the x-axis: where domain m's occupancy crosses 0.5, in au from the
+      // box centre. This is the observable for the aufbau test -- it starts at the seeded plane
+      // and should migrate to 0 if the free boundary finds the symmetric partition.
+      window.readWallX = async function(m) {
+        const mm = m || 0;
+        const rb = device.createBuffer({ size: NELEC * S3 * 4,
+          usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+        const enc = device.createCommandEncoder();
+        enc.copyBufferToBuffer(W_buf[cur], 0, rb, 0, NELEC * S3 * 4);
+        device.queue.submit([enc.finish()]);
+        await rb.mapAsync(GPUMapMode.READ);
+        const W = new Float32Array(rb.getMappedRange());
+        const base = mm * S3;
+        let out = null;
+        for (let i = 1; i < S - 2; i++) {
+          const a = W[base + i * S * S + N2 * S + N2];
+          const b = W[base + (i + 1) * S * S + N2 * S + N2];
+          if (a >= 0.5 && b < 0.5) {
+            const f = (a - 0.5) / Math.max(a - b, 1e-12);
+            out = Number((((i + f) - N2) * hv).toPrecision(5));
+            break;
+          }
+        }
+        rb.unmap(); rb.destroy();
+        return out;
+      };
+
+      window.readDomainProfiles = async function(ci, cj, ck) {
+        const c0 = (ci === undefined) ? N2 : ci, c1 = (cj === undefined) ? N2 : cj,
+              c2 = (ck === undefined) ? N2 : ck;
+        const rbU = device.createBuffer({ size: NELEC * S3 * 4,
+          usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+        const rbW = device.createBuffer({ size: NELEC * S3 * 4,
+          usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+        const enc = device.createCommandEncoder();
+        enc.copyBufferToBuffer(U_buf[cur], 0, rbU, 0, NELEC * S3 * 4);
+        enc.copyBufferToBuffer(W_buf[cur], 0, rbW, 0, NELEC * S3 * 4);
+        device.queue.submit([enc.finish()]);
+        await rbU.mapAsync(GPUMapMode.READ); await rbW.mapAsync(GPUMapMode.READ);
+        const U = new Float32Array(rbU.getMappedRange());
+        const W = new Float32Array(rbW.getMappedRange());
+        const h3 = hv * hv * hv, NB = Math.ceil(0.87 * S);
+        const out = [];
+        for (let n = 0; n < NELEC; n++) {
+          const base = n * S3;
+          const bu = new Float64Array(NB), bw = new Float64Array(NB);
+          let qu = 0, qw = 0, mu = 0, mw = 0;
+          for (let i = 1; i < S - 1; i++) for (let j = 1; j < S - 1; j++) for (let k = 1; k < S - 1; k++) {
+            const id = i * S * S + j * S + k;
+            const u = U[base + id]; if (u === 0) continue;
+            const d = u * u, dw = d * W[base + id];
+            const r = Math.sqrt((i-c0)*(i-c0) + (j-c1)*(j-c1) + (k-c2)*(k-c2));
+            const b = Math.min(NB - 1, Math.round(r));
+            bu[b] += d; bw[b] += dw; qu += d; qw += dw; mu += d * r; mw += dw * r;
+          }
+          function pct(bins, tot, f) {
+            let a = 0; for (let b = 0; b < NB; b++) { a += bins[b]; if (a >= f * tot) return Number((b * hv).toPrecision(4)); }
+            return null;
+          }
+          out.push({ n: n,
+            q_u:  Number((qu * h3).toPrecision(6)),
+            q_uw: Number((qw * h3).toPrecision(6)),
+            mean_r_u:  qu > 0 ? Number(((mu / qu) * hv).toPrecision(4)) : null,
+            mean_r_uw: qw > 0 ? Number(((mw / qw) * hv).toPrecision(4)) : null,
+            r50_u: qu > 0 ? pct(bu, qu, 0.5) : null,
+            r90_u: qu > 0 ? pct(bu, qu, 0.9) : null,
+            r50_uw: qw > 0 ? pct(bw, qw, 0.5) : null });
+        }
+        rbU.unmap(); rbU.destroy(); rbW.unmap(); rbW.destroy();
+        return out;
+      };
+
+      // PER-DOMAIN 2D SLICE at k=N2, for snapshots of the wrap-around. readDensity sums over
+      // slots and so cannot say which charge is where, which is the whole question here; this
+      // keeps the domains apart. Returns u^2 weighted by occupancy w, so each domain appears
+      // only on territory it holds -- plain u^2 would draw its frozen tail across its
+      // neighbour's region and a half-shell would look like a full one.
+      window.readSliceZ = async function(step) {
+        const ss = step || 2;
+        const rb = device.createBuffer({ size: NELEC * S3 * 4,
+          usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+        const wb = device.createBuffer({ size: NELEC * S3 * 4,
+          usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+        const enc = device.createCommandEncoder();
+        enc.copyBufferToBuffer(U_buf[cur], 0, rb, 0, NELEC * S3 * 4);
+        enc.copyBufferToBuffer(W_buf[cur], 0, wb, 0, NELEC * S3 * 4);
+        device.queue.submit([enc.finish()]);
+        await rb.mapAsync(GPUMapMode.READ);
+        await wb.mapAsync(GPUMapMode.READ);
+        const su = new Float32Array(rb.getMappedRange());
+        const sw = new Float32Array(wb.getMappedRange());
+        const xs = [], sheets = [];
+        for (let i = 0; i < S; i += ss) xs.push(Number(((i - N2) * hv).toFixed(3)));
+        for (let n = 0; n < NELEC; n++) {
+          const base = n * S3, sheet = [];
+          for (let i = 0; i < S; i += ss) {
+            const row = [];
+            for (let j = 0; j < S; j += ss) {
+              const id = base + i*S*S + j*S + N2;
+              const u = su[id], w = sw[id];
+              row.push(Number((u * u * w).toPrecision(4)));
+            }
+            sheet.push(row);
+          }
+          sheets.push(sheet);
+        }
+        rb.unmap(); wb.unmap(); rb.destroy(); wb.destroy();
+        return { x_au: xs, slice: sheets };
+      };
+
+      window.readDomainCentroids = async function() {
+        const rb = device.createBuffer({ size: NELEC * S3 * 4,
+          usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+        const enc = device.createCommandEncoder();
+        enc.copyBufferToBuffer(U_buf[cur], 0, rb, 0, NELEC * S3 * 4);
+        device.queue.submit([enc.finish()]);
+        await rb.mapAsync(GPUMapMode.READ);
+        const src = new Float32Array(rb.getMappedRange());
+        const out = [];
+        for (let n = 0; n < NELEC; n++) {
+          const base = n * S3;
+          let q = 0, cx = 0, cy = 0, cz = 0;
+          for (let i = 1; i < S-1; i++) {
+            for (let j = 1; j < S-1; j++) {
+              for (let k = 1; k < S-1; k++) {
+                const u = src[base + i*S*S + j*S + k];
+                if (u === 0) continue;
+                const r = u * u;
+                q += r; cx += r*i; cy += r*j; cz += r*k;
+              }
+            }
+          }
+          const nk = nuclei[n] || { i:0, j:0, k:0 };
+          out.push({ n: n,
+            q: Number((q * hv*hv*hv).toPrecision(6)),
+            centroid_au: q > 0 ? [Number(((cx/q)*hv).toPrecision(5)),
+                                  Number(((cy/q)*hv).toPrecision(5)),
+                                  Number(((cz/q)*hv).toPrecision(5))] : null,
+            offsetFromOwnKernel_au: q > 0 ? [Number(((cx/q - nk.i)*hv).toPrecision(5)),
+                                             Number(((cy/q - nk.j)*hv).toPrecision(5)),
+                                             Number(((cz/q - nk.k)*hv).toPrecision(5))] : null });
+        }
+        rb.unmap(); rb.destroy();
+        window._domCentroids = out;
+        return out;
+      };
+      // live nuclei, BY REFERENCE -- dynamics moves them, so a snapshot taken here would be the
+      // starting geometry, not the relaxed one. Kernel charge for a test charge is n.Z.
+      window._nuclei = nuclei;
+
+      // RADIAL SHELL ORDERING with FREE radii.
+      // For each group of domains sharing a kernel, rank them by current mean radius, then set the
+      // boundary after rank k at the radius enclosing the first (n_1+...+n_k) electrons of the
+      // group's OWN total density. Shell m is then confined to [R(m-1), R(m)] where the R's come
+      // from the solution, not from the modeller -- exactly the freedom the 1D radial solver has
+      // (atom_simulator.html:15, "free boundary between shells established by continuity of u(r)").
+      // The ordering is what 3D otherwise lacks: nothing stops a valence domain winning core cells
+      // and collapsing into the kernel, which is why isolated O came out 20.3 Ha too low.
+      window.updateShellRadii = async function() {
+        if (window.__dbg) window.__dbg('updateShellRadii: entered, NELEC='+NELEC);
+        const rb = device.createBuffer({ size: NELEC * S3 * 4,
+          usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+        const enc = device.createCommandEncoder();
+        enc.copyBufferToBuffer(U_buf[cur], 0, rb, 0, NELEC * S3 * 4);
+        device.queue.submit([enc.finish()]);
+        await rb.mapAsync(GPUMapMode.READ);
+        const src = new Float32Array(rb.getMappedRange());
+
+        // Group by kernel position AND shell_id. Angular siblings -- e.g. the two valence
+        // hemispheres -- belong to ONE radial shell and must share a band; ranking them as separate
+        // shells slices the valence radially instead of angularly, which is what the first attempt
+        // did (bounds 0.72-0.81 and 0.81-inf for the two hemispheres) and it wrecked the structure.
+        // Falls back to one shell per domain when shell_id is not supplied.
+        const groups = {};
+        for (let m = 0; m < NELEC; m++) {
+          const n = nuclei[m];
+          const key = n.i.toFixed(2) + '_' + n.j.toFixed(2) + '_' + n.k.toFixed(2);
+          (groups[key] = groups[key] || []).push(m);
+        }
+        const NB = 200, RMAX = 6.0, dr = RMAX / NB;          // radial histogram, a.u.
+        for (const key in groups) {
+          const g = groups[key];
+          if (g.length < 2) continue;                        // nothing to order
+          const n0 = nuclei[g[0]];
+          // per-domain mean radius (for ranking) and the group's total radial charge profile
+          const meanR = {}, prof = new Float64Array(NB);
+          for (const m of g) {
+            const base = m * S3;
+            let q = 0, rq = 0;
+            for (let i = 1; i < S-1; i++) {
+              const di = (i - n0.i) * hv;
+              for (let j = 1; j < S-1; j++) {
+                const dj = (j - n0.j) * hv;
+                for (let k = 1; k < S-1; k++) {
+                  const u = src[base + i*S*S + j*S + k];
+                  if (u === 0) continue;
+                  const w = u * u;
+                  const dk = (k - n0.k) * hv;
+                  const r = Math.sqrt(di*di + dj*dj + dk*dk);
+                  q += w; rq += w * r;
+                  const b = Math.min(NB-1, Math.floor(r / dr));
+                  prof[b] += w;
+                }
+              }
+            }
+            meanR[m] = q > 0 ? rq / q : 0;
+          }
+          // collapse domains into shells: same shell_id -> one shell (electron counts add)
+          const shellOf = {}, order = [];
+          for (const m of g) {
+            const sid = (nuclei[m].shell_id !== null && nuclei[m].shell_id !== undefined)
+                        ? 's' + nuclei[m].shell_id : 'd' + m;
+            if (!shellOf[sid]) { shellOf[sid] = { members: [], n: 0, rsum: 0, q: 0 }; order.push(sid); }
+            const sh = shellOf[sid];
+            sh.members.push(m);
+            sh.n += (normTargets[m] || 1);
+            sh.rsum += meanR[m]; sh.q += 1;
+          }
+          order.sort((a, b) => (shellOf[a].rsum / shellOf[a].q) - (shellOf[b].rsum / shellOf[b].q));
+          const h3 = hv*hv*hv;
+          let cum = 0, bIdx = 0, acc = 0;
+          const bounds = [];
+          for (let r = 0; r < order.length - 1; r++) {
+            cum += shellOf[order[r]].n;
+            while (bIdx < NB && acc < cum) { acc += prof[bIdx] * h3; bIdx++; }
+            bounds.push(bIdx * dr);
+          }
+          for (let r = 0; r < order.length; r++) {
+            const lo = r === 0 ? 0 : bounds[r-1];
+            const hi = r === order.length-1 ? 0 : bounds[r];
+            for (const m of shellOf[order[r]].members) shellBounds[m] = [lo, hi];
+          }
+        }
+        rb.unmap(); rb.destroy();
+        window._shellBounds = shellBounds.map(b => b ? [Number(b[0].toFixed(4)), Number(b[1].toFixed(4))] : null);
+        if (window.__dbg) window.__dbg('updateShellRadii: bounds='+JSON.stringify(window._shellBounds));
+        writeParams();
+        return window._shellBounds;
+      };
+    }
     await sliceReadBuf.mapAsync(GPUMapMode.READ);
     sliceData = new Float32Array(sliceReadBuf.getMappedRange().slice(0));
     sliceReadBuf.unmap();

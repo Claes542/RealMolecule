@@ -5,7 +5,13 @@
   <title>RealQM Atom Simulator — 6-Shell Structure</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
   <style>
-    body { margin: 0; background: #111; display: flex; justify-content: center; }
+    /* The canvas must sit at page origin. p5's .position() places sliders and buttons at
+       absolute PAGE coordinates, while text() draws in CANVAS coordinates; centring the canvas
+       separates the two by the centring offset, so on a wide window every control ends up to
+       the left of the label that names it. Anchoring at 0,0 keeps the two coordinate systems
+       identical at any window width. */
+    body { margin: 0; background: #111; }
+    canvas { display: block; }
   </style>
 </head>
 <body>
@@ -15,21 +21,22 @@
 // Free boundary between shells established by continuity of u(r)
 // ITP: du/dt = 0.5*(d2u/dr2 + 2/r*du/dr) + K*u - 2*P*u
 
-const MAXSHELLS = 6;
+const MAXSHELLS = 24;   // enough cap-4 shells for the full periodic table (2 + 21*4 = 86)
 let u = [], Karr = [], P = [];
 let Z;
-let Es = [2, 0, 0, 0, 0, 0];  // electrons per shell (shell 0 always 2)
+let Es = new Array(MAXSHELLS).fill(0);  // electrons per shell; Es[0] typically 2
+Es[0] = 2;
 let Ered = [];   // self-interaction reduction (E-1)/E per shell
 let M = [];      // boundary indices: M[0]=0, M[1..NSHELLS] = shell boundaries, M[NSHELLS]=N
 let NSHELLS = 1;
 let N = 400;
 let h, dt, D = 7;
-let fix = 0;
 let diff = 0.001;
 let running = false;
 let step = 0;
-let energy = [0, 0, 0, 0, 0, 0];
-let normu = [0, 0, 0, 0, 0, 0];
+let energy = new Array(MAXSHELLS).fill(0);
+let normu = new Array(MAXSHELLS).fill(0);
+let eps = new Array(MAXSHELLS).fill(0);   // per-shell orbital eigenvalue (full 2P), for ionization energy
 
 // Observed ground state energies
 const observed = {
@@ -50,7 +57,15 @@ const observed = {
   '36:2+4+4+4+4+4+4+4+4+4': { E: -2752, name: 'Kr', fix: 0, D: 12 },
 };
 
-let sliderZ, sliders = [], btnStart, btnReset;
+let sliderZ, sliders = [], btnStart, btnReset, btnLog, btnSweep, btnFull, btnFull2, inpZmax;
+let batchRunning = false, sweepStatus = '';
+// Full-table run: show the radial densities for each element in turn instead of a status line.
+let batchPlot = false, batchCaption = '', batchNote = '';
+let fullRows = [];   // live results of the periodic-table scan, drawn as a table while it runs
+// Pseudo-kernel valence mode: replace nucleus+core by Z_ker/max(r,r_c), solve valence only.
+let PK_MODE = false, PK_Zker = 8, PK_rc = 0.5, cuspZ = 0, btnVal, btnG12, btnCC, btnCalib, btnRow3, btnIC, btnISC, btnMGPT, btnTE, btnTM, btnConv, btnGrid;
+let innerSphere = false;  // analytic inner-sphere cusp correction (R_SING=2h) on the 1s shell; OFF (Z<19 uses uncorrected code)
+let ptPanel = null;       // on-screen results panel: per-atom {p,g,el,eE,eI} from the frozen-core sweep
 const shellColors = [
   [255, 60, 60],    // shell 0: red
   [60, 200, 60],    // shell 1: green
@@ -59,6 +74,7 @@ const shellColors = [
   [200, 60, 200],   // shell 4: magenta
   [60, 200, 200],   // shell 5: cyan
 ];
+function shellCol(s) { return shellColors[s % shellColors.length]; }
 
 function configKey() {
   let parts = [Z + ':' + Es[0]];
@@ -79,38 +95,1407 @@ function shellString() {
 }
 
 function setup() {
-  createCanvas(750, 550);
+  createCanvas(880, 560);
 
-  sliderZ = createSlider(2, 36, 4, 1);
+  sliderZ = createSlider(2, 86, 4, 1);
   sliderZ.position(20, 520);
   sliderZ.style('width', '100px');
 
-  for (let s = 0; s < MAXSHELLS - 1; s++) {
+  // Manual mode keeps 5 shell sliders (light atoms, spot checks); heavy atoms use the sweep.
+  for (let s = 0; s < 5; s++) {
     let sl = createSlider(0, 4, s === 0 ? 2 : (s === 1 ? 1 : 0), 1);
     sl.position(160 + s * 90, 520);
     sl.style('width', '70px');
     sliders[s] = sl;
   }
 
-  btnStart = createButton('Start');
-  btnStart.position(620, 517);
-  btnStart.style('font-size', '14px');
-  btnStart.style('padding', '4px 16px');
-  btnStart.mousePressed(startSimulation);
+  // --- controls in ordered rows, well below the sliders (sliders at y=520, canvas 560 tall) ---
+  const BY = (b, x, y, pad) => { b.position(x, y); b.style('font-size', '14px'); b.style('padding', pad || '4px 12px'); };
 
-  btnReset = createButton('Reset');
-  btnReset.position(680, 517);
-  btnReset.style('font-size', '14px');
-  btnReset.style('padding', '4px 16px');
-  btnReset.mousePressed(function() { running = false; });
+  // FOUR BUTTONS. The page had ten, and five of them ran constructions this work no longer
+  // uses -- a frozen core, a pseudo-kernel, a per-period calibrated r_c -- which a reader
+  // arriving from the paper would press and be misled by. Those routines are NOT deleted; they
+  // remain reachable as URL hooks (?auto=mgpt, ?auto=conv, and the rest) for our own use. What
+  // is presented is what the paper claims: one atom by hand, the whole table, and the mesh.
+  btnStart = createButton('Start');   BY(btnStart, 20, 595, '4px 16px'); btnStart.mousePressed(startSimulation);
+  btnReset = createButton('Reset');   BY(btnReset, 90, 595, '4px 16px'); btnReset.mousePressed(function () { running = false; });
+  // No mesh control is offered. N is fixed by Z -- 400 through argon, 800 beyond, because the
+  // innermost shell contracts as 1/Z -- and a toggle would only let a reader produce the
+  // divergent coarse-grid numbers past iron and take them for results.
+
+  // Two runs, split where the mesh changes: N=400 through argon, N=800 beyond, because the
+  // innermost shell contracts as 1/Z. The second is the slower of the two for that reason.
+  // The convergence sweep had no role here -- the mesh is chosen by Z, not explored -- so it
+  // is no longer offered; ?auto=conv still reaches it.
+  btnFull = createButton('Periodic table  2..18');  BY(btnFull, 20, 640);
+  btnFull.mousePressed(function () { runFullTable(2, 18); });
+  btnFull2 = createButton('Periodic table  19..36'); BY(btnFull2, 210, 640);
+  btnFull2.mousePressed(function () { runFullTable(19, 36); });
+
+}
+
+// FULL TABLE, ONE CLICK, WITH THE DENSITIES SHOWN. Walks Z=2..30 in order, solving each atom
+// all-electron and drawing its radial densities before moving on, so the shell structure can be
+// watched forming across the table rather than read off a CSV afterwards.
+//
+// The run is in two parts and the caption says which: through Z=20 the configuration comes from
+// the build-up with nothing supplied; from Z=21 it is taken from observation, because the d
+// charges belong inside the s pair that fills before them and an outward build-up cannot reach
+// that. The arrangement is still radial -- the solver handles it perfectly well once told.
+async function runFullTable(zlo, zhi) {
+  if (batchRunning) return;
+  batchRunning = true; running = false; batchPlot = true;
+  zlo = zlo || 2; zhi = zhi || 36;
+  PK_MODE = false;  const EL = {2:'He',3:'Li',4:'Be',5:'B',6:'C',7:'N',8:'O',9:'F',10:'Ne',11:'Na',12:'Mg',
+    13:'Al',14:'Si',15:'P',16:'S',17:'Cl',18:'Ar',19:'K',20:'Ca',21:'Sc',22:'Ti',23:'V',
+    24:'Cr',25:'Mn',26:'Fe',27:'Co',28:'Ni',29:'Cu',30:'Zn',31:'Ga',32:'Ge',33:'As',
+    34:'Se',35:'Br',36:'Kr'};
+  let rows = ['Z,el,config,config_source,quantity,value_Ha,ref_Ha,err_%,N'];
+  fullRows = [];
+  try { localStorage.setItem('fulltable_status', 'started'); } catch (e) {}
+  for (let Z = zlo; Z <= zhi; Z++) {
+    try { localStorage.setItem('fulltable_status', 'Z=' + Z); } catch (e) {}
+    // ALL-ELECTRON THROUGHOUT. An earlier version switched to a pseudo-core past Z=20 to keep
+    // a fixed mesh usable; that is no longer needed and would reintroduce a softening radius.
+    // The innermost shell contracts as r_1s ~ 4.32/Z (measured from this model's own converged
+    // boundaries, +-9% from carbon to argon), so what the heavier atoms need is resolution:
+    // the mesh is chosen by Z, and the step count scales as (N/400)^2 because dt = h^2/2.
+    // What IS still supplied past argon is the configuration, since a build-up that adds
+    // outward cannot reach a shell lying inside one already occupied.
+    const derived = configIsDerived(Z);
+    let cfg, res, ref = null, err = NaN;
+    // Two tiers, not three. A coarser N=200 for the light atoms looked like a free saving --
+    // the step count scales as N^2 so the imaginary time is unchanged -- but the error here is
+    // CUSP-LIMITED and first order in h, so halving the mesh doubled it: Li went -0.6% to -2.9%
+    // and B -2.6% to -5.6%, a factor of two in each case. Resolution at the nucleus is what the
+    // light atoms need; resolution of the 1s is what the heavy ones need.
+    N = (Z <= 18) ? 400 : 800;
+    const steps = Math.round(3000 * (N/400) * (N/400));
+    batchNote = (Z >= 19)
+      ? 'mesh N=800 from Z=19: about 8x the work per atom, so the scan slows here'
+      : 'mesh N=400';
+    try {
+      PK_MODE = false;
+      cfg = genConfigObserved(Z);
+      res = solveAtomPure(Z, cfg, steps);
+      ref = REF_ETOT[Z];
+      err = (ref != null && isFinite(res.etot)) ? (res.etot - ref) / ref * 100 : NaN;
+      // the comparison is the point of the run, so print it every time -- and say plainly
+      // when there is no reference value rather than leaving the line looking complete
+      var cmp = (ref == null) ? 'no reference'
+              : (isFinite(res.etot) ? 'ref ' + ref.toFixed(3) + '   diff ' +
+                 ((err >= 0 ? '+' : '') + err.toFixed(1) + '%') : 'ref ' + ref.toFixed(3));
+      batchCaption = (EL[Z] || 'Z=' + Z) + '   ' + cfg.join('+') +
+        '   E = ' + (isFinite(res.etot) ? res.etot.toFixed(3) : 'non-finite') +
+        '   ' + cmp + '   N=' + N + '   [config: ' + configSource(Z) + ']';
+      rows.push([Z, EL[Z] || '', cfg.join('+'), configSource(Z), 'E_total',
+        isFinite(res.etot) ? res.etot.toFixed(4) : 'NONFIN',
+        ref != null ? ref.toFixed(4) : '', isNaN(err) ? '' : err.toFixed(2), N].join(','));
+      fullRows.push({ el: EL[Z] || ('Z' + Z), Z: Z, cfg: cfg.join('+'),
+                      E: isFinite(res.etot) ? res.etot : null, ref: ref,
+                      err: isNaN(err) ? null : err, N: N, src: configSource(Z) });
+    } catch (e) {
+      batchCaption = (EL[Z] || 'Z=' + Z) + '   failed: ' + (e && e.message);
+      rows.push([Z, EL[Z] || '', (cfg||[]).join('+'), derived ? 'yes' : 'no', 'ERROR'].join(','));
+    }
+    // let the frame render, and hold long enough to be watched
+    await new Promise(r => setTimeout(r, 550));
+  }
+  try { localStorage.setItem('fulltable_rows', JSON.stringify(rows));
+        localStorage.setItem('fulltable_status', 'done'); } catch (e) {}
+  PK_MODE = false;
+  saveStrings(rows, 'realqm_full_table.csv');
+  batchCaption = 'done: Z = ' + zlo + '..' + zhi + ' — CSV downloaded';
+  await new Promise(r => setTimeout(r, 1500));
+  batchPlot = false; batchRunning = false;
+}
+
+// Sweep Z=2..18 with inner-compact packing (buried octets = 8, valence octet = 4+4),
+// full explicit solve (Neumann free boundaries). Reports total energy AND eigenvalue IE.
+async function runInnerCompactSweep() {
+  if (batchRunning) return;
+  batchRunning = true; running = false;
+  PK_MODE = false;  const Zmax = Math.min(18, sliderZ.value());
+  let rows = ['Z,config,E_Ha,ref_E_Ha,Etot_err_%,IE_eV,NIST_IE_eV,IE_err_%'];
+  for (let Z = 2; Z <= Zmax; Z++) {
+    try {
+      const cfg = genConfigInnerCompact(Z);
+      sweepStatus = 'inner-compact Z=' + Z + '  ' + cfg.join('+');
+      await new Promise(r => setTimeout(r, 0));
+      let res = solveAtomPure(Z, cfg, 3000);
+      const ref = REF_ETOT[Z], nist = NIST_IE1[Z];
+      const eErr = (ref != null && isFinite(res.etot)) ? ((res.etot - ref) / ref * 100) : NaN;
+      const ieErr = (nist && isFinite(res.IE_eV)) ? ((res.IE_eV - nist) / nist * 100) : NaN;
+      rows.push([Z, cfg.join('+'), isFinite(res.etot) ? res.etot.toFixed(4) : 'NONFIN',
+                 ref != null ? ref.toFixed(4) : '', isNaN(eErr) ? '' : eErr.toFixed(2),
+                 isFinite(res.IE_eV) ? res.IE_eV.toFixed(2) : '', nist ? nist.toFixed(3) : '',
+                 isNaN(ieErr) ? '' : ieErr.toFixed(1)].join(','));
+      console.log('IC ' + rows[rows.length - 1]);
+    } catch (e) {
+      console.warn('IC Z=' + Z + ' failed: ' + (e && e.message));
+      rows.push([Z, 'ERROR'].join(','));
+    }
+  }
+  saveStrings(rows, 'realqm_inner_compact.csv');
+  sweepStatus = 'inner-compact sweep done';
+  batchRunning = false;
+}
+
+// Inner-compact packing: completed inner octets stay COMPACT (single 8-shell),
+// the current valence octet is SPREAD (balanced 4+4). So Ne=2+4+4 (L is valence),
+// but Na=2+8+1 (L is now a compact inner core), Ar=2+8+4+4, K=2+8+8+1, etc.
+// Boundaries are the solver's usual Neumann free boundaries.
+function genConfigInnerCompact(Z) {
+  if (Z <= 2) return [Z];
+  let cfg = [2], rem = Z - 2;
+  while (rem > 8) { cfg.push(8); rem -= 8; }   // buried octet -> compact 8
+  return cfg.concat(octetConfig(rem));          // current valence octet -> 4+4
+}
+
+// Balanced cap-4 packing of an octet's k electrons into its two cap-4 sub-shells.
+function octetConfig(k) {
+  let sh = [0, 0];
+  for (let e = 0; e < k; e++) {
+    let idx = (sh[0] <= sh[1] && sh[0] < 4) ? 0 : 1;
+    if (sh[idx] >= 4) idx = 1 - idx;
+    sh[idx]++;
+  }
+  return sh.filter(x => x > 0);
+}
+
+// 3rd row (Na->Ar): solve the M-shell valence in a Ne pseudo-kernel (Z_ker = Z-10), swept over
+// the core radius r_c (the Ne core size). Tests whether a COMPACT Ne kernel fixes the M-valence
+// IE that the spread explicit Ne core wrecked (Na full-solve was -65%).
+async function runRow3Test() {
+  if (batchRunning) return;
+  batchRunning = true; running = false;
+  PK_MODE = true;
+  const elems = [
+    { el: 'Na', Z: 11 }, { el: 'Mg', Z: 12 }, { el: 'Al', Z: 13 }, { el: 'Si', Z: 14 },
+    { el: 'P', Z: 15 }, { el: 'S', Z: 16 }, { el: 'Cl', Z: 17 }, { el: 'Ar', Z: 18 },
+  ];
+  const rcs = [0.6, 0.8, 1.0, 1.3];
+  let rows = ['r_c,el,Z_ker,config,IE_eV,NIST_eV,err_%'];
+  for (const rc of rcs) {
+    PK_rc = rc;
+    for (const e of elems) {
+      PK_Zker = e.Z - 10;
+      const cfg = octetConfig(e.Z - 10);
+      sweepStatus = 'row3 r_c=' + rc + '  ' + e.el;
+      await new Promise(r => setTimeout(r, 0));
+      let res = solveAtomPure(PK_Zker, cfg);
+      const nist = NIST_IE1[e.Z];
+      const err = (nist && isFinite(res.IE_eV)) ? ((res.IE_eV - nist) / nist * 100) : NaN;
+      rows.push([rc.toFixed(1), e.el, PK_Zker, cfg.join('+'),
+                 isFinite(res.IE_eV) ? res.IE_eV.toFixed(2) : 'NONFIN',
+                 nist ? nist.toFixed(3) : '', isNaN(err) ? '' : err.toFixed(1)].join(','));
+      console.log('R3 ' + rows[rows.length - 1]);
+    }
+  }
+  PK_MODE = false; PK_Zker = 8;
+  saveStrings(rows, 'realqm_row3_nekernel.csv');
+  sweepStatus = 'row3 test done';
+  batchRunning = false;
+}
+
+// Main-group valence packing: group 1 -> [1], group 2 -> cap-2 [2] (s^2 antipodal pair, single
+// shell so it behaves like group 1), groups 13-18 -> octetConfig (the 4+4 octet building).
+function mgConfig(g) {
+  if (g === 1) return [1];
+  if (g === 2) return [2];
+  return octetConfig(g - 10);
+}
+
+// Bisection on r_c to match a target IE (IE decreases monotonically as r_c grows). Returns the
+// best r_c found and its model IE. Used to pin each block's r_c to one reference atom.
+async function calibRcFor(zker, cfg, targetIE, lo, hi) {
+  PK_Zker = zker;
+  let bestRc = (lo + hi) / 2, bestErr = Infinity, bestIE = NaN;
+  for (let it = 0; it < 20; it++) {
+    let mid = (lo + hi) / 2;
+    PK_rc = mid;
+    await new Promise(r => setTimeout(r, 0));
+    let res = solveAtomPure(zker, cfg, 3000);
+    let ie = res.IE_eV;
+    if (isFinite(ie) && Math.abs(ie - targetIE) < bestErr) { bestErr = Math.abs(ie - targetIE); bestRc = mid; bestIE = ie; }
+    if (!isFinite(ie)) hi = mid;          // unbound: r_c too large
+    else if (ie > targetIE) lo = mid;     // too bound: increase r_c
+    else hi = mid;                        // too loose: decrease r_c
+  }
+  return { rc: bestRc, ie: bestIE };
+}
+
+// Like calibRcFor but matches a target VALENCE ENERGY (E_val, more robust than the single IE).
+// Used for the frozen-core total energy: pin r_c so the noble-gas valence energy is reproduced.
+async function calibRcForEval(zker, cfg, target, lo, hi) {
+  PK_Zker = zker;
+  let bestRc = (lo + hi) / 2, bestErr = Infinity, bestE = NaN;
+  for (let it = 0; it < 20; it++) {
+    let mid = (lo + hi) / 2;
+    PK_rc = mid;
+    await new Promise(r => setTimeout(r, 0));
+    let E = solveAtomPure(zker, cfg, 3000).etot;   // PK_MODE: etot == valence energy
+    if (isFinite(E) && Math.abs(E - target) < bestErr) { bestErr = Math.abs(E - target); bestRc = mid; bestE = E; }
+    if (!isFinite(E)) hi = mid;
+    else if (E < target) lo = mid;   // too bound (E too negative): increase r_c
+    else hi = mid;                   // too loose: decrease r_c
+  }
+  return { rc: bestRc, e: bestE };
+}
+
+// FULL main-group periodic table via the Neumann-confined pseudo-kernel, TWO r_c per period:
+// r_c_s (s-block, groups 1-2) pinned to the alkali IE, r_c_p (p-block, groups 13-18) pinned to the
+// noble-gas IE — physically the p-block core is more contracted (d^10 inserted before it). The
+// other six atoms per period are then PREDICTIONS. d-block folded into the core and skipped.
+async function runMainGroupPT() {
+  if (batchRunning) return;
+  batchRunning = true; running = false;
+  PK_MODE = true;  const els = { 3:'Li',4:'Be',5:'B',6:'C',7:'N',8:'O',9:'F',10:'Ne',
+    11:'Na',12:'Mg',13:'Al',14:'Si',15:'P',16:'S',17:'Cl',18:'Ar',
+    19:'K',20:'Ca',31:'Ga',32:'Ge',33:'As',34:'Se',35:'Br',36:'Kr',
+    37:'Rb',38:'Sr',49:'In',50:'Sn',51:'Sb',52:'Te',53:'I',54:'Xe',
+    55:'Cs',56:'Ba',81:'Tl',82:'Pb',83:'Bi',84:'Po',85:'At',86:'Rn' };
+  const NIST = { 3:5.392,4:9.323,5:8.298,6:11.260,7:14.534,8:13.618,9:17.423,10:21.565,
+    11:5.139,12:7.646,13:5.986,14:8.152,15:10.487,16:10.360,17:12.968,18:15.760,
+    19:4.341,20:6.113,31:5.999,32:7.900,33:9.789,34:9.752,35:11.814,36:14.000,
+    37:4.177,38:5.695,49:5.786,50:7.344,51:8.609,52:9.010,53:10.451,54:12.130,
+    55:3.894,56:5.212,81:6.108,82:7.417,83:7.286,84:8.417,85:9.318,86:10.749 };
+  const table = [
+    { p:2, zs:{1:3,2:4,13:5,14:6,15:7,16:8,17:9,18:10} },
+    { p:3, zs:{1:11,2:12,13:13,14:14,15:15,16:16,17:17,18:18} },
+    { p:4, zs:{1:19,2:20,13:31,14:32,15:33,16:34,17:35,18:36} },
+    { p:5, zs:{1:37,2:38,13:49,14:50,15:51,16:52,17:53,18:54} },
+    { p:6, zs:{1:55,2:56,13:81,14:82,15:83,16:84,17:85,18:86} },
+  ];
+  const groups = [1, 2, 13, 14, 15, 16, 17, 18];
+
+  // Phase 1: calibrate r_c_s (alkali) and r_c_p (noble gas) per period.
+  let rcByPer = {};
+  let crows = ['period,r_c_s,r_c_p,alkali_IE_model,alkali_NIST,noble_IE_model,noble_NIST'];
+  for (const per of table) {
+    sweepStatus = 'calib P' + per.p + ' s-block (alkali ' + els[per.zs[1]] + ')';
+    let cs = await calibRcFor(1, mgConfig(1), NIST[per.zs[1]], 0.2, 6.0);
+    sweepStatus = 'calib P' + per.p + ' p-block (noble ' + els[per.zs[18]] + ')';
+    let cp = await calibRcFor(8, mgConfig(18), NIST[per.zs[18]], 0.1, 2.0);
+    rcByPer[per.p] = { s: cs.rc, p: cp.rc };
+    crows.push([per.p, cs.rc.toFixed(3), cp.rc.toFixed(3),
+                isFinite(cs.ie) ? cs.ie.toFixed(2) : '', NIST[per.zs[1]].toFixed(2),
+                isFinite(cp.ie) ? cp.ie.toFixed(2) : '', NIST[per.zs[18]].toFixed(2)].join(','));
+    console.log('CAL ' + crows[crows.length - 1]);
+  }
+  saveStrings(crows, 'realqm_maingroup_rc.csv');   // save now; phase 2 gives a time gap
+
+  // Phase 2: solve all main-group atoms with the calibrated r_c (s vs p block).
+  let rows = ['period,block,group,el,Z,Z_ker,r_c,config,IE_eV,NIST_eV,err_%'];
+  for (const per of table) {
+    for (const g of groups) {
+      const Z2 = per.zs[g];
+      const block = g <= 2 ? 's' : 'p';
+      const val = (g <= 2) ? g : g - 10;
+      PK_Zker = val;
+      PK_rc = (block === 's') ? rcByPer[per.p].s : rcByPer[per.p].p;
+      const cfg = mgConfig(g);
+      sweepStatus = 'P' + per.p + ' ' + els[Z2];
+      await new Promise(r => setTimeout(r, 0));
+      let res;
+      try { res = solveAtomPure(val, cfg, 4000); }
+      catch (e) { rows.push([per.p, block, g, els[Z2], Z2, val, PK_rc.toFixed(3), cfg.join('+'), 'ERR'].join(',')); continue; }
+      const nist = NIST[Z2];
+      const err = (nist && isFinite(res.IE_eV)) ? ((res.IE_eV - nist) / nist * 100) : NaN;
+      rows.push([per.p, block, g, els[Z2], Z2, val, PK_rc.toFixed(3), cfg.join('+'),
+                 isFinite(res.IE_eV) ? res.IE_eV.toFixed(2) : 'NONFIN',
+                 nist ? nist.toFixed(3) : '', isNaN(err) ? '' : err.toFixed(1)].join(','));
+      console.log('MG ' + rows[rows.length - 1]);
+    }
+  }
+  PK_MODE = false; PK_Zker = 8;
+  saveStrings(rows, 'realqm_maingroup_pt.csv');
+  sweepStatus = 'main-group PT done — 2 CSVs (r_c calibration + predictions)';
+  batchRunning = false;
+}
+
+// FROZEN-CORE TOTAL ENERGIES, full main-group periodic table (periods 2-6).
+// E_total = E_core(reference) + E_valence(RealQM pseudo-kernel).  Cores: period 2 = He-like
+// (analytic); periods 3-6 from reference (E_core = E_ref(neutral) + sum of valence IEs; heavy
+// p-block cores include the d10/f14 shells). TWO r_c per period (task 2): r_c_s pinned to the
+// group-2 valence energy, r_c_p to the noble-gas valence energy. For Z<19 the EXPLICIT (no
+// pseudo-kernel) total energy is reported alongside for comparison.
+async function runTotalEnergyPT() {
+  if (batchRunning) return;
+  batchRunning = true; running = false;
+  // Frozen inner-core total energies (Ha): period 2 He-like analytic; periods 3-6 from reference.
+  const ECORE = {
+    11:-162.0657, 12:-199.2195, 13:-240.389, 14:-285.569, 15:-334.757, 16:-387.954, 17:-445.121, 18:-506.308,
+    19:-599.006, 20:-676.097, 31:-1921.157, 32:-2071.546, 33:-2228.009, 34:-2390.508, 35:-2558.917, 36:-2733.394,
+    37:-2938.204, 38:-3130.931, 49:-5738.233, 50:-6019.506, 51:-6307.945, 52:-6603.610, 53:-6905.759, 54:-7216.532,
+    55:-7553.791, 56:-7882.985, 81:-18406.919, 82:-19010.446, 83:-19627.006, 84:-20255.748, 85:-20897.461, 86:-21551.764 };
+  const ATOM_REF = {  // neutral total energies (Ha), non-rel HF; heavy values approximate (only scale %)
+    19:-599.165, 20:-676.758, 31:-1923.261, 32:-2075.360, 33:-2234.239, 34:-2399.868, 35:-2572.441, 36:-2752.055,
+    37:-2938.357, 38:-3131.546, 49:-5740.169, 50:-6022.932, 51:-6313.485, 52:-6611.784, 53:-6917.981, 54:-7232.138,
+    55:-7553.934, 56:-7883.544, 81:-18408.99, 82:-19014.00, 83:-19632.55, 84:-20264.09, 85:-20908.00, 86:-21566.66 };
+  const NISTIE = { 3:5.392,4:9.323,5:8.298,6:11.260,7:14.534,8:13.618,9:17.423,10:21.565,
+    11:5.139,12:7.646,13:5.986,14:8.152,15:10.487,16:10.360,17:12.968,18:15.760,
+    19:4.341,20:6.113,31:5.999,32:7.900,33:9.789,34:9.752,35:11.814,36:14.000,
+    37:4.177,38:5.695,49:5.786,50:7.344,51:8.609,52:9.010,53:10.451,54:12.130,
+    55:3.894,56:5.212,81:6.108,82:7.417,83:7.286,84:8.417,85:9.318,86:10.749 };
+  const coreE = (z) => (z <= 10) ? (-z * z + 0.625 * z - 0.158) : ECORE[z];
+  const refE = (z) => (z <= 18) ? REF_ETOT[z] : ATOM_REF[z];
+  const els = { 3:'Li',4:'Be',5:'B',6:'C',7:'N',8:'O',9:'F',10:'Ne',
+    11:'Na',12:'Mg',13:'Al',14:'Si',15:'P',16:'S',17:'Cl',18:'Ar',
+    19:'K',20:'Ca',31:'Ga',32:'Ge',33:'As',34:'Se',35:'Br',36:'Kr',
+    37:'Rb',38:'Sr',49:'In',50:'Sn',51:'Sb',52:'Te',53:'I',54:'Xe',
+    55:'Cs',56:'Ba',81:'Tl',82:'Pb',83:'Bi',84:'Po',85:'At',86:'Rn' };
+  const periods = [
+    { p:2, zs:[3,4,5,6,7,8,9,10] },        { p:3, zs:[11,12,13,14,15,16,17,18] },
+    { p:4, zs:[19,20,31,32,33,34,35,36] },  { p:5, zs:[37,38,49,50,51,52,53,54] },
+    { p:6, zs:[55,56,81,82,83,84,85,86] },
+  ];
+  let rows = ['period,el,Z,block,Z_ker,r_c,config,E_total_fc,err_fc_%,E_explicit,err_ex_%,E_ref,IE_eV,NIST_eV,err_IE_%'];
+  ptPanel = [];   // accumulate per-atom results for the on-screen panel
+  for (const per of periods) {
+    const g2Z = per.zs[1], nobleZ = per.zs[7];
+    // two r_c per period: s-block pinned to group-2 valence, p-block to noble-gas valence
+    PK_MODE = true;
+    sweepStatus = 'calib P' + per.p + ' s-block (' + els[g2Z] + ')';
+    let cs = await calibRcForEval(2, mgConfig(2), refE(g2Z) - coreE(g2Z), 0.05, 3.0);
+    sweepStatus = 'calib P' + per.p + ' p-block (' + els[nobleZ] + ')';
+    let cp = await calibRcForEval(8, mgConfig(18), refE(nobleZ) - coreE(nobleZ), 0.05, 2.5);
+    console.log('TE calib P' + per.p + ' rc_s=' + cs.rc.toFixed(3) + ' rc_p=' + cp.rc.toFixed(3));
+    for (let gi = 0; gi < per.zs.length; gi++) {
+      const Z2 = per.zs[gi];
+      const v = gi + 1;                       // zs ordered g1,g2,g13..g18 -> valence 1..8
+      const g = (v <= 2) ? v : (v + 10);
+      const block = (v <= 2) ? 's' : 'p';
+      const rc = (v <= 2) ? cs.rc : cp.rc;
+      const ref = refE(Z2), cfg = mgConfig(g);
+      // frozen-core total energy
+      PK_MODE = true; PK_Zker = v; PK_rc = rc;
+      sweepStatus = 'P' + per.p + ' ' + els[Z2] + ' (frozen core)';
+      await new Promise(r => setTimeout(r, 0));
+      let res = solveAtomPure(v, cfg, 4000);
+      let et = coreE(Z2) + res.etot;
+      let etErr = (ref != null && isFinite(et)) ? ((et - ref) / ref * 100) : NaN;
+      // explicit (no pseudo-kernel) total energy, Z<19 only
+      let ex = NaN, exErr = NaN;
+      if (Z2 <= 18) {
+        PK_MODE = false;
+        sweepStatus = 'P' + per.p + ' ' + els[Z2] + ' (explicit)';
+        await new Promise(r => setTimeout(r, 0));
+        ex = solveAtomPure(Z2, genConfigBalanced(Z2), 4000).etot;
+        exErr = (ref != null && isFinite(ex)) ? ((ex - ref) / ref * 100) : NaN;
+        PK_MODE = true;
+      }
+      const nist = NISTIE[Z2];
+      const ieErr = (nist && isFinite(res.IE_eV)) ? ((res.IE_eV - nist) / nist * 100) : NaN;
+      ptPanel.push({ p: per.p, g: g, el: els[Z2], eE: etErr, eI: ieErr });
+      rows.push([per.p, els[Z2], Z2, block, v, rc.toFixed(3), cfg.join('+'),
+                 isFinite(et) ? et.toFixed(4) : 'NONFIN', isNaN(etErr) ? '' : etErr.toFixed(2),
+                 isFinite(ex) ? ex.toFixed(4) : '', isNaN(exErr) ? '' : exErr.toFixed(2),
+                 ref != null ? ref.toFixed(4) : '',
+                 isFinite(res.IE_eV) ? res.IE_eV.toFixed(2) : '', nist ? nist.toFixed(2) : '',
+                 isNaN(ieErr) ? '' : ieErr.toFixed(0)].join(','));
+      console.log('TE ' + rows[rows.length - 1]);
+    }
+  }
+  PK_MODE = false; PK_Zker = 8;
+  saveStrings(rows, 'realqm_total_energy.csv');
+  sweepStatus = 'frozen-core total energies (periods 2-6) + explicit (Z<19) done — CSV downloaded';
+  batchRunning = false;
+}
+
+// Balanced fill of n electrons into ceil(n/cap) shells of capacity cap (round-robin).
+// Configuration matching the observed structure, for the whole table through zinc.
+//   Z <= 20  the balanced cap-4 build-up reaches it unaided: each charge goes outside what is
+//            already there, so no observational input is used.
+//   Z >= 21  it does not. The d charges belong to a shell INSIDE the s pair that fills before
+//            them, and a build-up that adds outward never offers that position. The placement
+//            here is therefore taken from observation, not derived -- the arrangement is still
+//            an ordinary radial nesting, which is the point: what is missing is a filling rule,
+//            not a geometry. Energies from these are conditional on the configuration supplied.
+function genConfigObserved(Z) {
+  if (Z <= 20) return genConfigBalanced(Z);
+  const core = genConfigBalanced(18);            // [Ar] = 2+4+4+4+4
+  const dCount = Math.min(10, Z - 20);           // 3d^n, inner
+  const rest = Z - 18 - dCount - 2;              // 4p and beyond, outer
+  let cfg = core.concat(capPack(dCount, 4)).concat([2]);
+  if (rest > 0) cfg = cfg.concat(capPack(rest, 4));
+  return cfg;
+}
+// Where a row's CONFIGURATION comes from. Not two cases but three, and the distinction is the
+// paper's: the build-up is established only through carbon; from nitrogen to calcium the
+// balanced cap-4 rule is extrapolated, and that rule was itself adopted because it reproduces
+// the known configurations; from scandium the arrangement is taken from the ionisation order,
+// since the added charge belongs inside a shell already occupied and an outward build-up has no
+// move that puts it there. The capacities (2, and 8 = 4+4) are derived in every case; what
+// varies is the filling.
+function configSource(Z) {
+  if (Z <= 6)  return 'build-up';
+  if (Z <= 20) return 'balanced rule';
+  return 'ionisation order';
+}
+function configIsDerived(Z) { return Z <= 20; }   // kept: genConfigObserved still branches on it
+
+function capPack(n, cap) {
+  let nsh = Math.max(1, Math.ceil(n / cap));
+  let sh = new Array(nsh).fill(0);
+  for (let e = 0; e < n; e++) sh[e % nsh]++;
+  return sh;
+}
+
+// TRANSITION METALS on a noble-gas pseudo-kernel. Valence configured as [d-shell (inner)] + [s^2
+// (outer)] -- the d explicitly nested INSIDE the s. Tests whether this recovers the correct
+// ionisation order (outer s least-bound, removed first) that the naive (Madelung-filled) radial
+// d-block cannot. Total energy is floor-carried; the structure (eigenvalue order) is the test.
+async function runTransitionTest() {
+  if (batchRunning) return;
+  batchRunning = true; running = false;
+  PK_MODE = true;  const series = [
+    { period:4, core:18, rc:0.80, Z0:21, els:['Sc','Ti','V','Cr','Mn','Fe','Co','Ni','Cu','Zn'] },
+    { period:5, core:36, rc:1.10, Z0:39, els:['Y','Zr','Nb','Mo','Tc','Ru','Rh','Pd','Ag','Cd'] },
+  ];
+  let rows = ['period,el,Z,Z_ker,r_c,config,Eval_Ha,radii_au,IE_per_shell_eV,outer_is_s,s_least_bound'];
+  for (const ser of series) {
+    PK_rc = ser.rc;
+    for (let i = 0; i < 10; i++) {
+      const Z2 = ser.Z0 + i;
+      const vcount = Z2 - ser.core;          // d^n s^2 valence electrons
+      const dCount = vcount - 2;
+      PK_Zker = vcount;
+      const cfg = capPack(dCount, 4).concat([2]);   // d-shells inner, s^2 outermost
+      sweepStatus = 'TM ' + ser.els[i] + ' (Z_ker=' + vcount + ', r_c=' + ser.rc + ')';
+      await new Promise(r => setTimeout(r, 0));
+      let res = solveAtomPure(vcount, cfg, 4000);
+      let radii = [], ies = [];
+      for (let s = 0; s < NSHELLS; s++) {
+        radii.push((M[s + 1] * h).toFixed(2));
+        ies.push(Es[s] > 0 ? -eps[s] / Es[s] * 27.2114 : 0);
+      }
+      const sIdx = NSHELLS - 1;                       // s^2 shell (last in config)
+      let maxR = -1, maxIdx = -1;
+      for (let s = 0; s < NSHELLS; s++) { let r = M[s + 1] * h; if (r > maxR) { maxR = r; maxIdx = s; } }
+      let minIE = Infinity, minIdx = -1;
+      for (let s = 0; s < NSHELLS; s++) { if (ies[s] < minIE) { minIE = ies[s]; minIdx = s; } }
+      rows.push([ser.period, ser.els[i], Z2, vcount, ser.rc, cfg.join('+'),
+                 isFinite(res.etot) ? res.etot.toFixed(3) : 'NONFIN',
+                 radii.join('|'), ies.map(x => x.toFixed(1)).join('|'),
+                 (maxIdx === sIdx) ? 'yes' : 'no', (minIdx === sIdx) ? 'yes' : 'no'].join(','));
+      console.log('TM ' + rows[rows.length - 1]);
+    }
+  }
+  PK_MODE = false; PK_Zker = 8;
+  saveStrings(rows, 'realqm_transition.csv');
+  sweepStatus = 'transition-metal structure test done — CSV downloaded';
+  batchRunning = false;
+}
+
+// Grid-refinement convergence (for tab:hconv): solve He, Ne, Ar all-electron at fixed box,
+// N = 64,128,256; record total + valence energy and estimate the spatial order
+// p = log2(|E_N - E_2N| / |E_2N - E_4N|).
+async function runConvergenceTest() {
+  if (batchRunning) return;
+  batchRunning = true; running = false;
+  PK_MODE = false;  const Nsave = N;
+  // Per-atom grids: the inner 1s contracts as 1/Z, so heavier atoms need finer N to resolve it.
+  const atoms = [
+    { el: 'He', Z: 2,  cfg: [2],                 Ns: [64, 128, 256] },
+    { el: 'Ne', Z: 10, cfg: genConfigBalanced(10), Ns: [128, 256, 512] },
+    { el: 'Ar', Z: 18, cfg: genConfigBalanced(18), Ns: [256, 512, 1024] },
+  ];
+  let rows = ['atom,N,h_au,E_total_Ha,IE_valence_eV'];
+  let store = {};
+  for (const a of atoms) {
+    store[a.el] = {};
+    for (const Ng of a.Ns) {
+      N = Ng;
+      sweepStatus = 'convergence ' + a.el + ' N=' + Ng;
+      await new Promise(r => setTimeout(r, 0));
+      let res = solveAtomPure(a.Z, a.cfg, Math.min(250000, 40000 * Ng / 128));   // scale steps with grid
+      store[a.el][Ng] = res.etot;
+      rows.push([a.el, Ng, h.toFixed(5),
+                 isFinite(res.etot) ? res.etot.toFixed(5) : 'NONFIN',
+                 isFinite(res.IE_eV) ? res.IE_eV.toFixed(3) : ''].join(','));
+      console.log('CONV ' + rows[rows.length - 1]);
+    }
+  }
+  N = Nsave;
+  rows.push('');
+  rows.push('atom,N_lo..hi,|E_lo-E_mid|,|E_mid-E_hi|,order_p');
+  for (const a of atoms) {
+    let [n0, n1, n2] = a.Ns;
+    let d1 = Math.abs(store[a.el][n0] - store[a.el][n1]);
+    let d2 = Math.abs(store[a.el][n1] - store[a.el][n2]);
+    let p = (d2 > 0) ? Math.log2(d1 / d2) : NaN;
+    rows.push([a.el, n0 + '..' + n2, d1.toFixed(5), d2.toFixed(5), isFinite(p) ? p.toFixed(2) : ''].join(','));
+    console.log('ORDER ' + rows[rows.length - 1]);
+  }
+  saveStrings(rows, 'realqm_convergence.csv');
+  sweepStatus = 'grid-refinement convergence done — CSV downloaded';
+  batchRunning = false;
+}
+
+function cationCfg(cfg) {
+  let c = cfg.slice();
+  c[c.length - 1]--;
+  if (c[c.length - 1] === 0) c.pop();
+  return c;
+}
+
+// Compact-core IE test: use a SINGLE 8-shell for octet cores (2+8 not 2+4+4) so the core
+// is compact, then read the valence IE. A 1D proxy for the compact 3D octet core.
+// Both Koopmans (valence eigenvalue) and dSCF (E_cation - E_atom).
+async function runCompactCoreTest() {
+  if (batchRunning) return;
+  batchRunning = true; running = false;
+  PK_MODE = false;
+  const tests = [
+    { el: 'Li', Z: 3,  cfg: [2, 1] },
+    { el: 'Be', Z: 4,  cfg: [2, 2] },
+    { el: 'Na', Z: 11, cfg: [2, 8, 1] },
+    { el: 'Mg', Z: 12, cfg: [2, 8, 2] },
+    { el: 'K',  Z: 19, cfg: [2, 8, 8, 1] },
+    { el: 'Ca', Z: 20, cfg: [2, 8, 8, 2] },
+  ];
+  let rows = ['el,Z,config,E_atom_Ha,IE_Koopmans_eV,IE_dSCF_eV,NIST_eV'];
+  for (const t of tests) {
+    sweepStatus = t.el;
+    await new Promise(r => setTimeout(r, 0));
+    let atom = solveAtomPure(t.Z, t.cfg);
+    let cat = solveAtomPure(t.Z, cationCfg(t.cfg));
+    let ieK = atom.IE_eV;
+    let ieS = (cat.etot - atom.etot) * 27.2114;
+    let nist = NIST_IE1[t.Z];
+    rows.push([t.el, t.Z, t.cfg.join('+'), atom.etot.toFixed(4),
+               ieK.toFixed(2), ieS.toFixed(2), nist ? nist.toFixed(3) : ''].join(','));
+    console.log('CC ' + rows[rows.length - 1]);
+  }
+  saveStrings(rows, 'realqm_compact_core.csv');
+  sweepStatus = 'compact-core test done';
+  batchRunning = false;
+}
+
+// Groups 1-2 ionization: a SINGLE valence shell (1 or 2 s-electrons), no octet -> 1D should work.
+// Group 1: 1 electron, Z_eff=1; Group 2: 2 electrons, Z_eff=2; swept over core radius r_c.
+async function runGroups12Test() {
+  if (batchRunning) return;
+  batchRunning = true; running = false;
+  PK_MODE = true;
+  let rows = ['r_c_au,IE_grp1_eV(Zeff1),IE_grp2_eV(Zeff2)'];
+  const rcs = [0.0, 0.3, 0.6, 1.0, 1.5, 2.0, 2.8];
+  for (const rc of rcs) {
+    PK_rc = rc;
+    sweepStatus = 'groups 1-2, r_c=' + rc;
+    await new Promise(r => setTimeout(r, 0));
+    PK_Zker = 1; let g1 = solveAtomPure(1, [1]);   // alkali valence
+    PK_Zker = 2; let g2 = solveAtomPure(2, [2]);   // alkaline-earth valence
+    rows.push([rc, g1.IE_eV.toFixed(2), g2.IE_eV.toFixed(2)].join(','));
+    console.log('G12 ' + rows[rows.length - 1]);
+  }
+  PK_MODE = false; PK_Zker = 8;
+  saveStrings(rows, 'realqm_groups12.csv');
+  sweepStatus = 'groups 1-2 test done';
+  batchRunning = false;
+}
+
+// Pseudo-kernel valence-repeat test: solve the 4+4 octet in a Z_ker=8 soft core for a
+// sequence of core radii r_c (mimicking Ne->Ar->Kr->Xe->Rn, the growing inert core).
+// If the valence energy is ~stable across r_c, the 4+4 octet pattern repeats.
+async function runValenceTest() {
+  if (batchRunning) return;
+  batchRunning = true; running = false;
+  PK_MODE = true; PK_Zker = 8;
+  // Compare radial 4+4 (two shells, outer one too far out) vs single 8-shell (same radius):
+  // if IE_8 ~ 2*IE_44 ~ real, the factor-2 is the 1D radial split, recovered by 3D angular packing.
+  let rows = ['r_c_au,Z_ker,E_44_Ha,IE_44_eV,E_8_Ha,IE_8_eV'];
+  const rcs = [0.3, 0.5, 0.8, 1.2, 1.8, 2.5];
+  for (const rc of rcs) {
+    PK_rc = rc;
+    sweepStatus = 'valence octet, r_c=' + rc;
+    await new Promise(r => setTimeout(r, 0));
+    let r44 = solveAtomPure(PK_Zker, [4, 4]);   // radial split
+    let r8 = solveAtomPure(PK_Zker, [8]);       // single shell (same radius)
+    rows.push([rc, PK_Zker, r44.etot.toFixed(4), r44.IE_eV.toFixed(2),
+               r8.etot.toFixed(4), r8.IE_eV.toFixed(2)].join(','));
+    console.log('VAL ' + rows[rows.length - 1]);
+  }
+  PK_MODE = false;
+  saveStrings(rows, 'realqm_valence_repeat.csv');
+  sweepStatus = 'valence octet test done';
+  batchRunning = false;
+}
+
+// NIST first ionization energies (eV), keyed by Z, for in-sweep error reporting.
+const NIST_IE1 = {
+  1:13.598, 2:24.587, 3:5.392, 4:9.323, 5:8.298, 6:11.260, 7:14.534, 8:13.618,
+  9:17.423, 10:21.565, 11:5.139, 12:7.646, 13:5.986, 14:8.152, 15:10.487, 16:10.360,
+  17:12.968, 18:15.760, 19:4.341, 20:6.113, 21:6.561, 22:6.828, 23:6.746, 24:6.767,
+  25:7.434, 26:7.902, 27:7.881, 28:7.640, 29:7.726, 30:9.394, 31:5.999, 32:7.900,
+  33:9.789, 34:9.752, 35:11.814, 36:13.999, 37:4.177, 38:5.695, 39:6.217, 40:6.634,
+  41:6.759, 42:7.092, 43:7.280, 44:7.361, 45:7.459, 46:8.337, 47:7.576, 48:8.994,
+  49:5.786, 50:7.344, 51:8.608, 52:9.010, 53:10.451, 54:12.130, 55:3.894, 56:5.212,
+  57:5.577, 58:5.539, 59:5.473, 60:5.525, 61:5.582, 62:5.644, 63:5.670, 64:6.150,
+  65:5.864, 66:5.939, 67:6.022, 68:6.108, 69:6.184, 70:6.254, 71:5.426, 72:6.825,
+  73:7.550, 74:7.864, 75:7.834, 76:8.438, 77:8.967, 78:8.959, 79:9.226, 80:10.438,
+  81:6.108, 82:7.417, 83:7.286, 84:8.414, 85:9.318, 86:10.749
+};
+
+// Reference (approx. nonrelativistic) total atomic energies (Ha), for total-energy error.
+// Confident Z=2..18; 19,20 + noble gases approximate; others left blank.
+const REF_ETOT = {
+  2:-2.9037, 3:-7.4781, 4:-14.6674, 5:-24.6539, 6:-37.8450, 7:-54.5892, 8:-75.0673,
+  9:-99.7339, 10:-128.9376, 11:-162.2546, 12:-200.0530, 13:-242.3460, 14:-289.3590,
+  15:-341.2590, 16:-398.1100, 17:-460.1480, 18:-527.5400, 19:-599.230, 20:-676.758,
+  // Z=21..35 approximate (HF-level; relativistic effects grow) — treat error as a guide
+  21:-759.74, 22:-848.41, 23:-942.88, 24:-1043.36, 25:-1149.87, 26:-1262.44,
+  27:-1381.41, 28:-1506.87, 29:-1638.96, 30:-1777.85, 31:-1923.26, 32:-2075.36,
+  33:-2234.24, 34:-2399.87, 35:-2572.44,
+  36:-2752.05, 54:-7232.14, 86:-21866.8
+};
+
+// Computed total energies (balanced cap-4 packing) vs reference, Z=2..18.
+// [element, Z, config, E_RealQM (Ha), E_ref (Ha)]
+const RESULTS = [
+  // The whole table as this model computes it: Z = 2..36, periods of length 2, 8, 8, 18,
+  // closing at He, Ne, Ar, Kr. All-electron, bare kernel, NO constant adjusted anywhere.
+  // Mesh N=400 through argon; N=800 from potassium, where the innermost shell contracts
+  // past what a 400-point grid resolves. Configurations are the build-up's own through
+  // calcium and are taken from the ionisation order from scandium.
+  ['He', 2, '2', -2.8450, -2.9040],
+  ['Li', 3, '2+1', -7.5220, -7.4780],
+  ['Be', 4, '2+1+1', -14.5800, -14.6670],
+  ['B', 5, '2+2+1', -24.7070, -24.6540],
+  ['C', 6, '2+2+2', -37.4460, -37.8450],
+  ['N', 7, '2+3+2', -54.7370, -54.5890],
+  ['O', 8, '2+3+3', -75.3820, -75.0670],
+  ['F', 9, '2+4+3', -102.4850, -99.7340],
+  ['Ne', 10, '2+4+4', -131.7310, -128.9380],
+  ['Na', 11, '2+4+4+1', -165.5450, -162.2550],
+  ['Mg', 12, '2+4+4+1+1', -201.7040, -200.0530],
+  ['Al', 13, '2+4+4+2+1', -249.4050, -242.3460],
+  ['Si', 14, '2+4+4+2+2', -302.4650, -289.3590],
+  ['P', 15, '2+4+4+3+2', -347.5340, -341.2590],
+  ['S', 16, '2+4+4+3+3', -415.0300, -398.1100],
+  ['Cl', 17, '2+4+4+4+3', -466.1050, -460.1480],
+  ['Ar', 18, '2+4+4+4+4', -527.9940, -527.5400],
+  ['K', 19, '2+4+4+4+4+1', -584.4950, -599.2300],
+  ['Ca', 20, '2+4+4+4+4+1+1', -666.0300, -676.7580],
+  ['Sc', 21, '2+4+4+4+4+1+2', -732.1570, -759.7400],
+  ['Ti', 22, '2+4+4+4+4+2+2', -830.6790, -848.4100],
+  ['V', 23, '2+4+4+4+4+3+2', -906.8310, -942.8800],
+  ['Cr', 24, '2+4+4+4+4+4+2', -1022.8850, -1043.3600],
+  ['Mn', 25, '2+4+4+4+4+3+2+2', -1111.1610, -1149.8700],
+  ['Fe', 26, '2+4+4+4+4+3+3+2', -1199.0670, -1262.4400],
+  ['Co', 27, '2+4+4+4+4+4+3+2', -1352.9570, -1381.4100],
+  ['Ni', 28, '2+4+4+4+4+4+4+2', -1451.8990, -1506.8700],
+  ['Cu', 29, '2+4+4+4+4+3+3+3+2', -1559.7470, -1638.9600],
+  ['Zn', 30, '2+4+4+4+4+4+3+3+2', -1755.3790, -1777.8500],
+  ['Ga', 31, '2+4+4+4+4+4+3+3+2+1', -1870.2600, -1923.2600],
+  ['Ge', 32, '2+4+4+4+4+4+3+3+2+2', -1995.5060, -2075.3600],
+  ['As', 33, '2+4+4+4+4+4+3+3+2+3', -2116.0390, -2234.2400],
+  ['Se', 34, '2+4+4+4+4+4+3+3+2+4', -2238.1170, -2399.8700],
+  ['Br', 35, '2+4+4+4+4+4+3+3+2+3+2', -2521.8000, -2572.4400],
+  ['Kr', 36, '2+4+4+4+4+4+3+3+2+3+3', -2663.3350, -2752.0500],
+];
+
+// ---- cap-capped packing: m electrons -> [2, cap, cap, ...] ----
+// AUTO-RUN for driving from outside. AppleScript executes in an isolated world and cannot call
+// page functions or read window globals, so a URL flag runs the solve here and publishes the
+// result to localStorage, which it CAN read.
+//   ?auto=cno   solve C, N, O at the balanced cap-4 packing and report E and IE against NIST.
+// This is the comparison the file has machinery for but no recorded numbers: total energies are
+// tabulated in RESULTS, ionisation energies are computed live and were never stored.
+(function(){
+  var MODE = /[?&]auto=rad/.test(location.search) ? 'R'
+           : /[?&]auto=he/.test(location.search) ? 'h'
+           : /[?&]auto=sr/.test(location.search) ? 'z'
+           : /[?&]auto=seq/.test(location.search) ? 'q'
+           : /[?&]auto=radii/.test(location.search) ? 'r'
+           : /[?&]auto=conv/.test(location.search) ? 'c'
+           : /[?&]auto=mgpt/.test(location.search) ? 'g'
+           : /[?&]auto=aufbau/.test(location.search) ? 'a'
+           : /[?&]auto=chi/.test(location.search) ? 'x'
+           : /[?&]auto=scan/.test(location.search) ? 's'
+           : /[?&]auto=kr/.test(location.search) ? 'K'
+           : /[?&]auto=fine/.test(location.search) ? 'N'
+           : /[?&]auto=trunc/.test(location.search) ? 'T'
+           : /[?&]auto=full/.test(location.search) ? 'F'
+           : /[?&]auto=cnod/.test(location.search) ? 'd'
+           : (/[?&]auto=cno/.test(location.search) ? 'k' : null);
+  if (!MODE) return;
+  // dSCF: solve the neutral AND the cation, both fully relaxed, and take the difference.
+  // The Koopmans eigenvalue -eps cannot contain the relaxation of the electrons left behind,
+  // and that relaxation is exactly the physics being tested: nitrogen outranks oxygen because
+  // removing an electron from oxygen's PAIRED 2p relieves repulsion among the remainder.
+  // Even Hartree-Fock's Koopmans values come out monotonic in Z and put O above N.
+  // CONFIG SCAN. Rather than imposing a packing, solve several candidates and let the LOWEST
+  // energy decide. That is variational and it is what the model should be allowed to say.
+  // For nitrogen the spectroscopic structure is 2+2+3 (2s2 2p3, outer shell HALF FILLED) while
+  // the cap-4 balanced rule gives 2+3+2 -- more in the inner shell than the outer, which is
+  // backwards, and removes the half-filled outer shell that produces the N>O anomaly.
+  window.__autoScan = function(){
+    var KEY = 'atomsim_scan', out = [];
+    try { localStorage.removeItem(KEY); } catch(e){}
+    var cases = [
+      { el:'N',  Z:7, ne:7, cfgs:[[2,2,3],[2,3,2],[2,4,1],[2,5]] },
+      { el:'N+', Z:7, ne:6, cfgs:[[2,2,2],[2,4],[2,3,1]] },
+      { el:'O',  Z:8, ne:8, cfgs:[[2,2,4],[2,3,3],[2,4,2],[2,6]] },
+      { el:'O+', Z:8, ne:7, cfgs:[[2,2,3],[2,3,2],[2,4,1]] }
+    ];
+    cases.forEach(function(c){
+      c.cfgs.forEach(function(cfg){
+        try {
+          var r = solveAtomPure(c.Z, cfg, 3000);
+          out.push({ el:c.el, Z:c.Z, ne:c.ne, cfg:cfg.join('+'),
+                     E: isFinite(r.etot) ? Number(r.etot.toFixed(4)) : null });
+        } catch(e) { out.push({ el:c.el, cfg:cfg.join('+'), err:String(e).slice(0,100) }); }
+      });
+    });
+    try { localStorage.setItem(KEY, JSON.stringify(out)); } catch(e){}
+    document.title = 'SCAN DONE';
+    return out;
+  };
+
+
+  // ELECTRONEGATIVITY (Allen configuration energy) ACROSS PERIOD 2.
+  // chi = the AVERAGE binding energy of the valence electrons,
+  //         chi = sum_s (n_s * IE_s) / sum_s n_s     over the valence shells,
+  // which is Allen's spectroscopic definition (n_s eps_s + m_p eps_p)/(n+m) written in RealQM's
+  // terms: the model has no s/p, only shells, and each shell already carries its own energy --
+  // so chi is a NATIVE output here rather than something assembled from multiplet averages.
+  // Why this and not the first ionization energy: IE is the single least-bound electron and is
+  // the fragile quantity (the light p-block under-binds 35-50%, and the radial octet has a hard
+  // ~13 eV ceiling that N, F and Ne sit above). chi averages over ALL valence electrons, so it
+  // sits between the too-robust total energy and the too-brittle IE. And what a molecule needs
+  // is the DIFFERENCE across a row, where errors within one composition cancel.
+  // Per-shell ionization energy in eV is -eps[s]/Es[s]*27.2114, the same reduction the
+  // transition-metal routine uses.
+  window.__autoChi = function(){
+    var KEY = 'atomsim_chi', out = [];
+    try { localStorage.removeItem(KEY); } catch(e){}
+    var els = [['Li',3],['Be',4],['B',5],['C',6],['N',7],['O',8],['F',9],['Ne',10]];
+    els.forEach(function(e){
+      var Z = e[1];
+      try {
+        var cfg = genConfigBalanced(Z);
+        var r = solveAtomPure(Z, cfg, 20000);
+        var ies = [], ns = [];
+        for (var s = 0; s < NSHELLS; s++) {
+          ies.push(Es[s] > 0 ? -eps[s] / Es[s] * 27.2114 : 0);
+          ns.push(Es[s]);
+        }
+        // valence = every shell BEYOND the innermost (the 1s2 core)
+        var num = 0, den = 0;
+        for (var s2 = 1; s2 < NSHELLS; s2++) { num += ns[s2] * ies[s2]; den += ns[s2]; }
+        out.push({ el:e[0], Z:Z, cfg:cfg.join('+'),
+                   E: isFinite(r.etot) ? Number(r.etot.toFixed(4)) : null,
+                   n_per_shell: ns.slice(0, NSHELLS),
+                   IE_per_shell_eV: ies.map(function(x){return Number(x.toFixed(3));}),
+                   IE_first_eV: Number(ies[NSHELLS-1].toFixed(3)),
+                   chi_eV: den > 0 ? Number((num/den).toFixed(3)) : null });
+      } catch(err) { out.push({ el:e[0], Z:Z, err:String(err).slice(0,90) }); }
+    });
+    try { localStorage.setItem(KEY, JSON.stringify(out)); } catch(e){}
+    document.title = 'CHI DONE';
+    return out;
+  };
+
+
+  // AUFBAU, PART 1 (static): would the ENERGY put the next electron in the inner shell?
+  // For Li the physical configuration is 2+1. The question is whether a single 3-shell -- all
+  // three electrons at one radius, which cap-4 permits -- comes out LOWER. If it does, then the
+  // physical configuration is not the energy minimum, and something other than energy selects it.
+  // That is the premise of the dynamical test: an electron arriving from outside cannot reach the
+  // inner region because the territory is already occupied, so 2+1 is what is REACHABLE even if
+  // 3 is what is lowest. Static energy answers "which is lower", not "which is attainable".
+
+  // C1 / C3 for the IJQC revision. Both REUSE the existing sweep functions rather than
+  // reimplementing them -- a second copy of the loop would drift from the one that produced the
+  // paper's tables. saveStrings is intercepted so the CSV rows land in localStorage instead of a
+  // download (AppleScript can read localStorage but not window.* globals).
+  //   ?auto=conv  runConvergenceTest -- He/Ne/Ar at three grids each. It ALREADY computes
+  //               IE_valence_eV at every grid; Table 6 reports only He's TOTAL energy, which is
+  //               R2's complaint ("the ionization energies need their own convergence checks").
+  //   ?auto=mgpt  runMainGroupPT -- the calibrated main-group IE table, which is where R2's
+  //               Kr -> Xe increase lives.
+  function __capture(fn, key, tag) {
+    return function () {
+      var orig = window.saveStrings;
+      window.saveStrings = function (rows, name) {
+        try { localStorage.setItem(key, JSON.stringify(rows)); } catch (e) {}
+        window.saveStrings = orig;
+        document.title = tag + ' DONE';
+      };
+      try { localStorage.removeItem(key); } catch (e) {}
+      fn();
+    };
+  }
+  window.__autoConv = __capture(runConvergenceTest, 'atomsim_conv', 'CONV');
+  window.__autoMGPT = __capture(runMainGroupPT,     'atomsim_mgpt', 'MGPT');
+  window.__autoFull = __capture(runFullTable,       'atomsim_full', 'FULL');
+
+  // TRUNCATED KERNEL WITH A DERIVED RADIUS. The innermost shell alone is absorbed into the
+  // kernel, at r_c = K/Z with K = 4.32 read off this model's own converged core boundaries for
+  // Z = 6..18 (+-9%, much of it grid quantisation). That constant comes from the model, not from
+  // reference energies, which is the whole point: the per-period r_c in the code is bisected
+  // against a NIST ionization energy, and this is not.
+  //   Z_ker = Z - 2, and the configuration is the same one minus its innermost shell.
+  //   E_rest is then the energy of the remaining Z-2 charges in the screened kernel; adding the
+  //   analytic He-like core energy gives an estimated total, and THAT step uses an external
+  //   formula, so it is reported separately and not used to judge the truncation.
+  // The test: where all-electron still works (Z<=20) the two should agree; past there the
+  // all-electron run degrades and goes positive by iron, and the truncated one should not.
+  // ALL-ELECTRON PAST ARGON ON A FINER UNIFORM MESH. A graded (logarithmic) mesh would resolve
+  // the 1s at any Z, but the radial Laplacian in x = ln r carries a 1/r^2 coefficient, so an
+  // EXPLICIT step needs dt <~ delta^2 r_min^2 / 2 and the cost rises by 6 to 11 orders. Codes on
+  // log meshes solve the eigenproblem by Numerov or shooting instead -- a different algorithm
+  // from the three updates here. Refining the UNIFORM mesh keeps the method: cost goes as N^3
+  // (N points, and dt ~ h^2 so N^2 more steps), which is affordable in one dimension.
+  //   ?gridN=  mesh (default 800). At N=800 the innermost shell spans ~12 cells at Z=30,
+  //            against ~6 at N=400, where the run went positive at iron.
+  window.__autoFine = function(){
+    var KEY='atomsim_fine', out=[];
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    var NN = parseInt((location.search.match(/[?&]gridN=(\d+)/)||[])[1] || '800', 10);
+    // dt = h^2/2, so halving h quarters the imaginary time per step: the count must scale as
+    // (N/400)^2 or the finer mesh simply returns a less converged answer, which is what a naive
+    // refinement showed -- argon at -517.3 (N=800, 12k steps) against -528.0 (N=400).
+    var ST = parseInt((location.search.match(/[?&]fsteps=(\d+)/)||[])[1] || '0', 10);
+    N = NN;
+    var EL={18:'Ar',19:'K',20:'Ca',21:'Sc',22:'Ti',23:'V',24:'Cr',25:'Mn',
+            26:'Fe',27:'Co',28:'Ni',29:'Cu',30:'Zn',31:'Ga',32:'Ge',33:'As',34:'Se',
+            35:'Br',36:'Kr',37:'Rb',38:'Sr'};
+    var ZLO = parseInt((location.search.match(/[?&]zmin=(\d+)/)||[])[1] || '18', 10);
+    var ZHI = parseInt((location.search.match(/[?&]zmax=(\d+)/)||[])[1] || '30', 10);
+    (async function(){
+      PK_MODE=false;
+      for (var Z=ZLO; Z<=ZHI; Z++){
+        N = NN;                       // re-assert: something in the draw loop restores it
+        var steps = ST || Math.round(12000 * (NN/400) * (NN/400));
+        var rec={Z:Z, el:EL[Z], N:N, steps:steps};
+        try{
+          var cfg=genConfigObserved(Z); rec.cfg=cfg.join('+');
+          var r=solveAtomPure(Z,cfg,steps);
+          rec.E = isFinite(r.etot)?Number(r.etot.toFixed(3)):'NONFIN';
+          var ref=REF_ETOT[Z]; rec.ref = (ref!=null)?Number(ref.toFixed(3)):null;
+          if (ref!=null && isFinite(r.etot)) rec.err_pct = Number(((r.etot-ref)/ref*100).toFixed(2));
+          rec.r_core = Number((M[1]*h).toFixed(4));
+        }catch(e){ rec.E='ERR'; rec.msg=String(e).slice(0,60); }
+        out.push(rec);
+        try{ localStorage.setItem('fine_progress', EL[Z]+' N='+N+' s='+steps); }catch(e){}
+        await new Promise(function(res){ setTimeout(res,0); });
+      }
+      try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+      document.title='FINE DONE';
+    })();
+  };
+  window.__autoKr = function(){
+    var KEY='atomsim_kr';
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    var cases = [
+      { el:'Ar', Z:18, tag:'2+8+8',            cfg:[2,4,4,4,4] },
+      { el:'Kr', Z:36, tag:'2+8+8 repeated',   cfg:[2,4,4,4,4, 2,4,4,4,4] },
+      { el:'Kr', Z:36, tag:'cap-4 of supplied',cfg:[2,4,4,4,4, 4,3,3, 2, 3,3] },
+      { el:'Zn', Z:30, tag:'2+8+8 + 2+4+4+2',  cfg:[2,4,4,4,4, 2,4,4,2] },
+      { el:'Zn', Z:30, tag:'cap-4 of supplied',cfg:[2,4,4,4,4, 4,3,3, 2] }
+    ];
+    (async function(){
+      var out=[]; N=800; PK_MODE=false;      for (var i=0;i<cases.length;i++){
+        var c=cases[i], rec={el:c.el, Z:c.Z, tag:c.tag, cfg:c.cfg.join('+'),
+                             ne:c.cfg.reduce(function(a,b){return a+b;},0)};
+        try{
+          var r=solveAtomPure(c.Z, c.cfg, 12000);
+          rec.E = isFinite(r.etot)?Number(r.etot.toFixed(3)):'NONFIN';
+          var ref=REF_ETOT[c.Z]; rec.ref=ref;
+          if (ref!=null && isFinite(r.etot)) rec.err=Number(((r.etot-ref)/ref*100).toFixed(2));
+        }catch(e){ rec.E='ERR'; }
+        out.push(rec);
+        try{ localStorage.setItem('kr_progress', c.el+' '+c.tag); }catch(e){}
+        await new Promise(function(res){setTimeout(res,0);});
+      }
+      try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+      document.title='KR DONE';
+    })();
+  };
+
+  window.__autoTrunc = function(){
+    var KEY='atomsim_trunc', out=[], K=4.32;
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    (async function(){
+      for (var Z=16; Z<=30; Z++){
+        var rec={Z:Z, rc:Number((K/Z).toFixed(4))};
+        var cfg=genConfigObserved(Z);
+        rec.cfg=cfg.join('+');
+        // all-electron reference run
+        try{ PK_MODE=false; var ra=solveAtomPure(Z,cfg,3000);
+             rec.E_allelec = isFinite(ra.etot)?Number(ra.etot.toFixed(3)):'NONFIN'; }
+        catch(e){ rec.E_allelec='ERR'; }
+        await new Promise(function(r){setTimeout(r,0);});
+        // truncated kernel: absorb the innermost shell only
+        try{
+          var inner=cfg[0], rest=cfg.slice(1);
+          PK_MODE=true; PK_rc=K/Z; PK_Zker=Z-inner;
+          var rt=solveAtomPure(Z-inner, rest, 3000);
+          rec.cfg_rest=rest.join('+'); rec.Zker=Z-inner;
+          rec.E_rest = isFinite(rt.etot)?Number(rt.etot.toFixed(3)):'NONFIN';
+          var Ecore = -Z*Z + 0.625*Z - 0.158;          // analytic He-like core, external formula
+          rec.E_core_analytic = Number(Ecore.toFixed(3));
+          if (isFinite(rt.etot)) rec.E_est_total = Number((rt.etot+Ecore).toFixed(3));
+        }catch(e){ rec.E_rest='ERR'; }
+        PK_MODE=false;
+        rec.ref = (REF_ETOT[Z]!=null)?Number(REF_ETOT[Z].toFixed(3)):null;
+        out.push(rec);
+        try{ localStorage.setItem('trunc_progress','Z='+Z); }catch(e){}
+        await new Promise(function(r){setTimeout(r,0);});
+      }
+      try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+      document.title='TRUNC DONE';
+    })();
+  };
+
+
+  // SHELL RADII from the 1D free boundary, for comparison with the 3D run.
+  // M[s] are the shell boundary INDICES and lines ~1180-1184 move them by amplitude continuity
+  // (if u[M] > u[M+1] + diff then M++), which is the same free-boundary rule the 3D front
+  // implements as cm = u_self - u_other. So the radial shell radius is already an OUTPUT here,
+  // found not imposed -- the 1D solver has been doing the aufbau boundary test all along.
+  // Reported as M[s+1]*h, the outer radius of shell s, exactly as the transition-metal routine
+  // does at :458.
+
+  // SEQUENTIAL AUFBAU. Given the parent (Z-1) configuration, the next electron may join any
+  // existing shell or open a new one. The parent's TOPOLOGY is inherited -- shell count and
+  // occupancies -- but every candidate is solved fully self-consistently (all radii and
+  // amplitudes relax). Nothing is frozen numerically: this is not the frozen-core approximation.
+  //
+  // Why the constraint matters: re-deriving the configuration from scratch lets the core DISSOLVE,
+  // which is how Be reaches a single 4-shell at -18.89 (28.8% too deep) and why unconstrained
+  // energy minimisation looks anti-correlated with physics. A build-up never OFFERS that option --
+  // the electron arrives at an atom that already has a core. If the inherited-topology minimum is
+  // the physical configuration at every step, the packing stops being an empirical input and the
+  // all-electron calculation carries no adjustable parameter at all.
+  //
+  // Reports the winner alongside BOTH candidate "correct" answers -- the balanced cap-4 rule the
+  // paper uses, and the spectroscopic configuration -- rather than pre-deciding which is right.
+
+  // SHELL SIZE-TO-RADIUS RATIO, to test whether CAPACITY is a derived quantity.
+  // Each shell has an inner and outer FREE boundary M[s], M[s+1], so define
+  //     s = (R_out - R_in)/2   the electron's radial half-size
+  //     R = (R_out + R_in)/2   the shell's mean radius
+  //     s/R = (R_out - R_in)/(R_out + R_in)
+  // The innermost shell has R_in = 0, giving s/R = 1 exactly -- the antipodal case, two electrons
+  // each filling half the ball. Outer shells sit further out relative to their thickness, so s/R
+  // falls and more electrons fit. Geometric ladder (electrons of radius s with centres on a
+  // sphere of radius R touch when sin(alpha/2) = s/R):
+  //     s/R = 1.000 -> 2 (antipodal)   0.866 -> 3   0.816 -> 4 (tetrahedral)
+  //     s/R = 0.707 -> 6 (octahedral)  0.577 -> 8 (cubic)
+  // THE REAL TEST IS THE PLATEAUS. The periodic table repeats capacities -- 2, 8, 8, 18, 18,
+  // 32, 32 -- so a monotonically falling s/R would give 2, 8, 18, 32 once each and be wrong.
+  // The ratio must come in STEPS OF TWO SHELLS, the first unpaired. That is what decides whether
+  // the geometry explains the table's shape or only its capacities.
+
+  // He on the 1D radial solver: ONE spherical shell holding two electrons (non-split).
+  // The 3D counterpart with an angular split into two one-electron domains is the comparison --
+  // the non-split shell needs a multi-occupancy self-repulsion correction, the split one does not.
+
+  // ATOMIC RADII. The free boundaries give the INTERNAL shell radii directly, but the outermost
+  // boundary is the grid edge, not physics, so an atomic radius needs a density criterion.
+  // Three are computed, all from the converged radial density (charge = u^2 r^2 dr, so the
+  // density is rho(r) = u(r)^2 / 4pi):
+  //   <r>_out  mean radius of the OUTERMOST shell -- the direct analogue of Clementi's
+  //            calculated atomic radii, which are <r> of the outermost orbital
+  //   r90,r99  radius enclosing 90% / 99% of the total electron charge
+  // Nothing here is fitted: the shell bands come from the free boundary and the density from the
+  // solve. Reported in Angstrom for comparison with the tabulated values.
+  window.__autoRad = function(){
+    var KEY='atomsim_rad', out=[], A=0.529177210903;
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    var els={1:'H',2:'He',3:'Li',4:'Be',5:'B',6:'C',7:'N',8:'O',9:'F',10:'Ne',
+             11:'Na',12:'Mg',13:'Al',14:'Si',15:'P',16:'S',17:'Cl',18:'Ar'};
+    Object.keys(els).forEach(function(k){
+      var Z=parseInt(k,10);
+      try{
+        var cfg=genConfigBalanced(Z);
+        var r=solveAtomPure(Z,cfg,30000);
+        // cumulative charge and the outermost shell's mean radius
+        var tot=0, acc=[], i;
+        for(i=1;i<=N;i++){ var q=(u[i]*i*h)*(u[i]*i*h)*h; tot+=q; acc.push(tot); }
+        function rAt(frac){
+          for(var j=0;j<acc.length;j++) if(acc[j]>=frac*tot) return Number(((j+1)*h*A).toFixed(3));
+          return null;
+        }
+        var lo=M[NSHELLS-1]+1, hi=M[NSHELLS], num=0, den=0;
+        for(i=lo;i<=hi && i<=N;i++){ var w=(u[i]*i*h)*(u[i]*i*h)*h; num+=w*(i*h); den+=w; }
+        out.push({el:els[k],Z:Z,cfg:cfg.join('+'),
+                  E:isFinite(r.etot)?Number(r.etot.toFixed(4)):null,
+                  r_mean_outer_A: den>0?Number((num/den*A).toFixed(3)):null,
+                  r90_A: rAt(0.90), r99_A: rAt(0.99),
+                  shell_radii_A: (function(){var a=[];for(var t=0;t<NSHELLS;t++)a.push(Number((M[t+1]*h*A).toFixed(3)));return a;})(),
+                  charge: Number(tot.toFixed(4)), h:Number(h.toFixed(5))});
+      }catch(e){ out.push({el:els[k],Z:Z,err:String(e).slice(0,70)}); }
+    });
+    try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+    document.title='RAD DONE'; return out;
+  };
+
+  window.__autoHe = function(){
+    var KEY='atomsim_he', out=[];
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    [[2,[2],'He'],[1,[1],'H'],[3,[2,1],'Li']].forEach(function(c){
+      try{ var r=solveAtomPure(c[0], c[1], 40000);
+        var radii=[]; for(var t=0;t<NSHELLS;t++) radii.push(Number((M[t+1]*h).toFixed(4)));
+        out.push({el:c[2],Z:c[0],cfg:c[1].join('+'),E:Number(r.etot.toFixed(5)),
+                  radii:radii,h:Number(h.toFixed(5)),N:N});
+      }catch(e){ out.push({el:c[2],err:String(e).slice(0,70)}); }
+    });
+    try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+    document.title='HE DONE'; return out;
+  };
+
+  window.__autoSR = function(){
+    var KEY='atomsim_sr', out=[];
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    var els={3:'Li',4:'Be',5:'B',6:'C',7:'N',8:'O',9:'F',10:'Ne',
+             11:'Na',12:'Mg',13:'Al',14:'Si',15:'P',16:'S',17:'Cl',18:'Ar'};
+    // ?srsteps= relaxation steps per atom (default 20000). The shell BOUNDARIES settle long
+    // before the energy does, so radii do not need the full count; and the loop now yields
+    // between atoms, without which the page blocks for the whole sweep and cannot be queried.
+    var SRSTEPS = parseInt((location.search.match(/[?&]srsteps=(\d+)/)||[])[1] || '20000', 10);
+    (async function(){
+    var keys = Object.keys(els);
+    for (var ki = 0; ki < keys.length; ki++) {
+      var k = keys[ki];
+      var Z=parseInt(k,10);
+      try{
+        var cfg=genConfigBalanced(Z);
+        var r=solveAtomPure(Z,cfg,SRSTEPS);
+        var sh=[];
+        for(var t=0;t<NSHELLS;t++){
+          var Rin=M[t]*h, Rout=M[t+1]*h;
+          var sr=(Rout+Rin)>0 ? (Rout-Rin)/(Rout+Rin) : null;
+          sh.push({n:Es[t], R_in:Number(Rin.toFixed(4)), R_out:Number(Rout.toFixed(4)),
+                   s_over_R: sr===null?null:Number(sr.toFixed(4))});
+        }
+        out.push({el:els[k],Z:Z,cfg:cfg.join('+'),
+                  E:isFinite(r.etot)?Number(r.etot.toFixed(4)):null, shells:sh});
+      }catch(e){ out.push({el:els[k],Z:Z,err:String(e).slice(0,70)}); }
+      try{ localStorage.setItem('sr_progress', els[k]); }catch(e){}
+      await new Promise(function(res){ setTimeout(res, 0); });
+    }
+    try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+    document.title='SR DONE';
+    })();
+    return out;
+  };
+
+  window.__autoSeq = function(){
+    var KEY='atomsim_seq', out=[];
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    var steps=[
+      {el:'Be', Z:4, parent:[2,1],   spec:[2,2]},
+      {el:'B',  Z:5, parent:[2,2],   spec:[2,2,1]},
+      {el:'C',  Z:6, parent:[2,2,1], spec:[2,2,2]},
+      {el:'N',  Z:7, parent:[2,2,2], spec:[2,2,3]},
+      {el:'O',  Z:8, parent:[2,2,3], spec:[2,2,4]}
+    ];
+    steps.forEach(function(st){
+      // CLOSURE: a shell that is a filled packing admits no more. The close-packings of unit
+      // charges on a sphere are 2 (antipodal) and 4 (tetrahedral), which is a GEOMETRIC fact the
+      // paper already argues, not a fitted number -- so imposing it costs no parameter. A shell
+      // holding 2 is a closed cap-2; one holding 4 is a closed cap-4; 1 or 3 has room.
+      // Run BOTH ways: without closure the next electron may join any shell and energy decides
+      // alone; with closure it may only join a shell with spare capacity, or open a new one.
+      function closed(n){ return n === 2 || n === 4; }
+      var cands=[], candsClosed=[];
+      for(var i=0;i<st.parent.length;i++){
+        var c=st.parent.slice(); c[i]+=1;
+        cands.push(c);
+        if(!closed(st.parent[i]) && i>0) candsClosed.push(c);   // i>0: never re-open the core
+      }
+      var fresh=st.parent.concat([1]);
+      cands.push(fresh); candsClosed.push(fresh);   // open a new shell -- always allowed
+      var res=[];
+      cands.forEach(function(c){
+        try{
+          var r=solveAtomPure(st.Z, c, 20000);
+          res.push({cfg:c.join('+'), E:isFinite(r.etot)?Number(r.etot.toFixed(4)):null});
+        }catch(e){ res.push({cfg:c.join('+'), E:null, err:String(e).slice(0,60)}); }
+      });
+      var ok=res.filter(function(r){return r.E!==null;});
+      var win=ok.length?ok.reduce(function(a,b){return b.E<a.E?b:a;}):null;
+      // winner under the closure rule: same energies, restricted candidate set
+      var allowed={}; candsClosed.forEach(function(c){ allowed[c.join('+')]=1; });
+      var okC=ok.filter(function(r){ return allowed[r.cfg]; });
+      var winC=okC.length?okC.reduce(function(a,b){return b.E<a.E?b:a;}):null;
+      var bal=null; try{ bal=genConfigBalanced(st.Z).join('+'); }catch(e){}
+      out.push({el:st.el, Z:st.Z, parent:st.parent.join('+'),
+                candidates:res,
+                winner_open:win?win.cfg:null, winner_open_E:win?win.E:null,
+                winner_closed:winC?winC.cfg:null, winner_closed_E:winC?winC.E:null,
+                allowed_closed:Object.keys(allowed),
+                winner:win?win.cfg:null, winner_E:win?win.E:null,
+                spectroscopic:st.spec.join('+'), balanced_rule:bal,
+                matches_spec: win? (win.cfg===st.spec.join('+')) : null,
+                matches_balanced: win? (win.cfg===bal) : null});
+    });
+    try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+    document.title='SEQ DONE';
+    return out;
+  };
+
+  window.__autoRadii = function(){
+    var KEY='atomsim_radii', out=[];
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    var cases=[['Li',3,[2,1]],['Li',3,[2,1]],['Be',4,[2,1,1]],['Be',4,[2,2]],
+               ['B',5,[2,2,1]],['C',6,[2,2,2]]];
+    cases.forEach(function(c,idx){
+      try{
+        var r=solveAtomPure(c[1], c[2], 30000);
+        var radii=[], ies=[];
+        for(var s=0;s<NSHELLS;s++){
+          radii.push(Number((M[s+1]*h).toFixed(4)));
+          ies.push(Es[s]>0?Number((-eps[s]/Es[s]*27.2114).toFixed(3)):null);
+        }
+        out.push({el:c[0],Z:c[1],cfg:c[2].join('+'),
+                  E:isFinite(r.etot)?Number(r.etot.toFixed(4)):null,
+                  shell_outer_radii_au:radii, n_per_shell:Es.slice(0,NSHELLS),
+                  IE_per_shell_eV:ies, h:Number(h.toFixed(5)), N:N});
+      }catch(e){ out.push({el:c[0],cfg:c[2].join('+'),err:String(e).slice(0,80)}); }
+    });
+    try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+    document.title='RADII DONE';
+    return out;
+  };
+
+  window.__autoAufbau = function(){
+    var KEY = 'atomsim_aufbau', out = [];
+    try { localStorage.removeItem(KEY); } catch(e){}
+    var cases = [
+      { el:'Li', Z:3, phys:'2+1',   cfgs:[[3],[2,1]] },
+      { el:'Be', Z:4, phys:'2+1+1', cfgs:[[4],[2,2],[2,1,1]] },
+      { el:'B',  Z:5, phys:'2+2+1', cfgs:[[5],[4,1],[2,3],[2,2,1]] },
+      { el:'C',  Z:6, phys:'2+2+2', cfgs:[[6],[4,2],[2,4],[2,2,2]] }
+    ];
+    cases.forEach(function(c){
+      c.cfgs.forEach(function(cfg){
+        try {
+          var r = solveAtomPure(c.Z, cfg, 20000);
+          out.push({ el:c.el, Z:c.Z, cfg:cfg.join('+'), phys:c.phys,
+                     is_phys: cfg.join('+') === c.phys,
+                     E: isFinite(r.etot) ? Number(r.etot.toFixed(4)) : null });
+        } catch(e) { out.push({ el:c.el, cfg:cfg.join('+'), err:String(e).slice(0,80) }); }
+      });
+    });
+    try { localStorage.setItem(KEY, JSON.stringify(out)); } catch(e){}
+    document.title = 'AUFBAU DONE';
+    return out;
+  };
+
+  window.__autoCNOd = function(){
+    var out = [], KEY = 'atomsim_cno_dscf';
+    try { localStorage.removeItem(KEY); } catch(e){}
+    [6,7,8].forEach(function(Z){
+      try {
+        var cfg  = genConfigBalanced(Z);
+        // The ION REPACKS. cationCfg just decrements the neutral's last shell, so N 2+3+2 becomes
+        // 2+3+1 -- a one-electron outer shell the model would never choose for six electrons, and
+        // it relaxed into a spurious state 1.35 Ha below the true NEUTRAL, giving a NEGATIVE
+        // ionisation energy. genConfigBalanced(Z-1) lets the cation take its own packing, which
+        // is what a real ion does. Both are reported so the difference is visible.
+        var ccfg = genConfigBalanced(Z - 1);
+        var ccfgOld = cationCfg(cfg);
+        var neu  = solveAtomPure(Z, cfg,  3000);
+        var cat  = solveAtomPure(Z, ccfg, 3000);
+        var dscf = (cat.etot - neu.etot) * 27.2114;
+        var catOld = solveAtomPure(Z, ccfgOld, 3000);
+        out.push({ Z: Z, cfg: cfg.join('+'), ccfg: ccfg.join('+'), ccfgOld: ccfgOld.join('+'),
+                   Ecat_old: Number(catOld.etot.toFixed(4)),
+                   IE_old: Number(((catOld.etot - neu.etot) * 27.2114).toFixed(3)),
+                   Eneu: Number(neu.etot.toFixed(4)), Ecat: Number(cat.etot.toFixed(4)),
+                   IE_dSCF: Number(dscf.toFixed(3)),
+                   IE_koop: Number((neu.IE_eV).toFixed(3)),
+                   NIST: (typeof NIST_IE1 !== 'undefined') ? NIST_IE1[Z] : null });
+      } catch(e) { out.push({ Z: Z, err: String(e).slice(0,140) }); }
+    });
+    try { localStorage.setItem(KEY, JSON.stringify(out)); } catch(e){}
+    document.title = 'CNO dSCF DONE';
+    return out;
+  };
+  window.__autoCNO = function(){
+    var out = [], KEY = 'atomsim_cno';
+    try { localStorage.removeItem(KEY); } catch(e){}
+    [6,7,8].forEach(function(Z){
+      try {
+        var cfg = genConfigBalanced(Z);
+        var res = solveAtomPure(Z, cfg, 3000);
+        out.push({ Z: Z, cfg: cfg.join('+'),
+                   E: isFinite(res.etot) ? Number(res.etot.toFixed(4)) : null,
+                   Eref: (typeof REF_ETOT !== 'undefined' && REF_ETOT[Z] != null) ? REF_ETOT[Z] : null,
+                   IE: isFinite(res.IE_eV) ? Number(res.IE_eV.toFixed(3)) : null,
+                   NIST: (typeof NIST_IE1 !== 'undefined') ? NIST_IE1[Z] : null });
+      } catch(e) { out.push({ Z: Z, err: String(e).slice(0,120) }); }
+    });
+    try { localStorage.setItem(KEY, JSON.stringify(out)); } catch(e){}
+    document.title = 'CNO DONE';
+    return out;
+  };
+  // p5 setup() must have run before the solver is usable; poll for it.
+  var tries = 0;
+  var iv = setInterval(function(){
+    if (++tries > 400) { clearInterval(iv); return; }
+    if (typeof solveAtomPure === 'function' && typeof genConfigBalanced === 'function') {
+      clearInterval(iv);
+      setTimeout(MODE === 'K' ? window.__autoKr
+                       : MODE === 'N' ? window.__autoFine
+                       : MODE === 'T' ? window.__autoTrunc
+                       : MODE === 'F' ? window.__autoFull
+                       : MODE === 'R' ? window.__autoRad
+                       : MODE === 'h' ? window.__autoHe
+                       : MODE === 'z' ? window.__autoSR
+                       : MODE === 'q' ? window.__autoSeq
+                       : MODE === 'r' ? window.__autoRadii
+                       : MODE === 'c' ? window.__autoConv
+                       : MODE === 'g' ? window.__autoMGPT
+                       : MODE === 'a' ? window.__autoAufbau
+                       : MODE === 'x' ? window.__autoChi
+                       : MODE === 's' ? window.__autoScan
+                       : MODE === 'd' ? window.__autoCNOd : window.__autoCNO, 1500);
+    }
+  }, 250);
+})();
+
+function genConfigCap(m, cap) {
+  if (m <= 2) return [m];
+  let cfg = [2], rem = m - 2;
+  while (rem > 0) { let t = Math.min(cap, rem); cfg.push(t); rem -= t; }
+  return cfg;
+}
+function genConfig(m) { return genConfigCap(m, 4); }   // default 4-cap
+
+// Balanced cap-4: distribute each period's electrons EVENLY across its cap-4 shells
+// (round-robin), reproducing 2+2+2, 2+3+2, 2+4+3, ... instead of greedy 2+4, 2+4+1.
+function genConfigBalanced(m) {
+  // s/p-block period structure (shell caps per period); d/f beyond P3 are placeholders
+  const periods = [[2], [4, 4], [4, 4], [4, 4, 4, 4, 2], [4, 4, 4, 4, 2],
+                   [4, 4, 4, 4, 4, 4, 4, 4], [4, 4, 4, 4, 4, 4, 4, 4]];
+  let cfg = [], rem = m;
+  for (const caps of periods) {
+    if (rem <= 0) break;
+    const pcap = caps.reduce((a, b) => a + b, 0);
+    let take = Math.min(rem, pcap);
+    let sh = new Array(caps.length).fill(0);
+    for (let e = 0; e < take; e++) {
+      let idx = -1, mn = Infinity;
+      for (let s = 0; s < caps.length; s++)
+        if (sh[s] < caps[s] && sh[s] < mn) { mn = sh[s]; idx = s; }
+      if (idx < 0) break;
+      sh[idx]++;
+    }
+    for (let s = 0; s < caps.length; s++) if (sh[s] > 0) cfg.push(sh[s]);
+    rem -= take;
+  }
+  return cfg;
+}
+
+// Set globals from an explicit (nuclear charge, electrons-per-shell) without touching the UI.
+function applyConfig(Znuc, arr) {
+  Z = Znuc;
+  for (let s = 0; s < MAXSHELLS; s++) Es[s] = (s < arr.length) ? arr[s] : 0;
+  NSHELLS = Math.max(1, Math.min(arr.length, MAXSHELLS));
+  for (let s = 0; s < MAXSHELLS; s++) Ered[s] = Es[s] > 1 ? (Es[s] - 1) / Es[s] : 0;
+}
+
+// Solve one atom/ion to convergence using the SAME numerics as interactive mode.
+function solveAtomPure(Znuc, arr, maxSteps) {
+  applyConfig(Znuc, arr);
+  initArrays();
+  let prev = NaN, stable = 0;
+  const ms = maxSteps || 4000;
+  for (let it = 0; it < ms; it++) {
+    macroStep();
+    if (it % 20 === 19) {
+      let et = 0; for (let s = 0; s < NSHELLS; s++) et += energy[s];
+      if (!isNaN(prev) && Math.abs(et - prev) < 1e-4) { stable++; if (stable >= 3) break; }
+      else stable = 0;
+      prev = et;
+    }
+  }
+  let etot = 0; for (let s = 0; s < NSHELLS; s++) etot += energy[s];
+  const val = NSHELLS - 1;
+  let nCore = 0; for (let s = 0; s < val; s++) nCore += Es[s];
+  const epsVal = Es[val] > 0 ? eps[val] / Es[val] : 0;        // orbital eigenvalue (2P) per electron
+  const enVal  = Es[val] > 0 ? energy[val] / Es[val] : 0;     // shell energy contribution (P) per electron
+  return { etot: etot, epsVal: epsVal, IE_eV: -epsVal * 27.2114,
+           IE_energy_eV: -enVal * 27.2114,
+           Zker: Znuc - nCore, rc: M[val] * h,
+           ne: arr.reduce((a, b) => a + b, 0), cfg: arr.join('+') };
+}
+
+// One-click periodic-table sweep: for each Z, solve neutral + cation, write two CSVs.
+async function runSweep() {
+  if (batchRunning) return;
+  batchRunning = true; running = false;
+  const Zmax = sliderZ.value();
+  let rows = ['Z,ref_E_Ha,cfg_greedy4,E_greedy4,err_greedy4_%,cfg_bal4,E_bal4,err_bal4_%,E_cap8,err_cap8_%,better4,IE_eig_eV,IE_energy_eV,NIST_IE_eV,eig_err_%,energy_err_%'];
+  for (let Zz = 2; Zz <= Zmax; Zz++) {
+    try {
+      sweepStatus = 'Z=' + Zz + '/' + Zmax;
+      await new Promise(r => setTimeout(r, 0));
+      const ref = REF_ETOT[Zz];
+      const errf = (e) => (ref != null && isFinite(e)) ? ((e - ref) / ref * 100) : NaN;
+      let g = solveAtomPure(Zz, genConfigCap(Zz, 4));
+      let b = solveAtomPure(Zz, genConfigBalanced(Zz));
+      let c8cfg = genConfigCap(Zz, 8);
+      let c8 = (c8cfg.length <= MAXSHELLS) ? solveAtomPure(Zz, c8cfg) : { etot: NaN };
+      let eg = errf(g.etot), eb = errf(b.etot), e8 = errf(c8.etot);
+      let better = (!isNaN(eg) && !isNaN(eb)) ? (Math.abs(eb) < Math.abs(eg) ? 'balanced' : 'greedy') : '';
+      let row = [Zz, (ref != null ? ref.toFixed(4) : ''),
+                 g.cfg, (isFinite(g.etot) ? g.etot.toFixed(4) : 'NONFIN'), (isNaN(eg) ? '' : eg.toFixed(2)),
+                 b.cfg, (isFinite(b.etot) ? b.etot.toFixed(4) : 'NONFIN'), (isNaN(eb) ? '' : eb.toFixed(2)),
+                 (isFinite(c8.etot) ? c8.etot.toFixed(4) : ''), (isNaN(e8) ? '' : e8.toFixed(2)),
+                 better];
+      let nistIE = NIST_IE1[Zz];
+      let eigErr = (nistIE && isFinite(b.IE_eV)) ? ((b.IE_eV - nistIE) / nistIE * 100) : NaN;
+      let enErr = (nistIE && isFinite(b.IE_energy_eV)) ? ((b.IE_energy_eV - nistIE) / nistIE * 100) : NaN;
+      row.push(isFinite(b.IE_eV) ? b.IE_eV.toFixed(2) : '',
+               isFinite(b.IE_energy_eV) ? b.IE_energy_eV.toFixed(2) : '',
+               nistIE ? nistIE.toFixed(3) : '',
+               isNaN(eigErr) ? '' : eigErr.toFixed(1),
+               isNaN(enErr) ? '' : enErr.toFixed(1));
+      rows.push(row.join(','));
+      console.log('PT ' + row.join(','));
+    } catch (e) {
+      console.warn('packing sweep: Z=' + Zz + ' FAILED — ' + (e && e.message ? e.message : e));
+      rows.push([Zz, 'ERROR'].join(','));
+    }
+  }
+  saveStrings(rows, 'realqm_atoms_packing.csv');
+  sweepStatus = 'done — packing CSV downloaded (' + (Zmax - 1) + ' elements)';
+  batchRunning = false;
+}
+
+// Print one CSV row of the converged atom to the browser console.
+// Columns: Z, config, E_total(Ha), eps_valence(Ha/electron), IE(eV), Z_kernel, r_c(au)
+// IE = -eps_valence (Koopmans). VERIFY on He (~24.6 eV) and Li (~5.4 eV) before trusting the sweep.
+function logRow() {
+  let etot = 0;
+  for (let s = 0; s < NSHELLS; s++) etot += energy[s];
+  const val = NSHELLS - 1;                              // valence shell index
+  let nCore = 0;
+  for (let s = 0; s < val; s++) nCore += Es[s];
+  const Zker = Z - nCore;                               // pseudo-kernel effective charge
+  const rc = M[val] * h;                                // core radius = inner boundary of valence shell
+  const epsVal = Es[val] > 0 ? eps[val] / Es[val] : 0;  // valence orbital eigenvalue, per electron
+  const IE_eV = -epsVal * 27.2114;                      // ionization energy, Ha -> eV
+  const cfg = Es.slice(0, NSHELLS).join('+');
+  console.log('CSV, ' + [Z, cfg, etot.toFixed(4), epsVal.toFixed(4),
+                         IE_eV.toFixed(2), Zker, rc.toFixed(3)].join(', '));
 }
 
 function readSliders() {
   Z = sliderZ.value();
   Es[0] = 2;  // shell 0 always 2
-  for (let s = 0; s < MAXSHELLS - 1; s++) {
+  for (let s = 0; s < 5; s++) {
     Es[s + 1] = sliders[s].value();
   }
+  for (let s = 6; s < MAXSHELLS; s++) Es[s] = 0;
   // Count active shells
   NSHELLS = 1;
   for (let s = 1; s < MAXSHELLS; s++) {
@@ -124,21 +1509,40 @@ function readSliders() {
 }
 
 function initArrays() {
-  readSliders();
+  // (config in Z/Es/NSHELLS/Ered must be set by caller: readSliders() or applyConfig())
 
   // Look up known config
   let key = configKey();
   let ref = observed[key];
-  if (ref) { fix = ref.fix; D = ref.D; }
-  else { fix = 0; D = Z > 12 ? 12 : (Z > 5 ? 7 : 5); }
+  // The kernel is the bare Z/r sampled on the grid. There WAS a per-element shift, Z/(i*h+fix*h)
+  // with fix read from the stored table (0.1 for Li, Be, B), which is an adjusted constant worth
+  // up to 0.69 Ha; removing it LOWERED the mean error over Z=2..18 from 1.82% to 1.64%, boron
+  // alone going from -2.6% to +0.2%. It is gone. D is a domain size, not a constant in the
+  // energy: every atom is solved to the same boundary condition at its edge.
+  // TWO VARIANTS. Through argon the uniform mesh resolves everything that matters and the
+  // minimal three updates are used unchanged. Past argon the innermost shell is too narrow for
+  // it, so the second variant refines there and sub-cycles. Nothing else differs: same three
+  // updates, same kernel, no parameter either side of the line.
+  // TWO VARIANTS. Through argon the uniform mesh at N=400 resolves everything that matters and
+  // ONE VARIANT IS LIVE: the uniform mesh, N=400 through argon and beyond, bare kernel, no
+  // constant adjusted anywhere. A second variant for Z>18 was attempted five ways and none of
+  // them worked -- see the note at relaxGraded. Both switches stay off until that is solved.
+  GRADED = false;
+  KCELL  = false;
+  if (ref) { D = ref.D; }
+  else { D = Z > 12 ? 12 : (Z > 5 ? 7 : 5); }
+  if (PK_MODE) { D = PK_rc + 12; }            // valence sits outside the soft core
+  cuspZ = PK_MODE ? 0 : Z;                     // no nuclear cusp in soft pseudo-kernel
 
   h = D / N;
   dt = 0.5 * h * h;
 
-  // Shell boundaries: evenly spaced initially
-  M = [0];
+  // Shell boundaries: evenly spaced initially. In pseudo-kernel mode the valence starts at
+  // r_c (Neumann inner boundary), so the core region r < r_c is excluded entirely.
+  let m0 = PK_MODE ? Math.round(PK_rc / h) : 0;
+  M = [m0];
   for (let s = 1; s < NSHELLS; s++) {
-    M[s] = Math.round(s * N / NSHELLS);
+    M[s] = Math.round(m0 + s * (N - m0) / NSHELLS);
   }
   M[NSHELLS] = N;
   // Unused shells get boundary at N
@@ -148,19 +1552,47 @@ function initArrays() {
 
   // Init u and K
   for (let i = 0; i <= N; i++) {
-    u[i] = exp(-Z * i * h);
+    if (PK_MODE) u[i] = (i < m0) ? 0 : exp(-0.5 * (i * h - PK_rc));   // valence lives outside r_c only
+    else u[i] = exp(-Z * i * h);
     P[i] = 0;
   }
   u[N] = 0;
 
-  Karr[0] = 0;
-  for (let i = 1; i <= N; i++) {
-    Karr[i] = Z / (i * h + fix * h);
+  if (PK_MODE) {
+    // soft pseudo-kernel: Z_ker/r outside r_c, capped to Z_ker/r_c inside
+    for (let i = 0; i <= N; i++) Karr[i] = PK_Zker / Math.max(i * h, PK_rc);
+  } else {
+    Karr[0] = 0;
+    // THE KERNEL ON A CELL, NOT AT A POINT.  Z/(i*h) is the value of the kernel AT the node,
+    // but node i stands for a shell of finite width, and 1/r varies steeply across it near the
+    // origin. The r^2 dr weighted mean over [r-h/2, r+h/2] is
+    //        Kbar = Z * (3/2) * (r+^2 - r-^2) / (r+^3 - r-^3),
+    // which tends to Z/r away from the nucleus and stays finite at the first node, where it is
+    // 0.923*Z/h rather than Z/h. Nothing is fitted: it is the same kernel, integrated over the
+    // cell the grid actually represents instead of sampled at its centre.
+    // THE DOMINANT SOURCE OF IMPRECISION. The kernel is the bare Z/r, and near the nucleus the
+    // grid does not resolve it: the innermost sampled value is Z/h, and the 1s it binds spans
+    // about 8 cells at argon and 5 at zinc. What that costs has been measured. Argon's
+    // two-electron core comes out 69 Ha too deep -- 22% -- against the He-like value, while the
+    // neutral atom lands at 0.09%, so that agreement is cancellation rather than accuracy; the
+    // total moves 10.7 Ha between N=400 and N=800, with the step count converged at both. In
+    // the light atoms the same thing shows as first-order behaviour: doubling h doubled the
+    // error, Li -0.6% to -2.9%, B -2.6% to -5.6%. Everything else -- the packing, the free
+    // boundaries, the Coulomb sums -- is second order beside it. The unresolved 1/r singularity
+    // is the largest single contribution to the errors in the table above.
+    for (let i = 1; i <= N; i++) {
+      if (KCELL) {
+        const rm = (i - 0.5) * h, rp = (i + 0.5) * h;
+        Karr[i] = Z * 1.5 * (rp * rp - rm * rm) / (rp * rp * rp - rm * rm * rm);
+      } else {
+        Karr[i] = Z / (i * h);      // bare kernel sampled at the node
+      }
+    }
   }
 
   computePoisson();
   step = 0;
-  for (let s = 0; s < MAXSHELLS; s++) { energy[s] = 0; normu[s] = 0; }
+  for (let s = 0; s < MAXSHELLS; s++) { energy[s] = 0; normu[s] = 0; eps[s] = 0; }
 }
 
 function computePoisson() {
@@ -181,9 +1613,9 @@ function computePoisson() {
       let factor = (s === myShell) ? 0.5 * Ered[s] : 0.5;
 
       for (let j = iStart; j <= iEnd; j++) {
-        let rj = j * h;
-        let ri = i * h;
-        let rho_j = u[j] * u[j] * rj * rj * h;
+        let rj = GRADED ? rr[j] : j * h;
+        let ri = GRADED ? rr[i] : i * h;
+        let rho_j = u[j] * u[j] * rj * rj * (GRADED ? dw[j] : h);
         if (j < i) {
           P[i] += factor * rho_j / ri;
         } else {
@@ -195,18 +1627,100 @@ function computePoisson() {
 }
 
 function startSimulation() {
+  readSliders();
   initArrays();
   running = true;
 }
 
-function draw() {
-  background(20);
+// ===========================================================================================
+//  THE THREE LINES.  The whole method is three updates iterated to a joint steady state. They
+//  are quoted here in their own code form, so the claim can be checked against the lines that
+//  run rather than against a paraphrase of them. Each appears once, below, at the line given.
+//
+//  1. AMPLITUDE -- parabolic relaxation of the charge density (imaginary time stepping):
+//
+//       u[i] += 0.5*dt*(u[i+1] - 2*u[i] + u[i-1])/(h*h)     // kinetic, radial Laplacian
+//             + 0.5*dt*du_dr/(h*i*h)                        //   ... its 2/r term
+//             + dt*Karr[i]*u[i] - dt*2*P[i]*u[i];           // kernel pull, other-shell push
+//
+//  2. POTENTIAL -- the Coulomb field of the OTHER shells, by the shell theorem (computePoisson):
+//
+//       if (j < i) P[i] += factor * rho_j / ri;   // charge inside r acts as if at the centre
+//       else       P[i] += factor * rho_j / rj;   // charge outside acts at its own radius
+//
+//     `factor` is 0.5 across shells and 0.5*Ered[s] within one, Ered = (N_s-1)/N_s -- smearing
+//     N_s unit charges into one spherical density would count N_s^2 pairs where there are
+//     N_s(N_s-1); the factor removes exactly the spurious self-pairs. Nothing is fitted.
+//
+//  3. FREE BOUNDARY -- move each interface toward continuity of u (the Bernoulli condition):
+//
+//       if (u[M[s]] > u[M[s]+1] + diff) M[s]++;   // amplitude wins inside  -> shell grows
+//       if (u[M[s]] < u[M[s]+1] - diff) M[s]--;   // amplitude wins outside -> shell yields
+//
+//  No basis set, no library eigensolver, no fitted functional, no exchange or correlation
+//  term, no statistics, no spin, no self-interaction correction. Inputs are Z and the electron
+//  count. What the three reach together is a STEADY STATE, not a global minimum: none of them
+//  searches configurations, so the equilibrium found is the one reachable from the state one
+//  starts in. That distinction is ordinarily invisible and is the whole point in the Aufbau.
+// ===========================================================================================
 
-  if (!running) {
-    drawSetupScreen();
-    return;
+// ===========================================================================================
+//  SECOND VARIANT: A REFINED INNER MESH, WITH SUB-CYCLING.  Used for Z > 18.
+//
+//  The three updates above are written on a uniform grid r_i = i*h, and that is all the first
+//  eighteen elements need. Past argon the innermost shell contracts as r_1s ~ 4.32/Z and a
+//  uniform mesh stops resolving it: 8 cells at argon, 5 at zinc, and the energies degrade.
+//
+//  The fix is local. Halve h inside the innermost shell only -- a region 0.24 a.u. wide in a
+//  12 a.u. box -- and the point count rises from 400 to 408 while the 1s goes from 8 cells to
+//  16. What that costs is the time step, since dt = h^2/2 is set by the finest cell wherever it
+//  sits: 4x more steps for cells occupying 2% of the domain. SUB-CYCLING removes that. Take the
+//  coarse step everywhere and four fine steps inside, and the cost falls to ~1.1x.
+//
+//  In one dimension this is an optimisation; refining globally costs only 8x and we can afford
+//  it. In three dimensions it is the difference between possible and not: a refined BALL of
+//  radius 0.24 adds some 4000 cells to a 400^3 grid, where a uniform 800^3 is 512M cells and
+//  out of reach. That is the point the variant exists to make.
+//
+//  rr[i] is the radius of node i and dw[i] its quadrature weight; for a uniform mesh they
+//  reduce to i*h and h, and the two variants then agree line for line.
+// ===========================================================================================
+let GRADED = false, rr = [], dw = [], Msplit = 0, hFine = 0;
+let KCELL = false;   // second variant: kernel averaged over the cell rather than sampled
+
+function buildGradedMesh() {
+  // ONE extra node, at r = h/2. The error a uniform mesh makes is concentrated at the innermost
+  // node, where the kernel is Z/h and largest; splitting that first cell addresses it and leaves
+  // the rest of the grid alone. The spacings are then h/2, h/2, h, h, ... so i=1 is still
+  // uniform (a = b = h/2), only i=2 sees unequal neighbours, and i>=3 is the ordinary stencil.
+  hFine = h / 2;
+  Msplit = 2;
+  rr = new Array(N + 1); dw = new Array(N + 1);
+  rr[0] = 0; rr[1] = hFine;
+  for (let i = 2; i <= N; i++) rr[i] = (i - 1) * h;
+  for (let i = 1; i < N; i++) dw[i] = (rr[i + 1] - rr[i - 1]) / 2;
+  dw[0] = (rr[1] - rr[0]) / 2; dw[N] = (rr[N] - rr[N - 1]) / 2;
+  dt = 0.5 * hFine * hFine;     // explicit stability is set by the finest cell
+}
+
+// The amplitude update on the graded mesh: ONE pass over every interior node, so the junction
+// is treated like any other. (An earlier version split it into a fine and a coarse sweep to
+// allow sub-cycling, and the node at the junction fell between them and was never updated.)
+function relaxGraded(s, lo, hi, dtUse) {
+  for (let i = Math.max(lo, 1); i < hi; i++) {
+    const a = rr[i] - rr[i - 1], b = rr[i + 1] - rr[i];
+    const lap = 2 * (b * u[i - 1] - (a + b) * u[i] + a * u[i + 1]) / (a * b * (a + b));
+    // the uniform update uses a CENTRED derivative on shell 0 and a ONE-SIDED one above it;
+    // match that exactly, or the two variants are different schemes and cannot be compared
+    const du = (s === 0) ? (u[i + 1] - u[i - 1]) / (a + b) : (u[i + 1] - u[i]) / b;
+    u[i] += 0.5 * dtUse * lap + dtUse * du / rr[i]
+          + dtUse * Karr[i] * u[i] - dtUse * 2 * P[i] * u[i];
   }
+}
 
+// One macro step (free-boundary tracking + 5 Poisson sub-steps + per-shell normalization).
+// Single source of truth shared by interactive draw() and the batch sweep.
+function macroStep() {
   // Free boundary tracking: continuity of u at each M[s]
   for (let s = 1; s < NSHELLS; s++) {
     if (M[s] < M[s + 1] - 2 && M[s] > M[s - 1] + 2) {
@@ -215,62 +1729,107 @@ function draw() {
     }
   }
 
-  // 20 macro steps x 5 Poisson updates per frame
-  for (let m = 0; m < 20; m++) {
-    for (let k = 0; k < 5; k++) {
-      // Neumann BC at origin
-      u[0] = u[1] / (1 - Z * h);
-
-      // ITP update for each shell
-      for (let s = 0; s < NSHELLS; s++) {
-        let lo = M[s];
-        let hi = M[s + 1];
-        energy[s] = 0;
-
-        // Neumann BC at shell boundaries
-        if (s === 0) {
-          u[hi] = u[hi - 1];
-        } else {
-          u[lo + 1] = u[lo + 2];
-          u[hi] = u[hi - 1];
-        }
-
-        let iStart = (s === 0) ? 1 : lo + 2;
-        let iEnd = hi;
-
-        for (let i = iStart; i < iEnd; i++) {
-          // Shell 0: centered 1st deriv (u[i+1]-u[i-1]), others: forward (u[i+1]-u[i])
-          let du_dr = (s === 0) ? (u[i + 1] - u[i - 1]) : (u[i + 1] - u[i]);
-          u[i] += 0.5 * dt * (u[i + 1] - 2 * u[i] + u[i - 1]) / (h * h)
-                + 0.5 * dt * du_dr / (h * i * h)
-                + dt * Karr[i] * u[i] - dt * 2 * P[i] * u[i];
-
-          let gr = (u[i + 1] - u[i - 1]) / (2 * h);
-          energy[s] += (0.5 * gr * gr - Karr[i] * u[i] * u[i] + P[i] * u[i] * u[i]) * (i * h) * (i * h) * h;
-        }
-      }
-
-      // Poisson update
-      computePoisson();
-    }
-
-    // Normalization per shell
+  for (let k = 0; k < 5; k++) {
+    if (!PK_MODE) u[0] = u[1] / (1 - cuspZ * h);   // nuclear cusp (none in pseudo-kernel mode)
     for (let s = 0; s < NSHELLS; s++) {
       let lo = M[s];
       let hi = M[s + 1];
-      let iStart = (s === 0) ? 0 : lo + 1;
-      normu[s] = 0;
-      for (let i = iStart; i <= hi; i++) normu[s] += (u[i] * i * h) * (u[i] * i * h) * h;
-      if (normu[s] > 0) {
-        let scale = sqrt(Es[s]) / sqrt(normu[s]);
-        for (let i = iStart; i <= hi; i++) u[i] *= scale;
+      energy[s] = 0;
+      eps[s] = 0;
+      if (s === 0 && !PK_MODE) { u[hi] = u[hi - 1]; }   // origin-cusp shell (explicit nucleus)
+      else {
+        u[lo + 1] = u[lo + 2]; u[hi] = u[hi - 1];
+        if (s === 0) u[lo] = u[lo + 1];                 // PK_MODE: Neumann valence edge at r_c
       }
+      let iStart = (s === 0 && !PK_MODE) ? 1 : lo + 2;
+      let iEnd = hi;
+      // Inner-sphere correction (ported from molecule.js, R_SING = 2h): for the cusped 1s
+      // shell on a bare nucleus the grid mis-resolves r < R_SING, so sum the grid only for
+      // r >= R_SING (skip i=1) and add the analytic hydrogenic inner-sphere energy below.
+      // VALID ONLY where R_SING is well inside the 1s cusp, i.e. a = Z*R_SING << 1. On this
+      // uniform grid h grows with D, so 2h ~ 1/Z for heavy atoms -> a~1 and the analytic
+      // (bare Z, no screening) over-binds catastrophically. Gate to the cusp regime a < 0.15.
+      let innerCorr = (s === 0 && !PK_MODE && innerSphere && Z * 2 * h < 0.15);
+      if (GRADED) relaxGraded(s, iStart, iEnd, dt);
+      for (let i = iStart; i < iEnd; i++) {
+        let du_dr = (s === 0) ? (u[i + 1] - u[i - 1]) : (u[i + 1] - u[i]);
+        if (!GRADED)
+        u[i] += 0.5 * dt * (u[i + 1] - 2 * u[i] + u[i - 1]) / (h * h)
+              + 0.5 * dt * du_dr / (h * i * h)
+              + dt * Karr[i] * u[i] - dt * 2 * P[i] * u[i];
+        if (innerCorr && i < 2) continue;   // r < R_SING = 2h handled analytically below
+        const ri_ = GRADED ? rr[i] : i * h;
+        const dwi = GRADED ? dw[i] : h;
+        let gr = GRADED ? (u[i + 1] - u[i - 1]) / (rr[i + 1] - rr[i - 1])
+                        : (u[i + 1] - u[i - 1]) / (2 * h);
+        energy[s] += (0.5 * gr * gr - Karr[i] * u[i] * u[i] + P[i] * u[i] * u[i]) * ri_ * ri_ * dwi;
+        eps[s]    += (0.5 * gr * gr - Karr[i] * u[i] * u[i] + 2 * P[i] * u[i] * u[i]) * ri_ * ri_ * dwi;
+      }
+      if (innerCorr) {
+        // Analytic inner-sphere (r < R_SING = 2h) for a hydrogenic 1s of effective charge Z:
+        //   T_in = 2Z²[¼ − e^{−2a}(a²/2 + a/2 + ¼)],  V_in = −4Z²[¼ − e^{−2a}(a/2 + ¼)],  a = Z·R_SING
+        let a = Z * 2 * h, e2a = Math.exp(-2 * a);
+        let Tin =  2 * Z * Z * (0.25 - e2a * (a * a / 2 + a / 2 + 0.25));
+        let Vin = -4 * Z * Z * (0.25 - e2a * (a / 2 + 0.25));
+        energy[s] += Es[s] * (Tin + Vin);
+        eps[s]    += Es[s] * (Tin + Vin);
+      }
+    }
+    computePoisson();
+  }
+
+  // Normalization per shell
+  for (let s = 0; s < NSHELLS; s++) {
+    let lo = M[s];
+    let hi = M[s + 1];
+    let iStart = (s === 0) ? (PK_MODE ? M[0] : 0) : lo + 1;
+    normu[s] = 0;
+    for (let i = iStart; i <= hi; i++) {
+      const ri_ = GRADED ? rr[i] : i * h, dwi = GRADED ? dw[i] : h;
+      normu[s] += (u[i] * ri_) * (u[i] * ri_) * dwi;
+    }
+    if (normu[s] > 0) {
+      let scale = sqrt(Es[s]) / sqrt(normu[s]);
+      for (let i = iStart; i <= hi; i++) u[i] *= scale;
     }
   }
   step++;
+}
+
+function draw() {
+  background(20);
+
+  if (batchRunning && !batchPlot) {
+    fill(255); textSize(18); textStyle(BOLD);
+    text('Periodic-table sweep running…', 50, 60);
+    textStyle(NORMAL); textSize(15); fill(180);
+    text(sweepStatus, 50, 95);
+    text('(page may pause per element; CSVs download when done)', 50, 125);
+    return;
+  }
+
+  if (!running && !batchPlot) {
+    drawSetupScreen();
+    return;
+  }
+
+  // In batchPlot mode the state is whatever solveAtomPure just left behind: draw it, do not
+  // advance it. Otherwise this is the ordinary interactive view and we step the relaxation.
+  if (running) { for (let m = 0; m < 20; m++) macroStep(); }
+  if (batchPlot) {
+    // below every status row: the legend sits at iy=350 and the rows step 350, 368, 386, 402,
+    // so anything above ~420 lands on top of them
+    fill(255, 220, 0); textSize(16); textStyle(BOLD);
+    text(batchCaption, 60, 470); textStyle(NORMAL);
+    // the mesh jumps at Z=19 and the step count goes as (N/400)^2, so each atom from potassium
+    // on takes about eight times as long. Without saying so the run looks stalled at argon.
+    if (batchNote) { fill(150); textSize(11); textStyle(NORMAL); text(batchNote, 60, 492); }
+    drawLiveTable(530, 30);
+  }
 
   // --- Visualization ---
-  let plotX = 60, plotY = 30, plotW = 660, plotH = 300;
+  // the scan draws a results table on the right, so the plot gives up width while it runs
+  let plotX = 60, plotY = 30, plotW = batchPlot ? 440 : 660, plotH = 300;
   let rScale = plotW / N, uScale = 80;
 
   // Grid lines
@@ -285,7 +1844,7 @@ function draw() {
 
   // Shell boundary lines
   for (let s = 1; s < NSHELLS; s++) {
-    stroke(shellColors[s][0], shellColors[s][1], shellColors[s][2], 100);
+    stroke(shellCol(s)[0], shellCol(s)[1], shellCol(s)[2], 100);
     let bx = plotX + M[s] * rScale;
     line(bx, plotY, bx, plotY + plotH);
   }
@@ -334,7 +1893,7 @@ function draw() {
   // Boundaries
   let bx = plotX + 130;
   for (let s = 1; s < NSHELLS; s++) {
-    fill(shellColors[s][0], shellColors[s][1], shellColors[s][2]);
+    fill(shellCol(s)[0], shellCol(s)[1], shellCol(s)[2]);
     text('bdy' + s + '=' + (M[s] * h).toFixed(2), bx, iy);
     bx += 100;
   }
@@ -380,23 +1939,62 @@ function draw() {
   text('r (au)', plotX + plotW - 30, baseY + 12);
 }
 
+// The scan takes minutes and watching one atom at a time is not how the table is read, so the
+// results accumulate into a table drawn beside the densities: every element solved so far, with
+// its configuration, energy, reference and difference, filling in as the run proceeds.
+function drawLiveTable(tx, ty) {
+  if (!fullRows.length) return;
+  textStyle(BOLD); textSize(12); fill(100, 200, 255);
+  text('all-electron, nothing fitted', tx, ty - 8);
+  textStyle(NORMAL); textSize(9); fill(150);
+  text('config from:  build-up (Z<=6)   balanced rule (<=20)   ionisation order (>20)', tx, ty + 24);
+  textStyle(NORMAL); textSize(10); fill(150);
+  text('el  Z  config', tx, ty + 10);
+  text('E (Ha)', tx + 150, ty + 10);
+  text('ref', tx + 215, ty + 10);
+  text('diff', tx + 272, ty + 10);
+  let sum = 0, n = 0;
+  for (let i = 0; i < fullRows.length; i++) {
+    const r = fullRows[i], y = ty + 38 + i * 11;
+    if (y > 550) break;
+    if (r.src === 'build-up') fill(230);
+    else if (r.src === 'balanced rule') fill(190);
+    else fill(150);
+    text(r.el + '  ' + r.Z + '  ' + r.cfg, tx, y);
+    fill(210); text(r.E === null ? '--' : r.E.toFixed(2), tx + 150, y);
+    fill(140); text(r.ref === null ? '--' : r.ref.toFixed(1), tx + 215, y);
+    if (r.err === null) { fill(120); text('--', tx + 272, y); }
+    else {
+      const a = Math.abs(r.err); sum += a; n++;
+      if (a < 2) fill(120, 255, 120); else if (a < 5) fill(255, 220, 100); else fill(255, 140, 140);
+      text((r.err >= 0 ? '+' : '') + r.err.toFixed(1) + '%', tx + 272, y);
+    }
+  }
+  if (n) { fill(180); textSize(11);
+    text('mean |diff| = ' + (sum / n).toFixed(1) + '%   over ' + n + ' elements',
+         tx, ty + 38 + Math.min(fullRows.length, 40) * 11 + 12); }
+}
+
 function drawSetupScreen() {
   readSliders();
 
-  // Shell circles
+  // Shell circles. Centred at x=175, not 375: the outermost ring has diameter 60+5*50 = 310,
+  // so a centre at 375 runs the ring out to x=530 and straight through the results table, which
+  // begins at x=430. At 175 the picture occupies the empty left column and the two do not meet.
+  const SCX = 175, SCY = 240;
   noStroke();
   for (let s = NSHELLS - 1; s >= 0; s--) {
-    fill(shellColors[s][0], shellColors[s][1], shellColors[s][2], 50 + s * 10);
-    ellipse(375, 240, 60 + s * 50);
+    fill(shellCol(s)[0], shellCol(s)[1], shellCol(s)[2], 50 + s * 10);
+    ellipse(SCX, SCY, 60 + s * 50);
   }
   fill(255);
-  ellipse(375, 240, 8);
+  ellipse(SCX, SCY, 8);
 
   // Shell labels on circles
   textSize(12);
   for (let s = 0; s < NSHELLS; s++) {
-    fill(shellColors[s][0], shellColors[s][1], shellColors[s][2]);
-    text(Es[s], 380 + s * 25, 242);
+    fill(shellCol(s)[0], shellCol(s)[1], shellCol(s)[2]);
+    text(Es[s], SCX + 5 + s * 25, SCY + 2);
   }
 
   // Title
@@ -411,24 +2009,34 @@ function drawSetupScreen() {
   text('Shell 1: 2 electrons (fixed). Shells 2-6: 0-4 electrons each.', 50, 75);
   text('Choose Z and shell occupations, press Start', 50, 100);
 
-  // Electron configurations
-  textSize(12);
-  fill(180);
-  let configs = [
-    ['Li', '3', '2+1'], ['Be', '4', '2+2'], ['B', '5', '2+2+1'],
-    ['C', '6', '2+2+2'], ['N', '7', '2+3+2'], ['O', '8', '2+3+3'],
-    ['F', '9', '2+4+3'], ['Ne', '10', '2+4+4'],
-    ['Na', '11', '2+4+4+1'], ['Mg', '12', '2+4+4+2'], ['Ar', '18', '2+4+4+4+4'],
-  ];
-  for (let i = 0; i < configs.length; i++) {
-    text(configs[i][0] + ' Z=' + configs[i][1] + ': ' + configs[i][2], 50, 320 + i * 15);
-  }
+  // One table, not two: once a scan has run its results replace the stored ones rather than
+  // being drawn on top of them.
+  if (fullRows.length) drawLiveTable(430, 60);
+  else drawStoredTable();
+  drawSetupPanels();
+}
+
+// Stored results: total energies (balanced cap-4) vs reference, Z=2..18. Shown until a scan
+// has run, after which the scan's own results take the same place.
+function drawStoredTable() {
+  // same renderer as the scan, so the opening screen and a completed run look alike and a
+  // 36-row table still fits the canvas
+  const rows = RESULTS.map(function (r) {
+    return { el: r[0], Z: r[1], cfg: r[2], E: r[3], ref: r[4],
+             err: (r[3] - r[4]) / r[4] * 100, N: null, src: configSource(r[1]) };
+  });
+  const keep = fullRows; fullRows = rows;
+  drawLiveTable(430, 60);
+  fullRows = keep;
+}
+
+function drawSetupPanels() {
 
   // Current selection
   fill(255, 200, 0);
   textSize(13);
   text('Z=' + Z, 20, 515);
-  for (let s = 0; s < MAXSHELLS - 1; s++) {
+  for (let s = 0; s < 5; s++) {
     text('E' + (s + 2) + '=' + Es[s + 1], 155 + s * 90, 515);
   }
 
@@ -440,6 +2048,54 @@ function drawSetupScreen() {
   text('Config: ' + shellString() + ' = ' + Es.slice(0, NSHELLS).reduce((a, b) => a + b, 0) + ' electrons', 50, 130);
   if (ref) {
     text(ref.name + ' (observed: ' + ref.E + ' Ha)', 50, 150);
+  }
+
+  // WHAT TO TRY. Shown until a sweep has run, in the space the results panel will occupy, so a
+  // first-time visitor -- a reader arriving from the paper -- has something concrete to press
+  // rather than a wall of unlabelled controls. It disappears once ptPanel is populated.
+  if (!ptPanel || !ptPanel.length) {
+    let tx = 20, ty = 336;
+    fill(100, 200, 255); textSize(12); textStyle(BOLD);
+    text('What to try', tx, ty); textStyle(NORMAL);
+    fill(190); textSize(11);
+    text('1.  Choose Z and the shell occupations below, then Start.', tx, ty + 20);
+    fill(140); textSize(10);
+    text('Nothing fixes the shell radii: they move until the amplitudes match across each', tx + 14, ty + 33);
+    text('interface. That balance is the whole of the boundary condition.', tx + 14, ty + 46);
+    fill(190); textSize(11);
+    text('2.  The two "Periodic table" buttons solve 2..18 and 19..36 in turn.', tx, ty + 66);
+    fill(140); textSize(10);
+    text('All-electron, nothing fitted. N=400 through argon and N=800 beyond, because the', tx + 14, ty + 79);
+    text('innermost shell contracts as 1/Z; the second run is slower for that reason.', tx + 14, ty + 92);
+    fill(190); textSize(11);
+    text('3.  Watch what changes at scandium.', tx, ty + 112);
+    fill(140); textSize(10);
+    text('Up to calcium each new charge goes outside what is already there. From scandium it', tx + 14, ty + 125);
+    text('belongs inside, and a build-up that only adds outward cannot put it there.', tx + 14, ty + 138);
+  }
+
+  // On-screen results panel: periodic-table heatmap of total-energy error (after "Total energies" sweep)
+  if (ptPanel && ptPanel.length) {
+    const groups = [1, 2, 13, 14, 15, 16, 17, 18];
+    let gx0 = 20, gy0 = 395, cw = 46, ch = 22;
+    fill(100, 200, 255); textSize(12); textStyle(BOLD);
+    text('Frozen-core total-E error %  (green <1, yellow <3, red >3)', gx0, gy0 - 16);
+    textStyle(NORMAL); textSize(9); fill(150); textAlign(LEFT);
+    for (let c = 0; c < 8; c++) text('g' + groups[c], gx0 + c * cw + 3, gy0 - 3);
+    for (let p = 2; p <= 6; p++) {
+      fill(150); textSize(9); text('P' + p, gx0 - 0, gy0 + (p - 2) * ch + 13);
+      for (let c = 0; c < 8; c++) {
+        let cell = ptPanel.find(r => r.p === p && r.g === groups[c]);
+        let x = gx0 + 18 + c * cw, y = gy0 + (p - 2) * ch;
+        if (cell && isFinite(cell.eE)) {
+          let a = Math.abs(cell.eE);
+          if (a < 1) fill(30, 95, 35); else if (a < 3) fill(120, 95, 25); else fill(130, 40, 40);
+          noStroke(); rect(x, y, cw - 2, ch - 2);
+          fill(255); textSize(10); text(cell.el, x + 3, y + 10);
+          fill(225); textSize(8); text((cell.eE >= 0 ? '+' : '') + cell.eE.toFixed(1), x + 3, y + 19);
+        }
+      }
+    }
   }
 }
 </script>

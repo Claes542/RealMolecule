@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <title>Li aufbau — Li+ core plus one electron, free shell boundary</title>
+  <style>body{margin:0;background:#000;color:#ddd;font-family:monospace}
+    #out{padding:14px;font-size:12px;white-space:pre;line-height:1.45}
+    #dbg{padding:10px;font-size:11px;color:#fa6;white-space:pre-wrap}</style>
+</head><body>
+<div id="loadStatus" style="color:#ff0;font-family:monospace;padding:16px;font-size:13px">loading…</div>
+<div id="out"></div>
+<div id="dbg"></div>
+<script>
+  window.onerror=function(m,u,l,c,e){var p=document.createElement('pre');
+    p.style.cssText='color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
+    p.textContent='ERROR: '+m+' at '+u+':'+l+':'+c+(e&&e.stack?'\n\n'+e.stack:'');
+    document.body.insertBefore(p,document.body.firstChild);};
+  (function(){var d=document.getElementById('dbg'),ow=console.warn,oe=console.error;
+    console.warn=function(){d.textContent+='WARN '+[].join.call(arguments,' ')+'\n';ow.apply(console,arguments);};
+    console.error=function(){d.textContent+='ERR '+[].join.call(arguments,' ')+'\n';oe.apply(console,arguments);};})();
+  (function(){
+    // LITHIUM AUFBAU: Li+ (a closed 2-electron core on a +3 kernel) plus ONE more electron.
+    // Where does the arriving electron settle, and where does the boundary between it and the
+    // core end up?
+    //
+    // WHY THIS AND NOT He. In helium the two electrons are EQUIVALENT, so the dividing plane is
+    // arbitrary -- any plane through the nucleus is as good as any other, the symmetric state is
+    // at best marginally stable, and the measured behaviour was runaway: seeded at xp = 0.6 the
+    // wall ran outward to 1.58 and kept going, because the domain holding the kernel always has
+    // the larger amplitude at the interface and the front rule cm = u_self - u_other then feeds
+    // on itself. Here the two domains are NOT equivalent -- a tight core of charge 2 and a
+    // diffuse single electron -- so the boundary is a SHELL with a genuine restoring force: push
+    // it in and the core is compressed, push it out and the valence loses its region.
+    //
+    // NO r_c ANYWHERE. The core is an explicit 2-electron domain, not a pseudopotential, so the
+    // shell radius is an OUTPUT. ?R0= seeds it via the core's r_out, which (without sph:true)
+    // affects only the INITIAL partition -- the front is free thereafter. Vary R0 and check the
+    // boundary converges to the same radius: that is the test, since a boundary that merely
+    // stays where it was seeded proves nothing.
+    //
+    //   ?R0=    initial shell radius, au (default 1.0)
+    //   ?diff=  interface diffusion (default 0.01; mol_fast ships 0.05)
+    //   ?soft=  eps = soft*h (default 2). At Z=3, eps=h gives Z*h/c = 0.19, collapse-prone.
+    //   ?wd=0   disable weighted density (density u^2 with frozen tails counted as charge)
+    //   ?steps= ITP steps (default 200000)
+    var qs=new URLSearchParams(location.search);
+    var N=parseInt(qs.get('nn')||'160',10);
+    var scr=parseFloat(qs.get('scr')); if(!isFinite(scr)) scr=12;
+    var h=scr/N, N2=Math.round(N/2);
+    var R0=parseFloat(qs.get('R0')); if(!isFinite(R0)) R0=1.0;   // seeded shell radius, au
+    // ?flat=  radius of the incoming electron's uniform ball, au (default 6). It starts at R0
+    //         (touching the core) and runs out to FLAT at constant density.
+    // ?outer=0 disable the exterior claim, restoring the R_init=3 truncation for comparison.
+    // DEFAULT OFF. A constant-density ball filling the exterior IS an annulus around the core
+    // at t=0 -- an outer shell present from the start, which is what the run should produce.
+    var FLAT=parseFloat(qs.get('flat')); if(!isFinite(FLAT)) FLAT=0;
+    // ?pair=ANGLE  BERYLLIUM TEST. The outermost shell is given TWO one-electron domains whose
+    // initial directions are ANGLE degrees apart, free thereafter (split_fix false, so `dirs` is
+    // init-only). Seeding them at 180 would assume the answer; seeding them close together asks
+    // whether the pair FORMS. Observable: the angle between their centroids, which should run to
+    // 180 if two charges in one shell settle as an antipodal pair -- the n=1 packing the paper's
+    // capacities rest on, and the configuration (2+2 rather than 2+1+1) that group 2 turns on.
+    var PAIR=parseFloat(qs.get('pair')); if(!isFinite(PAIR)) PAIR=0;
+    var HALF=parseFloat(qs.get('half')); if(!isFinite(HALF)) HALF=0;
+    var WEDGE=parseFloat(qs.get('wedge')); if(!isFinite(WEDGE)) WEDGE=2;
+    // ?maxsec= wall-clock backstop for publishing. MUST exceed the time the step budget needs,
+    // or a long run publishes early and reports an unconverged angular mode as a null result.
+    // At the observed ~230 steps/s, 400k steps needs ~1740 s, so the 1500 s default would cut it.
+    window.MAXSEC=parseFloat(qs.get('maxsec'))||1500;
+    if(qs.get('dv')) window.USER_DV=parseFloat(qs.get('dv'));
+    // ?Z= nuclear charge, ?cfg= shell occupancies e.g. 2,1 or 2,2 or 2,2,1
+    // The point of running the 1D cases in 3D: the radial solver CANNOT break spherical symmetry
+    // and this one can. If 3D reproduces 1D, the reduction is validated where the paper uses it;
+    // if 3D finds a LOWER energy by going aspherical, that is direct evidence for the light-p-block
+    // claim (the octet as 4+4 at one radius, angularly separated) which Section 5.4 asserts but
+    // cannot show. Mesh limit is Z*h/c <~ 0.1 -- at box 8 / N 200 (h=0.04, eps=2h) Li and Be are
+    // clean, B marginal, C needs a tighter box.
+    var ZK=parseFloat(qs.get('Z')); if(!isFinite(ZK)) ZK=3;
+    var CFG=(qs.get('cfg')||'2,1').split(',').map(function(x){return parseFloat(x);})
+             .filter(function(x){return isFinite(x)&&x>0;});
+
+    window.USER_NN=N; window.USER_SCREEN=scr;
+    window.USER_STEPS=parseInt(qs.get('steps')||'200000',10);
+    window.USER_DYNAMICS=false; window.USER_SHELL_MODE=true;
+    window.USER_SOFT=parseFloat(qs.get('soft')||'2');
+    window.USER_W_DIFF=parseFloat(qs.get('diff')||'0.01');
+    window.USER_WEIGHTED_DENSITY=(qs.get('wd')!=='0');
+
+    // entry 0 carries the +2 kernel and takes i <= midplane; entry 1 has NO kernel and takes
+    // i > midplane. midplane = (i0 + i1)/2 = N2 + dxc, i.e. the plane starts at xp.
+    // core: 2 electrons, compact, carries the +3 kernel. r_out seeds the partition at R0 and,
+    // with sph unset, is NOT enforced during evolution -- so the shell radius is free.
+    // valence: 1 electron, diffuse, no kernel of its own, unconstrained.
+    // ?launch=+1 or -1  THE WRAP-AROUND DEMONSTRATION. The third electron is seeded on ONE
+    // SIDE only (hs restricts it to that half-space at init) and must wrap around the Li+ core
+    // into a closed second shell. That is a TANGENTIAL motion -- the valence stays in contact
+    // with the core the whole way -- which is the regime the front rule handles; it cannot jump
+    // across ground it does not own, but it can creep along an interface it already touches.
+    // Observable: the valence domain's centroid starts off-centre and must go to ~0 as the shell
+    // closes, and the shell radius must become equal on the +x and -x sides. Launching from
+    // either side must give the same final state; if it does not, the result is a memory of the
+    // launch, not a shell.
+    var LAUNCH=parseFloat(qs.get('launch')); if(!isFinite(LAUNCH)) LAUNCH=0;
+    // shell 0 carries the kernel and is seeded inside R0; outer shells are seeded successively
+    // further out via r_out, which (without sph:true) sets only the INITIAL partition.
+    // ?asplit=1  ANGULAR split: instead of one domain per shell holding n electrons, give the
+    // shell n ONE-ELECTRON domains divided angularly (hemi for 2, third for 3, tetra for 4).
+    // This is the house construction, and it is the thing 1D cannot represent: n unit charges on
+    // non-overlapping supports give n(n-1)/2 pairs, each counted once by the i!=j rule -- exact,
+    // with no (Z-1)/Z multi-occupancy correction and no kinetic fudge. The non-split shell needs
+    // that correction; the split one does not. He is the clean test, since the answer is known
+    // exactly (-2.9037) and the two constructions differ by nothing else.
+    var ASPLIT=(qs.get('asplit')==='1');
+    var SPLITNAME={2:'hemi',3:'third',4:'tetra'};
+    var nuc=[], targ=[];
+    if(ASPLIT){
+      CFG.forEach(function(nel,idx){
+        var nm=SPLITNAME[nel];
+        for(var e=0;e<nel;e++){
+          var d={i:N2,j:N2,k:N2, Z:((idx===0&&e===0)?ZK:0), rc:0.0,
+                 z_init:Math.max(ZK-2*idx,0.7), fixed:true};
+          if(nm && nel>1){ d.split=nm; d.split_idx=e; d.split_axis=[1,0,0]; d.split_fix=false; }
+          if(idx<CFG.length-1) d.r_out=R0*(idx+1);
+          nuc.push(d); targ.push(1);
+        }
+      });
+    } else
+    CFG.forEach(function(nel,idx){
+      var e={i:N2,j:N2,k:N2, Z:(idx===0?ZK:0), rc:0.0,
+             z_init:Math.max(ZK-2*idx,0.7), fixed:true};
+      if(idx<CFG.length-1) e.r_out=R0*(idx+1);     // outermost shell unconstrained
+      if(idx===CFG.length-1 && LAUNCH!==0) e.hs=(LAUNCH>0?1:-1);
+      // THE INCOMING ELECTRON. The outermost domain is the arriving charge, and how it is
+      // launched is part of the physics, not a numerical detail:
+      //   outer:true   it is given the EXTERIOR, so it touches the Li+ core at R0 with no
+      //                vacuum between them. A gap would be permanent -- the amplitude update
+      //                carries a factor w, so no domain can grow amplitude outside the
+      //                territory it holds, and the w-front only advances where its amplitude
+      //                already wins. Neither field can move first across empty space, so the
+      //                two must start IN CONTACT and sort themselves out by amplitude matching,
+      //                which is the one operation this dynamics can actually perform.
+      //   flat:FLAT    its initial density is CONSTANT inside a sphere of radius FLAT rather
+      //                than an exponential -- a blob with no built-in preference for any
+      //                radius, so where it ends up is the solver's answer and not the seed's.
+      // ?route=A  BE FROM Be+ : the outer shell already holds one charge and a second arrives.
+      //            Two free one-electron domains, one seeded on the occupied side (axis +x) and
+      //            the newcomer at PAIR degrees from it. If it joins, the two settle antipodal
+      //            (one shell, a pair); if the shell is closed to it, they separate radially.
+      // ?route=B  BE FROM Be2+ : both charges arrive together, PAIR degrees apart.
+      // The two differ only in what is already there when the second charge arrives, which is
+      // the whole question -- whether the build-up's answer depends on the order of arrival.
+      if(idx===CFG.length-1 && PAIR>0 && nel===2){
+        // two separate one-electron domains, seeded PAIR degrees apart in the x-y plane
+        var th=PAIR*Math.PI/180;
+        [[1,0,0],[Math.cos(th),Math.sin(th),0]].forEach(function(ax,q){
+          // mirrors mol_fast_nh3_dirs, which runs: dirs domains carry NO r_out, no r_in and no
+          // outer flag -- two domains both claiming the exterior while also being direction-
+          // restricted leaves neither owning anything, and the solve returns E = 0.
+          nuc.push({i:N2,j:N2,k:N2, Z:0, rc:0.0, z_init:Math.max(ZK-2*idx,0.7), fixed:true,
+                    split:'dirs', split_idx:q, split_axis:ax, split_fix:false,
+                    outer:(qs.get('outer')!=='0')});
+          targ.push(1);
+        });
+        return;                                     // replaces the single 2-electron entry
+      }
+      if(idx===CFG.length-1){
+        e.outer=(qs.get('outer')!=='0');
+        if(FLAT>0) e.flat=FLAT;
+        // ?half=+1/-1  launch the incoming electron as a HALF-SHELL outside the Li+ sphere:
+        // its density is concentrated on one side, its territory is still the whole exterior
+        // (so no vacuum hemisphere is created, which ?launch= via hs would do). The question is
+        // whether it WRAPS AROUND into a complete second shell or merges inward into a single
+        // 3-region. Merging is fully available to the relaxation and is 1.055 Ha lower in 1D.
+        // ?wedge=2 half shell (x), 4 quarter (x+y), 8 octant (x+y+z). ?half=±1 sets the sign.
+        if(HALF!==0){ e.halfx=HALF;
+          if(WEDGE>=4) e.halfy=HALF;
+          if(WEDGE>=8) e.halfz=HALF; }
+      }
+      nuc.push(e); targ.push(nel);
+    });
+    window.USER_NUCLEI=nuc;
+    window.USER_NORM_TARGETS=targ;
+    window._cfg={N2:N2,h:h,R0:R0,flat:FLAT,half:HALF,outer:(qs.get('outer')!=='0'),launch:LAUNCH,Z:ZK,cfg:CFG.join('+'),asplit:ASPLIT,scr:scr,N:N,
+                 wd:window.USER_WEIGHTED_DENSITY,diff:window.USER_W_DIFF,soft:window.USER_SOFT};
+  })();
+
+  async function sample(){
+    var c=window._cfg;
+    var wall=await window.readWallX(0);
+    var prof=await window.readDomainProfiles(c.N2,c.N2,c.N2);
+    var cen=await window.readDomainCentroids();
+    // valence centroid offset from the nucleus: the wrap-around observable. A lopsided blob has
+    // |offset| ~ its launch radius; a closed shell has ~0.
+    var vx=null;
+    if(cen[1]&&cen[1].centroid_au) vx=Number((cen[1].centroid_au[0]-c.N2*c.h).toPrecision(4));
+    // angle between the two OUTERMOST domains, for the pair test
+    var pairAngle=null;
+    if(cen.length>=2){
+      var A=cen[cen.length-2], B=cen[cen.length-1], c0=c.N2*c.h;
+      if(A&&B&&A.centroid_au&&B.centroid_au){
+        var a1=[A.centroid_au[0]-c0,A.centroid_au[1]-c0,A.centroid_au[2]-c0];
+        var b1=[B.centroid_au[0]-c0,B.centroid_au[1]-c0,B.centroid_au[2]-c0];
+        var na=Math.hypot(a1[0],a1[1],a1[2]), nb=Math.hypot(b1[0],b1[1],b1[2]);
+        if(na>1e-6&&nb>1e-6){
+          var cd=(a1[0]*b1[0]+a1[1]*b1[1]+a1[2]*b1[2])/(na*nb);
+          pairAngle=Number((Math.acos(Math.max(-1,Math.min(1,cd)))*180/Math.PI).toFixed(2));
+        }
+      }
+    }
+    return { Z:c.Z, cfg:c.cfg, asplit:c.asplit, R0:c.R0, flat:c.flat, half:c.half, pair_angle:pairAngle, outer:c.outer, launch:c.launch, shell_radius:wall, valence_centroid_x:vx,
+             E:window._E, steps:window._tStep,
+             weighted:c.wd, diff:c.diff, soft:c.soft,
+             domains:prof.map(function(d){
+               return {n:d.n,q_u:d.q_u,q_uw:d.q_uw,mean_r_u:d.mean_r_u,r50_u:d.r50_u};}) };
+  }
+
+  (function reporter(){
+    var qs=new URLSearchParams(location.search);
+    var KEY='mf3d_Z'+(qs.get('Z')||'3')+'_c'+(qs.get('cfg')||'2,1').replace(/,/g,'')
+            +(qs.get('asplit')==='1'?'_as':'')+'_b'+(qs.get('scr')||'12')+'x'+(qs.get('nn')||'160')+'_R'+(qs.get('R0')||'1.0')+'_f'+(qs.get('flat')||'0')+'_h'+(qs.get('half')||'0')+'w'+(qs.get('wedge')||'2')
+            +(qs.get('launch')?('_L'+qs.get('launch')):'')
+            +(qs.get('wd')==='0'?'_nowd':'');
+    try{localStorage.removeItem(KEY);}catch(e){}
+    var t0=Date.now(),published=false,trace=[],lastStep=-1,stallN=0,MAXSEC=window.MAXSEC||1500;
+    // ?snaps=  elapsed seconds at which to capture a 2D slice through the kernel. These are the
+    // wrap-around itself -- the centroid curve says the asymmetry decays, a slice says where the
+    // charge actually went. Defaults straddle the features of that curve: launch, first swing,
+    // first pass through centre, far-side excursion, second pass.
+    var SNAPT=(qs.get('snaps')||'6,340,1030,1530,3160').split(',').map(parseFloat);
+    var snaps=[], snapI=0;
+    setInterval(async function(){
+      if(published||window._E===undefined) return;
+      var el=(Date.now()-t0)/1000, st=document.getElementById('loadStatus');
+      var wall=null; try{ wall=await window.readWallX(0); }catch(e){}
+      if(st) st.textContent='R0='+window._cfg.R0+'  '+Math.round(el)+'s  step='+(window._tStep||0)
+                            +'  E='+window._E.toFixed(6)+'  wall='+(wall===null?'?':wall.toFixed(4));
+      // Trace [t, shell_radius, valence_centroid_x]. The centroid is the WRAP-AROUND curve and
+      // it is also the control on the launch: a half-shell must START well off-centre. Without
+      // it a final centroid of ~0 cannot be told apart from a launch that was never lopsided.
+      // For the spherical runs it should sit at ~0 throughout, which checks the diagnostic.
+      if(trace.length===0 || el-trace[trace.length-1][0] > 20){
+        var vxn=null,vrn=null;
+        try{ var cn=await window.readDomainCentroids();
+             if(cn[1]&&cn[1].centroid_au){ var c0=window._cfg.N2*window._cfg.h;
+               var ax=cn[1].centroid_au[0]-c0, ay=cn[1].centroid_au[1]-c0, az=cn[1].centroid_au[2]-c0;
+               vxn=Number(ax.toPrecision(4));
+               // |centroid| is the wedge-independent observable: a quarter is off-centre in x AND y,
+               // so tracking x alone would read a quarter as half-wrapped when it has not moved.
+               vrn=Number(Math.sqrt(ax*ax+ay*ay+az*az).toPrecision(4)); } }catch(e){}
+        var pa=null;
+        try{ var cp=await window.readDomainCentroids();
+             if(cp.length>=2){
+               var A=cp[cp.length-2], B=cp[cp.length-1], c0=window._cfg.N2*window._cfg.h;
+               if(A&&B&&A.centroid_au&&B.centroid_au){
+                 var u1=[A.centroid_au[0]-c0,A.centroid_au[1]-c0,A.centroid_au[2]-c0];
+                 var u2=[B.centroid_au[0]-c0,B.centroid_au[1]-c0,B.centroid_au[2]-c0];
+                 var n1=Math.hypot(u1[0],u1[1],u1[2]), n2=Math.hypot(u2[0],u2[1],u2[2]);
+                 if(n1>1e-6&&n2>1e-6){
+                   var cc=(u1[0]*u2[0]+u1[1]*u2[1]+u1[2]*u2[2])/(n1*n2);
+                   pa=Number((Math.acos(Math.max(-1,Math.min(1,cc)))*180/Math.PI).toFixed(2));
+                 }
+               }
+             } }catch(e){}
+        trace.push([Math.round(el),wall,vxn,vrn,pa]);
+      }
+      if(snapI<SNAPT.length && el>=SNAPT[snapI]){
+        var want=SNAPT[snapI]; snapI++;
+        try{ var sl=await window.readSliceZ(4);
+             snaps.push({t:Math.round(el),target:want,vr:vrn,x_au:sl.x_au,slice:sl.slice}); }
+        catch(e){ snaps.push({t:Math.round(el),target:want,err:String(e)}); }
+      }
+      // PUBLISH. The step budget alone is not a usable gate: mol_fast advances in batches (500),
+      // so _tStep lands short of USER_STEPS -- 39500 against 40000 -- and a `< USER_STEPS-10`
+      // test never opens. Measured: the solver went idle at 172 s and the run sat doing nothing
+      // until the 1500 s fallback. So detect that the COUNTER HAS STOPPED, which is batch-size
+      // independent, and keep the wall-clock cap only as a backstop.
+      var st_now=window._tStep||0;
+      if(st_now>0 && st_now===lastStep){ stallN++; } else { stallN=0; lastStep=st_now; }
+      if(st_now < (window.USER_STEPS-10) && stallN < 4 && el < MAXSEC) return;
+      published=true;
+      sample().then(function(r){ r.trace=trace; r.snaps=snaps;
+        try{localStorage.setItem(KEY,JSON.stringify(r));}catch(e){}
+        document.getElementById('out').textContent=JSON.stringify(r,null,1);
+        document.title='MFLI DONE R0='+r.R0+' shell='+(r.shell_radius===null?'?':r.shell_radius.toFixed(4));
+      }).catch(function(e){document.getElementById('out').textContent='sample failed: '+e;
+        document.title='MFLI DONE (sample failed)';});
+    },2000);
+  })();
+
+  var status=document.getElementById('loadStatus');
+  var s=document.createElement('script'); s.src='mol_fast.js?t='+Date.now();
+  s.onload=function(){var p=document.createElement('script');
+    p.src='https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    p.onerror=function(){status.textContent+='\np5 failed';};document.body.appendChild(p);};
+  s.onerror=function(){status.textContent+='\nmol_fast.js failed';};
+  document.body.appendChild(s);
+</script>
+</body>
+</html>
