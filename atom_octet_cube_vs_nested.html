@@ -1,58 +1,64 @@
 <!DOCTYPE html>
 <html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
-<div id="results" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.92);border:1px solid #444;padding:12px;z-index:100;font-size:13px;max-height:95vh;overflow-y:auto;min-width:470px"></div>
+<div id="results" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.92);border:1px solid #444;padding:12px;z-index:100;font-size:13px;max-height:95vh;overflow-y:auto;min-width:500px"></div>
 <script>
-// Is the closed octet a CUBE (8 charges on one sphere) or two NESTED tetrahedra?
+// Is the closed octet a CUBE (eight charges on one sphere) or two NESTED tetrahedra?
 //
-// The 1D radial solver cannot answer this -- M[1..NSHELLS] are radial boundaries, so its "4+4"
-// is two radial shells by construction, and measured (?auto=rad) argon's four tetrahedra come
-// out uniformly nested at ratios 2.65/2.29/2.16 rather than paired. The cube is a geometric
-// argument in the paper, not a computed result. This page asks the question in 3D.
+// Same composition throughout: 8 one-electron domains, +8 kernel, identical r_c. The kernel and
+// r_c cancel in the difference, which is the only regime where small differences here inform.
 //
-// molecule.js cannot DISCOVER the packing: without USER_SPLIT_TYPE, co-located domains have no
-// angular separation at all (see the tetra-branch note at molecule.js:481). So both
-// arrangements are imposed and compared at the SAME composition -- 8 unit-charge domains on a
-// +8 kernel, identical r_c -- which is the regime where the model's errors cancel.
+//   CUBE   : splitType 'cube' (splitType 7, added for this) -- eight angular sectors, a
+//            tetrahedron together with its inversion. Verified an equal 8-way partition of the
+//            sphere (12.5% each) with mutual direction cosines {-1,-1/3,+1/3} = cube corners.
+//   NESTED : splitType 'tetra' -- FOUR sectors, two domains per sector, separated RADIALLY by
+//            giving the inner four a tight initZeff and the outer four a diffuse one. The
+//            uTrial = Ze^2 exp(-Ze r) curves cross at r = 2 ln(Ze1/Ze2)/(Ze1-Ze2), so the tight
+//            domain owns the interior of its cone and the diffuse one the exterior.
 //
-//   CUBE   : 8 distinct angular cones, one radius.  tetra split, 4 domains on +z, 4 on -z.
-//   NESTED : 4 cones, two domains deep.  all on +z, idx 0,1,2,3 repeated; non-overlap must
-//            then separate the two tetrahedra RADIALLY.
+// WHY THE FIRST ATTEMPT WAS VOID, recorded so it is not repeated: 'tetra' partitions the WHOLE
+// sphere four ways, so four co-located tetra domains already tile everything. Adding four more on
+// the reversed axis gave overlapping cones, and since co-located siblings have identical uTrial
+// the strict test (uTrial > bU) awarded every contested cell to the lowest index -- domains 4..7
+// got ZERO cells in BOTH jobs, which is why they returned byte-identical energies.
 //
-// Radii are NOT imposed -- unlike the nucleus runs, which hand-set shell radii. The free
-// boundaries find them, because the radii are the quantity in question.
-// Lower E wins. Same composition, so r_c and the kernel cancel in the difference.
+// Radii are NOT imposed; only the angular pattern and the initial radial bias are. The free
+// boundaries find the radii.
+//
+// EVERY job reports per-domain cell counts. A dead domain (n=0) invalidates that job, loudly.
 
 var ci = Math.round(200 / 2);
-var Zp = [0,0,1], Zm = [0,0,-1];
+var Zp = [0, 0, 1];
+var TIGHT = 5.0, DIFFUSE = 1.5;          // crossover at 2*ln(5/1.5)/3.5 = 0.688 au
 
 var jobs = [
-  { name:'cube_rc0.3',   tag:'cube 4(+z)+4(-z)', rc:0.3,
-    axes:[Zp,Zp,Zp,Zp,Zm,Zm,Zm,Zm], idx:[0,1,2,3,0,1,2,3] },
-  { name:'nested_rc0.3', tag:'nested 4|4 same cones', rc:0.3,
-    axes:[Zp,Zp,Zp,Zp,Zp,Zp,Zp,Zp], idx:[0,1,2,3,0,1,2,3] },
-  { name:'cube_rc0',     tag:'cube 4(+z)+4(-z)', rc:0.0,
-    axes:[Zp,Zp,Zp,Zp,Zm,Zm,Zm,Zm], idx:[0,1,2,3,0,1,2,3] },
-  { name:'nested_rc0',   tag:'nested 4|4 same cones', rc:0.0,
-    axes:[Zp,Zp,Zp,Zp,Zp,Zp,Zp,Zp], idx:[0,1,2,3,0,1,2,3] }
+  { name:'cube_rc0.3',   tag:'cube: 8 sectors, one radius', rc:0.3, type:'cube',
+    idx:[0,1,2,3,4,5,6,7], zeff:null },
+  { name:'nested_rc0.3', tag:'nested: 4 sectors, 2 deep',   rc:0.3, type:'tetra',
+    idx:[0,1,2,3,0,1,2,3], zeff:[TIGHT,TIGHT,TIGHT,TIGHT,DIFFUSE,DIFFUSE,DIFFUSE,DIFFUSE] },
+  { name:'cube_rc0',     tag:'cube: 8 sectors, one radius', rc:0.0, type:'cube',
+    idx:[0,1,2,3,4,5,6,7], zeff:null },
+  { name:'nested_rc0',   tag:'nested: 4 sectors, 2 deep',   rc:0.0, type:'tetra',
+    idx:[0,1,2,3,0,1,2,3], zeff:[TIGHT,TIGHT,TIGHT,TIGHT,DIFFUSE,DIFFUSE,DIFFUSE,DIFFUSE] }
 ];
 
-var idx = 0, results = {};
+var idx = 0, results = {}, occ = {};
 var N = 200, scr = 10;
 
-(function(){ var s = sessionStorage.getItem('octet_cn');
-  if (s) { var st = JSON.parse(s); idx = st.idx; results = st.results; sessionStorage.removeItem('octet_cn'); } })();
+(function(){ var s = sessionStorage.getItem('octet_cn2');
+  if (s) { var st = JSON.parse(s); idx = st.idx; results = st.results; occ = st.occ; sessionStorage.removeItem('octet_cn2'); } })();
 
 if (idx < jobs.length) {
   var j = jobs[idx];
   window.USER_NN = N;
   window.USER_ATOMS      = j.idx.map(function(){ return { i:ci, j:ci, k:ci, Z:1, el:'Ne' }; });
-  window.USER_Z          = j.idx.map(function(){ return 1; });   // 8 one-electron domains
-  window.USER_Z_NUC      = j.idx.map(function(){ return 1; });   // sum = +8 kernel
+  window.USER_Z          = j.idx.map(function(){ return 1; });
+  window.USER_Z_NUC      = j.idx.map(function(){ return 1; });   // sum = +8
   window.USER_RC         = j.idx.map(function(){ return j.rc; });
-  window.USER_SPLIT_TYPE = j.idx.map(function(){ return 'tetra'; });
+  window.USER_SPLIT_TYPE = j.idx.map(function(){ return j.type; });
   window.USER_SPLIT_IDX  = j.idx.slice();
-  window.USER_SPLIT_AXIS = j.axes.slice();
+  window.USER_SPLIT_AXIS = j.idx.map(function(){ return Zp; });
   window.USER_SPLIT_ROT  = j.idx.map(function(){ return 0; });
+  if (j.zeff) window.USER_INIT_ZEFF = j.zeff.slice();
   window.USER_SCREEN = scr;
   window.USER_STEPS = 30000;
   window.USER_DYNAMICS = false;
@@ -66,26 +72,34 @@ function updateTable(){
   var h = '<b style="color:#0cf">Octet in 3D: cube or two nested tetrahedra?</b><br>';
   h += '<span style="color:#888;font-size:11px">200&sup3;, 10 au, 8 one-electron domains, +8 kernel, radii NOT imposed</span><br><br>';
   h += '<table style="border-collapse:collapse"><tr style="color:#0cf;border-bottom:1px solid #444">';
-  h += '<th style="padding:3px 8px">job</th><th>arrangement</th><th>r_c</th><th>E (Ha)</th></tr>';
+  h += '<th style="padding:3px 8px">job</th><th>arrangement</th><th>r_c</th><th>E (Ha)</th><th>live domains</th></tr>';
   jobs.forEach(function(j){
-    var e = results[j.name], cur = (jobs[idx] && jobs[idx].name === j.name);
+    var e = results[j.name], o = occ[j.name], cur = (jobs[idx] && jobs[idx].name === j.name);
     var st = cur && e === undefined ? 'style="color:#ff0"' : (e === undefined ? 'style="color:#444"' : '');
+    var live = o ? o.filter(function(x){ return x > 0; }).length + '/8' : '&mdash;';
+    if (o && o.filter(function(x){ return x > 0; }).length < 8) live = '<span style="color:#f55">' + live + ' DEAD</span>';
     h += '<tr ' + st + '><td style="padding:3px 8px">' + j.name + '</td><td>' + j.tag + '</td><td>' + j.rc + '</td>';
-    h += '<td>' + (e !== undefined ? e.toFixed(4) : (cur ? 'running...' : 'pending')) + '</td></tr>';
+    h += '<td>' + (e !== undefined ? e.toFixed(4) : (cur ? 'running...' : 'pending')) + '</td><td>' + live + '</td></tr>';
   });
   h += '</table><br><b style="color:#0cf">cube &minus; nested (same composition)</b><br>';
   h += '<table style="border-collapse:collapse"><tr style="color:#0cf"><th style="padding:3px 8px">r_c</th><th>&Delta;E (Ha)</th><th>kcal/mol</th><th>verdict</th></tr>';
   [0.3, 0].forEach(function(rc){
-    var suff = rc ? 'rc' + rc : 'rc0';
-    var a = results['cube_' + suff], b = results['nested_' + suff], txt = '&mdash;', kc = '&mdash;', v = '';
+    var sf = rc ? 'rc' + rc : 'rc0';
+    var a = results['cube_' + sf], b = results['nested_' + sf], t = '&mdash;', kc = '&mdash;', v = '';
+    var oa = occ['cube_' + sf], ob = occ['nested_' + sf];
+    var okDom = oa && ob && oa.filter(function(x){return x>0;}).length === 8 && ob.filter(function(x){return x>0;}).length === 8;
     if (a !== undefined && b !== undefined) {
-      var dE = a - b; txt = dE.toFixed(4); kc = (dE * 627.509).toFixed(1);
-      v = dE < 0 ? '<span style="color:#0f0">CUBE wins</span>' : '<span style="color:#f80">NESTED wins</span>';
-      if (Math.abs(dE * 627.509) < 10) v += ' <span style="color:#888">(&lt;10 kcal/mol: no information)</span>';
+      var dE = a - b; t = dE.toFixed(4); kc = (dE * 627.509).toFixed(1);
+      if (!okDom) v = '<span style="color:#f55">VOID: dead domains</span>';
+      else if (Math.abs(dE) < 1e-9) v = '<span style="color:#f55">identical &mdash; split still not biting</span>';
+      else {
+        v = dE < 0 ? '<span style="color:#0f0">CUBE wins</span>' : '<span style="color:#f80">NESTED wins</span>';
+        if (Math.abs(dE * 627.509) < 10) v += ' <span style="color:#888">(&lt;10 kcal/mol: no information)</span>';
+      }
     }
-    h += '<tr><td style="padding:3px 8px">' + rc + '</td><td>' + txt + '</td><td>' + kc + '</td><td>' + v + '</td></tr>';
+    h += '<tr><td style="padding:3px 8px">' + rc + '</td><td>' + t + '</td><td>' + kc + '</td><td>' + v + '</td></tr>';
   });
-  h += '</table><br><span style="color:#888;font-size:11px">30k steps is one rung only &mdash; a step ladder is required before quoting this.</span>';
+  h += '</table><br><span style="color:#888;font-size:11px">30k steps is one rung &mdash; a step ladder is required before quoting this.</span>';
   d.innerHTML = h;
 }
 updateTable();
@@ -93,18 +107,23 @@ updateTable();
 window.onSweepDone = function(Emin, steps){
   var j = jobs[idx];
   results[j.name] = Emin;
-  console.log('E(' + j.name + ') = ' + Emin.toFixed(6) + ' Ha (' + steps + ' steps)');
-  updateTable();
-  try { localStorage.setItem('atom_octet_cn', JSON.stringify(results)); }
-  catch(e){ console.error('SAVE FAILED: ' + e.name); document.title = 'SAVE FAILED'; }
-  idx++;
-  if (idx < jobs.length) {
-    sessionStorage.setItem('octet_cn', JSON.stringify({ idx:idx, results:results }));
-    setTimeout(function(){ location.reload(); }, 500);
-  } else {
-    document.title = 'OCTET CN DONE';
-    console.log('=== cube - nested: ' + ((results['cube_rc0.3'] - results['nested_rc0.3'])*627.509).toFixed(1) + ' kcal/mol (rc 0.3) ===');
-  }
+  var fin = function(){
+    console.log('E(' + j.name + ') = ' + Emin.toFixed(6) + ' Ha (' + steps + ' steps) occ=' + JSON.stringify(occ[j.name]));
+    updateTable();
+    try { localStorage.setItem('atom_octet_cn2', JSON.stringify({ E: results, occ: occ })); }
+    catch(e){ console.error('SAVE FAILED: ' + e.name); document.title = 'SAVE FAILED'; return; }
+    idx++;
+    if (idx < jobs.length) {
+      sessionStorage.setItem('octet_cn2', JSON.stringify({ idx:idx, results:results, occ:occ }));
+      setTimeout(function(){ location.reload(); }, 500);
+    } else { document.title = 'OCTET CN2 DONE'; }
+  };
+  if (typeof window.readDomainCentroids === 'function') {
+    window.readDomainCentroids().then(function(dc){
+      occ[j.name] = dc.map(function(x){ return x.n; });
+      fin();
+    }).catch(function(e){ occ[j.name] = null; console.error('occupancy read failed: ' + e); fin(); });
+  } else { occ[j.name] = null; fin(); }
 };
 
 var s = document.createElement('script');

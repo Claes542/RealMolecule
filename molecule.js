@@ -210,9 +210,14 @@ for (let e = 0; e < _atoms.length; e++) {
   const a = _atoms[e];
   const k = a.k !== undefined ? a.k : N2;
   const key = a.i + "," + a.j + "," + k;
-  // Z_eff for nuclear repulsion uses Z_nuc (screened by core electrons in r_c)
-  if (_nucMap.has(key)) { _nucMap.get(key).Z_eff += zNucVal || zEl; _nucMap.get(key).elecIndices.push(e); }
-  else _nucMap.set(key, { idx: _nucMap.size, Z_eff: zNucVal || zEl, elecIndices: [e] });
+  // Z_eff for nuclear repulsion is Z_nuc, STRICTLY. The old `zNucVal || zEl` fell back to the
+  // domain's ELECTRON count whenever Z_nuc was zero -- but Z_nuc = 0 is how a page says "this
+  // entry carries no kernel", which is exactly what split siblings and lone-pair domains are.
+  // h2o_split.html sets USER_Z_NUC = [2,0,1,1] intending an oxygen kernel of 2 and was getting 3;
+  // a 4-lobe nitrogen with the kernel on lobe 0 was getting 5+1+1+2 = 9 instead of 5. The fallback
+  // is never needed: Z_nuc defaults to Z when USER_Z_NUC is unset, so it is always meaningful.
+  if (_nucMap.has(key)) { _nucMap.get(key).Z_eff += zNucVal; _nucMap.get(key).elecIndices.push(e); }
+  else _nucMap.set(key, { idx: _nucMap.size, Z_eff: zNucVal, elecIndices: [e] });
 }
 const uniqueNuclei = [..._nucMap.values()]; // [{idx, Z_eff, elecIndices}, ...]
 // Homogenised shells, grouped the same way the kernels are. A shell is a FIXED external charge,
@@ -493,6 +498,36 @@ fn inSplitAtom(dx: f32, dy: f32, dz: f32, r: f32, n: u32) -> bool {
       if (dd > bestDot) { bestDot = dd; best = kq; }
     }
     return best == atoms[n].splitIdx;
+  }
+  if (st == 7u) {
+    // CUBE: eight lobes, a tetrahedron TOGETHER WITH ITS INVERSION -- the eight corners of a
+    // cube, which is the closed octet of Section sec:packing. idx 0..3 are the tetra directions
+    // about +axis (3 = -axis, 0..2 at 70.53 deg), idx 4..7 their negatives. Needed because
+    // splitType 4 partitions the WHOLE sphere four ways: four co-located tetra domains already
+    // tile everything, so a second tetra on the reversed axis claims overlapping cells and, the
+    // trial value being identical for co-located siblings, wins none of them. There was no way
+    // to express eight sectors before this branch.
+    var e1x: f32; var e1y: f32; var e1z: f32;
+    if (abs(a2) < 0.9) { e1x = a1; e1y = -a0; e1z = 0.0; } else { e1x = 0.0; e1y = a2; e1z = -a1; }
+    let e1L = max(sqrt(e1x*e1x+e1y*e1y+e1z*e1z), 1e-12);
+    e1x = e1x/e1L; e1y = e1y/e1L; e1z = e1z/e1L;
+    let e2x = a1*e1z - a2*e1y; let e2y = a2*e1x - a0*e1z; let e2z = a0*e1y - a1*e1x;
+    let ux = dx/r; let uy = dy/r; let uz = dz/r;
+    let ct = 0.33333333;                 // cos(70.53 deg)
+    let stt = 0.94280904;                // sin(70.53 deg)
+    var best8: u32 = 3u;
+    var bestDot8: f32 = -(ux*a0 + uy*a1 + uz*a2);    // idx 3 = -axis
+    if (ux*a0 + uy*a1 + uz*a2 > bestDot8) { bestDot8 = ux*a0 + uy*a1 + uz*a2; best8 = 7u; }
+    for (var kq: u32 = 0u; kq < 3u; kq = kq + 1u) {
+      let ph = atoms[n].splitRot + 2.09439510 * f32(kq);
+      let dxk = ct*a0 + stt*(cos(ph)*e1x + sin(ph)*e2x);
+      let dyk = ct*a1 + stt*(cos(ph)*e1y + sin(ph)*e2y);
+      let dzk = ct*a2 + stt*(cos(ph)*e1z + sin(ph)*e2z);
+      let dd = ux*dxk + uy*dyk + uz*dzk;
+      if (dd > bestDot8) { bestDot8 = dd; best8 = kq; }
+      if (-dd > bestDot8) { bestDot8 = -dd; best8 = kq + 4u; }
+    }
+    return best8 == atoms[n].splitIdx;
   }
   return true;
 }
@@ -1028,6 +1063,17 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 `;
 
 // GPU-side initialization of P_direct[m] = sum_{n≠m} 0.5/r (replaces CPU triple loop)
+// KERNEL SOFTENING. molecule.js hard-codes eps = h (soft = p.h2). On a grid, charge concentrating
+// in one cell gains ~Z/eps while the kinetic penalty is capped at ~1/h^2, so collapse sets in when
+// Z*h/c exceeds ~0.1 with eps = c*h. At eps = h that is Z*h, and Li at h = 0.04 gives 0.12 -- over
+// the line, which is why the all-electron Li runs came out near -13 Ha against -7.478. Setting
+// window.USER_SOFT = 2 gives eps = 2h and Z*h/c = 0.06, at ~5% error in the well at Li's 1s peak.
+// Default 1 -- every existing page in this collection was tuned against eps = h.
+const SOFT_MULT = (typeof window !== 'undefined' && window.USER_SOFT !== undefined)
+                  ? Number(window.USER_SOFT) : 1.0;
+const SOFT_SQ = SOFT_MULT * SOFT_MULT;
+console.log('molecule.js kernel softening: eps = ' + SOFT_MULT + '*h');
+
 const initPdirectWGSL = `
 ${paramStructWGSL}
 ${atomStructWGSL}
@@ -1810,7 +1856,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let Rj = atoms[atom].posJ * p.h;
   let Rk = atoms[atom].posK * p.h;
   let h3 = p.h * p.h * p.h;
-  let soft = p.h2;
+  let soft = ${SOFT_SQ.toFixed(4)} * p.h2;
 
   var fi: f32 = 0.0;
   var fj: f32 = 0.0;
@@ -1868,7 +1914,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = id / p.S2;
 
   var Kval: f32 = 0.0;
-  let soft_k = p.h2;  // Coulomb softening: r=sqrt(r²+h²) matching original
+  let soft_k = ${SOFT_SQ.toFixed(4)} * p.h2;  // Coulomb softening: r=sqrt(r²+h²) matching original
   for (var n: u32 = 0u; n < ${NELEC}u; n++) {
     let Za = atoms[n].Z;
     let Zn = select(Za, atoms[n].Z_nuc, atoms[n].Z_nuc > 0.0);
@@ -1928,7 +1974,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   var Kval: f32 = K[id];
   var bU: f32 = bestU[id];
   var bestN: u32 = label[id];
-  let soft_k = p.h2;  // Coulomb softening for bare atoms, matching original
+  let soft_k = ${SOFT_SQ.toFixed(4)} * p.h2;  // Coulomb softening for bare atoms, matching original
   let end = range.start + range.count;
 
   for (var n: u32 = range.start; n < end; n++) {
@@ -2448,7 +2494,7 @@ function fillAtomBuf() {
     af[off + 6] = perZeff ? perZeff[n] || Z[n] : (window.INIT_ZEFF || Z[n]);
     af[off + 7] = perRcut ? perRcut[n] || 1e6 : (window.INIT_RCUT || 1e6);
     // Shell split (optional): splitType 0/1=sphere, 2=hemi, 3=third; sector idx; axis; rot
-    const stCode = { sphere: 0, hemi: 2, third: 3, tetra: 4 };
+    const stCode = { sphere: 0, hemi: 2, third: 3, tetra: 4, cube: 7 };
     const stv = SPLIT_TYPE[n];
     au[off + 8] = (typeof stv === 'string') ? (stCode[stv] || 0) : (stv || 0);
     au[off + 9] = SPLIT_IDX[n] || 0;
@@ -4312,7 +4358,7 @@ async function doSteps(n) {
     // well-defined number for the wrong system, which is why the T_d control read 3.96 D.
     let zSum = 0, r0x = 0, r0y = 0, r0z = 0;
     for (let a = 0; a < NELEC; a++) {
-      const zk = (Z_nuc[a] || 0) > 0 ? Z_nuc[a] : Z[a];
+      const zk = Z_nuc[a] || 0;   // strictly the kernel charge; 0 means no kernel on this entry
       if (!(zk > 0)) continue;
       dip_x += zk * nucPos[a][0] * hGrid;
       dip_y += zk * nucPos[a][1] * hGrid;
@@ -4340,6 +4386,118 @@ async function doSteps(n) {
   await sliceReadBuf.mapAsync(GPUMapMode.READ);
   sliceData = new Float32Array(sliceReadBuf.getMappedRange().slice(0));
   sliceReadBuf.unmap();
+  // Expose the density slice. RealQM's primary output is a DENSITY, and a density is what X-ray
+  // form factors measure -- so comparing rho(r) against experiment needs no ions, no stripping,
+  // and no energy differences, which are the quantities this framework does worst. Layout:
+  // [0 .. S*S-1] density image on the plane j = sliceK, then elementZ, then boundary, then lines.
+  window._sliceData = sliceData;
+  // ONE-TIME READBACK of the total electron potential, for frozen-field work: converge the
+  // electrons once, then integrate a probe in the stored field instead of re-solving at every
+  // position. A released-proton run costs ~500 GPU steps per nuclear move; this costs none.
+  // Call window.readPot() after convergence. The caller MUST verify the sign convention by
+  // comparing -grad V at the probe's own position against window._nucForceTotal there --
+  // K is the kernel potential (positive) and the electron term enters the electron Hamiltonian
+  // as +2P, so a unit POSITIVE charge sees K_others - 2P, but that should be checked, not assumed.
+  // SOURCE BUFFER. P_buf[0] is the multigrid total and is correct ONLY on the multigrid path.
+  // With USER_DIRECT_POTHER the solver never fills it and it reads back ALL ZEROS -- a probe built
+  // on it then sees the kernels with no electron screening at all, which looks like a plausible
+  // repulsive field rather than an empty one. This is the same trap documented at the residual
+  // diagnostic above ("Reading it here returned exactly zero"); it bit this readback too.
+  // P_directBuf[m] is persistent and holds the potential from every electron EXCEPT m, so it is
+  // short of the total by exactly one electron. Pass farFrom:[i,j,k] to pick the m whose kernel is
+  // furthest from the point of interest: the omitted term is then a single distant 0.5/r, smooth
+  // and slowly varying, contributing ~0.5/d^2 to the gradient there. Two different far choices
+  // should give the same force -- that difference is the error bar, and the caller should check it.
+  window.readPot = async function(opts) {
+    const o = opts || {};
+    let src = P_buf[0], srcName = 'P_buf[0]';
+    if (P_directBuf && P_directBuf.length) {
+      let m = 0;
+      if (o.farFrom) {
+        let best = -1;
+        for (let a = 0; a < NELEC; a++) {
+          if (!P_directBuf[a]) continue;
+          const dx = nucPos[a][0] - o.farFrom[0], dy = nucPos[a][1] - o.farFrom[1],
+                dz = nucPos[a][2] - o.farFrom[2];
+          const d2 = dx*dx + dy*dy + dz*dz;
+          if (d2 > best) { best = d2; m = a; }
+        }
+      }
+      if (typeof o.m === 'number') m = o.m;
+      if (P_directBuf[m]) { src = P_directBuf[m]; srcName = 'P_directBuf[' + m + ']'; }
+    }
+    window._PdataSrc = srcName;
+    const rb = device.createBuffer({ size: S3 * 4,
+      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+    const enc = device.createCommandEncoder();
+    enc.copyBufferToBuffer(src, 0, rb, 0, S3 * 4);
+    device.queue.submit([enc.finish()]);
+    await rb.mapAsync(GPUMapMode.READ);
+    const out = new Float32Array(rb.getMappedRange().slice(0));
+    rb.unmap(); rb.destroy();
+    window._Pdata = out; window._PdataS = S;
+    return out;
+  };
+
+  // TOTAL electron potential, exactly. P_directBuf[m] holds the potential from every electron
+  // EXCEPT m, so summing over all m counts each electron (NELEC-1) times:
+  //     sum_m P_directBuf[m] = (NELEC-1) * Phi_total
+  // Dividing recovers what a bare test charge actually sees. readPot({m}) is short by one
+  // electron -- ~1.6% at NELEC=63, but 25% at NELEC=4, which is useless for a small molecule.
+  // Cost is NELEC full-grid readbacks, done one at a time so only one extra grid is resident.
+  window.readPotTotal = async function() {
+    if (!P_directBuf || !P_directBuf.length) {      // multigrid path: P_buf[0] already IS the total
+      const out = await window.readPot();
+      window._PdataSrc = 'P_buf[0] (multigrid total)';
+      return out;
+    }
+    const acc = new Float64Array(S3);
+    let used = 0;
+    for (let m = 0; m < NELEC; m++) {
+      if (!P_directBuf[m]) continue;
+      const rb = device.createBuffer({ size: S3 * 4,
+        usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+      const enc = device.createCommandEncoder();
+      enc.copyBufferToBuffer(P_directBuf[m], 0, rb, 0, S3 * 4);
+      device.queue.submit([enc.finish()]);
+      await rb.mapAsync(GPUMapMode.READ);
+      const chunk = new Float32Array(rb.getMappedRange());
+      for (let id = 0; id < S3; id++) acc[id] += chunk[id];
+      rb.unmap(); rb.destroy();
+      used++;
+    }
+    const denom = Math.max(1, used - 1);
+    const out = new Float32Array(S3);
+    for (let id = 0; id < S3; id++) out[id] = acc[id] / denom;
+    window._Pdata = out; window._PdataS = S;
+    window._PdataSrc = 'sum P_directBuf[0..' + (used-1) + '] / ' + denom + ' (exact total)';
+    return out;
+  };
+  // DENSITY readback, for work on the MOLECULAR BOUNDARY. The grid is partitioned into
+  // non-overlapping domains and U is normalised so that the integral of U^2 over a domain is its
+  // electron count, so rho = U^2 cell by cell -- the same identity the direct-Coulomb force
+  // shader uses (`let rho = U[id] * U[id]`).
+  // Why the boundary is the right place to differentiate V: every difficulty with forces lives AT
+  // a nucleus -- the Coulomb singularity, the density cusp, the r_c / R_SING clamp, the egg-box
+  // dependence on sub-cell position. None of them is present on the outer surface, where V is
+  // smooth, so grad V there is well conditioned. It is also where V is chemically meaningful:
+  // the convention is to map the electrostatic potential on the rho = 0.001 a.u. isosurface.
+  window.readDensity = async function() {
+    const rb = device.createBuffer({ size: S3 * 4,
+      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+    const enc = device.createCommandEncoder();
+    enc.copyBufferToBuffer(U_buf[cur], 0, rb, 0, S3 * 4);
+    device.queue.submit([enc.finish()]);
+    await rb.mapAsync(GPUMapMode.READ);
+    const u = new Float32Array(rb.getMappedRange());
+    const out = new Float32Array(S3);
+    for (let id = 0; id < S3; id++) out[id] = u[id] * u[id];
+    rb.unmap(); rb.destroy();
+    window._rhoData = out; window._rhoDataS = S;
+    return out;
+  };
+
+  window._sliceS = S;
 
   tStep += n;
   lastMs = performance.now() - t0;
@@ -4907,7 +5065,7 @@ async function doLOBPCGStep() {
     // well-defined number for the wrong system, which is why the T_d control read 3.96 D.
     let zSum = 0, r0x = 0, r0y = 0, r0z = 0;
     for (let a = 0; a < NELEC; a++) {
-      const zk = (Z_nuc[a] || 0) > 0 ? Z_nuc[a] : Z[a];
+      const zk = Z_nuc[a] || 0;   // strictly the kernel charge; 0 means no kernel on this entry
       if (!(zk > 0)) continue;
       dip_x += zk * nucPos[a][0] * hGrid;
       dip_y += zk * nucPos[a][1] * hGrid;
