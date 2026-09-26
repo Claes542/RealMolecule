@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="results" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.92);border:1px solid #444;padding:12px;z-index:100;font-size:13px;max-height:95vh;overflow-y:auto;min-width:470px"></div>
+<script>
+// Is the closed octet a CUBE (8 charges on one sphere) or two NESTED tetrahedra?
+//
+// The 1D radial solver cannot answer this -- M[1..NSHELLS] are radial boundaries, so its "4+4"
+// is two radial shells by construction, and measured (?auto=rad) argon's four tetrahedra come
+// out uniformly nested at ratios 2.65/2.29/2.16 rather than paired. The cube is a geometric
+// argument in the paper, not a computed result. This page asks the question in 3D.
+//
+// molecule.js cannot DISCOVER the packing: without USER_SPLIT_TYPE, co-located domains have no
+// angular separation at all (see the tetra-branch note at molecule.js:481). So both
+// arrangements are imposed and compared at the SAME composition -- 8 unit-charge domains on a
+// +8 kernel, identical r_c -- which is the regime where the model's errors cancel.
+//
+//   CUBE   : 8 distinct angular cones, one radius.  tetra split, 4 domains on +z, 4 on -z.
+//   NESTED : 4 cones, two domains deep.  all on +z, idx 0,1,2,3 repeated; non-overlap must
+//            then separate the two tetrahedra RADIALLY.
+//
+// Radii are NOT imposed -- unlike the nucleus runs, which hand-set shell radii. The free
+// boundaries find them, because the radii are the quantity in question.
+// Lower E wins. Same composition, so r_c and the kernel cancel in the difference.
+
+var ci = Math.round(200 / 2);
+var Zp = [0,0,1], Zm = [0,0,-1];
+
+var jobs = [
+  { name:'cube_rc0.3',   tag:'cube 4(+z)+4(-z)', rc:0.3,
+    axes:[Zp,Zp,Zp,Zp,Zm,Zm,Zm,Zm], idx:[0,1,2,3,0,1,2,3] },
+  { name:'nested_rc0.3', tag:'nested 4|4 same cones', rc:0.3,
+    axes:[Zp,Zp,Zp,Zp,Zp,Zp,Zp,Zp], idx:[0,1,2,3,0,1,2,3] },
+  { name:'cube_rc0',     tag:'cube 4(+z)+4(-z)', rc:0.0,
+    axes:[Zp,Zp,Zp,Zp,Zm,Zm,Zm,Zm], idx:[0,1,2,3,0,1,2,3] },
+  { name:'nested_rc0',   tag:'nested 4|4 same cones', rc:0.0,
+    axes:[Zp,Zp,Zp,Zp,Zp,Zp,Zp,Zp], idx:[0,1,2,3,0,1,2,3] }
+];
+
+var idx = 0, results = {};
+var N = 200, scr = 10;
+
+(function(){ var s = sessionStorage.getItem('octet_cn');
+  if (s) { var st = JSON.parse(s); idx = st.idx; results = st.results; sessionStorage.removeItem('octet_cn'); } })();
+
+if (idx < jobs.length) {
+  var j = jobs[idx];
+  window.USER_NN = N;
+  window.USER_ATOMS      = j.idx.map(function(){ return { i:ci, j:ci, k:ci, Z:1, el:'Ne' }; });
+  window.USER_Z          = j.idx.map(function(){ return 1; });   // 8 one-electron domains
+  window.USER_Z_NUC      = j.idx.map(function(){ return 1; });   // sum = +8 kernel
+  window.USER_RC         = j.idx.map(function(){ return j.rc; });
+  window.USER_SPLIT_TYPE = j.idx.map(function(){ return 'tetra'; });
+  window.USER_SPLIT_IDX  = j.idx.slice();
+  window.USER_SPLIT_AXIS = j.axes.slice();
+  window.USER_SPLIT_ROT  = j.idx.map(function(){ return 0; });
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 30000;
+  window.USER_DYNAMICS = false;
+  window.NO_AUTO_DYNAMICS = true;
+  window.CONVERGENCE_THRESHOLD = 0.001;
+  console.log('Computing ' + j.name + ' (' + j.tag + ')');
+}
+
+function updateTable(){
+  var d = document.getElementById('results');
+  var h = '<b style="color:#0cf">Octet in 3D: cube or two nested tetrahedra?</b><br>';
+  h += '<span style="color:#888;font-size:11px">200&sup3;, 10 au, 8 one-electron domains, +8 kernel, radii NOT imposed</span><br><br>';
+  h += '<table style="border-collapse:collapse"><tr style="color:#0cf;border-bottom:1px solid #444">';
+  h += '<th style="padding:3px 8px">job</th><th>arrangement</th><th>r_c</th><th>E (Ha)</th></tr>';
+  jobs.forEach(function(j){
+    var e = results[j.name], cur = (jobs[idx] && jobs[idx].name === j.name);
+    var st = cur && e === undefined ? 'style="color:#ff0"' : (e === undefined ? 'style="color:#444"' : '');
+    h += '<tr ' + st + '><td style="padding:3px 8px">' + j.name + '</td><td>' + j.tag + '</td><td>' + j.rc + '</td>';
+    h += '<td>' + (e !== undefined ? e.toFixed(4) : (cur ? 'running...' : 'pending')) + '</td></tr>';
+  });
+  h += '</table><br><b style="color:#0cf">cube &minus; nested (same composition)</b><br>';
+  h += '<table style="border-collapse:collapse"><tr style="color:#0cf"><th style="padding:3px 8px">r_c</th><th>&Delta;E (Ha)</th><th>kcal/mol</th><th>verdict</th></tr>';
+  [0.3, 0].forEach(function(rc){
+    var suff = rc ? 'rc' + rc : 'rc0';
+    var a = results['cube_' + suff], b = results['nested_' + suff], txt = '&mdash;', kc = '&mdash;', v = '';
+    if (a !== undefined && b !== undefined) {
+      var dE = a - b; txt = dE.toFixed(4); kc = (dE * 627.509).toFixed(1);
+      v = dE < 0 ? '<span style="color:#0f0">CUBE wins</span>' : '<span style="color:#f80">NESTED wins</span>';
+      if (Math.abs(dE * 627.509) < 10) v += ' <span style="color:#888">(&lt;10 kcal/mol: no information)</span>';
+    }
+    h += '<tr><td style="padding:3px 8px">' + rc + '</td><td>' + txt + '</td><td>' + kc + '</td><td>' + v + '</td></tr>';
+  });
+  h += '</table><br><span style="color:#888;font-size:11px">30k steps is one rung only &mdash; a step ladder is required before quoting this.</span>';
+  d.innerHTML = h;
+}
+updateTable();
+
+window.onSweepDone = function(Emin, steps){
+  var j = jobs[idx];
+  results[j.name] = Emin;
+  console.log('E(' + j.name + ') = ' + Emin.toFixed(6) + ' Ha (' + steps + ' steps)');
+  updateTable();
+  try { localStorage.setItem('atom_octet_cn', JSON.stringify(results)); }
+  catch(e){ console.error('SAVE FAILED: ' + e.name); document.title = 'SAVE FAILED'; }
+  idx++;
+  if (idx < jobs.length) {
+    sessionStorage.setItem('octet_cn', JSON.stringify({ idx:idx, results:results }));
+    setTimeout(function(){ location.reload(); }, 500);
+  } else {
+    document.title = 'OCTET CN DONE';
+    console.log('=== cube - nested: ' + ((results['cube_rc0.3'] - results['nested_rc0.3'])*627.509).toFixed(1) + ' kcal/mol (rc 0.3) ===');
+  }
+};
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function(){ var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p); };
+document.body.appendChild(s);
+</script>
+</body></html>
