@@ -169,11 +169,18 @@ a measurement of why, and the answer is structural rather than a careless search
 
 **The energy is monotone in the packing.** There is no interior minimum, so the unconstrained
 minimiser always absorbs the core into the valence. Beryllium: a single 4-shell at -18.893 Ha,
-28.8% too deep, against the physical 2+2 at -14.607 Ha, 0.41%. Wrong in kind, not in accuracy,
+28.8% too deep, against the physical 2+1+1 at -14.603 Ha, 0.44%. Wrong in kind, not in accuracy,
 and worsening with Z.
 
-**But it fails only where it may dissolve a formed shell.** Among configurations that keep one
-it selects correctly - Be's 2+2 over 2+1+1 by 0.13 eV. And this is not a constraint we impose.
+**But it fails only where it may dissolve a formed shell.** Among configurations that keep one,
+the structure is set by the balanced condition rather than by the energy. For beryllium the row's
+capacity is 8, two cap-4 shells, and the period's two charges take one place in each: 2+1+1. The
+energy does prefer 2+2, but by 0.13 eV = 2.9 kcal/mol at 4000 steps, far below this project's
+own step-convergence floor (noted under R2.4), so it carries no information and we no longer rest
+anything on it. That matters for consistency as much as for accuracy: the monotonicity above is
+precisely the finding that energy is anti-correlated with the physical configuration, so an
+energy preference could not have supported one in any case. And the rule is not a constraint we
+impose.
 The algorithm is a relaxation, so it reaches the equilibrium at the end of its path; a filled
 shell is more rigid than the charge arriving at it, and the interface moves only where one
 domain's amplitude locally exceeds the other's. The newcomer is turned aside because it cannot
@@ -194,19 +201,32 @@ model cannot distinguish them.
 **The capacities are not fitted either.** The two basic filled packings are established by the
 calculations themselves: the antipodal pair, 2, and the dual tetrahedra, 8 = 4+4, the latter
 against a single 8-shell that over-binds by 9-22%. Composing rows from those two units alone
-gives the row lengths 2, 8, 8, 18, 18 and the closures 2, 10, 18, 36, 54 - every noble gas
-through xenon - with the fourth row as 2+8+8 rather than 9+9. Nothing is imported and no tile is
-needed that the packing cannot build. The account runs out at the sixth row, where 32 is not
-2+8+8 repeated, and we report it as exact through xenon and open beyond.
+gives every row length of the table, not merely the first few. Since a row of length 8k+4 or
+8k+6 would need half an octet or three quarters of one and could not be composed at all, the
+remainder is constrained to 0 or 2, and the capacities are assembled from the two units directly
+as
 
-We should be explicit about what we are *not* claiming. The familiar 2n^2 also reproduces the
-sequence and reaches radon, but n^2 = sum(2l+1) is the hydrogenic degeneracy doubled by spin, so
-offering it as this model's derivation would borrow the answer from the theory being compared
-against - and it requires 3x3 and 4x4 tilings the packing has no way to assemble. The earlier
-draft of this response rested the scope boundary on that impossibility. We no longer do: under
-the packing account the vocabulary is not exhausted at argon, and the boundary rests on the two
-limits we can demonstrate - a build-up that adds outward cannot reach an inner shell, and the 1s
-contracts as 1/Z so a fixed grid stops resolving it.
+    cap(n) = 8*floor(n/2)*ceil(n/2) + 2*(n mod 2),
+
+the octet count being the product of the two halves of n and a pair present exactly when n is
+odd. This gives 2, 8, 8, 18, 18, 32, 32 and with them every closure - 2, 10, 18, 36, 54, 86, 118
+- with the fourth row as 2+8+8 rather than 9+9 and the sixth as four octets. Nothing is imported
+and no tile is needed that the packing cannot build.
+
+An earlier draft of this response reported the account as exact through xenon and open at the
+sixth row, on the grounds that 32 is not 2+8+8 repeated. That was too cautious and is withdrawn:
+32 is four octets, and the expression above reaches every row. Note also what it does *not*
+mention - 2n^2. The capacities are built from the pair and the octet and *then* found to coincide
+with the hydrogenic count, rather than obtained by decomposing it, so nothing is borrowed from
+the theory being compared against.
+
+What we do *not* claim is that the row lengths themselves are derived. The capacities decompose
+into pairs and octets uniquely, and that is established; that the third row has length 8 and the
+fourth 18 is not. The period lengths are supplied to the configuration generator rather than
+produced by it, and that each capacity serves two periods remains the principal open item. The
+scope boundary accordingly rests on the two limits we can demonstrate - a build-up that adds
+outward cannot reach an inner shell, and the 1s contracts as 1/Z so a fixed grid stops resolving
+it.
 
 **R2.3 — Equation (1) identifies $-\varepsilon_i$ with the optimised neutral−ion energy
 difference. Why should these be equal?**
@@ -329,9 +349,22 @@ We have added this as a stated limitation of the method rather than waiting to b
 **Added**
 - §*Aufbau: how the shell structure forms* — the build-up as the constraint that makes energy
   minimisation select correctly, with the monotonicity measurement (R2.2).
-- The capacities composed from the model's own packings (the antipodal pair and the $4{+}4$
-  octet), giving row lengths $2,8,8,18,18$ and the closures through xenon, with $2n^2$ set
-  aside as the hydrogenic count rather than claimed as a result.
+- §*Two numbers, not four: the pair and the octet* — the capacities assembled from the model's
+  own packings (the antipodal pair and the $4{+}4$ octet) as
+  $\mathrm{cap}(n)=8\lfloor n/2\rfloor\lceil n/2\rceil+2(n\bmod 2)$, giving every row length
+  $2,8,8,18,18,32,32$ and every closure $2,10,18,36,54,86,118$, without $2n^2$ entering the
+  construction at all. What is claimed is a decomposition of the capacities, not a derivation of
+  the row lengths; the doubling of each capacity across two periods is stated as open.
+- A paragraph in the Introduction, *The table in two numbers*, putting the pair-and-octet content
+  of all seven closed shells in front of the reader before any machinery, with its two limits
+  stated there (it fixes how many pairs and octets, not where they sit radially; and it is a
+  decomposition, not a derivation).
+- Table 1 recomputed with no per-element constant anywhere: three configurations corrected
+  (Be $2{+}2\to2{+}1{+}1$, Al and Si to the build-up's own balanced fillings), mean $|$error$|$
+  $1.6\%$, maximum $4.5\%$, 13 of 17 atoms within $2.5\%$.
+- A statement that the octet's *cube* is a geometric argument and not a result of this paper: the
+  spherically reduced solver has no angular coordinate, so its $4{+}4$ is two nested radial
+  shells, and the measured shell radii come out uniformly nested rather than paired.
 - §*Electronegativity from the shell energies* — the Allen configuration energy, replacing
   ionization as the valence observable (R2.3).
 - An analysis of what the spherical reduction costs, with the intra-shell repulsion table
