@@ -175,9 +175,12 @@ and worsening with Z.
 **But it fails only where it may dissolve a formed shell.** Among configurations that keep one,
 the structure is set by the balanced condition rather than by the energy. For beryllium the row's
 capacity is 8, two cap-4 shells, and the period's two charges take one place in each: 2+1+1. The
-energy does prefer 2+2, but by 0.13 eV = 2.9 kcal/mol at 4000 steps, far below this project's
-own step-convergence floor (noted under R2.4), so it carries no information and we no longer rest
-anything on it. That matters for consistency as much as for accuracy: the monotonicity above is
+energy does prefer 2+2, and by a converged margin: on a step ladder flat from 16,000 to 64,000
+steps, 2+2 gives -14.8934 against -14.6028 for 2+1+1, lower by 0.291 Ha. But that margin IS the
+monotonicity above, at one element: the three candidates order by compactness -- a single 4-shell
+at -18.893 (28.8% too deep), 2+2 at -14.893 (1.54% too deep), 2+1+1 at -14.603 (0.44% short) --
+so the lower energy is reached by over-binding past the reference, and 2+1+1 is both the least
+bound and the closest to it. That matters for consistency as much as for accuracy: the monotonicity above is
 precisely the finding that energy is anti-correlated with the physical configuration, so an
 energy preference could not have supported one in any case. And the rule is not a constraint we
 impose.

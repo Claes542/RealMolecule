@@ -818,6 +818,7 @@ const RESULTS = [
            : /[?&]auto=fine(?:&|$)/.test(location.search) ? 'N'
            : /[?&]auto=trunc(?:&|$)/.test(location.search) ? 'T'
            : /[?&]auto=full(?:&|$)/.test(location.search) ? 'F'
+           : /[?&]auto=beladder(?:&|$)/.test(location.search) ? 'B'
            : /[?&]auto=cnod(?:&|$)/.test(location.search) ? 'd'
            : (/[?&]auto=cno(?:&|$)/.test(location.search) ? 'k' : null);
   if (!MODE) return;
@@ -1240,6 +1241,38 @@ const RESULTS = [
     return out;
   };
 
+  // STEP LADDER on beryllium's two candidate configurations. Added because 2+2 came out at
+  // -14.6074 from __autoAufbau (20000 steps) and -14.8934 from __autoRadii (30000), a drift of
+  // 0.286 Ha, while 2+1+1 gave -14.6028 from both. If 2+2 has no converged energy then no gap
+  // between the two can be quoted, whatever its size. Reference: Be = -14.6670.
+  window.__autoBeLadder = function(){
+    var KEY='atomsim_beladder', out=[];
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    var ladder=[8000,16000,32000,64000];
+    var cfgs=[[2,2],[2,1,1]];
+    (async function(){
+      PK_MODE=false;
+      for (var ci=0; ci<cfgs.length; ci++){
+        for (var li=0; li<ladder.length; li++){
+          var cfg=cfgs[ci], st=ladder[li];
+          var rec={cfg:cfg.join('+'), steps:st};
+          try{
+            var r=solveAtomPure(4, cfg, st);
+            rec.E = isFinite(r.etot)?Number(r.etot.toFixed(4)):'NONFIN';
+            rec.err_pct = isFinite(r.etot)?Number(((Math.abs(r.etot)-14.6670)/14.6670*100).toFixed(2)):null;
+            rec.r_out = (function(){var v=[];for(var t=0;t<NSHELLS;t++)v.push(Number((M[t+1]*h).toFixed(4)));return v;})();
+          }catch(e){ rec.E='ERR'; rec.msg=String(e).slice(0,60); }
+          out.push(rec);
+          try{ localStorage.setItem('beladder_progress', rec.cfg+' s='+st); }catch(e){}
+          await new Promise(function(res){ setTimeout(res,0); });
+        }
+      }
+      try{ localStorage.setItem(KEY, JSON.stringify(out)); }
+      catch(e){ console.error('SAVE FAILED (' + KEY + '): ' + e.name); document.title='SAVE FAILED'; return; }
+      document.title='BELADDER DONE';
+    })();
+  };
+
   window.__autoRadii = function(){
     var KEY='atomsim_radii', out=[];
     try{ localStorage.removeItem(KEY); }catch(e){}
@@ -1356,6 +1389,7 @@ const RESULTS = [
                        : MODE === 'a' ? window.__autoAufbau
                        : MODE === 'x' ? window.__autoChi
                        : MODE === 's' ? window.__autoScan
+                       : MODE === 'B' ? window.__autoBeLadder
                        : MODE === 'd' ? window.__autoCNOd : window.__autoCNO, 1500);
     }
   }, 250);
