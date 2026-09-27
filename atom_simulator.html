@@ -818,6 +818,7 @@ const RESULTS = [
            : /[?&]auto=fine(?:&|$)/.test(location.search) ? 'N'
            : /[?&]auto=trunc(?:&|$)/.test(location.search) ? 'T'
            : /[?&]auto=full(?:&|$)/.test(location.search) ? 'F'
+           : /[?&]auto=ordercheck(?:&|$)/.test(location.search) ? 'O'
            : /[?&]auto=beladder(?:&|$)/.test(location.search) ? 'B'
            : /[?&]auto=cnod(?:&|$)/.test(location.search) ? 'd'
            : (/[?&]auto=cno(?:&|$)/.test(location.search) ? 'k' : null);
@@ -1245,6 +1246,39 @@ const RESULTS = [
   // -14.6074 from __autoAufbau (20000 steps) and -14.8934 from __autoRadii (30000), a drift of
   // 0.286 Ha, while 2+1+1 gave -14.6028 from both. If 2+2 has no converged energy then no gap
   // between the two can be quoted, whatever its size. Reference: Be = -14.6670.
+  // ORDER-DEPENDENCE CHECK on the anti-correlation table's candidates. __autoAufbau runs each
+  // element's configurations in sequence without resetting, and its Be 2+2 (-14.6074) does not
+  // reproduce against __autoRadii or a fresh ladder (both -14.8934). If solver state carries
+  // between cases then every number that probe produced is suspect, including the Li/Be/B/C
+  // figures in the paper's anti-correlation table. Test: run the same list forward, then
+  // reversed. Order-independent values mean no carry-over, whatever the cause of the Be outlier.
+  window.__autoOrderCheck = function(){
+    var KEY='atomsim_ordercheck';
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    var cases=[[3,[3]],[3,[2,1]],[4,[4]],[4,[2,2]],[4,[2,1,1]],
+               [5,[5]],[5,[2,2,1]],[6,[6]],[6,[2,2,2]]];
+    var out={fwd:{},rev:{}};
+    (async function(){
+      PK_MODE=false;
+      var passes=[['fwd',cases],['rev',cases.slice().reverse()]];
+      for (var pi=0; pi<passes.length; pi++){
+        var tag=passes[pi][0], list=passes[pi][1];
+        for (var i=0; i<list.length; i++){
+          var Z=list[i][0], cfg=list[i][1], k=Z+':'+cfg.join('+');
+          try{
+            var r=solveAtomPure(Z, cfg, 20000);
+            out[tag][k]= isFinite(r.etot)?Number(r.etot.toFixed(4)):'NONFIN';
+          }catch(e){ out[tag][k]='ERR'; }
+          try{ localStorage.setItem('ordercheck_progress', tag+' '+k); }catch(e){}
+          await new Promise(function(res){ setTimeout(res,0); });
+        }
+      }
+      try{ localStorage.setItem(KEY, JSON.stringify(out)); }
+      catch(e){ console.error('SAVE FAILED (' + KEY + '): ' + e.name); document.title='SAVE FAILED'; return; }
+      document.title='ORDERCHECK DONE';
+    })();
+  };
+
   window.__autoBeLadder = function(){
     var KEY='atomsim_beladder', out=[];
     try{ localStorage.removeItem(KEY); }catch(e){}
@@ -1389,6 +1423,7 @@ const RESULTS = [
                        : MODE === 'a' ? window.__autoAufbau
                        : MODE === 'x' ? window.__autoChi
                        : MODE === 's' ? window.__autoScan
+                       : MODE === 'O' ? window.__autoOrderCheck
                        : MODE === 'B' ? window.__autoBeLadder
                        : MODE === 'd' ? window.__autoCNOd : window.__autoCNO, 1500);
     }
