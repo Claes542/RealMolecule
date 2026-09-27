@@ -804,22 +804,22 @@ const RESULTS = [
 // This is the comparison the file has machinery for but no recorded numbers: total energies are
 // tabulated in RESULTS, ionisation energies are computed live and were never stored.
 (function(){
-  var MODE = /[?&]auto=rad/.test(location.search) ? 'R'
-           : /[?&]auto=he/.test(location.search) ? 'h'
-           : /[?&]auto=sr/.test(location.search) ? 'z'
-           : /[?&]auto=seq/.test(location.search) ? 'q'
-           : /[?&]auto=radii/.test(location.search) ? 'r'
-           : /[?&]auto=conv/.test(location.search) ? 'c'
-           : /[?&]auto=mgpt/.test(location.search) ? 'g'
-           : /[?&]auto=aufbau/.test(location.search) ? 'a'
-           : /[?&]auto=chi/.test(location.search) ? 'x'
-           : /[?&]auto=scan/.test(location.search) ? 's'
-           : /[?&]auto=kr/.test(location.search) ? 'K'
-           : /[?&]auto=fine/.test(location.search) ? 'N'
-           : /[?&]auto=trunc/.test(location.search) ? 'T'
-           : /[?&]auto=full/.test(location.search) ? 'F'
-           : /[?&]auto=cnod/.test(location.search) ? 'd'
-           : (/[?&]auto=cno/.test(location.search) ? 'k' : null);
+  var MODE = /[?&]auto=rad(?:&|$)/.test(location.search) ? 'R'
+           : /[?&]auto=he(?:&|$)/.test(location.search) ? 'h'
+           : /[?&]auto=sr(?:&|$)/.test(location.search) ? 'z'
+           : /[?&]auto=seq(?:&|$)/.test(location.search) ? 'q'
+           : /[?&]auto=radii(?:&|$)/.test(location.search) ? 'r'
+           : /[?&]auto=conv(?:&|$)/.test(location.search) ? 'c'
+           : /[?&]auto=mgpt(?:&|$)/.test(location.search) ? 'g'
+           : /[?&]auto=aufbau(?:&|$)/.test(location.search) ? 'a'
+           : /[?&]auto=chi(?:&|$)/.test(location.search) ? 'x'
+           : /[?&]auto=scan(?:&|$)/.test(location.search) ? 's'
+           : /[?&]auto=kr(?:&|$)/.test(location.search) ? 'K'
+           : /[?&]auto=fine(?:&|$)/.test(location.search) ? 'N'
+           : /[?&]auto=trunc(?:&|$)/.test(location.search) ? 'T'
+           : /[?&]auto=full(?:&|$)/.test(location.search) ? 'F'
+           : /[?&]auto=cnod(?:&|$)/.test(location.search) ? 'd'
+           : (/[?&]auto=cno(?:&|$)/.test(location.search) ? 'k' : null);
   if (!MODE) return;
   // dSCF: solve the neutral AND the cation, both fully relaxed, and take the difference.
   // The Koopmans eigenvalue -eps cannot contain the relaxation of the electrons left behind,
@@ -849,7 +849,7 @@ const RESULTS = [
         } catch(e) { out.push({ el:c.el, cfg:cfg.join('+'), err:String(e).slice(0,100) }); }
       });
     });
-    try { localStorage.setItem(KEY, JSON.stringify(out)); } catch(e){}
+    try { localStorage.setItem(KEY, JSON.stringify(out)); } catch(e){ console.error('SAVE FAILED (' + KEY + '): ' + e.name); document.title = 'SAVE FAILED'; }
     document.title = 'SCAN DONE';
     return out;
   };
@@ -893,7 +893,7 @@ const RESULTS = [
                    chi_eV: den > 0 ? Number((num/den).toFixed(3)) : null });
       } catch(err) { out.push({ el:e[0], Z:Z, err:String(err).slice(0,90) }); }
     });
-    try { localStorage.setItem(KEY, JSON.stringify(out)); } catch(e){}
+    try { localStorage.setItem(KEY, JSON.stringify(out)); } catch(e){ console.error('SAVE FAILED (' + KEY + '): ' + e.name); document.title = 'SAVE FAILED'; }
     document.title = 'CHI DONE';
     return out;
   };
@@ -983,7 +983,7 @@ const RESULTS = [
         try{ localStorage.setItem('fine_progress', EL[Z]+' N='+N+' s='+steps); }catch(e){}
         await new Promise(function(res){ setTimeout(res,0); });
       }
-      try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+      try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){ console.error('SAVE FAILED (' + KEY + '): ' + e.name); document.title = 'SAVE FAILED'; }
       document.title='FINE DONE';
     })();
   };
@@ -1011,7 +1011,7 @@ const RESULTS = [
         try{ localStorage.setItem('kr_progress', c.el+' '+c.tag); }catch(e){}
         await new Promise(function(res){setTimeout(res,0);});
       }
-      try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+      try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){ console.error('SAVE FAILED (' + KEY + '): ' + e.name); document.title = 'SAVE FAILED'; }
       document.title='KR DONE';
     })();
   };
@@ -1046,7 +1046,7 @@ const RESULTS = [
         try{ localStorage.setItem('trunc_progress','Z='+Z); }catch(e){}
         await new Promise(function(r){setTimeout(r,0);});
       }
-      try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+      try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){ console.error('SAVE FAILED (' + KEY + '): ' + e.name); document.title = 'SAVE FAILED'; }
       document.title='TRUNC DONE';
     })();
   };
@@ -1131,7 +1131,7 @@ const RESULTS = [
                   charge: Number(tot.toFixed(4)), h:Number(h.toFixed(5))});
       }catch(e){ out.push({el:els[k],Z:Z,err:String(e).slice(0,70)}); }
     });
-    try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+    try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){ console.error('SAVE FAILED (' + KEY + '): ' + e.name); document.title = 'SAVE FAILED'; }
     document.title='RAD DONE'; return out;
   };
 
@@ -1145,7 +1145,7 @@ const RESULTS = [
                   radii:radii,h:Number(h.toFixed(5)),N:N});
       }catch(e){ out.push({el:c[2],err:String(e).slice(0,70)}); }
     });
-    try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+    try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){ console.error('SAVE FAILED (' + KEY + '): ' + e.name); document.title = 'SAVE FAILED'; }
     document.title='HE DONE'; return out;
   };
 
@@ -1179,7 +1179,7 @@ const RESULTS = [
       try{ localStorage.setItem('sr_progress', els[k]); }catch(e){}
       await new Promise(function(res){ setTimeout(res, 0); });
     }
-    try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+    try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){ console.error('SAVE FAILED (' + KEY + '): ' + e.name); document.title = 'SAVE FAILED'; }
     document.title='SR DONE';
     })();
     return out;
@@ -1235,7 +1235,7 @@ const RESULTS = [
                 matches_spec: win? (win.cfg===st.spec.join('+')) : null,
                 matches_balanced: win? (win.cfg===bal) : null});
     });
-    try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+    try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){ console.error('SAVE FAILED (' + KEY + '): ' + e.name); document.title = 'SAVE FAILED'; }
     document.title='SEQ DONE';
     return out;
   };
@@ -1259,7 +1259,7 @@ const RESULTS = [
                   IE_per_shell_eV:ies, h:Number(h.toFixed(5)), N:N});
       }catch(e){ out.push({el:c[0],cfg:c[2].join('+'),err:String(e).slice(0,80)}); }
     });
-    try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+    try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){ console.error('SAVE FAILED (' + KEY + '): ' + e.name); document.title = 'SAVE FAILED'; }
     document.title='RADII DONE';
     return out;
   };
@@ -1283,7 +1283,7 @@ const RESULTS = [
         } catch(e) { out.push({ el:c.el, cfg:cfg.join('+'), err:String(e).slice(0,80) }); }
       });
     });
-    try { localStorage.setItem(KEY, JSON.stringify(out)); } catch(e){}
+    try { localStorage.setItem(KEY, JSON.stringify(out)); } catch(e){ console.error('SAVE FAILED (' + KEY + '): ' + e.name); document.title = 'SAVE FAILED'; }
     document.title = 'AUFBAU DONE';
     return out;
   };
@@ -1314,7 +1314,7 @@ const RESULTS = [
                    NIST: (typeof NIST_IE1 !== 'undefined') ? NIST_IE1[Z] : null });
       } catch(e) { out.push({ Z: Z, err: String(e).slice(0,140) }); }
     });
-    try { localStorage.setItem(KEY, JSON.stringify(out)); } catch(e){}
+    try { localStorage.setItem(KEY, JSON.stringify(out)); } catch(e){ console.error('SAVE FAILED (' + KEY + '): ' + e.name); document.title = 'SAVE FAILED'; }
     document.title = 'CNO dSCF DONE';
     return out;
   };
@@ -1332,7 +1332,7 @@ const RESULTS = [
                    NIST: (typeof NIST_IE1 !== 'undefined') ? NIST_IE1[Z] : null });
       } catch(e) { out.push({ Z: Z, err: String(e).slice(0,120) }); }
     });
-    try { localStorage.setItem(KEY, JSON.stringify(out)); } catch(e){}
+    try { localStorage.setItem(KEY, JSON.stringify(out)); } catch(e){ console.error('SAVE FAILED (' + KEY + '): ' + e.name); document.title = 'SAVE FAILED'; }
     document.title = 'CNO DONE';
     return out;
   };
