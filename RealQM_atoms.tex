@@ -297,6 +297,48 @@ Table~\ref{tab:TE}.}
 \label{fig:essence}
 \end{figure}
 
+\section{Algorithm: the three-line solver}\label{sec:algorithm}
+
+The system is solved by three coupled relaxations to a joint steady state --- the
+\emph{three-line solver}. We state them for the general case of
+Section~\ref{sec:model}; the spherical homogenisation stated there is the
+special case in which the domains are concentric shells and each $\psi_i$ depends on $r$ alone.
+At each step, for every domain $\Omega_i$:
+\begin{enumerate}\setlength{\itemsep}{1pt}
+\item \textbf{Imaginary time stepping} of the amplitude --- parabolic relaxation ---
+$\partial_\tau \psi_i=-\mathcal{H}_i \psi_i$ with $\mathcal{H}_i$ from~\eqref{eq:Hi}, relaxing
+$\psi_i$ toward the lowest eigenfunction of $\mathcal{H}_i$; $\tau$ is an artificial time
+carrying the relaxation and has no physical meaning, only the steady state being used;
+\item a \textbf{Poisson solve} for the per-electron potential $V_i$, which in spherical
+symmetry is the shell-theorem integral over the other shells;
+\item a \textbf{boundary move}: each interface $\Gamma_i$ is shifted in the direction that
+\emph{decreases the jump} of $\Psi$ across it, driving it toward the continuity that
+$\Psi\in H^1$ demands --- the Bernoulli free-boundary condition.
+\end{enumerate}
+After each step $\psi_i$ is renormalised; at convergence the boundaries are stationary and the
+per-electron energy is the Rayleigh quotient, supplying the per-shell energies.
+In the spherical case the scheme is discretised on a uniform grid $r_i=ih$ with an explicit
+step $\Delta\tau=\tfrac12 h^2$ (first order, cusp-limited; Section~\ref{sec:convergence}), and
+each of the three is a single one-dimensional grid sweep on $r_i=ih$, so every atom converges in a fraction of a second and the whole periodic table
+in about a minute on a laptop.
+
+\paragraph{The algorithm is a relaxation, not a global minimisation.} This is worth stating
+at the outset because it governs how the results below should be read. None of the three
+updates searches the space of configurations; each is a parabolic relaxation --- the
+amplitude down the gradient of $H_s$, the potential toward its Poisson source, the interface
+toward continuity --- and what they reach together is a \emph{steady state}, a configuration
+at which all three forces balance. Such a state is a critical point of the Coulomb functional,
+and the ground state is one; but the relaxation arrives at whichever equilibrium lies at the
+end of the path it is on, and there is no step at which a lower configuration elsewhere in the
+space is offered and refused. Energy minimisation here is therefore \emph{path dependent}:
+what is computed is the equilibrium reachable from the initial state, not the infimum over all
+states.
+
+Ordinarily this distinction is invisible, because the reachable equilibrium \emph{is} the
+minimum. It becomes the whole point in Section~\ref{sec:aufbau}, where a lower configuration
+exists, is never reached, and is not the physical one either --- so that the path, and not the
+infimum, is what selects the structure of the atom.
+
 \section{What the spherical homogenisation costs}\label{sec:radialsolver}
 
 \paragraph{What the $(N_s{-}1)/N_s$ factor is, and what the homogenisation costs.}
@@ -339,48 +381,6 @@ The thing discarded is precisely the angular correlation, which is what packing
 energetic grounds --- it has no angles with which to tell $4{+}4$ from a single
 $8$-shell --- and why the capacities of Section~\ref{sec:packing} are established by the
 counting argument and the 3D solve rather than by the radial energies.
-
-\section{Algorithm: the three-line solver}\label{sec:algorithm}
-
-The system is solved by three coupled relaxations to a joint steady state --- the
-\emph{three-line solver}. We state them for the general case of
-Section~\ref{sec:model}; the spherical homogenisation stated there is the
-special case in which the domains are concentric shells and each $\psi_i$ depends on $r$ alone.
-At each step, for every domain $\Omega_i$:
-\begin{enumerate}\setlength{\itemsep}{1pt}
-\item \textbf{Imaginary time stepping} of the amplitude --- parabolic relaxation ---
-$\partial_\tau \psi_i=-\mathcal{H}_i \psi_i$ with $\mathcal{H}_i$ from~\eqref{eq:Hi}, relaxing
-$\psi_i$ toward the lowest eigenfunction of $\mathcal{H}_i$; $\tau$ is an artificial time
-carrying the relaxation and has no physical meaning, only the steady state being used;
-\item a \textbf{Poisson solve} for the per-electron potential $V_i$, which in spherical
-symmetry is the shell-theorem integral over the other shells;
-\item a \textbf{boundary move}: each interface $\Gamma_i$ is shifted in the direction that
-\emph{decreases the jump} of $\Psi$ across it, driving it toward the continuity that
-$\Psi\in H^1$ demands --- the Bernoulli free-boundary condition.
-\end{enumerate}
-After each step $\psi_i$ is renormalised; at convergence the boundaries are stationary and the
-per-electron energy is the Rayleigh quotient, supplying the per-shell energies.
-In the spherical case the scheme is discretised on a uniform grid $r_i=ih$ with an explicit
-step $\Delta\tau=\tfrac12 h^2$ (first order, cusp-limited; Section~\ref{sec:convergence}), and
-each of the three is a single one-dimensional grid sweep on $r_i=ih$, so every atom converges in a fraction of a second and the whole periodic table
-in about a minute on a laptop.
-
-\paragraph{The algorithm is a relaxation, not a global minimisation.} This is worth stating
-at the outset because it governs how the results below should be read. None of the three
-updates searches the space of configurations; each is a parabolic relaxation --- the
-amplitude down the gradient of $H_s$, the potential toward its Poisson source, the interface
-toward continuity --- and what they reach together is a \emph{steady state}, a configuration
-at which all three forces balance. Such a state is a critical point of the Coulomb functional,
-and the ground state is one; but the relaxation arrives at whichever equilibrium lies at the
-end of the path it is on, and there is no step at which a lower configuration elsewhere in the
-space is offered and refused. Energy minimisation here is therefore \emph{path dependent}:
-what is computed is the equilibrium reachable from the initial state, not the infimum over all
-states.
-
-Ordinarily this distinction is invisible, because the reachable equilibrium \emph{is} the
-minimum. It becomes the whole point in Section~\ref{sec:aufbau}, where a lower configuration
-exists, is never reached, and is not the physical one either --- so that the path, and not the
-infimum, is what selects the structure of the atom.
 
 \section{Results: total energies, packing, and electronegativity}\label{sec:results}
 
