@@ -80,12 +80,15 @@ less is asked of the pointwise field, more of what can be done with it.
 non-empty. Leray's theorem~\cite{leray} is of that kind: obtained by compactness, it establishes that
 a weak solution exists and says nothing whatever about which one, or what it looks like, or how to
 get at it. For a problem whose whole difficulty is that the solutions are complicated, this is close
-to no information. We ask instead that existence be established \emph{by exhibition}: that for given
-data a solution be produced, together with a specification of what it \emph{de facto is} --- the
-discretisation that carries it, the residual it leaves in the equations, measured and not assumed
-small, and the resolution at which it was obtained. A solution in this sense is an object that can be
-interrogated: one can ask it for a pressure distribution, a separation line, a dissipation rate, and
-get an answer with an error bar. Non-constructive existence can be asked none of these questions.
+to no information. We ask instead that existence be established \emph{by exhibition}, and concretely this means that
+five things be produced and not merely asserted: the mesh the solution lives on, with its cell count
+and its smallest cell; the discretisation carrying it, here continuous piecewise linear in space and
+time with least-squares control of the residual; the residual itself, evaluated in the norm the error
+bound uses, as a measured number and not an assumption; the computed stability factor for each output
+asked of it; and then, for each such output --- the drag of a body, the lift of a wing, a dissipation
+rate, a pressure distribution --- a value with a bound on its error. That is what the solution
+\emph{de facto is}. Ask a non-constructive existence theorem for the drag and there is nothing there
+to ask: it has established that the set of solutions is not empty and has produced no member of it.
 
 It is worth noting that this is the sense in which the announced
 solution~\cite{openai} is also constructive, and that the direction is what differs. It constructs,
@@ -98,14 +101,20 @@ flow on two meshes give velocity fields that differ everywhere and continue to d
 refinement. To ask for pointwise uniqueness is to ask for something the equations do not deliver, and
 a formulation that asks it cannot be satisfied by the solutions that occur.
 
-What the data \emph{do} determine is the qualitative content. Two solutions of the same problem agree
-on the structure of the flow --- where it separates, how the wake is organised, what the dissipation
-rate is --- and they agree to a few per cent on mean-value outputs such as drag and lift, while
-agreeing nowhere on the velocity. Qualitative uniqueness is the demand that this be so, and that the
-line between what is determined and what is not be drawn \emph{quantitatively} rather than by
-assertion. That last clause is what keeps it from being a soft version of uniqueness: the adjoint
-solution decides, for each functional separately, whether it is determined by the data and to what
-precision, so the claim is falsifiable functional by functional
+What the data \emph{do} determine is the qualitative content, and concretely this is what two
+computations of the same flow on independently generated meshes are found to share: the drag agrees to
+a few per cent and the lift likewise; the separation line sits in the same place; the wake is
+organised the same way and sheds at the same frequency; the total dissipation rate is the same. What
+they do not share is the velocity, which at any chosen point differs by order one and goes on
+differing as the meshes are refined.
+
+Qualitative uniqueness is the demand that this be so, and that the line between the two lists be
+drawn \emph{quantitatively} rather than by assertion. That last clause is what keeps it from being a
+soft version of uniqueness. The adjoint solution attaches to each functional a computed stability
+factor: where it is moderate the output is determined by the data, to a precision the factor states,
+and refinement of the mesh where the adjoint is large will improve it; where the factor is large the
+output is not determined, and no refinement will make it so. So the claim is falsifiable one
+functional at a time, and a functional can fail it
 (Sections~\ref{sec:posssol} and~\ref{sec:reform}).
 
 Three further things distinguish this from the official formulation.
@@ -122,12 +131,7 @@ time and asking about turbulence.
 \emph{Weak solutions are asked for, and smoothness is not.} Existence of weak solutions has been
 available since Leray~\cite{leray}, and by the Onsager theorem~\cite{onsager,isett} non-smoothness
 is not a defect to be removed but the mechanism by which a turbulent flow dissipates energy at a
-rate independent of viscosity. Requiring smoothness excludes the solutions that occur. What is
-genuinely open is uniqueness --- and it is open in a specific way: pointwise uniqueness is false in
-practice, since two computations with different discretisations give different velocity fields, while
-output uniqueness holds to a few per cent. A formulation that asks for uniqueness of outputs is
-asking something both true and useful; one that asks for uniqueness of the field is asking for
-something false.
+rate independent of viscosity. Requiring smoothness excludes the solutions that occur.
 
 \subsection{The same demand stated in outputs}\label{sec:reform}
 
