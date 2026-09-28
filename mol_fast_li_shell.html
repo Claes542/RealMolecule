@@ -54,6 +54,12 @@
     // DEFAULT OFF. A constant-density ball filling the exterior IS an annulus around the core
     // at t=0 -- an outer shell present from the start, which is what the run should produce.
     var FLAT=parseFloat(qs.get('flat')); if(!isFinite(FLAT)) FLAT=0;
+    // ?xp=  DISPLACE the arriving electron's seed, au along +x, from the kernel. With ?flat=
+    //       this seeds it as a SPHERE CENTRED OFF THE KERNEL -- a separate ball beside Li+,
+    //       not a half-shell around it. Every domain is otherwise seeded at the box centre,
+    //       so without this there is no way to place the incoming charge to one side as a
+    //       compact body; halfx only leans a centred density one way.
+    var XP=parseFloat(qs.get('xp')); if(!isFinite(XP)) XP=0;
     // ?pair=ANGLE  BERYLLIUM TEST. The outermost shell is given TWO one-electron domains whose
     // initial directions are ANGLE degrees apart, free thereafter (split_fix false, so `dirs` is
     // init-only). Seeding them at 180 would assume the answer; seeding them close together asks
@@ -126,7 +132,8 @@
       });
     } else
     CFG.forEach(function(nel,idx){
-      var e={i:N2,j:N2,k:N2, Z:(idx===0?ZK:0), rc:0.0,
+      var isOuter=(idx===CFG.length-1);
+      var e={i:N2+((isOuter&&XP!==0)?Math.round(XP/h):0),j:N2,k:N2, Z:(idx===0?ZK:0), rc:0.0,
              z_init:Math.max(ZK-2*idx,0.7), fixed:true};
       if(idx<CFG.length-1) e.r_out=R0*(idx+1);     // outermost shell unconstrained
       if(idx===CFG.length-1 && LAUNCH!==0) e.hs=(LAUNCH>0?1:-1);
@@ -219,7 +226,7 @@
     var KEY='mf3d_Z'+(qs.get('Z')||'3')+'_c'+(qs.get('cfg')||'2,1').replace(/,/g,'')
             +(qs.get('asplit')==='1'?'_as':'')+'_b'+(qs.get('scr')||'12')+'x'+(qs.get('nn')||'160')+'_R'+(qs.get('R0')||'1.0')+'_f'+(qs.get('flat')||'0')+'_h'+(qs.get('half')||'0')+'w'+(qs.get('wedge')||'2')
             +(qs.get('launch')?('_L'+qs.get('launch')):'')
-            +(qs.get('wd')==='0'?'_nowd':'');
+            +(qs.get('xp')?('_xp'+qs.get('xp')):'')+(qs.get('wd')==='0'?'_nowd':'');
     try{localStorage.removeItem(KEY);}catch(e){}
     var t0=Date.now(),published=false,trace=[],lastStep=-1,stallN=0,MAXSEC=window.MAXSEC||1500;
     // ?snaps=  elapsed seconds at which to capture a 2D slice through the kernel. These are the
