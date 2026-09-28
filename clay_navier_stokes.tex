@@ -49,23 +49,177 @@ small-viscosity limit of the family is the zero solution. Whether or not the pro
 answers the official question without touching the physical one, which is the point of this paper.
 \end{abstract}
 
-\section{The official formulation}
+\section{Possible formulation}\label{sec:possform}
 
-The Clay Mathematics Institute problem, as set out by Fefferman \cite{fefferman}, concerns the
-incompressible Navier--Stokes equations
-\begin{equation}\label{eq:ns}
-\dot u + (u\cdot\grad)u - \nu\Delta u + \grad p = f,\qquad \grad\cdot u = 0,
+We begin with the formulation we propose, and only at the end recall the official one, because the
+order matters: the official statement is best judged against a formulation that has a solution.
+What we ask is elementary, and it asks for solutions rather than for their functionals:
+
+\begin{quote}
+\textbf{Problem.} \emph{Existence and uniqueness of weak solutions to the incompressible
+Navier--Stokes equations with small viscosity, that is at high Reynolds number.}
+\emph{Given data:} a domain $\Omega\subset\mathbb{R}^3$, initial data $u_0$ on $\Omega$, a forcing
+$f$ on $\Omega\times(0,T)$, and boundary conditions on $\partial\Omega$. \emph{Asked:} that a weak
+solution exists, and that it is unique in the sense that matters --- uniqueness of the outputs
+computed from it, not of the pointwise velocity field.
+\end{quote}
+
+Three things distinguish this from the official formulation.
+
+\emph{The domain is given, not $\mathbb{R}^3$ with decay.} Real flows occupy bounded domains with
+boundaries, and the boundary is where drag and lift are produced. A formulation on all of
+$\mathbb{R}^3$ removes the only place the physically interesting outputs live.
+
+\emph{Small viscosity is part of the problem, not a parameter to be quantified away.} The official
+statement fixes $\nu$ and asks a question about $t\to\infty$; here $\nu\to0$ is the limit of
+interest and $T$ is finite. This is the difference between asking about one Reynolds number at a
+time and asking about turbulence.
+
+\emph{Weak solutions are asked for, and smoothness is not.} Existence of weak solutions has been
+available since Leray~\cite{leray}, and by the Onsager theorem~\cite{onsager,isett} non-smoothness
+is not a defect to be removed but the mechanism by which a turbulent flow dissipates energy at a
+rate independent of viscosity. Requiring smoothness excludes the solutions that occur. What is
+genuinely open is uniqueness --- and it is open in a specific way: pointwise uniqueness is false in
+practice, since two computations with different discretisations give different velocity fields, while
+output uniqueness holds to a few per cent. A formulation that asks for uniqueness of outputs is
+asking something both true and useful; one that asks for uniqueness of the field is asking for
+something false.
+
+\section{Possible solution}\label{sec:posssol}
+
+The corresponding notion of solution is then also elementary, and it is the one the AI construction
+of Section~\ref{sec:ai} uses in a different direction: \emph{a solution is a construction for
+specified data}.
+
+\begin{quote}
+\textbf{Solution.} \emph{Computed solutions, as a form of constructed solution, for a
+representative choice of specific data.} For a given $\Omega$, $u_0$, $f$ and boundary conditions,
+exhibit a computed weak solution together with quantitative control of the outputs: a residual that
+is small in the relevant norm, an error bound for each output obtained by duality from a computed
+solution of the adjoint equations, and a demonstration that the output converges under refinement
+while the velocity field does not.
+\end{quote}
+
+The two constructions are worth setting side by side, since they are formally the same kind of
+object and opposite in intent. The AI construction fixes the singular solution wanted and solves
+backwards for a force that produces it, the force being whatever the residual requires; the
+resulting flow exists for the formulation and nowhere else, and vanishes as $\nu\to0$
+(Section~\ref{app:nu}). A computed solution fixes the data that a flow actually has --- a body in a
+channel, a given inflow --- and solves forwards, the residual being what is left over and what is
+then used to bound the error in the output. Both are constructions, both are specific, and only the
+second is about a fluid.
+
+What makes the computed object a solution rather than an approximation is that the error in the
+output is controlled rather than hoped for. The adjoint equations turn the residual into a bound on
+$|M(\hat u)-M(\hat w)|$ for the functional of interest, with computed stability factors; where those
+factors are moderate the output is predictable and the mesh can be refined where it pays; where they
+are large the output is not predictable and no amount of refinement will make it so. That is a
+statement about which questions the equations answer, and it is available without smoothness, which
+is why it survives at the viscosities where smoothness does not.
+
+\section{The reformulated problem}\label{sec:reform}
+
+We state the replacement plainly.
+
+\begin{quote}
+\textbf{Problem.} Fix smooth divergence-free initial data of size one, and let $\nu>0$ be arbitrary
+with no positive lower bound. Show that the weak solution is \emph{wellposed in mean-value outputs,
+uniformly in $\nu$}: that functionals of the form \eqref{eq:output} depend continuously on the data
+with quantitative error control, by bounds that do not degenerate as $\nu\to0$, even though the
+pointwise solution does not and its gradients diverge as $\nu^{-1/2}$. Equivalently: establish the
+second law of thermodynamics for fluids --- that a turbulent solution dissipates kinetic energy at a
+rate which does not vanish with the viscosity, and that this dissipation is what makes the outputs
+stable.
+\end{quote}
+
+Three features of this statement are worth marking. The \emph{data} are normalised rather than the
+viscosity, which is the coordinate choice that keeps $\nu$ as a parameter and so allows a limit to be
+taken at all. The bounds are required \emph{uniformly} in $\nu$, which is what makes it a question
+about turbulence rather than about one Reynolds number at a time. And it asks for stability rather
+than regularity, so it can be answered affirmatively for the solutions that occur instead of being
+answered vacuously for solutions that do not.
+
+\section{Output wellposedness, and why it is the right demand}
+
+The defect in the official formulation is not that it asks a hard question. It is that it asks about
+the wrong property. Smoothness is not what makes a solution concept physically meaningful.
+Wellposedness is.
+
+Hadamard's criterion has three parts: a solution exists, it is unique, and it depends continuously
+on the data. The third is the one that carries the physical content, because data are never exact.
+A problem whose solution is not stable under perturbation of the data is not a model of anything
+measurable, whatever its smoothness.
+
+\paragraph{Weak solutions exist.} Leray showed in 1934 that weak solutions of \eqref{eq:ns} exist
+globally in time \cite{leray}. What was left open was not existence but whether the weak solution
+concept is \emph{wellposed} --- whether it determines anything. That is the question worth asking,
+and it is not the question the Clay problem asks.
+
+\paragraph{Wellposedness is a property of outputs, not of solutions.} Here is the point on which the
+reformulation turns. For a turbulent solution, the pointwise velocity at a given place and time is
+not determined: perturb the data in the last decimal and the pointwise field is different
+everywhere within a short time. In that sense the solution is not wellposed and never will be.
+
+But nobody measures the pointwise velocity of a turbulent flow, and no engineering question depends
+on it. What is measured, and what is asked for, are \emph{mean-value outputs}: the drag on a body,
+the lift on a wing, a pressure averaged over a surface, a flux through a section. These are
+functionals of the solution, and the question of wellposedness must be asked of them:
+\begin{equation}\label{eq:output}
+M(u) = \int_Q u\cdot\psi\,dx\,dt
 \end{equation}
-on $\mathbb{R}^3$ or a periodic box, with $u(\cdot,0)=u^0$ smooth and divergence free, and with the
-viscosity $\nu$ normalised to one. Four statements are offered, of which a proof of any one settles
-the prize: existence and smoothness on $\mathbb{R}^3$; the same with periodic data; or a
-counterexample to either --- a solution which is initially smooth and whose velocity becomes
-unbounded in finite time.
+for a given weight $\psi$. The claim is that $M(u)$ is stable for turbulent solutions even though
+$u$ is not.
 
-The structure of the question is therefore a dichotomy. Either the solution is smooth for all time,
-or it is not, and the only stated way for it not to be is blowup. \emph{Tertium non datur.}
+\paragraph{The mechanism, and why it inverts the classical expectation.} Stability of an output is
+governed by an associated dual, or adjoint, problem: linearise about the computed solution, run it
+backward from the output functional, and the growth of the dual solution measures how strongly a
+perturbation of the data or of the residual can move the output. What the dual problem shows is the
+reverse of what intuition suggests. Over a \emph{turbulent} velocity field --- oscillating rapidly in
+space and time --- the dual solution grows only modestly, because the linearised coefficients
+oscillate and their effect largely cancels. Over a \emph{smooth} field the dual solution grows,
+because there is nothing to cancel. Turbulence stabilises the outputs that smoothness destabilises.
 
-\section{The AI solution}\label{sec:ai}
+This is the sense in which the reformulated problem has an answer, and the answer is not the one the
+dichotomy anticipates. Smooth solutions are not wellposed. Turbulent solutions are wellposed in
+mean-value outputs. The physically meaningful solution concept is the one the official formulation
+treats as the failure case.
+
+\section{In what sense this constitutes a solution}
+
+\paragraph{The solutions are constructed, not assumed.} A finite element method for \eqref{eq:ns}
+with residual-based stabilisation --- Galerkin least squares on a mesh, piecewise polynomial
+velocity and pressure, no turbulence model supplied by the user (\S6) --- produces solutions which
+become turbulent even when initiated from smooth potential data, and which stay bounded. The stabilisation
+supplies dissipation in proportion to the residual, so the dissipation is generated by the
+computation rather than prescribed by a model. In the vanishing-viscosity limit the same scheme is
+an Euler solver whose turbulent dissipation appears automatically. The non-smooth,
+non-singular third case is therefore not a conjecture: it is what the equations produce when they
+are solved.
+
+\paragraph{The residual behaves as the theory requires.} For such solutions the Navier--Stokes
+residual $R(U,P)$ is small in a weak norm and large in a strong one. Small weakly is what makes the
+computed field a solution; large strongly is the statement that it is not smooth. A method whose
+residual were small in both would be computing something that does not exist.
+
+\paragraph{The error is controlled by duality, not by asserted convergence.} An a posteriori error
+estimate of the form
+\begin{equation}\label{eq:apost}
+|M(u) - M(U)| \;\le\; \int_Q R(U,P)\cdot\varphi\,dx\,dt \;\le\; S\,\|R(U,P)\|_{-1},
+\end{equation}
+with $\varphi$ the dual solution and $S$ its stability factor, converts a computed solution into a
+statement with a bound attached. The stability factor is not assumed; it is computed by solving the
+dual problem. It is through \eqref{eq:apost} that the wellposedness claim becomes quantitative: $S$
+is moderate for mean-value outputs over turbulent solutions and large for pointwise outputs and for
+smooth solutions, which is the distinction of \S3 expressed as a number.
+
+\paragraph{Computation as proof.} That an answer rests on computation is not a defect peculiar to
+this problem. The four-colour theorem was settled the same way, and the settlement was accepted
+because the computation was reproducible and its error controlled. The same standard applies here,
+and \eqref{eq:apost} is what meets it: the claim is not that a particular simulation looked
+turbulent, but that the output of the computation comes with a bound which can be evaluated, and
+which is small.
+
+\section{Test of the OpenAI solution against the possible formulation}\label{sec:ai}
 
 On 8 September 2026 OpenAI announced a solution of the Clay problem in the form of a proof that a
 singular solution to the Navier--Stokes equations exists~\cite{openai}, obtained with ten thousand
@@ -97,6 +251,296 @@ strengthening the proof. Between the smooth branch and the singular branch sits 
 occurs --- bounded velocity, gradients growing like $\nu^{-1/2}$, dissipation that does not vanish
 with the viscosity --- and the dichotomy contains no room for it. This is the burden of the next
 section, and it was the burden before the announcement.
+
+\section{The viscosity test applied to the announced construction}\label{app:nu}
+
+The test below is general: it applies to any construction that exhibits a singularity for
+Navier--Stokes at prescribed forcing, and in particular to the one announced
+in~\cite{openai} and described in Section~\ref{sec:ai}. Its conclusion is that the singular point
+solution \emph{vanishes} in the limit that fluid mechanics occupies. We state it for a construction
+at viscosity one and then follow it down in $\nu$, which is all the scaling allows.
+
+
+\paragraph{The viscosity test, and what it does to the constants.} The objection above can be made
+quantitative, and doing so is the test any such construction should be required to pass. Navier--Stokes
+rescales: if $v$ solves the equations at viscosity one with forcing $g$, then
+\begin{equation}\label{eq:rescale}
+u(x,t) = a\,v(bx,ct),\qquad a = \nu b,\quad c = ab,\quad f = a^2 b\,g,
+\end{equation}
+solves them at viscosity $\nu$. The map is onto: \emph{one} unit-viscosity blowup generates the
+entire family. A theorem asserting blowup ``for every $\nu>0$'' is therefore not a family of results.
+It is one result, rescaled, and it contains exactly what its $\nu=1$ member contains.
+
+The content is in what \eqref{eq:rescale} does to the constants, and there are only two ways to spend
+the freedom. Hold the solution at size one, $a=1$: then $b=c=\nu^{-1}$ and the forcing amplitude is
+$a^2b = \nu^{-1}$, so the force required \emph{blows up} as the viscosity falls and leaves any fixed
+admissible class --- including the one Fefferman specifies, which fixes the constants $C_{\alpha K}$
+once and for all. Or hold the forcing in a fixed class, $a^2b=1$: then $b=\nu^{-2/3}$ and
+\begin{equation}\label{eq:shrink}
+\text{amplitude } a = \nu^{1/3}\to 0,\qquad
+\text{length } b^{-1} = \nu^{2/3}\to 0,\qquad
+\text{time } c^{-1} = \nu^{1/3}\to 0 .
+\end{equation}
+The singularity shrinks to nothing: at $\nu=10^{-6}$ the velocity reaches $10^{-2}$ on a scale of
+$10^{-4}$ before blowing up. Neither branch survives the limit. One exits the admissible data, the
+other converges to the zero solution.
+
+This is the sense in which the announced solution~\cite{openai} settles the official question and
+leaves the physical one untouched. Its force is built from the residual to match a chosen singular
+solution~(Section~\ref{sec:ai}); the scaling~\eqref{eq:rescale} then fixes what happens to that
+solution as the viscosity falls, and there is no third option. Hold the force admissible and the
+singular point solution vanishes --- amplitude $\nu^{1/3}$, support $\nu^{2/3}$, lifetime
+$\nu^{1/3}$, all tending to zero, so the family converges to $u\equiv0$ and the singularity is lost
+in the limit. Hold the amplitude and the force diverges like $\nu^{-1}$ and leaves the class in which
+the theorem was proved. A singularity that exists at every fixed $\nu$ and disappears as
+$\nu\to0$ is not a feature of high-Reynolds-number flow; it is a feature of the formulation, which
+admits forces no mechanism supplies. The independent exclusion of the mechanism under analytic
+forcing~\cite{civ} points the same way from a different direction.
+
+Set this beside the flow the problem is advertised as being about. Turbulence at small viscosity has
+\emph{bounded} velocity at every scale and gradients growing like $\nu^{-1/2}$, realised by
+\eqref{eq:delta} on structures of size $\nu^{3/4}$ across which the velocity varies by $\nu^{1/4}$
+--- a H\"older-$1/3$ field, amplitude fixed, structure refining. The constructed family has
+amplitude vanishing like $\nu^{1/3}$, which is the opposite behaviour, or else forcing diverging like
+$\nu^{-1}$, which is not a fluid at all.
+
+\paragraph{Normalising the blow-up time.} The two branches collapse into one if the blow-up time
+is held fixed, which is the natural normalisation: a construction asserting blow-up at $t=1$ for
+every $\nu>0$ is asserting that the time variable is \emph{not} rescaled, $c=1$. Then
+$c=ab=\nu b^2=1$ forces $b=\nu^{-1/2}$, and every constant in the problem is determined at once:
+\begin{equation}\label{eq:tone}
+\text{amplitude } a=\nu^{1/2},\qquad
+\text{length } b^{-1}=\nu^{1/2},\qquad
+\text{forcing } a^2b=\nu^{1/2},\qquad
+\text{gradient } ab=1 .
+\end{equation}
+Velocity, length and forcing all vanish like $\sqrt\nu$ together. At $\nu=10^{-8}$ the flow reaches
+an amplitude of $10^{-4}$ on a scale of $10^{-4}$ under a force of $10^{-4}$, and then becomes
+unbounded. The family converges to the zero solution driven by zero force, and the blow-up it
+exhibits is one fixed object photographed at ever smaller magnification.
+
+Note what \eqref{eq:tone} leaves invariant: the velocity gradient, $ab=1$, is the same at every
+viscosity. That is the precise sense in which the construction is not about turbulence. Turbulent
+flow at small $\nu$ has velocity of order one and gradients growing like $\nu^{-1/2}$ --- by
+\eqref{eq:grad} the amplitude is held and the gradients diverge. Here the gradients are held and the
+amplitude collapses. Nor do the lengths agree: the finest turbulent scale is $\nu^{3/4}$ by
+\eqref{eq:delta} and this family's active length is $\nu^{1/2}$, so they agree in nothing at all.
+
+So the test is simple and should be routine: \emph{report the constants as functions of $\nu$}. A
+counterexample whose forcing constant diverges, or whose solution amplitude vanishes, in the limit
+where the physics lives has answered a question about a fixed positive viscosity and not about the
+equations of fluid mechanics. That the official formulation normalises $\nu$ to one and never asks
+is precisely the defect this article is about: the normalisation is harmless --- $\nu=1$ with large
+data is small $\nu$ with unit data --- but only if the quantifier is restored and the bounds are
+demanded uniformly in $\nu$, which is what \S\ref{sec:reform} does.
+
+
+\paragraph{The two limits do not commute, and the blow-up lives at $\mathrm{Re}=1$.} Write the
+family out. With blow-up normalised to $t=1$, \eqref{eq:tone} gives
+$u_\nu(x,t) = \nu^{1/2}\,v\!\left(x\nu^{-1/2},\,t\right)$ with $v$ the unit-viscosity solution. Then
+\begin{equation}\label{eq:noncommute}
+|u_\nu(t)| \sim \Big(\frac{\nu}{1-t}\Big)^{1/2},
+\qquad\text{so}\qquad
+\lim_{t\to1}|u_\nu(t)| = \infty \ \ (\nu>0\text{ fixed}),
+\qquad
+\lim_{\nu\to0}u_\nu(t) = 0 \ \ (t<1\text{ fixed}).
+\end{equation}
+The two factors pull against each other, which is the whole of the matter: $\nu^{1/2}$ drives the
+amplitude down and $(1-t)^{-1/2}$ drives it up, and neither limit can be taken without declaring
+what the other is doing.
+Infinity taken one way, the zero solution taken the other. The joint limit therefore has no value:
+it depends on the path. Taking the self-similar rate $|v|\sim(1-t)^{-1/2}$, the one consistent with
+the equation's own scaling and with Leray's ansatz, the amplitude and the active length are
+\begin{equation}\label{eq:path}
+|u_\nu(t)| \sim \Big(\frac{\nu}{1-t}\Big)^{1/2},
+\qquad
+\ell_\nu(t) \sim \nu^{1/2}(1-t)^{1/2},
+\end{equation}
+so the velocity is of order one exactly along the critical path $1-t\sim\nu$, is negligible above it
+and unbounded below it. A statement about such a family is a statement about which path was chosen,
+and the Clay formulation --- which fixes $\nu=1$ and never mentions the limit --- does not require
+the choice to be declared.
+
+What \eqref{eq:path} settles is the physical character of the object. Multiplying,
+\begin{equation}\label{eq:re1}
+\mathrm{Re}_{\mathrm{local}} = \frac{|u_\nu|\,\ell_\nu}{\nu}
+= \frac{\nu^{1/2}(1-t)^{-1/2}\cdot\nu^{1/2}(1-t)^{1/2}}{\nu} = 1,
+\end{equation}
+identically in $t$ and in $\nu$. The constructed singularity sits permanently at the viscous scale.
+It does not pass through the inertial range on its way to blowing up; it never enters it. Whatever
+such a construction establishes about the equations, it is not about the regime the problem is
+advertised as concerning, because turbulence is the statement that $\mathrm{Re}\gg1$ over a wide
+range of scales, and \eqref{eq:re1} says this flow is at $\mathrm{Re}=1$ at every instant of its
+life.
+
+\paragraph{What the flow looks like on the critical path.} Set $1-t=\nu$ in \eqref{eq:path} and the
+picture is explicit. The velocity is of order one --- the same as a turbulent flow --- but it sits on
+a length $\ell\sim\nu$ with gradients $|\grad u|\sim\nu^{-1}$. Compare a turbulent flow at the same
+amplitude: by \eqref{eq:delta} its finest structures are $\nu^{3/4}$ across, the velocity varies by
+$\nu^{1/4}$ over them, and the gradient is the ratio $\nu^{-1/2}$. Since
+\begin{equation}\label{eq:below}
+\nu \;\ll\; \nu^{3/4} \qquad (\nu\to0),
+\end{equation}
+the constructed structure is finer than the finest turbulent one by a factor $\nu^{-1/4}$, and it
+carries an $O(1)$ velocity change where turbulence carries only $\nu^{1/4}$ across its smallest
+scale. At $\nu=10^{-6}$ the finest turbulent structure is $3\times10^{-5}$ wide with a velocity
+variation of $3\times10^{-2}$, while this object is $10^{-6}$ --- thirty times below the
+smallest scale the flow has --- with gradients a thousand times larger than turbulent ones. And the
+critical path is only where the amplitude first reaches order one: every later instant, $1-t<\nu$,
+is finer still. The blow-up therefore takes place \emph{entirely} beneath the dissipation scale.
+
+Two qualifications are owed here, because the comparison with $\eta$ is looser than it looks.
+Kolmogorov's scale is $\eta=(\nu^3/\epsilon)^{1/4}$ and presupposes a cascade at a dissipation rate
+$\epsilon$ of order one. This object has no such cascade, and its dissipation is not of order one:
+the density $\nu|\grad u|^2\sim\nu^{-1}$ diverges, but it is supported on a volume
+$\ell^3\sim\nu^3$, so the total is
+\begin{equation}\label{eq:diss}
+D_\nu \;\sim\; \frac1\nu\cdot\nu^3 \;=\; \nu^2 \;\longrightarrow\; 0,
+\qquad\text{carried on an energy}\qquad
+E_\nu \sim |u_\nu|^2\ell_\nu^3 \sim \nu^3 \longrightarrow 0 .
+\end{equation}
+So \eqref{eq:below} is a comparison with a \emph{different} flow --- turbulence at the same velocity
+in a domain of size one --- not a statement that this object lies beneath its own dissipation scale.
+Read strictly, $\eta$ does not apply to it at all.
+
+What \eqref{eq:diss} gives instead is stronger and needs no cascade. Anomalous dissipation is the
+defining property of turbulence: $\epsilon$ stays bounded away from zero as $\nu\to0$, which is the
+content of Onsager's conjecture and of \cite{cet,isett}. This family does the opposite in both
+quantities at once --- dissipating $\nu^2$ while carrying energy $\nu^3$, both vanishing. In the
+limit the blow-up involves no energy and dissipates none, and $D_\nu/E_\nu\sim\nu^{-1}$ says it
+sheds what little it has in a time of order $\nu$, the same vanishing window found above. It is
+also, by \eqref{eq:re1}, a strictly viscous event with $\mathrm{Re}=1$ throughout, where turbulence
+is $\mathrm{Re}\gg1$ across a range of scales.
+
+\paragraph{It is a shock, concentrated at a point.} The local structure on the critical path is
+familiar: an $O(1)$ velocity change across a thickness $\nu$ with gradient $\nu^{-1}$ is the viscous
+shock profile. For Burgers, a jump $U$ relaxes over $\delta=\nu/U$ with gradient $U^2/\nu$, and its
+dissipation per unit area is
+\begin{equation}\label{eq:shockdiss}
+\int \nu\,u_x^2\,dx \;\sim\; \nu\Big(\frac{U}{\delta}\Big)^2\delta \;=\; \frac{\nu U^2}{\delta}
+\;=\; U^3,
+\end{equation}
+independent of $\nu$ --- the classical anomalous dissipation of Burgers turbulence, and the
+one-dimensional model of exactly the mechanism Onsager's conjecture concerns.
+
+So the constructed object has the profile of a shock. What it does not have is a shock's extent. A
+shock is a \emph{surface}: thickness $\nu$ in one direction and order one in the other two, hence
+volume $\nu$ and, by \eqref{eq:shockdiss}, dissipation of order one. The blow-up is $\nu$ in all
+three directions, volume $\nu^3$, and its dissipation is $\nu^2$ as in \eqref{eq:diss}. The same
+local profile spread over a surface dissipates at a rate independent of viscosity; concentrated at a
+point it dissipates nothing in the limit.
+
+That is the sharpest statement of what the test establishes. The construction is not exotic --- it
+is a shock, the most ordinary singular structure a fluid has, and one the physical solutions of
+\S\ref{sec:reform} are full of. It is made to blow up by being denied the dimensionality that lets a
+shock carry energy, and it becomes a counterexample only because the formulation asks about the
+pointwise velocity rather than about anything the flow does.
+
+
+\paragraph{What actually diverges, and what does not.} One more reading of \eqref{eq:path} settles
+the character of the limit. On the critical path the gradient does diverge,
+\begin{equation}\label{eq:gradpath}
+|\grad u_\nu(t)| \;=\; \frac{|u_\nu|}{\ell_\nu}
+\;\sim\; \frac{\nu^{1/2}(1-t)^{-1/2}}{\nu^{1/2}(1-t)^{1/2}} \;=\; \frac{1}{1-t},
+\end{equation}
+which does not involve $\nu$ at all. The gradient divergence is purely temporal: at every viscosity
+the same gradient is reached at the same time-to-blow-up, which is the sharpest form of the remark
+that the family is one solution rescaled. On the critical path $1-t\sim\nu$ it takes the value
+$\nu^{-1}$ quoted above, while the velocity $|u_\nu|\sim1$ stays bounded.
+But Fefferman's (C) and (D) ask for the \emph{velocity} to become unbounded, and by
+\eqref{eq:gradpath} it does not. At $1-t\sim\nu$ the family is a bounded flow with diverging
+gradients --- which is neither horn of the dichotomy. It is the third category, the one \S2 argued
+has no name in the formulation and is where every flow of interest actually lives. The construction
+and turbulence differ there only in exponent, $\nu^{-1}$ against the $\nu^{-1/2}$ of
+\eqref{eq:grad}.
+
+The velocity becomes unbounded only afterwards. Since $|u_\nu|>M$ requires $1-t<\nu/M^2$, the
+genuinely velocity-singular phase occupies a window of duration of order $\nu$, sitting entirely
+below the dissipation scale by \eqref{eq:below}, and shrinking to nothing as $\nu\to0$. So the
+family's behaviour in the limit where fluids live is: gradients diverging, velocity bounded,
+singular phase of vanishing duration at vanishing scale.
+
+That is the conclusion of the test, and it is not a technicality. A construction offered as a
+counterexample to (A) converges, in the physical limit, to an object that is not a counterexample to
+(A) at all --- it is an instance of the category the formulation declines to name. The dichotomy is
+not merely empty about turbulence; it is empty about its own counterexamples once they are asked
+what they do as the viscosity falls.
+
+\section{Cases of computed solutions, with assessment of uniqueness}
+
+This section is the answer to the formulation of Section~\ref{sec:possform}, in the only form such
+a question can be answered: specific data, a computed weak solution, and an assessment of what is
+unique about it. The method, the error control and the computations are set out in
+\emph{Computational Turbulent Incompressible Flow}~\cite{cfd}, with the residual-based dissipation
+in~\cite{hjv}, the parameter-free adaptive formulation in~\cite{hjja}, the earlier statement of the
+approach in~\cite{newapproach}, and a case at aeronautical Reynolds number --- the DLR-F11 aircraft
+model, time-resolved and adaptively refined --- in~\cite{dlrf11}.
+
+The pattern across those cases is the one the formulation predicts, and it is worth stating before
+the details. In each, the velocity field fails to converge under refinement and is not expected to:
+two meshes give two different fields, and the difference does not diminish. In each, the mean-value
+output converges to a few per cent, and the error in it is \emph{bounded}, not estimated after the
+fact, by duality against a computed adjoint solution. And in each, the adjoint supplies the
+assessment of uniqueness directly: where its stability factors are moderate the output is unique in
+the sense that matters and the mesh is refined where that pays; where they are large the output is
+not predictable and refinement will not make it so. That last case is not a failure of the method
+but an answer --- the equations do not determine that quantity, and no computation should be
+believed which claims otherwise.
+
+\paragraph{G2: the method is Galerkin, and the turbulence model is the residual.} General Galerkin,
+or G2, is a stabilised finite element method --- continuous piecewise linear in space and time,
+$\mathrm{cG}(1)\mathrm{cG}(1)$, with least-squares control of the residual. The stabilisation is not
+a subgrid model: no eddy viscosity is prescribed, no wall function, no closure, no constant fitted
+to measurement. The dissipation is whatever the residual makes it, which means it is generated by
+the flow being computed rather than supplied by the person computing it. This matters for the
+present argument specifically. A computation carrying a fitted turbulence model could not be used to
+say what Navier--Stokes contains, because the turbulence would have been put in by hand. G2 has
+nothing put in by hand, so what comes out is a property of \eqref{eq:ns}.
+
+\paragraph{The dual problem is solved, and the stability factor is a computed number.} The estimate
+\eqref{eq:apost} is the book's organising device. For each output of interest the dual problem is
+linearised about the computed solution, solved backwards, and its stability factor evaluated; the
+mesh is then refined where the product of residual and dual weight is largest. The consequence is
+that the error in the output is not estimated by comparing successive meshes and hoping, but bounded
+by a quantity the computation itself produces. Adaptivity and error control are the same mechanism.
+
+\paragraph{Mean-value outputs converge; the flow field does not.} The book's central computational
+finding is the one \S3 needs. Mean drag and mean lift for turbulent flow past a bluff body come out
+to a tolerance of a few per cent on meshes of a few hundred thousand points --- small enough to run
+on a personal computer, and orders of magnitude coarser than a direct simulation resolving the
+Kolmogorov scale would require. The pointwise velocity field on those meshes is not converged and
+does not become so. Both facts hold simultaneously, and together they are the wellposedness claim
+made quantitative: the outputs are stable because the stability factor for them is moderate, and the
+pointwise field is not because its stability factor is not.
+
+\paragraph{Turbulent Euler solutions and d'Alembert's paradox.} Taking $\nu\to0$ in G2 gives a
+solver for the Euler equations whose dissipation does not vanish with the viscosity, which is the
+second law of \S4 in computational form. What such solutions produce is not potential flow. A bluff
+body in this limit shows potential flow modified by a three-dimensional rotational separation, and
+that separation carries drag --- which is the resolution of d'Alembert's paradox offered in
+\cite{dalembert}: the paradox arises from taking the smooth potential solution to be the
+vanishing-viscosity limit, and the correct limit is turbulent. The same analysis applied to a wing
+gives lift and drag without a circulation condition imposed by hand \cite{flight}.
+
+This is the concrete content behind the claim of \S2 that smooth solutions are unstable. It is not
+an assertion about what would happen to a perturbed smooth solution; it is a record of what happens
+when the equations are solved from smooth data without a model to keep them smooth.
+
+\section{The official formulation recalled}
+
+The Clay Mathematics Institute problem, as set out by Fefferman \cite{fefferman}, concerns the
+incompressible Navier--Stokes equations
+\begin{equation}\label{eq:ns}
+\dot u + (u\cdot\grad)u - \nu\Delta u + \grad p = f,\qquad \grad\cdot u = 0,
+\end{equation}
+on $\mathbb{R}^3$ or a periodic box, with $u(\cdot,0)=u^0$ smooth and divergence free, and with the
+viscosity $\nu$ normalised to one. Four statements are offered, of which a proof of any one settles
+the prize: existence and smoothness on $\mathbb{R}^3$; the same with periodic data; or a
+counterexample to either --- a solution which is initially smooth and whose velocity becomes
+unbounded in finite time.
+
+The structure of the question is therefore a dichotomy. Either the solution is smooth for all time,
+or it is not, and the only stated way for it not to be is blowup. \emph{Tertium non datur.}
 
 \section{Why the dichotomy is empty}
 
@@ -350,222 +794,6 @@ tolerance.
 
 That is the reformulation this article proposes, and the next section states it.
 
-\section{What should replace it: wellposedness}
-
-The defect in the official formulation is not that it asks a hard question. It is that it asks about
-the wrong property. Smoothness is not what makes a solution concept physically meaningful.
-Wellposedness is.
-
-Hadamard's criterion has three parts: a solution exists, it is unique, and it depends continuously
-on the data. The third is the one that carries the physical content, because data are never exact.
-A problem whose solution is not stable under perturbation of the data is not a model of anything
-measurable, whatever its smoothness.
-
-\paragraph{Weak solutions exist.} Leray showed in 1934 that weak solutions of \eqref{eq:ns} exist
-globally in time \cite{leray}. What was left open was not existence but whether the weak solution
-concept is \emph{wellposed} --- whether it determines anything. That is the question worth asking,
-and it is not the question the Clay problem asks.
-
-\paragraph{Wellposedness is a property of outputs, not of solutions.} Here is the point on which the
-reformulation turns. For a turbulent solution, the pointwise velocity at a given place and time is
-not determined: perturb the data in the last decimal and the pointwise field is different
-everywhere within a short time. In that sense the solution is not wellposed and never will be.
-
-But nobody measures the pointwise velocity of a turbulent flow, and no engineering question depends
-on it. What is measured, and what is asked for, are \emph{mean-value outputs}: the drag on a body,
-the lift on a wing, a pressure averaged over a surface, a flux through a section. These are
-functionals of the solution, and the question of wellposedness must be asked of them:
-\begin{equation}\label{eq:output}
-M(u) = \int_Q u\cdot\psi\,dx\,dt
-\end{equation}
-for a given weight $\psi$. The claim is that $M(u)$ is stable for turbulent solutions even though
-$u$ is not.
-
-\paragraph{The mechanism, and why it inverts the classical expectation.} Stability of an output is
-governed by an associated dual, or adjoint, problem: linearise about the computed solution, run it
-backward from the output functional, and the growth of the dual solution measures how strongly a
-perturbation of the data or of the residual can move the output. What the dual problem shows is the
-reverse of what intuition suggests. Over a \emph{turbulent} velocity field --- oscillating rapidly in
-space and time --- the dual solution grows only modestly, because the linearised coefficients
-oscillate and their effect largely cancels. Over a \emph{smooth} field the dual solution grows,
-because there is nothing to cancel. Turbulence stabilises the outputs that smoothness destabilises.
-
-This is the sense in which the reformulated problem has an answer, and the answer is not the one the
-dichotomy anticipates. Smooth solutions are not wellposed. Turbulent solutions are wellposed in
-mean-value outputs. The physically meaningful solution concept is the one the official formulation
-treats as the failure case.
-
-\section{The reformulated problem}\label{sec:reform}
-
-We state the replacement plainly.
-
-\begin{quote}
-\textbf{Problem.} Fix smooth divergence-free initial data of size one, and let $\nu>0$ be arbitrary
-with no positive lower bound. Show that the weak solution is \emph{wellposed in mean-value outputs,
-uniformly in $\nu$}: that functionals of the form \eqref{eq:output} depend continuously on the data
-with quantitative error control, by bounds that do not degenerate as $\nu\to0$, even though the
-pointwise solution does not and its gradients diverge as $\nu^{-1/2}$. Equivalently: establish the
-second law of thermodynamics for fluids --- that a turbulent solution dissipates kinetic energy at a
-rate which does not vanish with the viscosity, and that this dissipation is what makes the outputs
-stable.
-\end{quote}
-
-Three features of this statement are worth marking. The \emph{data} are normalised rather than the
-viscosity, which is the coordinate choice that keeps $\nu$ as a parameter and so allows a limit to be
-taken at all. The bounds are required \emph{uniformly} in $\nu$, which is what makes it a question
-about turbulence rather than about one Reynolds number at a time. And it asks for stability rather
-than regularity, so it can be answered affirmatively for the solutions that occur instead of being
-answered vacuously for solutions that do not.
-
-\section{Possible problem formulation}\label{sec:possform}
-
-The statement of Section~\ref{sec:reform} asks for output wellposedness uniformly in $\nu$. It can
-be given a more elementary form, closer to what is actually provable and to what a computation
-delivers, by asking for the solutions themselves rather than for their functionals:
-
-\begin{quote}
-\textbf{Problem.} \emph{Existence and uniqueness of weak solutions to the incompressible
-Navier--Stokes equations with small viscosity, that is at high Reynolds number.}
-\emph{Given data:} a domain $\Omega\subset\mathbb{R}^3$, initial data $u_0$ on $\Omega$, a forcing
-$f$ on $\Omega\times(0,T)$, and boundary conditions on $\partial\Omega$. \emph{Asked:} that a weak
-solution exists, and that it is unique in the sense that matters --- uniqueness of the outputs
-computed from it, not of the pointwise velocity field.
-\end{quote}
-
-Three things distinguish this from the official formulation.
-
-\emph{The domain is given, not $\mathbb{R}^3$ with decay.} Real flows occupy bounded domains with
-boundaries, and the boundary is where drag and lift are produced. A formulation on all of
-$\mathbb{R}^3$ removes the only place the physically interesting outputs live.
-
-\emph{Small viscosity is part of the problem, not a parameter to be quantified away.} The official
-statement fixes $\nu$ and asks a question about $t\to\infty$; here $\nu\to0$ is the limit of
-interest and $T$ is finite. This is the difference between asking about one Reynolds number at a
-time and asking about turbulence.
-
-\emph{Weak solutions are asked for, and smoothness is not.} Existence of weak solutions has been
-available since Leray~\cite{leray}, and by the Onsager theorem~\cite{onsager,isett} non-smoothness
-is not a defect to be removed but the mechanism by which a turbulent flow dissipates energy at a
-rate independent of viscosity. Requiring smoothness excludes the solutions that occur. What is
-genuinely open is uniqueness --- and it is open in a specific way: pointwise uniqueness is false in
-practice, since two computations with different discretisations give different velocity fields, while
-output uniqueness holds to a few per cent. A formulation that asks for uniqueness of outputs is
-asking something both true and useful; one that asks for uniqueness of the field is asking for
-something false.
-
-\section{Possible solution}\label{sec:posssol}
-
-The corresponding notion of solution is then also elementary, and it is the one the AI construction
-of Section~\ref{sec:ai} uses in a different direction: \emph{a solution is a construction for
-specified data}.
-
-\begin{quote}
-\textbf{Solution.} \emph{Computed solutions, as a form of constructed solution, for a
-representative choice of specific data.} For a given $\Omega$, $u_0$, $f$ and boundary conditions,
-exhibit a computed weak solution together with quantitative control of the outputs: a residual that
-is small in the relevant norm, an error bound for each output obtained by duality from a computed
-solution of the adjoint equations, and a demonstration that the output converges under refinement
-while the velocity field does not.
-\end{quote}
-
-The two constructions are worth setting side by side, since they are formally the same kind of
-object and opposite in intent. The AI construction fixes the singular solution wanted and solves
-backwards for a force that produces it, the force being whatever the residual requires; the
-resulting flow exists for the formulation and nowhere else, and vanishes as $\nu\to0$
-(Section~\ref{app:nu}). A computed solution fixes the data that a flow actually has --- a body in a
-channel, a given inflow --- and solves forwards, the residual being what is left over and what is
-then used to bound the error in the output. Both are constructions, both are specific, and only the
-second is about a fluid.
-
-What makes the computed object a solution rather than an approximation is that the error in the
-output is controlled rather than hoped for. The adjoint equations turn the residual into a bound on
-$|M(\hat u)-M(\hat w)|$ for the functional of interest, with computed stability factors; where those
-factors are moderate the output is predictable and the mesh can be refined where it pays; where they
-are large the output is not predictable and no amount of refinement will make it so. That is a
-statement about which questions the equations answer, and it is available without smoothness, which
-is why it survives at the viscosities where smoothness does not.
-
-\section{In what sense this constitutes a solution}
-
-\paragraph{The solutions are constructed, not assumed.} A finite element method for \eqref{eq:ns}
-with residual-based stabilisation --- Galerkin least squares on a mesh, piecewise polynomial
-velocity and pressure, no turbulence model supplied by the user (\S6) --- produces solutions which
-become turbulent even when initiated from smooth potential data, and which stay bounded. The stabilisation
-supplies dissipation in proportion to the residual, so the dissipation is generated by the
-computation rather than prescribed by a model. In the vanishing-viscosity limit the same scheme is
-an Euler solver whose turbulent dissipation appears automatically. The non-smooth,
-non-singular third case is therefore not a conjecture: it is what the equations produce when they
-are solved.
-
-\paragraph{The residual behaves as the theory requires.} For such solutions the Navier--Stokes
-residual $R(U,P)$ is small in a weak norm and large in a strong one. Small weakly is what makes the
-computed field a solution; large strongly is the statement that it is not smooth. A method whose
-residual were small in both would be computing something that does not exist.
-
-\paragraph{The error is controlled by duality, not by asserted convergence.} An a posteriori error
-estimate of the form
-\begin{equation}\label{eq:apost}
-|M(u) - M(U)| \;\le\; \int_Q R(U,P)\cdot\varphi\,dx\,dt \;\le\; S\,\|R(U,P)\|_{-1},
-\end{equation}
-with $\varphi$ the dual solution and $S$ its stability factor, converts a computed solution into a
-statement with a bound attached. The stability factor is not assumed; it is computed by solving the
-dual problem. It is through \eqref{eq:apost} that the wellposedness claim becomes quantitative: $S$
-is moderate for mean-value outputs over turbulent solutions and large for pointwise outputs and for
-smooth solutions, which is the distinction of \S3 expressed as a number.
-
-\paragraph{Computation as proof.} That an answer rests on computation is not a defect peculiar to
-this problem. The four-colour theorem was settled the same way, and the settlement was accepted
-because the computation was reproducible and its error controlled. The same standard applies here,
-and \eqref{eq:apost} is what meets it: the claim is not that a particular simulation looked
-turbulent, but that the output of the computation comes with a bound which can be evaluated, and
-which is small.
-
-\section{The computational record}
-
-The argument of \S5 is not offered as a programme. The method, the error control and the
-computations are set out in \emph{Computational Turbulent Incompressible Flow} \cite{cfd}, and it
-is worth stating what that book establishes, because the reformulation of \S4 asks for exactly the
-things it supplies.
-
-\paragraph{G2: the method is Galerkin, and the turbulence model is the residual.} General Galerkin,
-or G2, is a stabilised finite element method --- continuous piecewise linear in space and time,
-$\mathrm{cG}(1)\mathrm{cG}(1)$, with least-squares control of the residual. The stabilisation is not
-a subgrid model: no eddy viscosity is prescribed, no wall function, no closure, no constant fitted
-to measurement. The dissipation is whatever the residual makes it, which means it is generated by
-the flow being computed rather than supplied by the person computing it. This matters for the
-present argument specifically. A computation carrying a fitted turbulence model could not be used to
-say what Navier--Stokes contains, because the turbulence would have been put in by hand. G2 has
-nothing put in by hand, so what comes out is a property of \eqref{eq:ns}.
-
-\paragraph{The dual problem is solved, and the stability factor is a computed number.} The estimate
-\eqref{eq:apost} is the book's organising device. For each output of interest the dual problem is
-linearised about the computed solution, solved backwards, and its stability factor evaluated; the
-mesh is then refined where the product of residual and dual weight is largest. The consequence is
-that the error in the output is not estimated by comparing successive meshes and hoping, but bounded
-by a quantity the computation itself produces. Adaptivity and error control are the same mechanism.
-
-\paragraph{Mean-value outputs converge; the flow field does not.} The book's central computational
-finding is the one \S3 needs. Mean drag and mean lift for turbulent flow past a bluff body come out
-to a tolerance of a few per cent on meshes of a few hundred thousand points --- small enough to run
-on a personal computer, and orders of magnitude coarser than a direct simulation resolving the
-Kolmogorov scale would require. The pointwise velocity field on those meshes is not converged and
-does not become so. Both facts hold simultaneously, and together they are the wellposedness claim
-made quantitative: the outputs are stable because the stability factor for them is moderate, and the
-pointwise field is not because its stability factor is not.
-
-\paragraph{Turbulent Euler solutions and d'Alembert's paradox.} Taking $\nu\to0$ in G2 gives a
-solver for the Euler equations whose dissipation does not vanish with the viscosity, which is the
-second law of \S4 in computational form. What such solutions produce is not potential flow. A bluff
-body in this limit shows potential flow modified by a three-dimensional rotational separation, and
-that separation carries drag --- which is the resolution of d'Alembert's paradox offered in
-\cite{dalembert}: the paradox arises from taking the smooth potential solution to be the
-vanishing-viscosity limit, and the correct limit is turbulent. The same analysis applied to a wing
-gives lift and drag without a circulation condition imposed by hand \cite{flight}.
-
-This is the concrete content behind the claim of \S2 that smooth solutions are unstable. It is not
-an assertion about what would happen to a perturbed smooth solution; it is a record of what happens
-when the equations are solved from smooth data without a model to keep them smooth.
-
 \section{What the answer says about the original question}
 
 To the official question --- do smooth data give solutions that remain smooth for all time --- the
@@ -585,221 +813,56 @@ computable.
 
 \appendix
 
-\section{The viscosity test applied to the announced construction}\label{app:nu}
 
-The test below is general: it applies to any construction that exhibits a singularity for
-Navier--Stokes at prescribed forcing, and in particular to the one announced
-in~\cite{openai} and described in Section~\ref{sec:ai}. Its conclusion is that the singular point
-solution \emph{vanishes} in the limit that fluid mechanics occupies. We state it for a construction
-at viscosity one and then follow it down in $\nu$, which is all the scaling allows.
+\section{Conclusion: a formulation without content, and a solution without a subject}
 
+Put the two halves together.
 
-\paragraph{The viscosity test, and what it does to the constants.} The objection above can be made
-quantitative, and doing so is the test any such construction should be required to pass. Navier--Stokes
-rescales: if $v$ solves the equations at viscosity one with forcing $g$, then
-\begin{equation}\label{eq:rescale}
-u(x,t) = a\,v(bx,ct),\qquad a = \nu b,\quad c = ab,\quad f = a^2 b\,g,
-\end{equation}
-solves them at viscosity $\nu$. The map is onto: \emph{one} unit-viscosity blowup generates the
-entire family. A theorem asserting blowup ``for every $\nu>0$'' is therefore not a family of results.
-It is one result, rescaled, and it contains exactly what its $\nu=1$ member contains.
+The official statement offers four alternatives, and its (A) and (B) are posed with $f\equiv0$ and
+quantified over \emph{all} admissible data, while its (C) and (D) ask for the \emph{existence} of
+data \emph{together with an admissible forcing} for which smoothness fails. So (C) is not
+$\neg$(A), and the gap between them is exactly the force. A proof of (C) exhibits something that can
+be done \emph{to} a fluid; (A) asks whether a fluid does it to itself. The announced
+solution~\cite{openai} is a proof of the first kind, and its force is not a mechanism but a residual
+solved backwards (Section~\ref{sec:ai}). \emph{Even if it is formally correct, it does not settle} (A).
+The question everyone means by the Navier--Stokes problem is where it was on 7 September 2026.
 
-The content is in what \eqref{eq:rescale} does to the constants, and there are only two ways to spend
-the freedom. Hold the solution at size one, $a=1$: then $b=c=\nu^{-1}$ and the forcing amplitude is
-$a^2b = \nu^{-1}$, so the force required \emph{blows up} as the viscosity falls and leaves any fixed
-admissible class --- including the one Fefferman specifies, which fixes the constants $C_{\alpha K}$
-once and for all. Or hold the forcing in a fixed class, $a^2b=1$: then $b=\nu^{-2/3}$ and
-\begin{equation}\label{eq:shrink}
-\text{amplitude } a = \nu^{1/3}\to 0,\qquad
-\text{length } b^{-1} = \nu^{2/3}\to 0,\qquad
-\text{time } c^{-1} = \nu^{1/3}\to 0 .
-\end{equation}
-The singularity shrinks to nothing: at $\nu=10^{-6}$ the velocity reaches $10^{-2}$ on a scale of
-$10^{-4}$ before blowing up. Neither branch survives the limit. One exits the admissible data, the
-other converges to the zero solution.
+And it does not settle anything about fluids either, for the reason of
+Section~\ref{app:nu}: held to an admissible forcing class the singular point solution vanishes as
+$\nu\to0$, amplitude like $\nu^{1/3}$ on support like $\nu^{2/3}$, so the small-viscosity limit of
+the family is $u\equiv0$; held at fixed amplitude the force diverges like $\nu^{-1}$ and leaves the
+class. A singularity that exists at every fixed viscosity and disappears in the limit where fluids
+become turbulent is a property of the admissible class, not of the flow.
 
-This is the sense in which the announced solution~\cite{openai} settles the official question and
-leaves the physical one untouched. Its force is built from the residual to match a chosen singular
-solution~(Section~\ref{sec:ai}); the scaling~\eqref{eq:rescale} then fixes what happens to that
-solution as the viscosity falls, and there is no third option. Hold the force admissible and the
-singular point solution vanishes --- amplitude $\nu^{1/3}$, support $\nu^{2/3}$, lifetime
-$\nu^{1/3}$, all tending to zero, so the family converges to $u\equiv0$ and the singularity is lost
-in the limit. Hold the amplitude and the force diverges like $\nu^{-1}$ and leaves the class in which
-the theorem was proved. A singularity that exists at every fixed $\nu$ and disappears as
-$\nu\to0$ is not a feature of high-Reynolds-number flow; it is a feature of the formulation, which
-admits forces no mechanism supplies. The independent exclusion of the mechanism under analytic
-forcing~\cite{civ} points the same way from a different direction.
+So the verdict is symmetrical, and it is not a complaint about the proof. The formulation admits a
+solution that decides none of its own alternatives and no physical question: a \emph{meaningless
+formulation}. The solution answers it exactly, by constructing a force to order: a \emph{solution
+without a meaningful subject}. Neither is at fault given the other; together they close a problem
+that was not about fluids.
 
-Set this beside the flow the problem is advertised as being about. Turbulence at small viscosity has
-\emph{bounded} velocity at every scale and gradients growing like $\nu^{-1/2}$, realised by
-\eqref{eq:delta} on structures of size $\nu^{3/4}$ across which the velocity varies by $\nu^{1/4}$
---- a H\"older-$1/3$ field, amplitude fixed, structure refining. The constructed family has
-amplitude vanishing like $\nu^{1/3}$, which is the opposite behaviour, or else forcing diverging like
-$\nu^{-1}$, which is not a fluid at all.
-
-\paragraph{Normalising the blow-up time.} The two branches collapse into one if the blow-up time
-is held fixed, which is the natural normalisation: a construction asserting blow-up at $t=1$ for
-every $\nu>0$ is asserting that the time variable is \emph{not} rescaled, $c=1$. Then
-$c=ab=\nu b^2=1$ forces $b=\nu^{-1/2}$, and every constant in the problem is determined at once:
-\begin{equation}\label{eq:tone}
-\text{amplitude } a=\nu^{1/2},\qquad
-\text{length } b^{-1}=\nu^{1/2},\qquad
-\text{forcing } a^2b=\nu^{1/2},\qquad
-\text{gradient } ab=1 .
-\end{equation}
-Velocity, length and forcing all vanish like $\sqrt\nu$ together. At $\nu=10^{-8}$ the flow reaches
-an amplitude of $10^{-4}$ on a scale of $10^{-4}$ under a force of $10^{-4}$, and then becomes
-unbounded. The family converges to the zero solution driven by zero force, and the blow-up it
-exhibits is one fixed object photographed at ever smaller magnification.
-
-Note what \eqref{eq:tone} leaves invariant: the velocity gradient, $ab=1$, is the same at every
-viscosity. That is the precise sense in which the construction is not about turbulence. Turbulent
-flow at small $\nu$ has velocity of order one and gradients growing like $\nu^{-1/2}$ --- by
-\eqref{eq:grad} the amplitude is held and the gradients diverge. Here the gradients are held and the
-amplitude collapses. Nor do the lengths agree: the finest turbulent scale is $\nu^{3/4}$ by
-\eqref{eq:delta} and this family's active length is $\nu^{1/2}$, so they agree in nothing at all.
-
-So the test is simple and should be routine: \emph{report the constants as functions of $\nu$}. A
-counterexample whose forcing constant diverges, or whose solution amplitude vanishes, in the limit
-where the physics lives has answered a question about a fixed positive viscosity and not about the
-equations of fluid mechanics. That the official formulation normalises $\nu$ to one and never asks
-is precisely the defect this article is about: the normalisation is harmless --- $\nu=1$ with large
-data is small $\nu$ with unit data --- but only if the quantifier is restored and the bounds are
-demanded uniformly in $\nu$, which is what \S\ref{sec:reform} does.
-
-
-\paragraph{The two limits do not commute, and the blow-up lives at $\mathrm{Re}=1$.} Write the
-family out. With blow-up normalised to $t=1$, \eqref{eq:tone} gives
-$u_\nu(x,t) = \nu^{1/2}\,v\!\left(x\nu^{-1/2},\,t\right)$ with $v$ the unit-viscosity solution. Then
-\begin{equation}\label{eq:noncommute}
-|u_\nu(t)| \sim \Big(\frac{\nu}{1-t}\Big)^{1/2},
-\qquad\text{so}\qquad
-\lim_{t\to1}|u_\nu(t)| = \infty \ \ (\nu>0\text{ fixed}),
-\qquad
-\lim_{\nu\to0}u_\nu(t) = 0 \ \ (t<1\text{ fixed}).
-\end{equation}
-The two factors pull against each other, which is the whole of the matter: $\nu^{1/2}$ drives the
-amplitude down and $(1-t)^{-1/2}$ drives it up, and neither limit can be taken without declaring
-what the other is doing.
-Infinity taken one way, the zero solution taken the other. The joint limit therefore has no value:
-it depends on the path. Taking the self-similar rate $|v|\sim(1-t)^{-1/2}$, the one consistent with
-the equation's own scaling and with Leray's ansatz, the amplitude and the active length are
-\begin{equation}\label{eq:path}
-|u_\nu(t)| \sim \Big(\frac{\nu}{1-t}\Big)^{1/2},
-\qquad
-\ell_\nu(t) \sim \nu^{1/2}(1-t)^{1/2},
-\end{equation}
-so the velocity is of order one exactly along the critical path $1-t\sim\nu$, is negligible above it
-and unbounded below it. A statement about such a family is a statement about which path was chosen,
-and the Clay formulation --- which fixes $\nu=1$ and never mentions the limit --- does not require
-the choice to be declared.
-
-What \eqref{eq:path} settles is the physical character of the object. Multiplying,
-\begin{equation}\label{eq:re1}
-\mathrm{Re}_{\mathrm{local}} = \frac{|u_\nu|\,\ell_\nu}{\nu}
-= \frac{\nu^{1/2}(1-t)^{-1/2}\cdot\nu^{1/2}(1-t)^{1/2}}{\nu} = 1,
-\end{equation}
-identically in $t$ and in $\nu$. The constructed singularity sits permanently at the viscous scale.
-It does not pass through the inertial range on its way to blowing up; it never enters it. Whatever
-such a construction establishes about the equations, it is not about the regime the problem is
-advertised as concerning, because turbulence is the statement that $\mathrm{Re}\gg1$ over a wide
-range of scales, and \eqref{eq:re1} says this flow is at $\mathrm{Re}=1$ at every instant of its
-life.
-
-\paragraph{What the flow looks like on the critical path.} Set $1-t=\nu$ in \eqref{eq:path} and the
-picture is explicit. The velocity is of order one --- the same as a turbulent flow --- but it sits on
-a length $\ell\sim\nu$ with gradients $|\grad u|\sim\nu^{-1}$. Compare a turbulent flow at the same
-amplitude: by \eqref{eq:delta} its finest structures are $\nu^{3/4}$ across, the velocity varies by
-$\nu^{1/4}$ over them, and the gradient is the ratio $\nu^{-1/2}$. Since
-\begin{equation}\label{eq:below}
-\nu \;\ll\; \nu^{3/4} \qquad (\nu\to0),
-\end{equation}
-the constructed structure is finer than the finest turbulent one by a factor $\nu^{-1/4}$, and it
-carries an $O(1)$ velocity change where turbulence carries only $\nu^{1/4}$ across its smallest
-scale. At $\nu=10^{-6}$ the finest turbulent structure is $3\times10^{-5}$ wide with a velocity
-variation of $3\times10^{-2}$, while this object is $10^{-6}$ --- thirty times below the
-smallest scale the flow has --- with gradients a thousand times larger than turbulent ones. And the
-critical path is only where the amplitude first reaches order one: every later instant, $1-t<\nu$,
-is finer still. The blow-up therefore takes place \emph{entirely} beneath the dissipation scale.
-
-Two qualifications are owed here, because the comparison with $\eta$ is looser than it looks.
-Kolmogorov's scale is $\eta=(\nu^3/\epsilon)^{1/4}$ and presupposes a cascade at a dissipation rate
-$\epsilon$ of order one. This object has no such cascade, and its dissipation is not of order one:
-the density $\nu|\grad u|^2\sim\nu^{-1}$ diverges, but it is supported on a volume
-$\ell^3\sim\nu^3$, so the total is
-\begin{equation}\label{eq:diss}
-D_\nu \;\sim\; \frac1\nu\cdot\nu^3 \;=\; \nu^2 \;\longrightarrow\; 0,
-\qquad\text{carried on an energy}\qquad
-E_\nu \sim |u_\nu|^2\ell_\nu^3 \sim \nu^3 \longrightarrow 0 .
-\end{equation}
-So \eqref{eq:below} is a comparison with a \emph{different} flow --- turbulence at the same velocity
-in a domain of size one --- not a statement that this object lies beneath its own dissipation scale.
-Read strictly, $\eta$ does not apply to it at all.
-
-What \eqref{eq:diss} gives instead is stronger and needs no cascade. Anomalous dissipation is the
-defining property of turbulence: $\epsilon$ stays bounded away from zero as $\nu\to0$, which is the
-content of Onsager's conjecture and of \cite{cet,isett}. This family does the opposite in both
-quantities at once --- dissipating $\nu^2$ while carrying energy $\nu^3$, both vanishing. In the
-limit the blow-up involves no energy and dissipates none, and $D_\nu/E_\nu\sim\nu^{-1}$ says it
-sheds what little it has in a time of order $\nu$, the same vanishing window found above. It is
-also, by \eqref{eq:re1}, a strictly viscous event with $\mathrm{Re}=1$ throughout, where turbulence
-is $\mathrm{Re}\gg1$ across a range of scales.
-
-\paragraph{It is a shock, concentrated at a point.} The local structure on the critical path is
-familiar: an $O(1)$ velocity change across a thickness $\nu$ with gradient $\nu^{-1}$ is the viscous
-shock profile. For Burgers, a jump $U$ relaxes over $\delta=\nu/U$ with gradient $U^2/\nu$, and its
-dissipation per unit area is
-\begin{equation}\label{eq:shockdiss}
-\int \nu\,u_x^2\,dx \;\sim\; \nu\Big(\frac{U}{\delta}\Big)^2\delta \;=\; \frac{\nu U^2}{\delta}
-\;=\; U^3,
-\end{equation}
-independent of $\nu$ --- the classical anomalous dissipation of Burgers turbulence, and the
-one-dimensional model of exactly the mechanism Onsager's conjecture concerns.
-
-So the constructed object has the profile of a shock. What it does not have is a shock's extent. A
-shock is a \emph{surface}: thickness $\nu$ in one direction and order one in the other two, hence
-volume $\nu$ and, by \eqref{eq:shockdiss}, dissipation of order one. The blow-up is $\nu$ in all
-three directions, volume $\nu^3$, and its dissipation is $\nu^2$ as in \eqref{eq:diss}. The same
-local profile spread over a surface dissipates at a rate independent of viscosity; concentrated at a
-point it dissipates nothing in the limit.
-
-That is the sharpest statement of what the test establishes. The construction is not exotic --- it
-is a shock, the most ordinary singular structure a fluid has, and one the physical solutions of
-\S\ref{sec:reform} are full of. It is made to blow up by being denied the dimensionality that lets a
-shock carry energy, and it becomes a counterexample only because the formulation asks about the
-pointwise velocity rather than about anything the flow does.
-
-
-\paragraph{What actually diverges, and what does not.} One more reading of \eqref{eq:path} settles
-the character of the limit. On the critical path the gradient does diverge,
-\begin{equation}\label{eq:gradpath}
-|\grad u_\nu(t)| \;=\; \frac{|u_\nu|}{\ell_\nu}
-\;\sim\; \frac{\nu^{1/2}(1-t)^{-1/2}}{\nu^{1/2}(1-t)^{1/2}} \;=\; \frac{1}{1-t},
-\end{equation}
-which does not involve $\nu$ at all. The gradient divergence is purely temporal: at every viscosity
-the same gradient is reached at the same time-to-blow-up, which is the sharpest form of the remark
-that the family is one solution rescaled. On the critical path $1-t\sim\nu$ it takes the value
-$\nu^{-1}$ quoted above, while the velocity $|u_\nu|\sim1$ stays bounded.
-But Fefferman's (C) and (D) ask for the \emph{velocity} to become unbounded, and by
-\eqref{eq:gradpath} it does not. At $1-t\sim\nu$ the family is a bounded flow with diverging
-gradients --- which is neither horn of the dichotomy. It is the third category, the one \S2 argued
-has no name in the formulation and is where every flow of interest actually lives. The construction
-and turbulence differ there only in exponent, $\nu^{-1}$ against the $\nu^{-1/2}$ of
-\eqref{eq:grad}.
-
-The velocity becomes unbounded only afterwards. Since $|u_\nu|>M$ requires $1-t<\nu/M^2$, the
-genuinely velocity-singular phase occupies a window of duration of order $\nu$, sitting entirely
-below the dissipation scale by \eqref{eq:below}, and shrinking to nothing as $\nu\to0$. So the
-family's behaviour in the limit where fluids live is: gradients diverging, velocity bounded,
-singular phase of vanishing duration at vanishing scale.
-
-That is the conclusion of the test, and it is not a technicality. A construction offered as a
-counterexample to (A) converges, in the physical limit, to an object that is not a counterexample to
-(A) at all --- it is an instance of the category the formulation declines to name. The dichotomy is
-not merely empty about turbulence; it is empty about its own counterexamples once they are asked
-what they do as the viscosity falls.
+What is about fluids is the formulation of Section~\ref{sec:possform} and the solution of
+Section~\ref{sec:posssol}: weak solutions at high Reynolds number, for a domain, initial data,
+forcing and boundary conditions that a flow actually has; uniqueness asked of mean-value outputs,
+which is true, rather than of the velocity field, which is false; and the answer given as a computed
+solution with the error in each output bounded by duality. That problem has a solution, the solution
+is turbulence, and the outputs are stable to a few per cent on meshes where the velocity field is
+not converged and never will be.
 
 \begin{thebibliography}{9}
+\bibitem{hjv} J.~Hoffman, J.~Jansson and R.~Vilela de Abreu, \emph{Adaptive modeling of turbulent
+flow with residual based turbulent kinetic energy dissipation}, Comput.\ Methods Appl.\ Mech.\
+Engrg.\ \textbf{200} (2011) 2758--2767.
+
+\bibitem{hjja} J.~Hoffman, J.~Jansson, N.~Jansson and R.~Vilela de Abreu, \emph{Towards a
+parameter-free method for high Reynolds number turbulent flow simulation based on adaptive finite
+element approximation}, Comput.\ Methods Appl.\ Mech.\ Engrg.\ \textbf{288} (2015) 60--74.
+
+\bibitem{dlrf11} J.~Jansson, J.~Hoffman, N.~Jansson and R.~Vilela de Abreu, \emph{Time-resolved
+adaptive FEM simulation of the DLR-F11 aircraft model at high Reynolds number}, 2014.
+
+\bibitem{newapproach} J.~Hoffman and C.~Johnson, \emph{A new approach to computational turbulence
+modeling}, Comput.\ Methods Appl.\ Mech.\ Engrg.\ \textbf{195} (2006) 2865--2880.
+
 \bibitem{openai} OpenAI, \emph{Finite time blowup for Navier--Stokes}, preprint, 2026.
 \newblock \url{https://cdn.openai.com/pdf/32d9f210-8b73-45e0-91bc-82a30aef8a9a/navier-stokes.pdf}
 
