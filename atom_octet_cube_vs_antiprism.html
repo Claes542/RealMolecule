@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="results" style="position:fixed;top:10px;right:10px;background:#000e;border:1px solid #444;padding:12px;font-size:13px;min-width:520px"></div>
+<script>
+// CUBE vs SQUARE ANTIPRISM for the closed octet, same composition throughout.
+//
+// For eight POINT charges on a sphere the square antiprism is the proven Coulomb minimiser
+// (arXiv:2609.22077), lower than the cube by 0.33%. The paper claims the octet is two dual
+// tetrahedra, i.e. a cube. The question this asks: do extended non-overlapping unit-charge
+// domains agree with the point-charge result, or does non-overlap change the ordering?
+//
+// 8 one-electron domains on a +8 kernel, identical r_c, differing ONLY in the angular partition:
+//   splitType 'cube'      -- tetrahedron + its inversion (verified equal 8-way partition)
+//   splitType 'antiprism' -- two squares twisted 45 deg at the optimal half-height 0.5605
+// Equal step count, and per-domain cell counts reported so a dead domain cannot pass as a result.
+var ci = Math.round(160/2), Zp=[0,0,1];
+var jobs = [
+  { name:'cube_rc0.3',      tag:'cube (tetra + inversion)', rc:0.3, type:'cube' },
+  { name:'antiprism_rc0.3', tag:'square antiprism',         rc:0.3, type:'antiprism' }
+];
+var idx=0, E={}, occ={};
+(function(){ var v=sessionStorage.getItem('ap'); if(v){var st=JSON.parse(v); idx=st.i; E=st.E; occ=st.o; sessionStorage.removeItem('ap');} })();
+if (idx < jobs.length) {
+  var j=jobs[idx], n=8;
+  window.USER_NN=160;
+  window.USER_ATOMS      = Array.from({length:n},function(){return {i:ci,j:ci,k:ci,Z:1,el:'Ne'};});
+  window.USER_Z          = Array.from({length:n},function(){return 1;});
+  window.USER_Z_NUC      = Array.from({length:n},function(){return 1;});
+  window.USER_RC         = Array.from({length:n},function(){return j.rc;});
+  window.USER_SPLIT_TYPE = Array.from({length:n},function(){return j.type;});
+  window.USER_SPLIT_IDX  = [0,1,2,3,4,5,6,7];
+  window.USER_SPLIT_AXIS = Array.from({length:n},function(){return Zp;});
+  window.USER_SPLIT_ROT  = Array.from({length:n},function(){return 0;});
+  window.USER_SCREEN=10; window.USER_STEPS=20000;
+  window.USER_DYNAMICS=false; window.NO_AUTO_DYNAMICS=true; window.CONVERGENCE_THRESHOLD=0.001;
+  console.log('computing '+j.name);
+}
+function draw(){
+  var h='<b style="color:#0cf">Closed octet in 3D: cube or square antiprism?</b><br>'
+       +'<span style="color:#888;font-size:11px">160&sup3;, 10 au, 8 one-electron domains, +8 kernel, 20k steps</span><br><br>'
+       +'<table style="border-collapse:collapse"><tr style="color:#0cf"><th style="padding:3px 8px">job</th><th>arrangement</th><th>r_c</th><th>E (Ha)</th><th>live</th></tr>';
+  jobs.forEach(function(j){
+    var e=E[j.name], o=occ[j.name], cur=(jobs[idx]&&jobs[idx].name===j.name);
+    var live=o?(o.filter(function(x){return x>0;}).length+'/8'):'&mdash;';
+    if(o&&o.filter(function(x){return x>0;}).length<8) live='<span style="color:#f55">'+live+' DEAD</span>';
+    h+='<tr'+(cur&&e===undefined?' style="color:#ff0"':(e===undefined?' style="color:#444"':''))+'><td style="padding:3px 8px">'+j.name+'</td><td>'+j.tag+'</td><td>'+j.rc+'</td><td>'+(e!==undefined?e.toFixed(4):(cur?'running':'pending'))+'</td><td>'+live+'</td></tr>';
+  });
+  h+='</table><br>';
+  [['rc0.3','0.3'],['rc0','0']].forEach(function(p){
+    var a=E['cube_'+p[0]], b=E['antiprism_'+p[0]];
+    if(a!==undefined&&b!==undefined){
+      var d=a-b;
+      h+='r_c='+p[1]+' : cube &minus; antiprism = '+d.toFixed(4)+' Ha = '+(d*627.509).toFixed(1)+' kcal/mol &rarr; <b>'
+        +(d<0?'CUBE lower':'ANTIPRISM lower')+'</b>'
+        +(Math.abs(d*627.509)<10?' <span style="color:#888">(&lt;10 kcal/mol: no information)</span>':'')+'<br>';
+    }
+  });
+  h+='<br><span style="color:#888;font-size:11px">point charges: antiprism lower by 0.33% (proven minimiser)</span>';
+  document.getElementById('results').innerHTML=h;
+}
+draw();
+window.onSweepDone=function(Emin){
+  var j=jobs[idx]; E[j.name]=Emin;
+  var fin=function(){
+    draw();
+    try{ localStorage.setItem('octet_ap',JSON.stringify({E:E,occ:occ})); }
+    catch(e){ document.title='SAVE FAILED'; return; }
+    idx++;
+    if(idx<jobs.length){ sessionStorage.setItem('ap',JSON.stringify({i:idx,E:E,o:occ})); setTimeout(function(){location.reload();},500); }
+    else document.title='OCTET AP DONE';
+  };
+  if(typeof window.readDomainCentroids==='function'){
+    window.readDomainCentroids().then(function(dc){ occ[j.name]=dc.map(function(x){return x.n;}); fin(); })
+      .catch(function(){ occ[j.name]=null; fin(); });
+  } else { occ[j.name]=null; fin(); }
+};
+var s=document.createElement('script'); s.src='molecule.js?t='+Date.now();
+s.onload=function(){ var p=document.createElement('script');
+  p.src='https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js'; document.body.appendChild(p); };
+document.body.appendChild(s);
+</script></body></html>

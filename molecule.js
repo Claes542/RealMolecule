@@ -529,6 +529,42 @@ fn inSplitAtom(dx: f32, dy: f32, dz: f32, r: f32, n: u32) -> bool {
     }
     return best8 == atoms[n].splitIdx;
   }
+  if (st == 8u) {
+    // SQUARE ANTIPRISM: eight lobes as two squares of four in parallel planes, the lower twisted
+    // 45 deg against the upper, at the half-height h = 0.5605 that minimises the Coulomb energy of
+    // eight points on a sphere. This is the PROVEN minimiser for N = 8 (arXiv:2609.22077), lower
+    // than the cube (splitType 7) by 0.33% for point charges. Added to ask whether extended
+    // non-overlapping domains agree with the point-charge result or not: the octet of
+    // Section sec:packing is claimed as two dual tetrahedra, i.e. a cube, and the cube is NOT the
+    // point-charge minimum. idx 0..3 are the upper square, idx 4..7 the lower.
+    var e1x: f32; var e1y: f32; var e1z: f32;
+    if (abs(a2) < 0.9) { e1x = a1; e1y = -a0; e1z = 0.0; } else { e1x = 0.0; e1y = a2; e1z = -a1; }
+    let e1L = max(sqrt(e1x*e1x+e1y*e1y+e1z*e1z), 1e-12);
+    e1x = e1x/e1L; e1y = e1y/e1L; e1z = e1z/e1L;
+    let e2x = a1*e1z - a2*e1y; let e2y = a2*e1x - a0*e1z; let e2z = a0*e1y - a1*e1x;
+    let ux = dx/r; let uy = dy/r; let uz = dz/r;
+    let hh: f32 = 0.5605;                       // optimal half-height
+    let rr: f32 = 0.82815;                      // sqrt(1 - hh*hh)
+    var bestA: u32 = 0u;
+    var bestDotA: f32 = -2.0;
+    for (var kq: u32 = 0u; kq < 4u; kq = kq + 1u) {
+      let ph = atoms[n].splitRot + 1.57079633 * f32(kq);
+      // upper square, +h
+      let ax1 = hh*a0 + rr*(cos(ph)*e1x + sin(ph)*e2x);
+      let ay1 = hh*a1 + rr*(cos(ph)*e1y + sin(ph)*e2y);
+      let az1 = hh*a2 + rr*(cos(ph)*e1z + sin(ph)*e2z);
+      let d1 = ux*ax1 + uy*ay1 + uz*az1;
+      if (d1 > bestDotA) { bestDotA = d1; bestA = kq; }
+      // lower square, -h, twisted by 45 deg
+      let pl = ph + 0.78539816;
+      let ax2 = -hh*a0 + rr*(cos(pl)*e1x + sin(pl)*e2x);
+      let ay2 = -hh*a1 + rr*(cos(pl)*e1y + sin(pl)*e2y);
+      let az2 = -hh*a2 + rr*(cos(pl)*e1z + sin(pl)*e2z);
+      let d2 = ux*ax2 + uy*ay2 + uz*az2;
+      if (d2 > bestDotA) { bestDotA = d2; bestA = kq + 4u; }
+    }
+    return bestA == atoms[n].splitIdx;
+  }
   return true;
 }
 `;
@@ -2494,7 +2530,7 @@ function fillAtomBuf() {
     af[off + 6] = perZeff ? perZeff[n] || Z[n] : (window.INIT_ZEFF || Z[n]);
     af[off + 7] = perRcut ? perRcut[n] || 1e6 : (window.INIT_RCUT || 1e6);
     // Shell split (optional): splitType 0/1=sphere, 2=hemi, 3=third; sector idx; axis; rot
-    const stCode = { sphere: 0, hemi: 2, third: 3, tetra: 4, cube: 7 };
+    const stCode = { sphere: 0, hemi: 2, third: 3, tetra: 4, cube: 7, antiprism: 8 };
     const stv = SPLIT_TYPE[n];
     au[off + 8] = (typeof stv === 'string') ? (stCode[stv] || 0) : (stv || 0);
     au[off + 9] = SPLIT_IDX[n] || 0;
