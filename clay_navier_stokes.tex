@@ -75,6 +75,19 @@ one and on whether the answer is right, and the two verdicts are independent. A 
 reformulation and dispute the solution, or accept the solution and think the official problem was fine
 as it stood. Both are available, which is more than either half offered alone would allow.
 
+Nor is proposing the two together a departure from mathematical practice. It is mathematical practice.
+A theorem and its proof are not found in the order in which they are printed: they are constructed in
+parallel, and the statement is adjusted as the argument develops until the two fit. Hypotheses are
+added because the proof needs them, conclusions are weakened because the proof cannot reach them, and
+what appears in the journal is the pair that closed. Nobody regards this as illegitimate, and it is not
+--- but it means that a formulation \emph{fixed in advance of any proof}, by a third party, and then
+left standing for a quarter of a century, is an unusual object, and one should not be surprised if what
+eventually satisfies it is an argument built to fit rather than a discovery about fluids. The announced
+solution is the theorem--proof coupling working exactly as it always does, with the difference that the
+theorem was not the provers' to adjust, so the fitting had to be done entirely on the side of the
+construction --- in this case by building the force (Section~\ref{sec:ai}). We adjust the statement
+instead, and say so.
+
 We take them in that order, and compare with the official formulation and the AI solution afterwards
 --- the reformulation and its solution first, because a formulation is best judged against one that
 has a solution.
@@ -235,14 +248,42 @@ M(u) = \int_Q u\cdot\psi\,dx\,dt
 for a given weight $\psi$. The claim is that $M(u)$ is stable for turbulent solutions even though
 $u$ is not.
 
-\paragraph{The mechanism, and why it inverts the classical expectation.} Stability of an output is
-governed by an associated dual, or adjoint, problem: linearise about the computed solution, run it
-backward from the output functional, and the growth of the dual solution measures how strongly a
-perturbation of the data or of the residual can move the output. What the dual problem shows is the
-reverse of what intuition suggests. Over a \emph{turbulent} velocity field --- oscillating rapidly in
-space and time --- the dual solution grows only modestly, because the linearised coefficients
-oscillate and their effect largely cancels. Over a \emph{smooth} field the dual solution grows,
-because there is nothing to cancel. Turbulence stabilises the outputs that smoothness destabilises.
+\paragraph{The dual solution is a weight function connecting residual to output.} Output quality is
+not assessed by inspection; it is computed. The error in an output is, to leading order, the residual
+of the computed solution tested against a \emph{dual weight function} $\varphi$,
+\begin{equation}\label{eq:dualrep}
+M(\hat u) - M(\hat U) \;\approx\; \int_0^T\!\!\int_\Omega R(\hat U)\cdot\varphi \,dx\,dt ,
+\end{equation}
+so $\varphi$ is precisely what converts a residual --- which one has, and can measure --- into an
+error in the quantity one cares about. Everything in the assessment of an output is carried by
+$\varphi$: where it is large the residual there matters and the mesh must be refined; where it is
+small the residual is harmless however large; and its size overall is the stability factor that says
+whether the output is determined at all.
+
+And $\varphi$ is obtained by solving a definite problem: the Navier--Stokes equations linearised about
+the computed solution, run \emph{backward in time} from the output functional as data at $t=T$. This
+is the same object, and the same computation, as the backward pass in the training of a neural network
+--- the adjoint of a forward evolution, propagating sensitivity from an output to everything that fed
+it. Fluid mechanics and machine learning are doing the same linear algebra in opposite directions
+through the same trajectory.
+
+\paragraph{Why the backward problem is stable for a turbulent solution.} That the dual problem can be
+solved at all is the crux, and it is where intuition points the wrong way. A linearisation about a
+chaotic trajectory has exponentially growing modes; run backward, one expects $\varphi$ to blow up and
+the whole assessment to be vacuous. It does not, and the reason is the oscillation.
+
+A turbulent solution does not grow exponentially; it \emph{oscillates}, and it oscillates precisely
+\emph{because} it is the result of exponential growth followed by exponential decay --- a structure is
+stretched and amplified, becomes unstable, breaks down and dissipates, and the next takes its place.
+The linearised coefficients along such a trajectory therefore change sign and structure repeatedly,
+and the growth the dual solution accumulates over one interval is largely undone over the next. What
+would be a monotone exponential over a smooth field becomes, over a turbulent one, a product of
+factors alternately greater and less than one, and $\varphi$ grows only modestly. Over a
+\emph{smooth} field there is nothing to cancel, and it grows.
+
+So turbulence stabilises the outputs that smoothness destabilises, and it does so by the same
+mechanism that makes it unpredictable pointwise. The growth and decay which destroy the velocity as a
+predictable quantity are what keep the weight function bounded and the mean value predictable.
 
 This is the sense in which the reformulated problem has an answer, and the answer is not the one the
 dichotomy anticipates. Smooth solutions are not wellposed. Turbulent solutions are wellposed in
