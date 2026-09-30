@@ -1,5 +1,3 @@
-
-
 # Response to the Reviewers
 
 **Manuscript** 1568909 — *A 3D Multiphase Continuum Model for Atoms*
@@ -8,122 +6,37 @@
 
 ---
 
-We thank both reviewers for reports that were detailed, specific, and — on the points that
-mattered most — correct. Reviewer 2's central objection and Reviewer 1's "elephant in the
-room" both identified places where the manuscript's framing claimed more than its body text
-supported. We have not argued with either.
+We thank both reviewers. On the points that mattered most they were correct, and we have not
+argued with either: Reviewer 2's objection to the packing argument and Reviewer 1's "elephant in
+the room" both identified places where the framing claimed more than the body text supported.
 
-**But this is not only a reply, and we ask the editor to read it as more than one.** Following
-Reviewer 2's objection to the packing argument, the revised manuscript contains a new account of
-how the periodic table is built up — not a repair of the old one — and that account, rather than
-any of the individual replies below, is what we would now put forward as the paper's contribution.
-We therefore set it out first, before the point-by-point responses.
+Two things about the revision should be said before the point-by-point replies, and we keep them
+short here because both are presented properly in the manuscript.
 
-## The principal change: a new account of the build-up of the periodic table
+**A new account of the build-up of the periodic table** (§4.3). The table is assembled from two
+packings the calculations themselves produce — the antipodal pair, 2, and the octet as two dual
+tetrahedra, 8 = 4+4 — and from one constraint: a row ending in 4 or 6 would need half an octet or
+three quarters of one, which is not a packing available to the model, so the remainder after octets
+is forced to 0 or 2. That gives every row length 2, 8, 8, 18, 18, 32, 32 and every closed shell
+2, 10, 18, 36, 54, 86, 118, with $2n^2$ nowhere in the construction — so its agreement with the
+hydrogenic count is a result, not an input. Three consequences are new: the octet is the unit every
+later row is built from (18 a pair and two octets, 32 four octets); the step before closure is 4+3,
+so a halogen is short of a tetrahedral *site* rather than of a count; and
+$\sqrt{\mathrm{cap}(n{+}1)/\mathrm{cap}(n)}=(n{+}1)/n$ holds exactly when each capacity serves two
+periods, which is a direction on the period doubling and is labelled as no more than that. We claim
+a decomposition of the capacities, not a derivation of the row lengths; that each capacity serves two
+periods remains the principal open item. The 4+4 octet is Linnett's double quartet [*J. Am. Chem.
+Soc.* **83** (1961) 2643], which separates the quartets by spin; this model has none and reaches the
+same arrangement from Coulomb repulsion and non-overlap alone.
 
-The periodic table is assembled here from **two** numbers, not four, and both are packings the
-calculations themselves produce rather than quantum numbers imposed on them: the **antipodal
-pair**, 2, and the **octet as two dual tetrahedra**, 8 = 4+4, the latter established against a
-single 8-shell that over-binds by 9-22%. Composing rows from those two units alone gives
-
-- every row length — 2, 8, 8, 18, 18, 32, 32 — and
-- every closed shell — 2, 10, 18, 36, 54, 86, 118 —
-
-with the fourth row as 2+8+8 and the sixth as four octets. The argument that closes the table is a
-constraint on what cannot be built: a row ending in 4 or 6 would require half an octet or three
-quarters of one, which is not a packing available to the model, so the remainder after octets is
-forced to 0 or 2 and never anything else. Note what the construction does *not* use: $2n^2$. The
-capacities are built from the pair and the octet and *then* found to coincide with the hydrogenic
-count, so nothing is borrowed from the account being compared against, and the coincidence is a
-result rather than an input.
-
-Three things follow that were not in the original manuscript at all:
-
-- **The octet rule is doing far more work than it is usually given.** It is not the rule for the
-  second and third rows; it is the unit from which every later row is built, 18 being a pair and two
-  octets and 32 four octets, rather than capacities in their own right.
-- **The step before closure is 4+3** — one tetrahedron complete, the other one vertex short. So
-  fluorine is 2+4+3 and chlorine 2+4+4+4+3, and a halogen is not "one electron short" as a count but
-  short of *one tetrahedral site* next to a filled tetrahedron. A filling rule gives $p^5$ and no
-  site. Relatedly, a complete outermost octet requires every inner shell already closed, so only a
-  noble gas can carry one.
-- **A direction on the period doubling**, which we had nothing to say about before:
-  $\sqrt{\mathrm{cap}(n{+}1)/\mathrm{cap}(n)} = (n{+}1)/n$ holds exactly when each capacity serves
-  two periods, so two is the value that turns a quadratic areal capacity into a linear ratio, and no
-  other value does it. We label this a statement about exponents and not yet physics; we note only
-  that it is a direction available to a packing account and unavailable to a filling rule, since the
-  Madelung ordering contains no length.
-
-**The reach of this account is the whole table.** The decomposition covers all seven closed shells;
-the *computed total energies* run from hydrogen to krypton, $Z=1$–$36$, closing the first four rows. Two limits are stated in the paper
-and we restate them here so the claim is not read as larger than it is: the construction fixes how
-many pairs and octets a row contains, not where they sit radially; and it is a decomposition of the
-capacities, not a derivation of the row lengths — that each capacity serves two periods remains the
-principal open item.
-
-We also credit the prior art we had missed. The 4+4 octet is Linnett's double quartet [*J. Am. Chem.
-Soc.* **83** (1961) 2643], which reads Lewis's cubical octet as two interpenetrating tetrahedral
-sets of four. Linnett separates them by *spin*; this model has no spin and reaches the same
-arrangement from Coulomb repulsion and non-overlap alone, so what is new is not the decomposition
-but a derivation of it that does not need spin.
-
-## The second change: periods 1–4, with no parameters at all
-
-**The calculation covers periods 1–4, hydrogen to krypton, $Z=1$–$36$, and contains no adjustable
-quantity of any kind.** Every energy is computed all-electron with the bare nuclear term $-Z/r$:
-no core radius, no screened kernel, no frozen core, no fitted length, nothing calibrated against a
-reference atom, and nothing set per element. The claim that nothing is adjusted is now literally
-true of every number reported.
-
-The only thing that varies across the range is resolution, and it varies by a rule rather than by
-choice. The innermost shell contracts as $r_{1s}\approx4.3/Z$, so no single mesh serves both ends of
-the table; $N=400$ through argon and $N=800$ from potassium keeps that shell spanned by a comparable
-number of cells throughout. A mesh is a discretisation and not a parameter of the model: it carries
-no physics and is fitted to nothing. Section 7 states what it costs, and why it is not refined
-further — the spherical reduction, not the mesh, is what limits the accuracy here.
-
-This is what replaced the frozen core and the pseudo-kernel of the original submission, which
-carried a softening radius $r_c$ calibrated against one reference atom per period — the construction
-Reviewer 2 identified as contradicting the abstract. We considered restating the claim honestly and
-keeping that construction. **We removed the construction instead**, and resolution alone recovers
-the range: the two-scale core/valence decomposition, the pseudo-kernel and $r_c$ are gone from the
-paper, and the fourth row is computed all-electron in their place.
-
-The fourth row is reported in a new table: mean $|$error$|$ $3.3\%$, maximum $6.7\%$ (Se), and — the
-point worth more than the mean — **all eighteen entries under-bound**, with no trend in $Z$, which is
-the direction the spherical reduction predicts.
-
-One boundary does remain at argon, and it is a boundary in the **build-up**, not in the calculation.
-From scandium the next charge belongs to a shell *inside* one already occupied — shown
-model-independently by the ionisation order, since the $4s$ electrons are removed first — and a
-build-up that only adds outward has no such move. The fourth row's configurations are therefore
-supplied from the ionisation order rather than derived, and we say so in the table caption itself:
-what the row demonstrates is that the solver handles the nesting and returns the energies once a
-configuration is given, not that the model would have chosen that configuration.
-
-One limit at that boundary is physical and one is not, and the difference matters. The physical
-one: a build-up that adds outward cannot reach a shell lying inside one already occupied, which
-is what the fourth row requires, so the configurations there are supplied rather than derived.
-The other was numerical. The innermost shell contracts as 1/Z - we measure r_1s * Z = 4.3,
-constant to +-9% from carbon to argon - so at fixed mesh it is eventually spanned by too few
-cells and the energies degrade, going positive around iron. Refining the mesh removes it
-entirely: at N=800 the all-electron total energies run from argon to zinc within 1-5%, with no
-trend in Z and nothing fitted. We had taken that degradation for a limit of the model; it was a
-limit of the grid.
-
-## A change of framing, prompted by R2.2
-
-**The algorithm is a relaxation, not a global minimisation.** None of the three updates
-searches the space of configurations; each is a parabolic relaxation, and what they reach
-together is a *steady state*. The relaxation arrives at whichever equilibrium lies at the end
-of the path it is on, and at no step is a lower configuration elsewhere offered and refused.
-**Energy minimisation here is path dependent.** Ordinarily that is invisible, because the
-reachable equilibrium *is* the minimum. It is the whole point in the Aufbau, where a lower
-configuration exists, is never reached, and is not the physical one either.
-
-Three figures have been added, none of which was in the original.
-
----
+**Periods 1–4, with no parameters at all.** The energies run hydrogen to krypton, $Z=1$–$36$,
+all-electron with the bare term $-Z/r$: no core radius, no screened kernel, no frozen core, no fitted
+length, nothing calibrated against a reference atom, nothing set per element. The frozen core and
+pseudo-kernel of the original submission, with the softening radius $r_c$ Reviewer 2 identified, are
+gone; resolution recovers the range in their place. The only quantity that varies across the table is
+the mesh — $N=400$ through argon, $N=800$ from potassium, since $r_{1s}\approx4.3/Z$ and no single
+mesh serves both ends — and a mesh is a discretisation, not a parameter: it carries no physics and is
+fitted to nothing.
 
 # Reviewer 1
 
@@ -221,136 +134,40 @@ choose a grid, not a claim about the model's output.)
 **R2.2 — The radial model favours cap-8 packing, yet cap-4 configurations are chosen because
 they agree better with reference energies.**
 
-The reviewer's reading was accurate: the packing was selected by fit. What the revision adds is
-a measurement of why, and the answer is structural rather than a careless search.
+The reviewer's reading was accurate: the packing was selected by fit. The revision replaces that
+selection with two things — a measurement of why the energy cannot decide, and a construction of the
+capacities that does not appeal to energies at all.
 
-**The energy is monotone in the packing.** There is no interior minimum, so the unconstrained
-minimiser always absorbs the core into the valence. Beryllium: a single 4-shell at -18.893 Ha,
-28.8% too deep, against the physical 2+1+1 at -14.603 Ha, 0.44%. Wrong in kind, not in accuracy,
-and worsening with Z.
+**The energy is monotone in the packing, and anti-correlated with the physical configuration.** There
+is no interior minimum, so an unconstrained minimiser absorbs the core into the valence. Beryllium's
+three candidates order by compactness: a single 4-shell at $-18.893$ Ha (28.8% too deep), $2{+}2$ at
+$-14.893$ (1.54% too deep), $2{+}1{+}1$ at $-14.603$ (0.44% short). The lower energy is reached by
+over-binding past the reference, so the physical configuration is the least bound and the closest —
+and an energy preference could not have supported it in any case. The $2{+}2$ margin is converged, on
+a step ladder flat from 16,000 to 64,000 steps; it is the monotonicity, not a search failure.
 
-**But it fails only where it may dissolve a formed shell.** Among configurations that keep one,
-the structure is set by the balanced condition rather than by the energy. For beryllium the row's
-capacity is 8, two cap-4 shells, and the period's two charges take one place in each: 2+1+1. The
-energy does prefer 2+2, and by a converged margin: on a step ladder flat from 16,000 to 64,000
-steps, 2+2 gives -14.8934 against -14.6028 for 2+1+1, lower by 0.291 Ha. But that margin IS the
-monotonicity above, at one element: the three candidates order by compactness -- a single 4-shell
-at -18.893 (28.8% too deep), 2+2 at -14.893 (1.54% too deep), 2+1+1 at -14.603 (0.44% short) --
-so the lower energy is reached by over-binding past the reference, and 2+1+1 is both the least
-bound and the closest to it. That matters for consistency as much as for accuracy: the monotonicity above is
-precisely the finding that energy is anti-correlated with the physical configuration, so an
-energy preference could not have supported one in any case. And the rule is not a constraint we
-impose.
-The algorithm is a relaxation, so it reaches the equilibrium at the end of its path; a filled
-shell is more rigid than the charge arriving at it, and the interface moves only where one
-domain's amplitude locally exceeds the other's. The newcomer is turned aside because it cannot
-win that comparison, not because a rule forbids it. What decides is *relative* rigidity, and
-nothing else could: the front is a difference of amplitudes.
+**What decides instead is the relaxation.** The algorithm does not minimise over configurations; it
+reaches the equilibrium at the end of its path. A filled shell is more rigid than the charge arriving
+at it, and the interface moves only where one domain's amplitude locally exceeds the other's, so the
+newcomer is turned aside by a comparison of amplitudes and not by an imposed rule. Figures 2 and 3
+show this in three dimensions, all-electron, with no $r_c$: a charge launched as a half-shell wraps a
+Li$^+$ core and closes into a shell, declining a merged state that was reachable throughout and lies
+1.055 Ha *lower*. A seed ladder rules out the obvious objection that the interface merely stayed
+where it was put — seeds 60% apart give shell radii 2.139 and 2.153 a.u., 0.7% apart.
 
-**Figures 2 and 3 show it happening.** Li+ with one electron added, three-dimensional,
-all-electron, no r_c, the core an ordinary deformable domain. The charge is launched as a
-half-shell, with no shell present at the start; it wraps around the core and closes into one,
-its centroid falling from 0.84 to 0.014 a.u., while the core holds its two charges unchanged.
-The merged single-shell state was reachable throughout and lies 1.055 Ha *lower*. It is
-declined. Path dependence measured rather than argued.
+**The capacities are not fitted either**, and this is the part we would now put forward as the
+paper's contribution. They are built from the two filled packings the calculations establish — the
+antipodal pair and the dual-tetrahedral octet, the latter against a single 8-shell that over-binds by
+9–22% — together with the constraint that a row cannot end in 4 or 6. Every row length and every
+closed shell follows, without $2n^2$ entering. §4.3 gives the construction, the 4+3 step before
+closure, the statement that only a noble gas can carry a complete outermost octet, and the direction
+on the doubling. One classical result is conceded there rather than left for a reader to catch: for
+eight points on *one* sphere the Coulomb minimum is the square antiprism, not the cube, by 0.33%, and
+that is a theorem — though the antiprism is itself a 4+4, and this model does not place eight charges
+on one sphere.
 
-A demonstration of that kind invites one obvious objection --- that the interface merely stayed
-where it was put --- and the revision answers it with a seed ladder. The partition is seeded at a
-radius R0 through the core's initial extent, and that seeding fixes nothing thereafter: the
-interface is free and where it settles is an output. Seeded at R0 = 1.0 the shell settles at
-2.139 a.u.; seeded at R0 = 1.6 it settles at 2.153 a.u. --- a spread of 0.7% on a quantity
-nothing in the calculation prescribes, from seeds differing by 60%. The domain charges agree too:
-core 2.02 charges at mean radius 0.76 a.u., arriving electron 1.07 at mean radius 4.0 a.u. The
-shell radius is an attractor, not a memory of the seed.
-
-We report the rule as established for Li through C and **undetermined from nitrogen onward**,
-where a shell holding two charges may be a closed pair or a half-filled tetrahedron and the
-model cannot distinguish them.
-
-**The capacities are not fitted either.** The two basic filled packings are established by the
-calculations themselves: the antipodal pair, 2, and the dual tetrahedra, 8 = 4+4, the latter
-against a single 8-shell that over-binds by 9-22%. Composing rows from those two units alone
-gives every row length of the table, not merely the first few. Since a row of length 8k+4 or
-8k+6 would need half an octet or three quarters of one and could not be composed at all, the
-remainder is constrained to 0 or 2, and the capacities are assembled from the two units directly
-as
-
-    cap(n) = 8*floor(n/2)*ceil(n/2) + 2*(n mod 2),
-
-the octet count being the product of the two halves of n and a pair present exactly when n is
-odd. This gives 2, 8, 8, 18, 18, 32, 32 and with them every closure - 2, 10, 18, 36, 54, 86, 118
-- with the fourth row as 2+8+8 rather than 9+9 and the sixth as four octets. Nothing is imported
-and no tile is needed that the packing cannot build.
-
-One point about that expression, which we have changed since drafting this reply. The closed form
-is *not* the argument and we no longer present it as though it were: written out, it says only
-that the row is filled with as many octets as fit and a pair if one is left over, which is the
-composition already stated in the sentence before it. The paper now gives the construction in
-words, and where the closed form appears it is labelled a restatement of the shell fill. The
-content is the constraint on the remainder --- that a row cannot end in 4 or 6 because neither
-half an octet nor three quarters of one is a packing the model can build --- and that constraint
-is what closes every row, including the two we cannot otherwise reach. A formula should not be
-left to carry weight that the counting behind it is doing.
-
-An earlier draft of this response reported the account as exact through xenon and open at the
-sixth row, on the grounds that 32 is not 2+8+8 repeated. That was too cautious and is withdrawn:
-32 is four octets, and the expression above reaches every row. Note also what it does *not*
-mention - 2n^2. The capacities are built from the pair and the octet and *then* found to coincide
-with the hydrogenic count, rather than obtained by decomposing it, so nothing is borrowed from
-the theory being compared against.
-
-What we do *not* claim is that the row lengths themselves are derived. The capacities decompose
-into pairs and octets uniquely, and that is established; that the third row has length 8 and the
-fourth 18 is not. The period lengths are supplied to the configuration generator rather than
-produced by it, and that each capacity serves two periods remains the principal open item. The
-scope boundary accordingly rests on the two limits we can demonstrate - a build-up that adds
-outward cannot reach an inner shell, and the 1s contracts as 1/Z so a fixed grid stops resolving
-it.
-
-**One direction on the doubling, offered as no more than that.** Since the reply above admits the
-doubling as the principal open item, we should say what the packing account does have to say about
-it, because a filling rule has nothing. If each capacity serves k periods, then
-
-    sqrt( cap(n+1) / cap(n) ) = (n+1)/n
-
-exactly when k = 2, the ratios being 2, 3/2, 4/3, 5/4, ... against 4, 2.25, 1.78, 1.56, ... for
-k = 1. So k = 2 is the value that converts the quadratic growth of an *areal* capacity into a
-*linear* ratio: if a period advances the radius by one unit and the capacity goes as r^2, two
-periods are what an areal shell costs, and the doubling is the exponent in r^2 rather than an
-extra rule. No other k does this --- k = 3 gives 1.59, 1.31, 1.21, smoother still, so a
-preference for smoothness alone would drive k upward without limit, and it is the dimensionality
-that picks out two. We put this no higher than a direction: it is a statement about exponents and
-becomes physics only when something independent establishes that a period corresponds to a unit
-increment of radius. But it is a direction available to a packing account and not to a filling
-rule, since the Madelung ordering by (n + l) contains no length for the argument to be about.
-
-**A consequence that can be checked, which we had not drawn before.** If the octet is 4+4, the
-approach to closure is not a bare count but a sequence of sites: 1+1, 2+1, 2+2, 3+2, 3+3, 4+3,
-4+4. The step before closure is always **4+3** --- one tetrahedron complete, the other one vertex
-short. That is fluorine, 2+4+3, and chlorine, 2+4+4+4+3, both as the build-up's own balanced
-filling returns them in Table 1. So a halogen is not "one electron short" as a number; it is
-short of *one tetrahedral vertex*, a definite vacant site beside a filled tetrahedron, and an
-arriving charge closes the octet by occupying it. A filling rule gives p^5 and no site. In the
-same vein, a complete outermost octet requires every inner shell already closed at 2 or 8, so
-only a noble gas can carry one --- with the caveat, stated in the paper, that the converse fails
-for krypton and xenon, whose outermost group is the cap-2 pair.
-
-**Prior art, and one classical result we must concede.** The 4+4 octet is Linnett's double
-quartet [Linnett, *J. Am. Chem. Soc.* **83** (1961) 2643], which reads Lewis's cubical octet as
-two interpenetrating tetrahedral sets of four; the revision cites it. Linnett separates the two
-sets by *spin* --- Fermi correlation within a quartet, Coulomb correlation between them --- and
-the point of interest here is that this model has no spin and reaches the same arrangement from
-Coulomb repulsion and non-overlap alone. What is new is therefore not the decomposition but a
-derivation of it that does not need spin. The concession is the Thomson problem. For four points
-on a sphere the Coulomb minimum is the regular tetrahedron (3.6742 against 3.8284 for a square),
-so that unit is secure; for eight on *one* sphere it is not the cube but the square antiprism, by
-0.33% (19.6753 against 19.7408), and this is now a theorem [arXiv:2609.22077]. We state it in the
-paper rather than leave it for a reader to catch. Two things limit its force: the antiprism is
-itself a 4+4 --- two squares twisted by 45 degrees --- so what it refutes is the
-two-*tetrahedra* reading of a *single* sphere, not the 4+4 decomposition; and this model does not
-put eight charges on one sphere, since a single 8-shell over-binds by 9-22% and the octet is
-realised over two radii. It does mean the cube must not be offered as a Coulomb minimum, and we
-do not offer it as one.
+What we do *not* claim is that the row lengths are derived. The capacities decompose into pairs and
+octets uniquely, and that is established; that the third row has length 8 and the fourth 18 is not.
 
 **R2.3 — Equation (1) identifies $-\varepsilon_i$ with the optimised neutral−ion energy
 difference. Why should these be equal?**
@@ -403,7 +220,9 @@ limitation, with no ordering claimed as a result. §Limitations states that the 
 $d$-shell inside the $s$-shell is imposed, not derived.
 
 **R2.5 — The Kr→Xe increase contradicts the claimed down-group trend.**
+
 **R2.6 — Argon appears as 11.29 eV in Table 3 and 8.0 eV in Table 5.**
+
 **R2.7 — $p$-block ionization energies repeat across periods 2–4.**
 
 These three concerned ionization energies of heavy elements and are resolved by the removals
@@ -422,165 +241,64 @@ was a real defect and the reviewer was right about all three:
 
 **R2.8 — Grid convergence is demonstrated only for the helium total energy.**
 
-**The reviewer is right that the ladder covered one atom, and we have now looked beyond it. What we
-found changes our answer, and not in the direction of adding more rungs.** Refining the radial mesh
-converges the calculation to the answer of the *spherically reduced* problem, and that reduction --
-not the discretisation -- is what limits the accuracy here. The revision measures the cost of the
-reduction directly (below): it has the pair count right and the pair geometry wrong, overestimating
-intra-shell repulsion by a factor of 1.6-2, and leaving a residual of order a per cent in the
-under-binding direction. Set against that, successive sqrt(2) refinements of helium move the total
-energy by 0.005 and 0.004 Ha, about 0.2% a step. The model error is an order of magnitude the
+The reviewer is right that the ladder covered one atom. We have looked beyond it, and the answer is
+not more rungs. Refining the radial mesh converges the calculation to the answer of the *spherically
+reduced* problem, and that reduction — not the discretisation — is what limits the accuracy here. The
+revision measures the reduction's cost directly: it has the pair *count* right and the pair
+*geometry* wrong, overestimating intra-shell repulsion by a factor of 1.6–2, leaving a residual of
+order a per cent in the under-binding direction. Against that, successive $\sqrt2$ refinements of
+helium move the total energy by about 0.2% a step. The model error is an order of magnitude the
 larger, so a finer radial grid buys precision in solving the wrong equation. The accuracy-limiting
-direction is *angular* resolution, restoring the pair geometry the reduction discards, and we say so
-rather than presenting a mesh ladder as though it were the open question.
+direction is *angular* resolution, restoring the pair geometry the reduction discards, and the paper
+says so instead of offering a mesh ladder as the open question. $N=400$ is also what the
+three-dimensional solver reaches, at $400^3$.
 
-N = 400 is also what the three-dimensional solver reaches, at 400^3. Holding the radial runs to the
-same figure keeps the two halves of the paper comparable, and stops us quoting radial energies at a
-precision the three-dimensional model could not be checked against.
-
-**One thing this cost us, which we report rather than leave for the reviewer to find.** Because the
-mesh is held fixed rather than converged, a single entry can carry a grid uncertainty exceeding its
-quoted error. Argon is the case in point: at the production N = 400 it agrees to +0.1%, the closest
-in the table, but on the same domain at N = 724 and N = 1024 -- where the 1s spans 17 and 25 cells
-against 10 at N = 400 -- it moves to -511.7 and -511.3 Ha, about 3% *under*-bound, the two finest
-rungs agreeing to 0.08%. Both are step-converged: quadrupling the relaxation at fixed mesh moves the
-energy by 0.005 Ha. Neon is comparable in size and non-monotone over the same range. Two changes
-follow. The manuscript now states that the table is to be read at the level of a few per cent and
-that no single entry is claimed to better than a per cent; and we have **removed the claim that the
-model over-binds the heavier third-period atoms with the opposite sign of error to Hartree-Fock**,
+**What the refined runs cost us, reported rather than left to be found.** Argon agrees to $+0.1\%$ at
+$N=400$, the closest entry in the table, and it does not survive: on the same domain at $N=724$ and
+$N=1024$ it moves to $-511.7$ and $-511.3$ Ha, about 3% *under*-bound, the two finest rungs agreeing
+to 0.08% and both step-converged. Neon is comparable in size and non-monotone over the same range.
+Two changes follow. The paper now states that the table is to be read at the level of a few per cent,
+with no single entry claimed to better than a per cent; and we have **removed the claim that the
+model over-binds the heavier third-period atoms with the opposite sign of error to Hartree–Fock**,
 since the sign of argon's error is a function of the grid. What survives refinement, and what the
-reduction predicts, is under-binding.
-
-A word on what
-convergence means for the three-dimensional runs, since the revision adds three figures drawn
-from them. In the present setting --- the
-simplest possible implementation, on the smallest systems --- those runs display *qualitative*
-features of the solution rather than precise energies or geometry: which charge holds which
-region, where an interface stands, whether an arriving charge closes into a shell rather than
-merging inward. What is asked of refinement there is that these features do not change under
-it. The precise numbers in the paper come from the radial solver, where the ladder applies. It
-also now uses that ladder to make a substantive point rather than only a numerical one.
-
-Helium is the cleanest available test of the spherical reduction — one shell, two electrons, no
-core, no $r_c$, and an exact reference — and the revision adds an analysis of what the reduction
-costs, which we believe answers the deeper form of the reviewer's question. The
-$(N_s-1)/N_s$ factor applied to the same-shell term is not a correction added to the model: it
-is forced bookkeeping, removing exactly the $N_s$ spurious self-pairs that smearing $N_s$
-one-electron domains into one spherical density introduces. But smearing does a second thing,
-and that one is a real loss: it replaces the actual pair *separations* by their spherical
-average. For unit charges at a common radius $R$ (units of $1/R$):
-
-| $N_s$ | homogenised, $q=N_s$ | $\times (N_s-1)/N_s$ | packed | ratio |
-|---:|---:|---:|---:|---:|
-| 2 | 2.000 | 1.000 | 0.500 (antipodal) | 2.00 |
-| 3 | 4.500 | 3.000 | 1.732 (trigonal) | 1.73 |
-| 4 | 8.000 | 6.000 | 3.674 (tetrahedral) | 1.63 |
-
-The reduction has the pair *count* right and the pair *geometry* wrong, overestimating
-intra-shell repulsion by a factor of 1.6–2. Most of that is absorbed by the shell radius, which
-is free; what survives appears as systematic under-binding, largest where the ratio is largest.
-Helium, at $N_s=2$, under-binds by $2.0\%$ — the sign the table predicts. What the reduction
-discards is precisely the angular correlation, which is what packing *means*, and this is why
-the radial solver cannot adjudicate a packing question on energetic grounds and why the
-capacities are established by the counting argument of R2.2 rather than by radial energies.
-
-We have added this as a stated limitation of the method rather than waiting to be asked.
-
----
+reduction predicts, is under-binding — the direction of all eighteen fourth-row entries.
 
 # Summary of changes
 
 **Removed**
 - All ionization-energy material, including Eq. (1)'s Koopmans identification, and the tables
   underlying R2.5–R2.8.
-- The statement that the all-electron table stops at argon: with the mesh chosen by $Z$ it runs to
-  krypton, and a new table reports the fourth row, $Z=19$–$36$.
 - The frozen core, the pseudo-kernel, $r_c$, and the two-scale core/valence decomposition.
-- Both heavy-element tables (representative frozen-core atoms; full main group Li→Rn).
-- The "4s before 3d" claim (R2.4) and the "in-principle parameter-free" claim as originally
-  worded (R2.1) — the latter now restated and true.
-- The sentence Reviewer 2 quoted on the correctness of the radial description.
+- The "4s before 3d" claim (R2.4) and the "in-principle parameter-free" claim as worded (R2.1),
+  the latter now restated and true.
 - The claim that the model over-binds the heavier third-period atoms with the opposite sign of error
-  to Hartree-Fock (R2.8) --- argon's error changes sign between $N=400$ and $N=1024$, so the table
-  does not support a sign.
+  to Hartree–Fock (R2.8): argon's error changes sign between $N=400$ and $N=1024$.
+- The sentence Reviewer 2 quoted on the correctness of the radial description.
 
 **Added**
-- §*Aufbau: how the shell structure forms* — the build-up as the constraint that makes energy
-  minimisation select correctly, with the monotonicity measurement (R2.2).
-- §*Two numbers, not four: the pair and the octet* — the capacities assembled from the model's
-  own packings, the antipodal pair and the $4{+}4$ octet, giving every row length
-  $2,8,8,18,18,32,32$ and every closure $2,10,18,36,54,86,118$, without $2n^2$ entering the
-  construction at all. The argument is the constraint on the remainder — a row cannot end in 4 or
-  6, since neither half an octet nor three quarters of one is a packing the model can build — which
-  is what closes every row. The construction is stated in words; the closed form
-  $\mathrm{cap}(n)=8\lfloor n/2\rfloor\lceil n/2\rceil+2(n\bmod 2)$ is retained but labelled
-  for what it is, a restatement of the shell fill rather than an independent derivation. What is
-  claimed is a decomposition of the capacities, not a derivation of the row lengths; the doubling
-  of each capacity across two periods is stated as open.
-- Within that section, a *direction* on the doubling: $\sqrt{\mathrm{cap}(n{+}1)/\mathrm{cap}(n)}
-  =(n{+}1)/n$ exactly when each capacity serves two periods, so $k=2$ is what converts a quadratic
-  areal capacity into a linear ratio, and no other $k$ does it. Explicitly labelled a statement
-  about exponents and not yet physics.
-- The $4{+}3$ result: the step before closure is one tetrahedron complete and the other one vertex
-  short, so fluorine is $2{+}4{+}3$ and chlorine $2{+}4{+}4{+}4{+}3$, and a halogen is short of a
-  definite tetrahedral *site* rather than of a count. With it, the statement that a complete
-  outermost octet requires every inner shell closed — hence only a noble gas carries one — and the
-  caveat that the converse fails for Kr and Xe.
-- Linnett's double quartet cited as the prior statement of the $4{+}4$ octet, with the difference
-  named: Linnett separates the two quartets by spin, and this model has no spin and reaches the
-  same arrangement from Coulomb repulsion and non-overlap alone.
-- A seed ladder for the three-dimensional build-up, answering the objection that the interface may
-  have stayed where it was seeded: $R_0=1.0$ gives a shell at $2.139$~au and $R_0=1.6$ gives
-  $2.153$~au, $0.7\%$ apart from seeds $60\%$ apart.
-- A paragraph in the Introduction, *The table in two numbers*, putting the pair-and-octet content
-  of all seven closed shells in front of the reader before any machinery, with its two limits
-  stated there (it fixes how many pairs and octets, not where they sit radially; and it is a
-  decomposition, not a derivation).
-- Table 1 recomputed with no per-element constant anywhere: three configurations corrected
-  (Be $2{+}2\to2{+}1{+}1$, Al and Si to the build-up's own balanced fillings), mean $|$error$|$
-  $1.6\%$, maximum $4.5\%$, 13 of 17 atoms within $2.5\%$.
-- A statement that the octet's *cube* is a geometric argument and not a result of this paper: the
-  spherically reduced solver has no angular coordinate, so its $4{+}4$ is two nested radial
-  shells, and the measured shell radii come out uniformly nested rather than paired. With it the
-  Thomson concession: for eight points on one sphere the Coulomb minimum is the square antiprism,
-  not the cube, by $0.33\%$, and this is a theorem. The antiprism is itself a $4{+}4$, and this
-  model does not place eight charges on one sphere, but the cube is no longer offered as a Coulomb
-  minimum.
-- A provenance note on the anti-correlation table (it runs at 20 000 steps on the default mesh and
-  must not be read across against Table 1), both tables having been recomputed after the
-  configuration corrections.
-- §*Electronegativity from the shell energies* — the Allen configuration energy, replacing
-  ionization as the valence observable (R2.3).
-- An analysis of what the spherical reduction costs, with the intra-shell repulsion table
-  (R2.8).
+- §*Two numbers, not four: the pair and the octet* — the capacities built from the antipodal pair and
+  the $4{+}4$ octet, with the closure argument, the $4{+}3$ step, the noble-gas statement, the
+  direction on the doubling, and Linnett credited.
+- §*Aufbau: how the shell structure forms* — the build-up as what makes energy minimisation select
+  correctly, with the monotonicity measurement and the seed ladder (R2.2).
+- A fourth-row table, $Z=19$–$36$ at $N=800$: mean $|$error$|$ $3.3\%$, all eighteen under-bound.
+- Table 1 recomputed with no per-element constant: mean $|$error$|$ $1.6\%$, maximum $4.5\%$.
+- §*Electronegativity from the shell energies* — the Allen configuration energy, replacing ionization
+  as the valence observable (R2.3).
+- An analysis of what the spherical reduction costs, with the intra-shell repulsion table (R2.8).
+- Three figures of the three-dimensional build-up, none in the original.
 - The speculation caveat on ontological claims (R1.1), the molecular limits (R1.3), the basis-set
   concession (R1.4), and the imaginary-time clarification (R1.5).
 
 **Restated**
-- Scope, in the two senses the paper now keeps apart: the *computed* energies run hydrogen to
-  krypton, $Z=1$–$36$, all-electron and parameter-free throughout, on a mesh chosen by $Z$
-  ($N=400$ through argon, $N=800$ from potassium); the *account of the build-up* covers every row
-  length and every closed shell of the table, $2,10,18,36,54,86,118$. What is bounded at argon is
-  the outward build-up, not the calculation.
-- The shell structure as an output of the build-up, not of energy minimisation *only* --- the
-  energy selects correctly among the configurations the build-up leaves available.
+- Scope in its two senses: the *computed* energies cover periods 1–4, hydrogen to krypton,
+  all-electron and parameter-free; the *account of the build-up* covers every row length and every
+  closed shell. What is bounded at argon is the outward build-up, not the calculation.
+- The shell structure as an output of the build-up, not of energy minimisation only.
 - The Aufbau result as established for Li–C and open from nitrogen.
 
-We are grateful for both reports. The revision **retracts** several claims the original made and
-we have tried to save none of them: the parameter-free assertion as it was worded, the
-4s-before-3d ordering, the ionization energies, the $1/Z$ core radius, the sign of the
-third-period error, and the elements beyond krypton, which were reported with a fitted core. What replaces them is new, and follows from the
-objections rather than working around them: the Aufbau as a path-dependent relaxation rather than a
-fitted choice of packing, with the build-up shown directly in three dimensions; electronegativity
-computed natively from the shell energies, in place of the ionization energies withdrawn; and a
-stated account of what the spherical reduction costs, which no one asked for and which the method
-needed.
-
-Above all, the capacities are no longer selected by agreement but **built** — the table assembled
-from an antipodal pair and a dual-tetrahedral octet, every row length and every closed shell
-following from what those two units can and cannot compose, with $2n^2$ nowhere in the
-construction. That is a different account of the periodic table from the one the original
-manuscript offered, and a different kind of claim: it can be checked by composition rather than
-weighed against a fitted number. We would ask that the manuscript be judged on it. The paper claims
-less in the places the reviewers challenged, and more, on firmer ground, in the place their
-challenges led us to.
+The revision retracts what it could not defend and we have tried to save none of it. What replaces it
+is the construction: the table assembled from an antipodal pair and a dual-tetrahedral octet, every
+row length and every closure following from what those two units can and cannot compose. That is a
+different kind of claim from the original's — checkable by composition rather than weighed against a
+fitted number — and we would ask that the manuscript be judged on it.
