@@ -953,25 +953,38 @@ const RESULTS = [
     var KEY='atomsim_conv2', out=[];
     try{ localStorage.removeItem(KEY); }catch(e){}
     var BASE = parseInt((location.search.match(/[?&]base=(\d+)/)||[])[1] || '20000', 10);
+    // ?tol=0 disables the early break entirely, so the rung runs its full matched step count.
+    // Needed because every rung of the first conv2 pass stopped ON the break (it_T == it_2T),
+    // which makes "converged" rest on the break test rather than on the step count. ?only=
+    // restricts to one element and ?rung= to one N, so the expensive check can be run alone.
+    // ?tag= suffixes the storage key so a check does not clobber the full ladder.
+    var TOLQ = (location.search.match(/[?&]tol=([0-9.eE-]+)/)||[])[1];
+    var TOL = (TOLQ !== undefined) ? parseFloat(TOLQ) : 1e-4;
+    var ONLY = (location.search.match(/[?&]only=([A-Za-z]+)/)||[])[1] || '';
+    var RUNG = parseInt((location.search.match(/[?&]rung=(\d+)/)||[])[1] || '0', 10);
+    var TAG  = (location.search.match(/[?&]tag=([A-Za-z0-9_]+)/)||[])[1] || '';
+    if (TAG) KEY = KEY + '_' + TAG;
     var atoms = [
       { el:'He', Z:2,  Ns:[256, 362, 512]  },
       { el:'Ne', Z:10, Ns:[256, 362, 512]  },
       { el:'Ar', Z:18, Ns:[512, 724, 1024] }
     ];
+    if (ONLY) atoms = atoms.filter(function(a){ return a.el === ONLY; });
+    if (RUNG) atoms = atoms.map(function(a){ return {el:a.el, Z:a.Z, Ns:[RUNG], _N0:a.Ns[0]}; });
     (async function(){
       PK_MODE = false; var Nsave = N;
       for (var ai=0; ai<atoms.length; ai++){
-        var a = atoms[ai], N0 = a.Ns[0];
+        var a = atoms[ai], N0 = a._N0 || a.Ns[0];
         var cfg = genConfigBalanced(a.Z);
         for (var ni=0; ni<a.Ns.length; ni++){
           var Ng = a.Ns[ni], sc = (Ng/N0)*(Ng/N0);
           var st = Math.round(BASE*sc), ce = Math.max(20, Math.round(20*sc));
-          var rec = { el:a.el, Z:a.Z, cfg:cfg.join('+'), N:Ng, steps:st, chkEvery:ce };
+          var rec = { el:a.el, Z:a.Z, cfg:cfg.join('+'), N:Ng, steps:st, chkEvery:ce, tol:TOL };
           try{ localStorage.setItem('conv2_progress', a.el+' N='+Ng+' T'); }catch(e){}
           await new Promise(function(r){ setTimeout(r,0); });
           try{
             N = Ng;
-            var r1 = solveAtomPure(a.Z, cfg, st, {chkEvery:ce, tol:1e-4});
+            var r1 = solveAtomPure(a.Z, cfg, st, {chkEvery:ce, tol:TOL});
             rec.h = Number(h.toFixed(5)); rec.D = D;
             rec.cells_1s = Number((4.32/a.Z/h).toFixed(1));
             rec.E_T  = isFinite(r1.etot)?Number(r1.etot.toFixed(5)):'NONFIN';
@@ -979,7 +992,7 @@ const RESULTS = [
             try{ localStorage.setItem('conv2_progress', a.el+' N='+Ng+' 2T'); }catch(e){}
             await new Promise(function(r){ setTimeout(r,0); });
             N = Ng;
-            var r2 = solveAtomPure(a.Z, cfg, 2*st, {chkEvery:ce, tol:1e-4});
+            var r2 = solveAtomPure(a.Z, cfg, 2*st, {chkEvery:ce, tol:TOL});
             rec.E_2T = isFinite(r2.etot)?Number(r2.etot.toFixed(5)):'NONFIN';
             rec.it_2T = r2.iters; rec.broke_2T = (r2.iters < 2*st);
             if (isFinite(r1.etot) && isFinite(r2.etot))
@@ -1561,8 +1574,10 @@ function solveAtomPure(Znuc, arr, maxSteps, opts) {
   initArrays();
   let prev = NaN, stable = 0, iters = 0;
   const ms = maxSteps || 4000;
-  const chk = (opts && opts.chkEvery) || 20;
-  const tol = (opts && opts.tol) || 1e-4;
+  // NB: tested against undefined, not falsy -- tol:0 is the meaningful "never break" value
+  // and `(opts.tol) || 1e-4` would silently restore the default.
+  const chk = (opts && opts.chkEvery !== undefined) ? opts.chkEvery : 20;
+  const tol = (opts && opts.tol !== undefined) ? opts.tol : 1e-4;
   for (let it = 0; it < ms; it++) {
     macroStep();
     iters = it + 1;
