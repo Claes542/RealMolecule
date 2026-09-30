@@ -38,6 +38,18 @@ the mesh — $N=400$ through argon, $N=800$ from potassium, since $r_{1s}\approx
 mesh serves both ends — and a mesh is a discretisation, not a parameter: it carries no physics and is
 fitted to nothing.
 
+**A word on length.** The manuscript has grown from 13 pages to 28, and we should say plainly why,
+since a revision asked for retractions does not usually come back twice the size. The material we
+withdrew is substantial — both heavy-element tables, all the ionization-energy material, the
+frozen core and the pseudo-kernel — and the growth is entirely in what replaced it: the
+pair-and-octet construction, the Aufbau section with its measurements, three figures of the
+build-up in three dimensions, the fourth-row table, electronegativity as the valence observable,
+and the analysis of what the spherical reduction costs. None of it was in the original, and most of
+it exists because the reviewers' objections pointed there. **If the editor considers the paper too
+long, we are willing to shorten it** and would propose cutting the discussion of packing versus
+orbitals and the more expository passages, leaving the construction, the tables and the figures
+intact.
+
 # Reviewer 1
 
 **R1.1 — The ontological status of RealQM. The justification is deferred to a reference that is
