@@ -197,6 +197,15 @@ its centroid falling from 0.84 to 0.014 a.u., while the core holds its two charg
 The merged single-shell state was reachable throughout and lies 1.055 Ha *lower*. It is
 declined. Path dependence measured rather than argued.
 
+A demonstration of that kind invites one obvious objection --- that the interface merely stayed
+where it was put --- and the revision answers it with a seed ladder. The partition is seeded at a
+radius R0 through the core's initial extent, and that seeding fixes nothing thereafter: the
+interface is free and where it settles is an output. Seeded at R0 = 1.0 the shell settles at
+2.139 a.u.; seeded at R0 = 1.6 it settles at 2.153 a.u. --- a spread of 0.7% on a quantity
+nothing in the calculation prescribes, from seeds differing by 60%. The domain charges agree too:
+core 2.02 charges at mean radius 0.76 a.u., arriving electron 1.07 at mean radius 4.0 a.u. The
+shell radius is an attractor, not a memory of the seed.
+
 We report the rule as established for Li through C and **undetermined from nitrogen onward**,
 where a shell holding two charges may be a closed pair or a half-filled tetrahedron and the
 model cannot distinguish them.
@@ -216,6 +225,16 @@ odd. This gives 2, 8, 8, 18, 18, 32, 32 and with them every closure - 2, 10, 18,
 - with the fourth row as 2+8+8 rather than 9+9 and the sixth as four octets. Nothing is imported
 and no tile is needed that the packing cannot build.
 
+One point about that expression, which we have changed since drafting this reply. The closed form
+is *not* the argument and we no longer present it as though it were: written out, it says only
+that the row is filled with as many octets as fit and a pair if one is left over, which is the
+composition already stated in the sentence before it. The paper now gives the construction in
+words, and where the closed form appears it is labelled a restatement of the shell fill. The
+content is the constraint on the remainder --- that a row cannot end in 4 or 6 because neither
+half an octet nor three quarters of one is a packing the model can build --- and that constraint
+is what closes every row, including the two we cannot otherwise reach. A formula should not be
+left to carry weight that the counting behind it is doing.
+
 An earlier draft of this response reported the account as exact through xenon and open at the
 sixth row, on the grounds that 32 is not 2+8+8 repeated. That was too cautious and is withdrawn:
 32 is four octets, and the expression above reaches every row. Note also what it does *not*
@@ -230,6 +249,51 @@ produced by it, and that each capacity serves two periods remains the principal 
 scope boundary accordingly rests on the two limits we can demonstrate - a build-up that adds
 outward cannot reach an inner shell, and the 1s contracts as 1/Z so a fixed grid stops resolving
 it.
+
+**One direction on the doubling, offered as no more than that.** Since the reply above admits the
+doubling as the principal open item, we should say what the packing account does have to say about
+it, because a filling rule has nothing. If each capacity serves k periods, then
+
+    sqrt( cap(n+1) / cap(n) ) = (n+1)/n
+
+exactly when k = 2, the ratios being 2, 3/2, 4/3, 5/4, ... against 4, 2.25, 1.78, 1.56, ... for
+k = 1. So k = 2 is the value that converts the quadratic growth of an *areal* capacity into a
+*linear* ratio: if a period advances the radius by one unit and the capacity goes as r^2, two
+periods are what an areal shell costs, and the doubling is the exponent in r^2 rather than an
+extra rule. No other k does this --- k = 3 gives 1.59, 1.31, 1.21, smoother still, so a
+preference for smoothness alone would drive k upward without limit, and it is the dimensionality
+that picks out two. We put this no higher than a direction: it is a statement about exponents and
+becomes physics only when something independent establishes that a period corresponds to a unit
+increment of radius. But it is a direction available to a packing account and not to a filling
+rule, since the Madelung ordering by (n + l) contains no length for the argument to be about.
+
+**A consequence that can be checked, which we had not drawn before.** If the octet is 4+4, the
+approach to closure is not a bare count but a sequence of sites: 1+1, 2+1, 2+2, 3+2, 3+3, 4+3,
+4+4. The step before closure is always **4+3** --- one tetrahedron complete, the other one vertex
+short. That is fluorine, 2+4+3, and chlorine, 2+4+4+4+3, both as the build-up's own balanced
+filling returns them in Table 1. So a halogen is not "one electron short" as a number; it is
+short of *one tetrahedral vertex*, a definite vacant site beside a filled tetrahedron, and an
+arriving charge closes the octet by occupying it. A filling rule gives p^5 and no site. In the
+same vein, a complete outermost octet requires every inner shell already closed at 2 or 8, so
+only a noble gas can carry one --- with the caveat, stated in the paper, that the converse fails
+for krypton and xenon, whose outermost group is the cap-2 pair.
+
+**Prior art, and one classical result we must concede.** The 4+4 octet is Linnett's double
+quartet [Linnett, *J. Am. Chem. Soc.* **83** (1961) 2643], which reads Lewis's cubical octet as
+two interpenetrating tetrahedral sets of four; the revision cites it. Linnett separates the two
+sets by *spin* --- Fermi correlation within a quartet, Coulomb correlation between them --- and
+the point of interest here is that this model has no spin and reaches the same arrangement from
+Coulomb repulsion and non-overlap alone. What is new is therefore not the decomposition but a
+derivation of it that does not need spin. The concession is the Thomson problem. For four points
+on a sphere the Coulomb minimum is the regular tetrahedron (3.6742 against 3.8284 for a square),
+so that unit is secure; for eight on *one* sphere it is not the cube but the square antiprism, by
+0.33% (19.6753 against 19.7408), and this is now a theorem [arXiv:2609.22077]. We state it in the
+paper rather than leave it for a reader to catch. Two things limit its force: the antiprism is
+itself a 4+4 --- two squares twisted by 45 degrees --- so what it refutes is the
+two-*tetrahedra* reading of a *single* sphere, not the 4+4 decomposition; and this model does not
+put eight charges on one sphere, since a single 8-shell over-binds by 9-22% and the octet is
+realised over two radii. It does mean the cube must not be offered as a Coulomb minimum, and we
+do not offer it as one.
 
 **R2.3 — Equation (1) identifies $-\varepsilon_i$ with the optimised neutral−ion energy
 difference. Why should these be equal?**
@@ -353,11 +417,30 @@ We have added this as a stated limitation of the method rather than waiting to b
 - §*Aufbau: how the shell structure forms* — the build-up as the constraint that makes energy
   minimisation select correctly, with the monotonicity measurement (R2.2).
 - §*Two numbers, not four: the pair and the octet* — the capacities assembled from the model's
-  own packings (the antipodal pair and the $4{+}4$ octet) as
-  $\mathrm{cap}(n)=8\lfloor n/2\rfloor\lceil n/2\rceil+2(n\bmod 2)$, giving every row length
+  own packings, the antipodal pair and the $4{+}4$ octet, giving every row length
   $2,8,8,18,18,32,32$ and every closure $2,10,18,36,54,86,118$, without $2n^2$ entering the
-  construction at all. What is claimed is a decomposition of the capacities, not a derivation of
-  the row lengths; the doubling of each capacity across two periods is stated as open.
+  construction at all. The argument is the constraint on the remainder — a row cannot end in 4 or
+  6, since neither half an octet nor three quarters of one is a packing the model can build — which
+  is what closes every row. The construction is stated in words; the closed form
+  $\mathrm{cap}(n)=8\lfloor n/2\rfloor\lceil n/2\rceil+2(n\bmod 2)$ is retained but labelled
+  for what it is, a restatement of the shell fill rather than an independent derivation. What is
+  claimed is a decomposition of the capacities, not a derivation of the row lengths; the doubling
+  of each capacity across two periods is stated as open.
+- Within that section, a *direction* on the doubling: $\sqrt{\mathrm{cap}(n{+}1)/\mathrm{cap}(n)}
+  =(n{+}1)/n$ exactly when each capacity serves two periods, so $k=2$ is what converts a quadratic
+  areal capacity into a linear ratio, and no other $k$ does it. Explicitly labelled a statement
+  about exponents and not yet physics.
+- The $4{+}3$ result: the step before closure is one tetrahedron complete and the other one vertex
+  short, so fluorine is $2{+}4{+}3$ and chlorine $2{+}4{+}4{+}4{+}3$, and a halogen is short of a
+  definite tetrahedral *site* rather than of a count. With it, the statement that a complete
+  outermost octet requires every inner shell closed — hence only a noble gas carries one — and the
+  caveat that the converse fails for Kr and Xe.
+- Linnett's double quartet cited as the prior statement of the $4{+}4$ octet, with the difference
+  named: Linnett separates the two quartets by spin, and this model has no spin and reaches the
+  same arrangement from Coulomb repulsion and non-overlap alone.
+- A seed ladder for the three-dimensional build-up, answering the objection that the interface may
+  have stayed where it was seeded: $R_0=1.0$ gives a shell at $2.139$~au and $R_0=1.6$ gives
+  $2.153$~au, $0.7\%$ apart from seeds $60\%$ apart.
 - A paragraph in the Introduction, *The table in two numbers*, putting the pair-and-octet content
   of all seven closed shells in front of the reader before any machinery, with its two limits
   stated there (it fixes how many pairs and octets, not where they sit radially; and it is a
@@ -367,7 +450,14 @@ We have added this as a stated limitation of the method rather than waiting to b
   $1.6\%$, maximum $4.5\%$, 13 of 17 atoms within $2.5\%$.
 - A statement that the octet's *cube* is a geometric argument and not a result of this paper: the
   spherically reduced solver has no angular coordinate, so its $4{+}4$ is two nested radial
-  shells, and the measured shell radii come out uniformly nested rather than paired.
+  shells, and the measured shell radii come out uniformly nested rather than paired. With it the
+  Thomson concession: for eight points on one sphere the Coulomb minimum is the square antiprism,
+  not the cube, by $0.33\%$, and this is a theorem. The antiprism is itself a $4{+}4$, and this
+  model does not place eight charges on one sphere, but the cube is no longer offered as a Coulomb
+  minimum.
+- A provenance note on the anti-correlation table (it runs at 20 000 steps on the default mesh and
+  must not be read across against Table 1), both tables having been recomputed after the
+  configuration corrections.
 - §*Electronegativity from the shell energies* — the Allen configuration energy, replacing
   ionization as the valence observable (R2.3).
 - An analysis of what the spherical reduction costs, with the intra-shell repulsion table
