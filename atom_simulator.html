@@ -97,13 +97,19 @@ function shellString() {
 function setup() {
   createCanvas(880, 560);
 
-  sliderZ = createSlider(2, 86, 4, 1);
+  // Opens on BORON, Z=5, in the configuration the paper reports for it (2+2+1). The default
+  // was Z=4 against shell sliders of 2+1 -- three electrons on a Z=4 kernel, so the first thing
+  // a reader from the paper saw was a beryllium CATION in a configuration appearing nowhere in
+  // Table 1. Z and the occupations must agree at startup, and 2+2+1 also shows three shells at
+  // once, which a two-shell default does not.
+  sliderZ = createSlider(2, 86, 5, 1);
   sliderZ.position(20, 520);
   sliderZ.style('width', '100px');
 
   // Manual mode keeps 5 shell sliders (light atoms, spot checks); heavy atoms use the sweep.
   for (let s = 0; s < 5; s++) {
-    let sl = createSlider(0, 4, s === 0 ? 2 : (s === 1 ? 1 : 0), 1);
+    const DEF = [2, 2, 1, 0, 0];               // sums to Z=5 above; keep the two in step
+    let sl = createSlider(0, 4, DEF[s], 1);
     sl.position(160 + s * 90, 520);
     sl.style('width', '70px');
     sliders[s] = sl;
