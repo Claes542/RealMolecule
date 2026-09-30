@@ -820,6 +820,7 @@ const RESULTS = [
            : /[?&]auto=mgpt(?:&|$)/.test(location.search) ? 'g'
            : /[?&]auto=aufbau(?:&|$)/.test(location.search) ? 'a'
            : /[?&]auto=chi(?:&|$)/.test(location.search) ? 'x'
+           : /[?&]auto=se4(?:&|$)/.test(location.search) ? 'E'
            : /[?&]auto=scan4(?:&|$)/.test(location.search) ? 'S'
            : /[?&]auto=scan(?:&|$)/.test(location.search) ? 's'
            : /[?&]auto=kr(?:&|$)/.test(location.search) ? 'K'
@@ -841,6 +842,78 @@ const RESULTS = [
   // For nitrogen the spectroscopic structure is 2+2+3 (2s2 2p3, outer shell HALF FILLED) while
   // the cap-4 balanced rule gives 2+3+2 -- more in the inner shell than the outer, which is
   // backwards, and removes the half-filled outer shell that produces the N>O anomaly.
+  // SELENIUM VERIFICATION (?auto=se4). scan4 found two Se partitions ~155-165 Ha BELOW the
+  // imported ionisation-order configuration and within 0.3% of the reference instead of 6.7%
+  // off. Before that touches Table 2 it has to survive two checks, because scan4 cannot make
+  // either of them:
+  //   1. STEP CONVERGENCE. scan4 let the default break stop each run, so its energies are
+  //      whatever the break returned. Here tol=0 forces the full count at two step counts per
+  //      configuration, and the drift between them is reported. If a 2x change in steps moves
+  //      the energy by anything like the 155 Ha in question, the finding is an artefact.
+  //   2. THE REMOVAL ORDER. The ionisation-order configurations were imported for the fourth
+  //      row precisely because they put the 4s pair outermost and least bound, which is what
+  //      experiment shows. A partition that wins on total energy but buries the d-shell as one
+  //      blob, or drops the distinct pair entirely, may lose that -- so per-shell binding and
+  //      outer radius are recorded and the outermost-least-bound test is applied explicitly.
+  //      A better total energy bought by losing the removal order is a TRADE, not an improvement,
+  //      and must be reported as one.
+  window.__autoSe4 = function(){
+    var KEY='atomsim_se4', out=[];
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    var NN = parseInt((location.search.match(/[?&]gridN=(\d+)/)||[])[1] || '800', 10);
+    var LADDER = ((location.search.match(/[?&]ladder=([\d,]+)/)||[])[1] || '12000,24000')
+                 .split(',').map(function(x){ return parseInt(x,10); });
+    var cands = [
+      { tag:'ionisation order (current)', cfg:[2,4,4,4,4,4,3,3,2,4] },
+      { tag:'balanced cap-4',             cfg:[2,4,4,4,4,4,4,4,4]   },
+      { tag:'d as single 10',             cfg:[2,4,4,4,4,10,2,4]    }
+    ];
+    var REF = -2399.870, Z = 34;
+    (async function(){
+      PK_MODE=false; var Nsave=N;
+      for (var ci=0; ci<cands.length; ci++){
+        var c=cands[ci], prevE=null;
+        for (var li=0; li<LADDER.length; li++){
+          var st=LADDER[li];
+          var rec={ tag:c.tag, cfg:c.cfg.join('+'), nsh:c.cfg.length, N:NN, steps:st,
+                    sum:c.cfg.reduce(function(a,b){return a+b;},0) };
+          try{ localStorage.setItem('se4_progress', c.tag+' steps='+st); }catch(e){}
+          await new Promise(function(r){ setTimeout(r,0); });
+          try{
+            N=NN;
+            var r=solveAtomPure(Z, c.cfg, st, {tol:0});      // tol=0: never break, run the count
+            rec.E = isFinite(r.etot)?Number(r.etot.toFixed(3)):'NONFIN';
+            rec.iters=r.iters; rec.ran_full=(r.iters===st);
+            if (isFinite(r.etot)) rec.err_pct=Number(((r.etot-REF)/REF*100).toFixed(2));
+            if (prevE!==null && isFinite(r.etot)) rec.step_drift=Number((r.etot-prevE).toFixed(3));
+            prevE = isFinite(r.etot)?r.etot:null;
+            // per-shell structure, read from the solver's own arrays after the solve
+            var sh=[];
+            for (var q=0; q<NSHELLS; q++){
+              sh.push({ n:Es[q], r_out:Number((M[q]*h).toFixed(4)),
+                        eps_per_e: Es[q]>0?Number((eps[q]/Es[q]).toFixed(5)):null });
+            }
+            rec.shells=sh;
+            // removal-order test: is the OUTERMOST shell the least bound per electron?
+            var occ=sh.filter(function(x){ return x.n>0 && x.eps_per_e!==null; });
+            if (occ.length>1){
+              var last=occ[occ.length-1].eps_per_e;
+              rec.outer_least_bound = occ.every(function(x,i){
+                return i===occ.length-1 || x.eps_per_e <= last; });
+              rec.eps_outer=last; rec.eps_min=Math.min.apply(null,occ.map(function(x){return x.eps_per_e;}));
+            }
+          }catch(e){ rec.E='ERR'; rec.msg=String(e).slice(0,70); }
+          out.push(rec);
+          try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){
+            console.error('SAVE FAILED ('+KEY+'): '+e.name); document.title='SAVE FAILED'; }
+        }
+      }
+      N=Nsave;
+      try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+      document.title='SE4 DONE';
+    })();
+  };
+
   // FOURTH-ROW OCCUPATION SCAN (?auto=scan4). Are the As and Se partitions optimal?
   // They are the two largest errors in the fourth row (-5.3% and -6.7%) and they are also the
   // part of the table where the configuration is SUPPLIED from the ionisation order rather than
@@ -1586,6 +1659,7 @@ const RESULTS = [
                        : MODE === 'g' ? window.__autoMGPT
                        : MODE === 'a' ? window.__autoAufbau
                        : MODE === 'x' ? window.__autoChi
+                       : MODE === 'E' ? window.__autoSe4
                        : MODE === 'S' ? window.__autoScan4
                        : MODE === 's' ? window.__autoScan
                        : MODE === 'O' ? window.__autoOrderCheck
