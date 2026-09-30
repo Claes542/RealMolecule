@@ -809,6 +809,7 @@ const RESULTS = [
            : /[?&]auto=sr(?:&|$)/.test(location.search) ? 'z'
            : /[?&]auto=seq(?:&|$)/.test(location.search) ? 'q'
            : /[?&]auto=radii(?:&|$)/.test(location.search) ? 'r'
+           : /[?&]auto=conv2(?:&|$)/.test(location.search) ? 'C'
            : /[?&]auto=conv(?:&|$)/.test(location.search) ? 'c'
            : /[?&]auto=mgpt(?:&|$)/.test(location.search) ? 'g'
            : /[?&]auto=aufbau(?:&|$)/.test(location.search) ? 'a'
@@ -931,6 +932,80 @@ const RESULTS = [
     };
   }
   window.__autoConv = __capture(runConvergenceTest, 'atomsim_conv', 'CONV');
+
+  // MESH LADDER DONE PROPERLY (?auto=conv2) -- replaces runConvergenceTest for the paper's
+  // Table of grid convergence. Three faults in that function made its Ne and Ar rungs
+  // meaningless, and all three were instrument faults, not solver faults:
+  //   1. steps scaled as 1/h (40000*N/128) when dt = h^2/2 demands 1/h^2;
+  //   2. a hard cap of 250000 steps, which bit exactly the finest rung;
+  //   3. the convergence test fixed at 20 steps, i.e. a 4x shorter imaginary-time window at
+  //      each refinement, so the finest rung broke earliest and came back LEAST converged.
+  // Its output was Ne -126.50/-133.05/-132.47 and Ar -323.63/-520.60/-511.26: non-monotone,
+  // Ne overshooting below the exact -128.94. The same signature is recorded at __autoFine --
+  // "argon at -517.3 (N=800, 12k steps) against -528.0 (N=400)".
+  // WHAT THIS ONE DOES. Grid ratio sqrt(2) rather than 2, so three rungs cost ~7x the coarsest
+  // instead of ~21x and a heavier atom can be resolved at all; steps and the convergence window
+  // both scale as (N/N0)^2, so every rung gets the SAME imaginary time and the SAME test; and
+  // each rung is run twice, at T and 2T, so it carries its own step-convergence evidence rather
+  // than asserting it. Order from a sqrt(2) ratio is p = 2*log2(d1/d2).
+  // Rungs are chosen so the 1s (r ~ 4.32/Z) is resolved: Ne needs ~5 cells, Ar ~3-6.
+  window.__autoConv2 = function(){
+    var KEY='atomsim_conv2', out=[];
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    var BASE = parseInt((location.search.match(/[?&]base=(\d+)/)||[])[1] || '20000', 10);
+    var atoms = [
+      { el:'He', Z:2,  Ns:[256, 362, 512]  },
+      { el:'Ne', Z:10, Ns:[256, 362, 512]  },
+      { el:'Ar', Z:18, Ns:[512, 724, 1024] }
+    ];
+    (async function(){
+      PK_MODE = false; var Nsave = N;
+      for (var ai=0; ai<atoms.length; ai++){
+        var a = atoms[ai], N0 = a.Ns[0];
+        var cfg = genConfigBalanced(a.Z);
+        for (var ni=0; ni<a.Ns.length; ni++){
+          var Ng = a.Ns[ni], sc = (Ng/N0)*(Ng/N0);
+          var st = Math.round(BASE*sc), ce = Math.max(20, Math.round(20*sc));
+          var rec = { el:a.el, Z:a.Z, cfg:cfg.join('+'), N:Ng, steps:st, chkEvery:ce };
+          try{ localStorage.setItem('conv2_progress', a.el+' N='+Ng+' T'); }catch(e){}
+          await new Promise(function(r){ setTimeout(r,0); });
+          try{
+            N = Ng;
+            var r1 = solveAtomPure(a.Z, cfg, st, {chkEvery:ce, tol:1e-4});
+            rec.h = Number(h.toFixed(5)); rec.D = D;
+            rec.cells_1s = Number((4.32/a.Z/h).toFixed(1));
+            rec.E_T  = isFinite(r1.etot)?Number(r1.etot.toFixed(5)):'NONFIN';
+            rec.it_T = r1.iters; rec.broke_T = (r1.iters < st);
+            try{ localStorage.setItem('conv2_progress', a.el+' N='+Ng+' 2T'); }catch(e){}
+            await new Promise(function(r){ setTimeout(r,0); });
+            N = Ng;
+            var r2 = solveAtomPure(a.Z, cfg, 2*st, {chkEvery:ce, tol:1e-4});
+            rec.E_2T = isFinite(r2.etot)?Number(r2.etot.toFixed(5)):'NONFIN';
+            rec.it_2T = r2.iters; rec.broke_2T = (r2.iters < 2*st);
+            if (isFinite(r1.etot) && isFinite(r2.etot))
+              rec.step_drift = Number((r2.etot-r1.etot).toFixed(5));
+          }catch(e){ rec.E_T='ERR'; rec.msg=String(e).slice(0,80); }
+          out.push(rec);
+          try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){
+            console.error('SAVE FAILED ('+KEY+'): '+e.name); document.title='SAVE FAILED'; }
+        }
+      }
+      N = Nsave;
+      // order from the 2T column, which is the more relaxed of the two
+      for (var ai2=0; ai2<atoms.length; ai2++){
+        var el = atoms[ai2].el, rs = out.filter(function(o){ return o.el===el; });
+        if (rs.length===3 && rs.every(function(o){ return typeof o.E_2T==='number'; })){
+          var d1 = Math.abs(rs[0].E_2T-rs[1].E_2T), d2 = Math.abs(rs[1].E_2T-rs[2].E_2T);
+          out.push({ el:el, order_note:'sqrt2 ladder', d1:Number(d1.toFixed(5)),
+                     d2:Number(d2.toFixed(5)),
+                     p: (d2>0)?Number((2*Math.log2(d1/d2)).toFixed(2)):null,
+                     monotone: (rs[0].E_2T > rs[1].E_2T && rs[1].E_2T > rs[2].E_2T) });
+        }
+      }
+      try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+      document.title = 'CONV2 DONE';
+    })();
+  };
   window.__autoMGPT = __capture(runMainGroupPT,     'atomsim_mgpt', 'MGPT');
   window.__autoFull = __capture(runFullTable,       'atomsim_full', 'FULL');
 
@@ -1418,6 +1493,7 @@ const RESULTS = [
                        : MODE === 'z' ? window.__autoSR
                        : MODE === 'q' ? window.__autoSeq
                        : MODE === 'r' ? window.__autoRadii
+                       : MODE === 'C' ? window.__autoConv2
                        : MODE === 'c' ? window.__autoConv
                        : MODE === 'g' ? window.__autoMGPT
                        : MODE === 'a' ? window.__autoAufbau
@@ -1472,16 +1548,27 @@ function applyConfig(Znuc, arr) {
 }
 
 // Solve one atom/ion to convergence using the SAME numerics as interactive mode.
-function solveAtomPure(Znuc, arr, maxSteps) {
+// opts.chkEvery / opts.tol override the convergence test, and `iters` is returned.
+// WHY THIS IS NEEDED. The default test -- |dE| < 1e-4 over 20 STEPS -- is not scale
+// invariant. Since dt = h^2/2, twenty steps on a grid twice as fine cover a quarter of the
+// imaginary time, so dE across the window is ~4x smaller and the test passes ~4x earlier in
+// the relaxation. On a mesh ladder that breaks the finer runs first and returns a LESS
+// converged answer at higher N, which looks exactly like a solver that fails to converge.
+// A ladder must therefore pass chkEvery proportional to (N/N_ref)^2 -- the same imaginary
+// time window at every rung -- and check the realised `iters` against maxSteps.
+function solveAtomPure(Znuc, arr, maxSteps, opts) {
   applyConfig(Znuc, arr);
   initArrays();
-  let prev = NaN, stable = 0;
+  let prev = NaN, stable = 0, iters = 0;
   const ms = maxSteps || 4000;
+  const chk = (opts && opts.chkEvery) || 20;
+  const tol = (opts && opts.tol) || 1e-4;
   for (let it = 0; it < ms; it++) {
     macroStep();
-    if (it % 20 === 19) {
+    iters = it + 1;
+    if (it % chk === chk - 1) {
       let et = 0; for (let s = 0; s < NSHELLS; s++) et += energy[s];
-      if (!isNaN(prev) && Math.abs(et - prev) < 1e-4) { stable++; if (stable >= 3) break; }
+      if (!isNaN(prev) && Math.abs(et - prev) < tol) { stable++; if (stable >= 3) break; }
       else stable = 0;
       prev = et;
     }
@@ -1491,7 +1578,7 @@ function solveAtomPure(Znuc, arr, maxSteps) {
   let nCore = 0; for (let s = 0; s < val; s++) nCore += Es[s];
   const epsVal = Es[val] > 0 ? eps[val] / Es[val] : 0;        // orbital eigenvalue (2P) per electron
   const enVal  = Es[val] > 0 ? energy[val] / Es[val] : 0;     // shell energy contribution (P) per electron
-  return { etot: etot, epsVal: epsVal, IE_eV: -epsVal * 27.2114,
+  return { etot: etot, iters: iters, epsVal: epsVal, IE_eV: -epsVal * 27.2114,
            IE_energy_eV: -enVal * 27.2114,
            Zker: Znuc - nCore, rc: M[val] * h,
            ne: arr.reduce((a, b) => a + b, 0), cfg: arr.join('+') };
