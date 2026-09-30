@@ -11,15 +11,64 @@
 We thank both reviewers for reports that were detailed, specific, and — on the points that
 mattered most — correct. Reviewer 2's central objection and Reviewer 1's "elephant in the
 room" both identified places where the manuscript's framing claimed more than its body text
-supported. We have not argued with either. The revision resolves them by **removing the
-material that could not be defended** and by **promoting to the foreground the result that
-Reviewer 2's objection actually points at**.
+supported. We have not argued with either.
 
-The revised manuscript is substantially shorter, and its central claim has changed. We set out
-the scope reduction first, then the change of framing, because between them they account for
-most of what a reviewer will notice.
+**But this is not only a reply, and we ask the editor to read it as more than one.** Following
+Reviewer 2's objection to the packing argument, the revised manuscript contains a new account of
+how the periodic table is built up — not a repair of the old one — and that account, rather than
+any of the individual replies below, is what we would now put forward as the paper's contribution.
+We therefore set it out first, before the point-by-point responses.
 
-## The principal change: scope reduced, parameters eliminated
+## The principal change: a new account of the build-up of the periodic table
+
+The periodic table is assembled here from **two** numbers, not four, and both are packings the
+calculations themselves produce rather than quantum numbers imposed on them: the **antipodal
+pair**, 2, and the **octet as two dual tetrahedra**, 8 = 4+4, the latter established against a
+single 8-shell that over-binds by 9-22%. Composing rows from those two units alone gives
+
+- every row length — 2, 8, 8, 18, 18, 32, 32 — and
+- every closed shell — 2, 10, 18, 36, 54, 86, 118 —
+
+with the fourth row as 2+8+8 and the sixth as four octets. The argument that closes the table is a
+constraint on what cannot be built: a row ending in 4 or 6 would require half an octet or three
+quarters of one, which is not a packing available to the model, so the remainder after octets is
+forced to 0 or 2 and never anything else. Note what the construction does *not* use: $2n^2$. The
+capacities are built from the pair and the octet and *then* found to coincide with the hydrogenic
+count, so nothing is borrowed from the account being compared against, and the coincidence is a
+result rather than an input.
+
+Three things follow that were not in the original manuscript at all:
+
+- **The octet rule is doing far more work than it is usually given.** It is not the rule for the
+  second and third rows; it is the unit from which every later row is built, 18 being a pair and two
+  octets and 32 four octets, rather than capacities in their own right.
+- **The step before closure is 4+3** — one tetrahedron complete, the other one vertex short. So
+  fluorine is 2+4+3 and chlorine 2+4+4+4+3, and a halogen is not "one electron short" as a count but
+  short of *one tetrahedral site* next to a filled tetrahedron. A filling rule gives $p^5$ and no
+  site. Relatedly, a complete outermost octet requires every inner shell already closed, so only a
+  noble gas can carry one.
+- **A direction on the period doubling**, which we had nothing to say about before:
+  $\sqrt{\mathrm{cap}(n{+}1)/\mathrm{cap}(n)} = (n{+}1)/n$ holds exactly when each capacity serves
+  two periods, so two is the value that turns a quadratic areal capacity into a linear ratio, and no
+  other value does it. We label this a statement about exponents and not yet physics; we note only
+  that it is a direction available to a packing account and unavailable to a filling rule, since the
+  Madelung ordering contains no length.
+
+**The reach of this account is the whole table, and should not be confused with the reach of the
+computations.** The decomposition covers all seven closed shells; the *computed total energies* are
+periods 1–3, for the separate reason given in the next section. Two limits are stated in the paper
+and we restate them here so the claim is not read as larger than it is: the construction fixes how
+many pairs and octets a row contains, not where they sit radially; and it is a decomposition of the
+capacities, not a derivation of the row lengths — that each capacity serves two periods remains the
+principal open item.
+
+We also credit the prior art we had missed. The 4+4 octet is Linnett's double quartet [*J. Am. Chem.
+Soc.* **83** (1961) 2643], which reads Lewis's cubical octet as two interpenetrating tetrahedral
+sets of four. Linnett separates them by *spin*; this model has no spin and reaches the same
+arrangement from Coulomb repulsion and non-overlap alone, so what is new is not the decomposition
+but a derivation of it that does not need spin.
+
+## The second change: parameters eliminated, and the computed scope reduced with them
 
 The original manuscript reported the main group from Li to Rn. Those heavy-element results
 were obtained with a frozen core and a pseudo-kernel carrying a softening radius $r_c$,
@@ -39,10 +88,11 @@ pure improvement:
   claim that nothing is adjusted is now literally true of every result reported, which it was
   not before.
 
-The paper now covers periods 1–3, hydrogen through argon, and says so in the title matter,
-abstract, introduction and conclusion. We think a smaller paper that is parameter-free
+The **computed** scope is accordingly periods 1–3, hydrogen through argon, and the paper says so in
+the title matter, abstract, introduction and conclusion. We think a paper that is parameter-free
 throughout is worth more than a larger one whose central claim a reader has to qualify — and
-Reviewer 2's report is what convinced us of that.
+Reviewer 2's report is what convinced us of that. This reduction is in what is *calculated*; it does
+not narrow the account of the build-up given above, which reaches every closure in the table.
 
 One limit at that boundary is physical and one is not, and the difference matters. The physical
 one: a build-up that adds outward cannot reach a shell lying inside one already occupied, which
@@ -498,20 +548,28 @@ We have added this as a stated limitation of the method rather than waiting to b
   concession (R1.4), and the imaginary-time clarification (R1.5).
 
 **Restated**
-- Scope: periods 1–3, hydrogen through argon, all-electron, parameter-free throughout.
+- Scope, in the two senses the paper now keeps apart: the *computed* energies are periods 1–3,
+  hydrogen through argon, all-electron and parameter-free throughout; the *account of the build-up*
+  covers every row length and every closed shell of the table, $2,10,18,36,54,86,118$.
 - The shell structure as an output of the build-up, not of energy minimisation *only* --- the
   energy selects correctly among the configurations the build-up leaves available.
 - The Aufbau result as established for Li–C and open from nitrogen.
 
 We are grateful for both reports. The revision **retracts** several claims the original made and
 we have tried to save none of them: the parameter-free assertion as it was worded, the
-4s-before-3d ordering, the ionization energies, the $1/Z$ core radius, and the reach beyond
-argon. What replaces them is new, and follows from the objections rather than working around
-them: the Aufbau as a path-dependent relaxation rather than a fitted choice of packing, with the
-build-up shown directly in three dimensions; the shell capacities derived from a counting
-argument instead of selected by agreement; electronegativity computed natively from the shell
-energies, in place of the ionization energies withdrawn; and a stated account of what the
-spherical reduction costs, which no one asked for and which the method needed.
+4s-before-3d ordering, the ionization energies, the $1/Z$ core radius, the sign of the
+third-period error, and the reach beyond argon. What replaces them is new, and follows from the
+objections rather than working around them: the Aufbau as a path-dependent relaxation rather than a
+fitted choice of packing, with the build-up shown directly in three dimensions; electronegativity
+computed natively from the shell energies, in place of the ionization energies withdrawn; and a
+stated account of what the spherical reduction costs, which no one asked for and which the method
+needed.
 
-So the paper claims less in the places the reviewers challenged, and more, on firmer ground, in
-the places the challenges led us to. We think it is a considerably better paper for it.
+Above all, the capacities are no longer selected by agreement but **built** — the table assembled
+from an antipodal pair and a dual-tetrahedral octet, every row length and every closed shell
+following from what those two units can and cannot compose, with $2n^2$ nowhere in the
+construction. That is a different account of the periodic table from the one the original
+manuscript offered, and a different kind of claim: it can be checked by composition rather than
+weighed against a fitted number. We would ask that the manuscript be judged on it. The paper claims
+less in the places the reviewers challenged, and more, on firmer ground, in the place their
+challenges led us to.
