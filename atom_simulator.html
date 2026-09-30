@@ -814,6 +814,7 @@ const RESULTS = [
            : /[?&]auto=mgpt(?:&|$)/.test(location.search) ? 'g'
            : /[?&]auto=aufbau(?:&|$)/.test(location.search) ? 'a'
            : /[?&]auto=chi(?:&|$)/.test(location.search) ? 'x'
+           : /[?&]auto=scan4(?:&|$)/.test(location.search) ? 'S'
            : /[?&]auto=scan(?:&|$)/.test(location.search) ? 's'
            : /[?&]auto=kr(?:&|$)/.test(location.search) ? 'K'
            : /[?&]auto=fine(?:&|$)/.test(location.search) ? 'N'
@@ -834,6 +835,72 @@ const RESULTS = [
   // For nitrogen the spectroscopic structure is 2+2+3 (2s2 2p3, outer shell HALF FILLED) while
   // the cap-4 balanced rule gives 2+3+2 -- more in the inner shell than the outer, which is
   // backwards, and removes the half-filled outer shell that produces the N>O anomaly.
+  // FOURTH-ROW OCCUPATION SCAN (?auto=scan4). Are the As and Se partitions optimal?
+  // They are the two largest errors in the fourth row (-5.3% and -6.7%) and they are also the
+  // part of the table where the configuration is SUPPLIED from the ionisation order rather than
+  // produced by the model, so a bad partition is a live possibility and worth testing.
+  // WHY THE TEST IS CLEAN HERE, unlike beryllium. Be taught that energy is ANTI-correlated with
+  // the physical configuration: the lower-energy candidate over-binds past the reference, so a
+  // lower energy is not evidence. As and Se currently UNDER-bind by 5-7%, so for these two a
+  // lower energy moves TOWARD the reference. A candidate that is both lower in energy and closer
+  // to the reference is therefore an unambiguous improvement, with no anti-correlation to weigh.
+  // All candidates run at the same mesh (N=800) and the SAME step count, since energy falls
+  // monotonically with steps and an unequal comparison is worthless.
+  window.__autoScan4 = function(){
+    var KEY='atomsim_scan4', out=[];
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    var NN = parseInt((location.search.match(/[?&]gridN=(\d+)/)||[])[1] || '800', 10);
+    var ST = parseInt((location.search.match(/[?&]steps=(\d+)/)||[])[1] || '48000', 10);
+    var AR = [2,4,4,4,4];                       // [Ar] core, 18, derived
+    // Each candidate is the ROW-4 partition appended to [Ar]; the core is held fixed so the
+    // comparison is over the fourth row alone.
+    var cases = [
+      { el:'As', Z:33, ref:-2234.240, rows:[
+        { tag:'ionisation order (current)', r:[4,3,3,2,3] },
+        { tag:'balanced cap-4',             r:[4,4,4,3]   },
+        { tag:'d as 4+4+2',                 r:[4,4,2,2,3] },
+        { tag:'pair first, 2+8+5',          r:[2,4,4,4,1] },
+        { tag:'p split 2+1',                r:[4,3,3,2,2,1] },
+        { tag:'d as single 10',             r:[10,2,3]    } ]},
+      { el:'Se', Z:34, ref:-2399.870, rows:[
+        { tag:'ionisation order (current)', r:[4,3,3,2,4] },
+        { tag:'balanced cap-4',             r:[4,4,4,4]   },
+        { tag:'d as 4+4+2',                 r:[4,4,2,2,4] },
+        { tag:'pair first, 2+8+6',          r:[2,4,4,4,2] },
+        { tag:'p split 2+2',                r:[4,3,3,2,2,2] },
+        { tag:'d as single 10',             r:[10,2,4]    } ]}
+    ];
+    (async function(){
+      PK_MODE=false; var Nsave=N;
+      for (var ci=0; ci<cases.length; ci++){
+        var c=cases[ci];
+        for (var ri=0; ri<c.rows.length; ri++){
+          var cand=c.rows[ri], cfg=AR.concat(cand.r);
+          var sum=cfg.reduce(function(a,b){return a+b;},0);
+          var rec={ el:c.el, Z:c.Z, tag:cand.tag, cfg:cfg.join('+'), nsh:cfg.length,
+                    sum:sum, ok:(sum===c.Z), N:NN, steps:ST };
+          try{ localStorage.setItem('scan4_progress', c.el+' '+cand.tag); }catch(e){}
+          await new Promise(function(r){ setTimeout(r,0); });
+          if (sum!==c.Z){ rec.skip='electron count '+sum+' != Z'; out.push(rec); continue; }
+          try{
+            N=NN;
+            var r=solveAtomPure(c.Z, cfg, ST);
+            rec.E = isFinite(r.etot)?Number(r.etot.toFixed(3)):'NONFIN';
+            rec.iters = r.iters;
+            if (isFinite(r.etot)) rec.err_pct = Number(((r.etot-c.ref)/c.ref*100).toFixed(2));
+            rec.r_core = Number((M[1]*h).toFixed(4));
+          }catch(e){ rec.E='ERR'; rec.msg=String(e).slice(0,70); }
+          out.push(rec);
+          try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){
+            console.error('SAVE FAILED ('+KEY+'): '+e.name); document.title='SAVE FAILED'; }
+        }
+      }
+      N=Nsave;
+      try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+      document.title='SCAN4 DONE';
+    })();
+  };
+
   window.__autoScan = function(){
     var KEY = 'atomsim_scan', out = [];
     try { localStorage.removeItem(KEY); } catch(e){}
@@ -1513,6 +1580,7 @@ const RESULTS = [
                        : MODE === 'g' ? window.__autoMGPT
                        : MODE === 'a' ? window.__autoAufbau
                        : MODE === 'x' ? window.__autoChi
+                       : MODE === 'S' ? window.__autoScan4
                        : MODE === 's' ? window.__autoScan
                        : MODE === 'O' ? window.__autoOrderCheck
                        : MODE === 'B' ? window.__autoBeLadder
