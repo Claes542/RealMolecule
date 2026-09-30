@@ -1,6 +1,7 @@
 # Response to the Reviewers
 
 **Manuscript** 1568909 — *A 3D Multiphase Continuum Model for Atoms*
+**Revised title** *A 3D Multiphase Continuum Model for Atoms and the Periodic Table*
 **Journal** International Journal of Quantum Chemistry
 **Decision** Major revision
 
@@ -308,6 +309,9 @@ reduction predicts, is under-binding — the direction of all eighteen fourth-ro
   closed shell. What is bounded at argon is the outward build-up, not the calculation.
 - The shell structure as an output of the build-up, not of energy minimisation only.
 - The Aufbau result as established for Li–C and open from nitrogen.
+- The title, extended to name the new content: *A 3D Multiphase Continuum Model for Atoms and the
+  Periodic Table*. The model is three-dimensional; the periodic-table results are computed with the
+  spherically homogenised reduction of it, as the text states throughout.
 
 The revision retracts what it could not defend and we have tried to save none of it. What replaces it
 is the construction: the table assembled from an antipodal pair and a dual-tetrahedral octet, every
