@@ -67,35 +67,31 @@ sets of four. Linnett separates them by *spin*; this model has no spin and reach
 arrangement from Coulomb repulsion and non-overlap alone, so what is new is not the decomposition
 but a derivation of it that does not need spin.
 
-## The second change: parameters eliminated, and the computed scope reduced with them
+## The second change: periods 1–4, with no parameters at all
 
-The original manuscript reported the main group from Li to Rn. Those heavy-element results
-were obtained with a frozen core and a pseudo-kernel carrying a softening radius $r_c$,
-calibrated against one reference atom per period — the very construction Reviewer 2 identified
-as contradicting the abstract's "in-principle parameter-free" claim.
+**The calculation covers periods 1–4, hydrogen to krypton, $Z=1$–$36$, and contains no adjustable
+quantity of any kind.** Every energy is computed all-electron with the bare nuclear term $-Z/r$:
+no core radius, no screened kernel, no frozen core, no fitted length, nothing calibrated against a
+reference atom, and nothing set per element. The claim that nothing is adjusted is now literally
+true of every number reported.
 
-We considered two ways to answer this: restate the claim honestly while keeping the tables, or
-remove the construction. **We have removed it.** The frozen core, the pseudo-kernel, the
-two-scale core/valence decomposition, and both heavy-element tables are gone from the paper.
+The only thing that varies across the range is resolution, and it varies by a rule rather than by
+choice. The innermost shell contracts as $r_{1s}\approx4.3/Z$, so no single mesh serves both ends of
+the table; $N=400$ through argon and $N=800$ from potassium keeps that shell spanned by a comparable
+number of cells throughout. A mesh is a discretisation and not a parameter of the model: it carries
+no physics and is fitted to nothing. Section 7 states what it costs, and why it is not refined
+further — the spherical reduction, not the mesh, is what limits the accuracy here.
 
-The consequence is a genuine trade, and we state it plainly rather than presenting it as a
-pure improvement:
+This is what replaced the frozen core and the pseudo-kernel of the original submission, which
+carried a softening radius $r_c$ calibrated against one reference atom per period — the construction
+Reviewer 2 identified as contradicting the abstract. We considered restating the claim honestly and
+keeping that construction. **We removed the construction instead**, and resolution alone recovers
+the range: the two-scale core/valence decomposition, the pseudo-kernel and $r_c$ are gone from the
+paper, and the fourth row is computed all-electron in their place.
 
-- **Lost:** the reach from krypton to radon, and the two tables reporting it. The reach *to*
-  krypton is retained and is now all-electron rather than frozen-core.
-- **Gained:** every number now in the paper is computed all-electron, with the bare nuclear
-  term $-Z/r$, with no core radius, no screened kernel and **no fitted length anywhere**. The
-  claim that nothing is adjusted is now literally true of every result reported, which it was
-  not before.
-
-What was removed was the *construction*, not the reach. The all-electron energies now run from
-hydrogen to **krypton**, $Z=1$–$36$, closing the first four rows, with the mesh chosen by $Z$ so that
-the innermost shell stays resolved: $N=400$ through argon and $N=800$ from potassium, since
-$r_{1s}\approx4.3/Z$ and no single mesh serves both ends. The fourth row is reported in a new table:
-mean $|$error$|$ $3.3\%$, maximum $6.7\%$ (Se), and — the point worth more than the mean — **all
-eighteen entries under-bound**, with no trend in $Z$, which is the direction the spherical reduction
-predicts. So the revision is parameter-free *and* reaches further than the original's frozen-core
-tables did, rather than trading one for the other.
+The fourth row is reported in a new table: mean $|$error$|$ $3.3\%$, maximum $6.7\%$ (Se), and — the
+point worth more than the mean — **all eighteen entries under-bound**, with no trend in $Z$, which is
+the direction the spherical reduction predicts.
 
 One boundary does remain at argon, and it is a boundary in the **build-up**, not in the calculation.
 From scandium the next charge belongs to a shell *inside* one already occupied — shown
@@ -573,7 +569,7 @@ We have added this as a stated limitation of the method rather than waiting to b
 We are grateful for both reports. The revision **retracts** several claims the original made and
 we have tried to save none of them: the parameter-free assertion as it was worded, the
 4s-before-3d ordering, the ionization energies, the $1/Z$ core radius, the sign of the
-third-period error, and the reach beyond krypton. What replaces them is new, and follows from the
+third-period error, and the elements beyond krypton, which were reported with a fitted core. What replaces them is new, and follows from the
 objections rather than working around them: the Aufbau as a path-dependent relaxation rather than a
 fitted choice of packing, with the build-up shown directly in three dimensions; electronegativity
 computed natively from the shell energies, in place of the ionization energies withdrawn; and a
