@@ -54,9 +54,8 @@ Three things follow that were not in the original manuscript at all:
   that it is a direction available to a packing account and unavailable to a filling rule, since the
   Madelung ordering contains no length.
 
-**The reach of this account is the whole table, and should not be confused with the reach of the
-computations.** The decomposition covers all seven closed shells; the *computed total energies* are
-periods 1–3, for the separate reason given in the next section. Two limits are stated in the paper
+**The reach of this account is the whole table.** The decomposition covers all seven closed shells;
+the *computed total energies* run from hydrogen to krypton, $Z=1$–$36$, closing the first four rows. Two limits are stated in the paper
 and we restate them here so the claim is not read as larger than it is: the construction fixes how
 many pairs and octets a row contains, not where they sit radially; and it is a decomposition of the
 capacities, not a derivation of the row lengths — that each capacity serves two periods remains the
@@ -82,17 +81,29 @@ two-scale core/valence decomposition, and both heavy-element tables are gone fro
 The consequence is a genuine trade, and we state it plainly rather than presenting it as a
 pure improvement:
 
-- **Lost:** the reach from argon to radon, and the two tables reporting it.
+- **Lost:** the reach from krypton to radon, and the two tables reporting it. The reach *to*
+  krypton is retained and is now all-electron rather than frozen-core.
 - **Gained:** every number now in the paper is computed all-electron, with the bare nuclear
   term $-Z/r$, with no core radius, no screened kernel and **no fitted length anywhere**. The
   claim that nothing is adjusted is now literally true of every result reported, which it was
   not before.
 
-The **computed** scope is accordingly periods 1–3, hydrogen through argon, and the paper says so in
-the title matter, abstract, introduction and conclusion. We think a paper that is parameter-free
-throughout is worth more than a larger one whose central claim a reader has to qualify — and
-Reviewer 2's report is what convinced us of that. This reduction is in what is *calculated*; it does
-not narrow the account of the build-up given above, which reaches every closure in the table.
+What was removed was the *construction*, not the reach. The all-electron energies now run from
+hydrogen to **krypton**, $Z=1$–$36$, closing the first four rows, with the mesh chosen by $Z$ so that
+the innermost shell stays resolved: $N=400$ through argon and $N=800$ from potassium, since
+$r_{1s}\approx4.3/Z$ and no single mesh serves both ends. The fourth row is reported in a new table:
+mean $|$error$|$ $3.3\%$, maximum $6.7\%$ (Se), and — the point worth more than the mean — **all
+eighteen entries under-bound**, with no trend in $Z$, which is the direction the spherical reduction
+predicts. So the revision is parameter-free *and* reaches further than the original's frozen-core
+tables did, rather than trading one for the other.
+
+One boundary does remain at argon, and it is a boundary in the **build-up**, not in the calculation.
+From scandium the next charge belongs to a shell *inside* one already occupied — shown
+model-independently by the ionisation order, since the $4s$ electrons are removed first — and a
+build-up that only adds outward has no such move. The fourth row's configurations are therefore
+supplied from the ionisation order rather than derived, and we say so in the table caption itself:
+what the row demonstrates is that the solver handles the nesting and returns the energies once a
+configuration is given, not that the model would have chosen that configuration.
 
 One limit at that boundary is physical and one is not, and the difference matters. The physical
 one: a build-up that adds outward cannot reach a shell lying inside one already occupied, which
@@ -486,6 +497,8 @@ We have added this as a stated limitation of the method rather than waiting to b
 **Removed**
 - All ionization-energy material, including Eq. (1)'s Koopmans identification, and the tables
   underlying R2.5–R2.8.
+- The statement that the all-electron table stops at argon: with the mesh chosen by $Z$ it runs to
+  krypton, and a new table reports the fourth row, $Z=19$–$36$.
 - The frozen core, the pseudo-kernel, $r_c$, and the two-scale core/valence decomposition.
 - Both heavy-element tables (representative frozen-core atoms; full main group Li→Rn).
 - The "4s before 3d" claim (R2.4) and the "in-principle parameter-free" claim as originally
@@ -548,9 +561,11 @@ We have added this as a stated limitation of the method rather than waiting to b
   concession (R1.4), and the imaginary-time clarification (R1.5).
 
 **Restated**
-- Scope, in the two senses the paper now keeps apart: the *computed* energies are periods 1–3,
-  hydrogen through argon, all-electron and parameter-free throughout; the *account of the build-up*
-  covers every row length and every closed shell of the table, $2,10,18,36,54,86,118$.
+- Scope, in the two senses the paper now keeps apart: the *computed* energies run hydrogen to
+  krypton, $Z=1$–$36$, all-electron and parameter-free throughout, on a mesh chosen by $Z$
+  ($N=400$ through argon, $N=800$ from potassium); the *account of the build-up* covers every row
+  length and every closed shell of the table, $2,10,18,36,54,86,118$. What is bounded at argon is
+  the outward build-up, not the calculation.
 - The shell structure as an output of the build-up, not of energy minimisation *only* --- the
   energy selects correctly among the configurations the build-up leaves available.
 - The Aufbau result as established for Li–C and open from nitrogen.
@@ -558,7 +573,7 @@ We have added this as a stated limitation of the method rather than waiting to b
 We are grateful for both reports. The revision **retracts** several claims the original made and
 we have tried to save none of them: the parameter-free assertion as it was worded, the
 4s-before-3d ordering, the ionization energies, the $1/Z$ core radius, the sign of the
-third-period error, and the reach beyond argon. What replaces them is new, and follows from the
+third-period error, and the reach beyond krypton. What replaces them is new, and follows from the
 objections rather than working around them: the Aufbau as a path-dependent relaxation rather than a
 fitted choice of packing, with the build-up shown directly in three dimensions; electronegativity
 computed natively from the shell energies, in place of the ionization energies withdrawn; and a
