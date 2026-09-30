@@ -950,10 +950,20 @@ $Z$ & atom & config & $TE$ RealQM (Ha) & reference (Ha) & error \\
 \end{table}
 
 The mean relative error is $1.6\%$ and the maximum $4.5\%$ (Si, with S at $4.3\%$);
-13 of the 17 atoms fall within $2.5\%$. This is comparable to Hartree--Fock accuracy on total energy --- with
-the opposite sign of error (RealQM over-binds the heavier atoms of the third period, where HF
-under-binds through missing correlation) --- obtained from a 1D radial solve with no
-basis sets, no antisymmetry, and no two-electron integrals.
+13 of the 17 atoms fall within $2.5\%$. That is a few per cent from a 1D radial solve with no basis
+sets, no antisymmetry and no two-electron integrals, and a few per cent is the level at which the
+table should be read.
+
+We claim no more precision than that, and one entry shows why. Argon's $+0.1\%$ is the closest
+agreement in the table and it is not robust: on the same domain, refining the radial mesh to
+$N=724$ and $1024$ --- where the $1s$ spans $17$ and $25$ cells rather than the $10$ it spans at
+$N=400$ --- moves argon to $-511.7$ and $-511.3$~Ha, some $3\%$ \emph{under}-bound, the two finest
+values agreeing with each other to $0.08\%$. Both are step-converged: quadrupling the relaxation at
+fixed mesh moves the energy by $0.005$~Ha. So the near-exact argon entry is an artefact of the
+production mesh, and nothing here rests on it --- in particular we do not read a \emph{sign} off
+this table, since the sign of argon's error is itself a function of the grid. What the reduction
+predicts, and what survives refinement, is under-binding; see
+Section~\ref{sec:radialsolver} and Section~\ref{sec:convergence}.
 
 \subsection{Boundary of the spherical model: where radial nesting fails}\label{sec:dblock}
 
@@ -1218,6 +1228,32 @@ He & 256 & 0.020 & $-2.84121$ & 0.01566 & $0.94$ \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\paragraph{Why the production mesh is not refined further, and why refining it would not help.}
+Every energy reported here is computed at $N=400$, and that is a deliberate ceiling rather than a
+resource limit. The radial mesh is not the accuracy-limiting approximation: the spherical
+homogenisation is. Section~\ref{sec:radialsolver} measures what the reduction costs --- it has the
+pair \emph{count} right and the pair \emph{geometry} wrong, overestimating intra-shell repulsion by
+a factor of $1.6$--$2$ --- and the residual it leaves is of order a per cent, in the under-binding
+direction. The ladder above puts the discretisation error on the same scale for comparison:
+successive $\sqrt2$ refinements of helium move the total energy by $0.005$ and $0.004$~Ha, about
+$0.2\%$ a step, against the ${\approx}2\%$ the reduction itself accounts for. The model error is an
+order of magnitude the larger, so refining the radial grid buys convergence \emph{to the
+reduction's answer}, which is not the atom's. A more accurate solution of the wrong equation is not
+a more accurate atom.
+
+$N=400$ is also the resolution the three-dimensional solver can reach, at $400^3$; holding the
+radial runs to the same figure keeps the two halves of the paper comparable and avoids quoting
+radial numbers at a precision the three-dimensional model could not be checked against. The proper
+next step in accuracy is angular resolution --- restoring the pair geometry the reduction discards
+--- and not a finer $r$.
+
+One consequence should be stated plainly, since it cuts against the table. Because the mesh is held
+fixed rather than converged, individual entries carry a grid uncertainty that can exceed their
+quoted error: argon moves by about $3\%$, and changes the sign of its error, between $N=400$ and
+$N=1024$ (Section~\ref{sec:TEexplicit}). Neon is similar in size and non-monotone across the same
+range. The mean of a few per cent over the table is meaningful; any single entry at better than a
+per cent is not.
 
 The inner $1s$ contracts as $1/Z$, so a uniform grid must be refined in proportion to
 resolve it: at the coarse $N$ above the Ne ($1s$ at $r\!\approx\!0.1$) and Ar

@@ -951,7 +951,6 @@ const RESULTS = [
   // Rungs are chosen so the 1s (r ~ 4.32/Z) is resolved: Ne needs ~5 cells, Ar ~3-6.
   window.__autoConv2 = function(){
     var KEY='atomsim_conv2', out=[];
-    try{ localStorage.removeItem(KEY); }catch(e){}
     var BASE = parseInt((location.search.match(/[?&]base=(\d+)/)||[])[1] || '20000', 10);
     // ?tol=0 disables the early break entirely, so the rung runs its full matched step count.
     // Needed because every rung of the first conv2 pass stopped ON the break (it_T == it_2T),
@@ -964,6 +963,9 @@ const RESULTS = [
     var RUNG = parseInt((location.search.match(/[?&]rung=(\d+)/)||[])[1] || '0', 10);
     var TAG  = (location.search.match(/[?&]tag=([A-Za-z0-9_]+)/)||[])[1] || '';
     if (TAG) KEY = KEY + '_' + TAG;
+    try{ localStorage.removeItem(KEY); }catch(e){}   // clear AFTER the tag, or a tagged
+    // check wipes the untagged ladder it is supposed to be checking against
+    try{ localStorage.setItem('conv2_progress', 'starting ' + KEY); }catch(e){}
     var atoms = [
       { el:'He', Z:2,  Ns:[256, 362, 512]  },
       { el:'Ne', Z:10, Ns:[256, 362, 512]  },

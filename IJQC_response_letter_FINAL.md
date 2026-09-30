@@ -365,7 +365,36 @@ was a real defect and the reviewer was right about all three:
 
 **R2.8 — Grid convergence is demonstrated only for the helium total energy.**
 
-The revised paper reports the mesh ladder it actually has, and does not generalise from it. A word on what
+**The reviewer is right that the ladder covered one atom, and we have now looked beyond it. What we
+found changes our answer, and not in the direction of adding more rungs.** Refining the radial mesh
+converges the calculation to the answer of the *spherically reduced* problem, and that reduction --
+not the discretisation -- is what limits the accuracy here. The revision measures the cost of the
+reduction directly (below): it has the pair count right and the pair geometry wrong, overestimating
+intra-shell repulsion by a factor of 1.6-2, and leaving a residual of order a per cent in the
+under-binding direction. Set against that, successive sqrt(2) refinements of helium move the total
+energy by 0.005 and 0.004 Ha, about 0.2% a step. The model error is an order of magnitude the
+larger, so a finer radial grid buys precision in solving the wrong equation. The accuracy-limiting
+direction is *angular* resolution, restoring the pair geometry the reduction discards, and we say so
+rather than presenting a mesh ladder as though it were the open question.
+
+N = 400 is also what the three-dimensional solver reaches, at 400^3. Holding the radial runs to the
+same figure keeps the two halves of the paper comparable, and stops us quoting radial energies at a
+precision the three-dimensional model could not be checked against.
+
+**One thing this cost us, which we report rather than leave for the reviewer to find.** Because the
+mesh is held fixed rather than converged, a single entry can carry a grid uncertainty exceeding its
+quoted error. Argon is the case in point: at the production N = 400 it agrees to +0.1%, the closest
+in the table, but on the same domain at N = 724 and N = 1024 -- where the 1s spans 17 and 25 cells
+against 10 at N = 400 -- it moves to -511.7 and -511.3 Ha, about 3% *under*-bound, the two finest
+rungs agreeing to 0.08%. Both are step-converged: quadrupling the relaxation at fixed mesh moves the
+energy by 0.005 Ha. Neon is comparable in size and non-monotone over the same range. Two changes
+follow. The manuscript now states that the table is to be read at the level of a few per cent and
+that no single entry is claimed to better than a per cent; and we have **removed the claim that the
+model over-binds the heavier third-period atoms with the opposite sign of error to Hartree-Fock**,
+since the sign of argon's error is a function of the grid. What survives refinement, and what the
+reduction predicts, is under-binding.
+
+A word on what
 convergence means for the three-dimensional runs, since the revision adds three figures drawn
 from them. In the present setting --- the
 simplest possible implementation, on the smallest systems --- those runs display *qualitative*
@@ -412,6 +441,9 @@ We have added this as a stated limitation of the method rather than waiting to b
 - The "4s before 3d" claim (R2.4) and the "in-principle parameter-free" claim as originally
   worded (R2.1) — the latter now restated and true.
 - The sentence Reviewer 2 quoted on the correctness of the radial description.
+- The claim that the model over-binds the heavier third-period atoms with the opposite sign of error
+  to Hartree-Fock (R2.8) --- argon's error changes sign between $N=400$ and $N=1024$, so the table
+  does not support a sign.
 
 **Added**
 - §*Aufbau: how the shell structure forms* — the build-up as the constraint that makes energy
