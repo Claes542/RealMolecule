@@ -820,6 +820,7 @@ const RESULTS = [
            : /[?&]auto=mgpt(?:&|$)/.test(location.search) ? 'g'
            : /[?&]auto=aufbau(?:&|$)/.test(location.search) ? 'a'
            : /[?&]auto=chi(?:&|$)/.test(location.search) ? 'x'
+           : /[?&]auto=row4(?:&|$)/.test(location.search) ? 'W'
            : /[?&]auto=se4(?:&|$)/.test(location.search) ? 'E'
            : /[?&]auto=scan4(?:&|$)/.test(location.search) ? 'S'
            : /[?&]auto=scan(?:&|$)/.test(location.search) ? 's'
@@ -842,6 +843,65 @@ const RESULTS = [
   // For nitrogen the spectroscopic structure is 2+2+3 (2s2 2p3, outer shell HALF FILLED) while
   // the cap-4 balanced rule gives 2+3+2 -- more in the inner shell than the outer, which is
   // backwards, and removes the half-filled outer shell that produces the N>O anomaly.
+  // FOURTH ROW UNDER BOTH FILLING RULES (?auto=row4). The question Claes put: are the fourth-row
+  // occupations optimal? Table 2 of the paper computes Z=19-36 in configurations IMPORTED from the
+  // ionisation order (genConfigObserved), because an outward build-up cannot place a charge inside an
+  // occupied shell. The alternative is the model's OWN rule, the balanced cap-4 filling it uses
+  // through calcium (genConfigBalanced), extrapolated past it. This runs both for every Z in the row
+  // and compares.
+  // A CORRECTION THIS SETTLES. The scan4/se4 result reported "balanced cap-4" for Se as 2+4x8 at
+  // -0.33% against the imported -6.74%. That partition is NOT what genConfigBalanced returns:
+  // the real rule gives 2+4+4+4+4+4+4+3+3+2, since period 4 has caps [4,4,4,4,2] and sixteen
+  // electrons distribute round-robin as 4+4+3+3+2. So the earlier figure belongs to a hand-made
+  // partition, not to the model's rule, and whether the rule itself wins is open until this runs.
+  // Equal mesh (N=800), equal step count, tol=0 so neither rule is favoured by where a break fired.
+  // Z=19 and 20 return identical configurations under both rules and are kept as a control: the two
+  // columns must agree there to the last digit, or the comparison is not measuring what it claims.
+  window.__autoRow4 = function(){
+    var KEY='atomsim_row4', out=[];
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    var NN = parseInt((location.search.match(/[?&]gridN=(\d+)/)||[])[1] || '800', 10);
+    var ST = parseInt((location.search.match(/[?&]steps=(\d+)/)||[])[1] || '12000', 10);
+    var ZLO = parseInt((location.search.match(/[?&]zmin=(\d+)/)||[])[1] || '19', 10);
+    var ZHI = parseInt((location.search.match(/[?&]zmax=(\d+)/)||[])[1] || '36', 10);
+    var EL={19:'K',20:'Ca',21:'Sc',22:'Ti',23:'V',24:'Cr',25:'Mn',26:'Fe',27:'Co',28:'Ni',
+            29:'Cu',30:'Zn',31:'Ga',32:'Ge',33:'As',34:'Se',35:'Br',36:'Kr'};
+    (async function(){
+      PK_MODE=false; var Nsave=N;
+      for (var Z=ZLO; Z<=ZHI; Z++){
+        var rec={ Z:Z, el:EL[Z], N:NN, steps:ST };
+        var ci=genConfigObserved(Z), cb=genConfigBalanced(Z);
+        rec.cfg_imported=ci.join('+'); rec.cfg_own=cb.join('+');
+        rec.identical = (rec.cfg_imported===rec.cfg_own);
+        rec.ok = (ci.reduce(function(a,b){return a+b;},0)===Z) &&
+                 (cb.reduce(function(a,b){return a+b;},0)===Z);
+        var ref = REF_ETOT[Z]; rec.ref = (ref!=null)?Number(ref.toFixed(3)):null;
+        try{ localStorage.setItem('row4_progress', 'Z='+Z+' '+EL[Z]); }catch(e){}
+        await new Promise(function(r){ setTimeout(r,0); });
+        if (!rec.ok){ rec.skip='electron count mismatch'; out.push(rec); continue; }
+        try{
+          N=NN; var r1=solveAtomPure(Z, ci, ST, {tol:0});
+          rec.E_imported = isFinite(r1.etot)?Number(r1.etot.toFixed(3)):'NONFIN';
+          if (ref!=null && isFinite(r1.etot)) rec.err_imported=Number(((r1.etot-ref)/ref*100).toFixed(2));
+          await new Promise(function(r){ setTimeout(r,0); });
+          N=NN; var r2=solveAtomPure(Z, cb, ST, {tol:0});
+          rec.E_own = isFinite(r2.etot)?Number(r2.etot.toFixed(3)):'NONFIN';
+          if (ref!=null && isFinite(r2.etot)) rec.err_own=Number(((r2.etot-ref)/ref*100).toFixed(2));
+          if (isFinite(r1.etot)&&isFinite(r2.etot)){
+            rec.dE = Number((r2.etot-r1.etot).toFixed(3));        // negative: own rule lower
+            if (ref!=null) rec.better = (Math.abs(rec.err_own)<Math.abs(rec.err_imported))?'own':'imported';
+          }
+        }catch(e){ rec.E_imported='ERR'; rec.msg=String(e).slice(0,70); }
+        out.push(rec);
+        try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){
+          console.error('SAVE FAILED ('+KEY+'): '+e.name); document.title='SAVE FAILED'; }
+      }
+      N=Nsave;
+      try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+      document.title='ROW4 DONE';
+    })();
+  };
+
   // SELENIUM VERIFICATION (?auto=se4). scan4 found two Se partitions ~155-165 Ha BELOW the
   // imported ionisation-order configuration and within 0.3% of the reference instead of 6.7%
   // off. Before that touches Table 2 it has to survive two checks, because scan4 cannot make
@@ -1659,6 +1719,7 @@ const RESULTS = [
                        : MODE === 'g' ? window.__autoMGPT
                        : MODE === 'a' ? window.__autoAufbau
                        : MODE === 'x' ? window.__autoChi
+                       : MODE === 'W' ? window.__autoRow4
                        : MODE === 'E' ? window.__autoSe4
                        : MODE === 'S' ? window.__autoScan4
                        : MODE === 's' ? window.__autoScan
