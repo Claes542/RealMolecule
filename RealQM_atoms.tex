@@ -28,8 +28,8 @@ dimensions: non-overlapping unit electron charge densities, continuous across fr
 whose position is an unknown, interacting by Coulomb potentials without self-repulsion. The
 ground state is the steady state of a parabolic relaxation of the Coulomb energy. The inputs are
 the nuclear charge and the number of electrons, and no constant is adjusted anywhere. Work scales
-as $N$ times the mesh, $N$ being the number of electrons --- one Poisson solve per charge density ---
-and so linearly in $N$ at fixed resolution. Molecules, condensed phases and nuclei are treated in
+as $Z$ times the mesh --- one Poisson solve per charge density, and a neutral atom has $Z$ of them ---
+and so linearly in $Z$ at fixed resolution. Molecules, condensed phases and nuclei are treated in
 companion articles.
 
 We here let RealQM derive a \emph{periodic table from scratch}: the ground states of the
@@ -83,8 +83,9 @@ state one starts in, so the minimisation is \emph{path dependent} --- ordinarily
 distinction, since that equilibrium is the minimum, but the one that decides the shell structure of atoms. The model is parameter-free: its inputs are the
 nuclear charge and the number of electrons, and the energy minimised is the Coulomb energy
 alone, with no constant adjusted anywhere. Computational work scales as
-$N$ times the mesh, $N$ being the number of electrons, since each density requires one Poisson
-solve on a grid in three space dimensions; the cost is thus linear in $N$ at fixed resolution,
+$Z$ times the mesh, since each charge density requires one Poisson solve on a grid in three space
+dimensions and a neutral atom carries $Z$ of them; the cost is thus linear in $Z$ at fixed
+resolution,
 which allows the simulation of large molecules and, with successive model reduction, opens to
 clusters of molecules; RealQM applied to molecules, to condensed phases and to nuclei is
 presented in companion articles~\cite{Johnson-RealQM}.
@@ -232,6 +233,12 @@ the wider ontological reading advanced elsewhere~\cite{Johnson-RealQM} as specul
 pending evidence stronger than atomic energetics can supply; nothing here depends on it.
 
 \section{The multiphase atom model}\label{sec:model}
+
+\paragraph{Notation.} Three symbols recur and are kept distinct throughout. $Z$ is the nuclear
+charge, and since only neutral atoms are computed here it is also the number of electrons and so the
+number of charge densities. $N$ is the number of points of the uniform radial mesh ($N=400$ through
+argon, $N=800$ beyond it). $N_s$ is the occupancy of shell $s$, the number of unit charges smeared
+into that shell's density.
 
 RealQM models Coulomb interaction between non-overlapping unit electron charge densities
 and point-like kernels, posed as a multiphase free-boundary problem of continuum
@@ -1476,7 +1483,7 @@ conceded to get them short. They are short because the model is nothing but the 
 charge densities in space, the Coulomb interaction between them, and the three updates that
 carry them to equilibrium. No computational apparatus is laid over the physics to make it
 tractable, and the length of the code follows from that. Nothing is given up in reach --- the same three updates run from atoms to
-molecules to condensed phases --- nor in speed, the work scaling as $N$ times the mesh and so
+molecules to condensed phases --- nor in speed, the work scaling as $Z$ times the mesh and so
 linearly in the number of electrons. Nor, measured as accuracy per unit of computation, in
 accuracy: the whole table to one or two per cent in about a minute on a laptop. What the size
 additionally buys is that the entire content of the calculation can be read by one person in an
