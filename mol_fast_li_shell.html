@@ -74,6 +74,10 @@
     // ?wadv=  free-boundary speed, passed as USER_W_ADV. Default 1 makes the interface advance at
     // cm*dt ~ 5e-4 au per step, so it crawls; the front CFL allows up to ~2/(cm*h) ~ 67 here.
     var WA=parseFloat(qs.get('wadv')); if(isFinite(WA)&&WA>0) window.USER_W_ADV=WA;
+    // ?udecay=  per-step decay of a domain's amplitude where it holds no territory, as
+    // USER_U_DECAY. Removes the frozen seed residue that otherwise leaves the arriving charge
+    // carrying density inside the core. 0.01 halves it every ~70 steps.
+    var UD=parseFloat(qs.get('udecay')); if(isFinite(UD)&&UD>0) window.USER_U_DECAY=UD;
     // ?xp=  DISPLACE the arriving electron's seed, au along +x, from the kernel. With ?flat=
     //       this seeds it as a SPHERE CENTRED OFF THE KERNEL -- a separate ball beside Li+,
     //       not a half-shell around it. Every domain is otherwise seeded at the box centre,
@@ -248,7 +252,7 @@
             +(qs.get('launch')?('_L'+qs.get('launch')):'')
             +(qs.get('xp')?('_xp'+qs.get('xp')):'')+(qs.get('zin')?('_zin'+qs.get('zin')):'')
             +(qs.get('wfloor')?('_wf'+qs.get('wfloor')):'')+(qs.get('wadv')?('_wa'+qs.get('wadv')):'')
-            +(qs.get('diff')?('_df'+qs.get('diff')):'')
+            +(qs.get('diff')?('_df'+qs.get('diff')):'')+(qs.get('udecay')?('_ud'+qs.get('udecay')):'')
             +(qs.get('outer')==='0'?'_noouter':'')+(qs.get('wd')==='0'?'_nowd':'');
     try{localStorage.removeItem(KEY);}catch(e){}
     var t0=Date.now(),published=false,trace=[],lastStep=-1,stallN=0,MAXSEC=window.MAXSEC||1500;

@@ -185,6 +185,22 @@ struct P {
   // Default 1 reproduces present behaviour exactly.
   const W_ADV = (typeof window !== 'undefined' && window.USER_W_ADV !== undefined)
                  ? Number(window.USER_W_ADV) : 1.0;
+  // U_DECAY: rate at which a domain's amplitude is driven to zero where it holds no territory.
+  // WHY THE AMPLITUDE DOES NOT VANISH THERE BY ITSELF. Every term of the u update is gated by w:
+  // the kinetic stencil carries face-averaged w and the potential term carries *uc*wc. So where
+  // w = 0 the update is identically zero and u is FROZEN at whatever the initial seed left --
+  // not relaxed, just stationary. The density u^2 is then nonzero outside the domain's own
+  // territory, which is visible as the arriving charge still carrying density inside the Li+ core,
+  // and it is the sense in which this solver's domains OVERLAP while the model's do not.
+  // THE FIX, which is Claes's: collapse the amplitude to zero where the domain has lost. With
+  // U_DECAY = d the amplitude is multiplied by (1-d) each step wherever w < 0.5, so the frozen
+  // residue decays geometrically while the owned region is untouched. Non-overlap then holds for
+  // the DENSITY and not only for the occupancy.
+  // Applied after the update and only outside owned territory, so it cannot affect the solution
+  // where the domain actually lives. Default 0 = present behaviour, since every page in this
+  // collection was tuned with the residue present and energies would shift without it.
+  const U_DECAY = (typeof window !== 'undefined' && window.USER_U_DECAY !== undefined)
+                 ? Number(window.USER_U_DECAY) : 0.0;
   const SOFT_MULT = (typeof window !== 'undefined' && window.USER_SOFT !== undefined)
                     ? Number(window.USER_SOFT) : 2.0;
   const SOFT_SQ = SOFT_MULT * SOFT_MULT;
@@ -497,6 +513,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     + hd * ((ujp - uc) * (wjp + nw) * 0.5 - (uc - ujm) * (nw + wjm) * 0.5)
     + hd * ((ukp - uc) * (wkp + nw) * 0.5 - (uc - ukm) * (nw + wkm) * 0.5)
     + p.dt * (K[id] - Vother - V_TF - V_tilt - V_Pauli - p.field_x * x_au) * uc * wc;
+  // Collapse the frozen residue where this domain holds no territory (see U_DECAY above).
+  if (${U_DECAY.toFixed(6)} > 0.0 && nw < 0.5) {
+    u_new = u_new * (1.0 - ${U_DECAY.toFixed(6)});
+  }
   Uo[o + id] = u_new;
 
   // --- Poisson: each P_m sourced by electron m's OWN density u_m² ---
