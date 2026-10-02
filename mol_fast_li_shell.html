@@ -71,6 +71,9 @@
     // ?wfloor=  occupancy floor, passed to the solver as USER_W_FLOOR. Kills the residue a
     // retreating domain leaves behind, which is what lets an expelled charge reappear where it was.
     var WF=parseFloat(qs.get('wfloor')); if(isFinite(WF)&&WF>0) window.USER_W_FLOOR=WF;
+    // ?wadv=  free-boundary speed, passed as USER_W_ADV. Default 1 makes the interface advance at
+    // cm*dt ~ 5e-4 au per step, so it crawls; the front CFL allows up to ~2/(cm*h) ~ 67 here.
+    var WA=parseFloat(qs.get('wadv')); if(isFinite(WA)&&WA>0) window.USER_W_ADV=WA;
     // ?xp=  DISPLACE the arriving electron's seed, au along +x, from the kernel. With ?flat=
     //       this seeds it as a SPHERE CENTRED OFF THE KERNEL -- a separate ball beside Li+,
     //       not a half-shell around it. Every domain is otherwise seeded at the box centre,
@@ -244,7 +247,7 @@
             +(qs.get('asplit')==='1'?'_as':'')+'_b'+(qs.get('scr')||'12')+'x'+(qs.get('nn')||'160')+'_R'+(qs.get('R0')||'1.0')+'_f'+(qs.get('flat')||'0')+'_h'+(qs.get('half')||'0')+'w'+(qs.get('wedge')||'2')
             +(qs.get('launch')?('_L'+qs.get('launch')):'')
             +(qs.get('xp')?('_xp'+qs.get('xp')):'')+(qs.get('zin')?('_zin'+qs.get('zin')):'')
-            +(qs.get('wfloor')?('_wf'+qs.get('wfloor')):'')
+            +(qs.get('wfloor')?('_wf'+qs.get('wfloor')):'')+(qs.get('wadv')?('_wa'+qs.get('wadv')):'')
             +(qs.get('outer')==='0'?'_noouter':'')+(qs.get('wd')==='0'?'_nowd':'');
     try{localStorage.removeItem(KEY);}catch(e){}
     var t0=Date.now(),published=false,trace=[],lastStep=-1,stallN=0,MAXSEC=window.MAXSEC||1500;

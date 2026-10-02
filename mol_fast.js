@@ -170,6 +170,19 @@ struct P {
   // untouched unless they ask.
   const W_FLOOR = (typeof window !== 'undefined' && window.USER_W_FLOOR !== undefined)
                  ? Number(window.USER_W_FLOOR) : 0.0;
+  // W_ADV: speed of the free boundary. The advection term dt*cm*|grad w| carried a hardwired
+  // coefficient of 1, which with dt = h^2/2 makes the front crawl: the interface advances at
+  // cm*dt per step, so at h = 0.03 au that is ~5e-4 au per step and tens of thousands of steps to
+  // cross a shell. The u-field then equilibrates at essentially fixed territory and the geometry
+  // is the last thing to settle, which is the wrong order for a free-boundary problem and is why
+  // the inner-seed runs drift for the whole run without arriving.
+  // STABILITY. The term is explicit advection, so the front CFL is W_ADV*cm*dt/h < 1; with
+  // dt = h^2/2 that is W_ADV*cm*h/2 < 1, i.e. W_ADV < 2/(cm*h). At h = 0.03 and cm of order one
+  // the limit is about 67, so values up to ~20 keep a comfortable margin. Raising it does NOT
+  // relax the u-update stability, which is set by dt alone and untouched here.
+  // Default 1 reproduces present behaviour exactly.
+  const W_ADV = (typeof window !== 'undefined' && window.USER_W_ADV !== undefined)
+                 ? Number(window.USER_W_ADV) : 1.0;
   const SOFT_MULT = (typeof window !== 'undefined' && window.USER_SOFT !== undefined)
                     ? Number(window.USER_SOFT) : 2.0;
   const SOFT_SQ = SOFT_MULT * SOFT_MULT;
@@ -285,7 +298,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let gz = (wkp - wkm) * p.inv_h;
   var nw = wc
     + ${W_DIFF.toFixed(6)} * p.dt * abs(cm) * lw
-    + 1.0  * p.dt * cm * sqrt(gx * gx + gy * gy + gz * gz);
+    + ${W_ADV.toFixed(6)} * p.dt * cm * sqrt(gx * gx + gy * gy + gz * gz);
   nw = clamp(nw, 0.0, 1.0);
   if (nw < ${W_FLOOR.toFixed(6)}) { nw = 0.0; }   // no residue behind a retreating front
 
