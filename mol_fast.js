@@ -280,10 +280,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   // --- Competition term: cm = u_self - max(u_other) — drives advection of w front ---
   let uc = Ui[o + id];
   var u_max_other: f32 = 0.0;
+  var w_max_other: f32 = 0.0;
   for (var n: u32 = 0u; n < ${NELEC}u; n++) {
     if (n == m) { continue; }
     let un = Ui[n * p.S3 + id];
     if (un > u_max_other) { u_max_other = un; }
+    let wn = Wi[n * p.S3 + id];
+    if (wn > w_max_other) { w_max_other = wn; }
   }
   let cm = uc - u_max_other;
 
@@ -300,7 +303,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     + ${W_DIFF.toFixed(6)} * p.dt * abs(cm) * lw
     + ${W_ADV.toFixed(6)} * p.dt * cm * sqrt(gx * gx + gy * gy + gz * gz);
   nw = clamp(nw, 0.0, 1.0);
-  if (nw < ${W_FLOOR.toFixed(6)}) { nw = 0.0; }   // no residue behind a retreating front
+  // Residue floor, but NEVER at the cost of creating vacuum. Applying it unconditionally strips
+  // BOTH domains wherever each holds a little, which opens an unowned gap -- and a gap here is
+  // permanent, since the u-update carries a factor w so neither field can advance across empty
+  // space. Observed directly: with the floor on, a wide empty region grew between the Li+ core and
+  // the arriving charge. So the floor fires only where some OTHER domain clearly owns the cell,
+  // which is the case it was meant for (clearing residue behind a front that has lost) and not the
+  // case that breaks the dynamics.
+  if (nw < ${W_FLOOR.toFixed(6)} && w_max_other > 0.5) { nw = 0.0; }
 
   // --- Smooth rc cusp on w. SHELL_MODE=${SHELL_MODE}: ${SHELL_MODE ? "per-orbital (only own rc)" : "per-atom (any atom's rc)"}
   ${SHELL_MODE ? `
