@@ -820,6 +820,7 @@ const RESULTS = [
            : /[?&]auto=mgpt(?:&|$)/.test(location.search) ? 'g'
            : /[?&]auto=aufbau(?:&|$)/.test(location.search) ? 'a'
            : /[?&]auto=chi(?:&|$)/.test(location.search) ? 'x'
+           : /[?&]auto=overbind(?:&|$)/.test(location.search) ? 'v'
            : /[?&]auto=psiscale(?:&|$)/.test(location.search) ? 'p'
            : /[?&]auto=geocap(?:&|$)/.test(location.search) ? 'G'
            : /[?&]auto=row4(?:&|$)/.test(location.search) ? 'W'
@@ -845,6 +846,68 @@ const RESULTS = [
   // For nitrogen the spectroscopic structure is 2+2+3 (2s2 2p3, outer shell HALF FILLED) while
   // the cap-4 balanced rule gives 2+3+2 -- more in the inner shell than the outer, which is
   // backwards, and removes the half-filled outer shell that produces the N>O anomaly.
+  // DOES A TOO-LARGE SHELL OVER-BIND?  (?auto=overbind)
+  // Claes's synthesis, and the sharpest prediction of the packing account: a shell of 18 may FIT
+  // geometrically after 2+8, but filling it would over-bind -- exactly as a single 8-shell
+  // over-binds against 4+4 (9-22%, sec:packing) and a single 4-shell over-binds at beryllium by
+  // 28.8% against the physical 2+1+1. On that reading the row length is not set by what the radius
+  // can hold but by what the build-up can REACH, the lowest-energy packing being unreachable --
+  // which is the anti-correlation of sec:aufbau applied one level up, to rows rather than to shells.
+  // THE TEST. Solve each atom in a compact filling and in the row-structured one, same mesh, same
+  // steps, tol=0, and compare both against the reference total energy:
+  //   Z=10  2+8        (the real row)      against 2+4+4
+  //   Z=18  2+16       (one 16-shell)      against 2+8+8 and 2+4+4+4+4
+  //   Z=28  2+8+18     (the closure the undoubled table would have had, at 28)
+  //                    against 2+8+8+8+2 and the imported filling
+  // PREDICTION, stated before the run so it can fail: the compact fillings come out BELOW the
+  // reference (over-bound), the physical ones above it (under-bound), and the gap widens with the
+  // size of the compacted shell. If instead 2+8+18 lands near the reference at Z=28, then 28 was a
+  // viable closure on energetic grounds too and the reason the table stops at 18 is neither
+  // capacity nor energy.
+  window.__autoOverbind = function(){
+    var KEY='atomsim_overbind', out=[];
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    var ST = parseInt((location.search.match(/[?&]steps=(\d+)/)||[])[1] || '20000', 10);
+    var cases = [
+      { el:'Ne', Z:10, N:400, cfg:[2,8],            tag:'row 2+8 (physical)' },
+      { el:'Ne', Z:10, N:400, cfg:[2,4,4],          tag:'cap-4' },
+      { el:'Ar', Z:18, N:400, cfg:[2,16],           tag:'COMPACT 2+16' },
+      { el:'Ar', Z:18, N:400, cfg:[2,8,8],          tag:'row 2+8+8' },
+      { el:'Ar', Z:18, N:400, cfg:[2,4,4,4,4],      tag:'cap-4 (Table 1)' },
+      { el:'Ni', Z:28, N:800, cfg:[2,8,18],         tag:'COMPACT 2+8+18 (the 28 closure)' },
+      { el:'Ni', Z:28, N:800, cfg:[2,8,8,8,2],      tag:'row-structured' },
+      { el:'Ni', Z:28, N:800, cfg:[2,4,4,4,4,4,4,2],tag:'cap-4' }
+    ];
+    (async function(){
+      PK_MODE=false; var Nsave=N;
+      for (var ci=0; ci<cases.length; ci++){
+        var c=cases[ci];
+        var rec={ el:c.el, Z:c.Z, tag:c.tag, cfg:c.cfg.join('+'), N:c.N, steps:ST,
+                  sum:c.cfg.reduce(function(a,b){return a+b;},0) };
+        var ref=REF_ETOT[c.Z]; rec.ref=(ref!=null)?Number(ref.toFixed(3)):null;
+        try{ localStorage.setItem('ob_progress', c.el+' '+c.cfg.join('+')); }catch(e){}
+        await new Promise(function(r){ setTimeout(r,0); });
+        if (rec.sum!==c.Z){ rec.skip='count '+rec.sum+' != Z'; out.push(rec); continue; }
+        try{
+          N=c.N;
+          var r=solveAtomPure(c.Z, c.cfg, ST, {tol:0});
+          rec.E=isFinite(r.etot)?Number(r.etot.toFixed(3)):'NONFIN';
+          if (ref!=null && isFinite(r.etot)){
+            rec.err_pct=Number(((r.etot-ref)/ref*100).toFixed(2));
+            rec.overbound=(r.etot < ref);        // below the reference = too deep
+          }
+          rec.r_core=Number((M[1]*h).toFixed(4));
+        }catch(e){ rec.E='ERR'; rec.msg=String(e).slice(0,70); }
+        out.push(rec);
+        try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){
+          console.error('SAVE FAILED ('+KEY+'): '+e.name); document.title='SAVE FAILED'; }
+      }
+      N=Nsave;
+      try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+      document.title='OVERBIND DONE';
+    })();
+  };
+
   // DOES psi SCALE AS sqrt(Z)/r ?  (?auto=psiscale)
   // The solver's charge element is (u[i]*i*h)^2*h = u^2 r^2 dr, so u is proportional to psi itself
   // and NOT to the usual radial function rR(r). The claim psi ~ sqrt(Z)/r therefore says two things,
@@ -1857,6 +1920,7 @@ const RESULTS = [
                        : MODE === 'g' ? window.__autoMGPT
                        : MODE === 'a' ? window.__autoAufbau
                        : MODE === 'x' ? window.__autoChi
+                       : MODE === 'v' ? window.__autoOverbind
                        : MODE === 'p' ? window.__autoPsiScale
                        : MODE === 'G' ? window.__autoGeoCap
                        : MODE === 'W' ? window.__autoRow4
