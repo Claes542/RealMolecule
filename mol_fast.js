@@ -176,12 +176,16 @@ struct P {
   // cross a shell. The u-field then equilibrates at essentially fixed territory and the geometry
   // is the last thing to settle, which is the wrong order for a free-boundary problem and is why
   // the inner-seed runs drift for the whole run without arriving.
-  // STABILITY. The term is explicit advection, so the front CFL is W_ADV*cm*dt/h < 1. Note
-  // dt = dv*h^2 with dv = 0.12 by default (NOT h^2/2 -- that is the 1D solver's step), so the
-  // limit is W_ADV < 1/(cm*dv*h), about 1200 at h = 0.06 with cm of order one. The front is
-  // nowhere near its stability limit at any value used here; if the interface looks wild the cause
-  // is oscillation of cm, which the diffusion term damps, and not a CFL violation. Raising W_ADV
-  // does not touch the u-update stability, which dv sets and which is untouched here.
+  // STABILITY, and the front's own CFL is NOT the binding constraint. The advection term alone
+  // would allow W_ADV < 1/(cm*dv*h), of order 1000 -- but the U-UPDATE is itself w-gated: its
+  // kinetic stencil carries face-averaged w, hd*((uip-uc)*(wip+nw)*0.5 - ...). A fast front makes
+  // those coefficients jump between 0 and 1 within a step, which destabilises u even while the
+  // front CFL is comfortably satisfied. MEASURED, on Li+ plus one electron at 100^3: W_ADV = 2 is
+  // stable and conserves charge; W_ADV = 4 with diff = 0.1 diverged to E = 1.2e6 with 2370 units of
+  // charge instead of 3; W_ADV = 10 ended with 4.3 and 5.3 units instead of 3. So keep W_ADV at a
+  // few, raise W_DIFF to damp the front instead, and ALWAYS check charge conservation before
+  // believing a run -- q_u per domain must come back at its target, and these failures announce
+  // themselves there long before the picture looks wrong.
   // Default 1 reproduces present behaviour exactly.
   const W_ADV = (typeof window !== 'undefined' && window.USER_W_ADV !== undefined)
                  ? Number(window.USER_W_ADV) : 1.0;
