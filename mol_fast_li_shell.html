@@ -54,6 +54,20 @@
     // DEFAULT OFF. A constant-density ball filling the exterior IS an annulus around the core
     // at t=0 -- an outer shell present from the start, which is what the run should produce.
     var FLAT=parseFloat(qs.get('flat')); if(!isFinite(FLAT)) FLAT=0;
+    // ?zin=  z_init of the ARRIVING charge, overriding the default max(ZK-2*idx, 0.7).
+    // THE INNER-SEED TEST. Figures 3-4 show a charge seeded OUTSIDE wrapping around a closed core
+    // instead of entering it. The complement is to seed it INSIDE and ask whether it is expelled.
+    // That cannot be done with ?outer=0 alone: territory at initialisation goes to whichever domain
+    // has the larger seeded amplitude, and the seed is sqrt(target * z^3) * exp(-z r), so at the
+    // origin it scales as z^(3/2) and the core (z_init = Z_kernel = 3) always wins the centre
+    // against the arriving charge (z_init = 1). Setting zin ABOVE the core's value inverts that:
+    // with zin = 6 against 3 the newcomer owns r < 0.35 au and the core everything beyond, so the
+    // arriving charge starts INSIDE a formed core with a genuine foothold.
+    // WHY IT MATTERS. If the charge is then expelled outward, the exclusion is dynamical and the
+    // outward-only limitation of sec:dblock is a property of the model. If it stays, the exclusion
+    // is an artefact of seeding from outside, and the inner configurations the fourth row needs are
+    // reachable after all -- which would remove the import.
+    var ZIN=parseFloat(qs.get('zin')); if(!isFinite(ZIN)) ZIN=0;
     // ?xp=  DISPLACE the arriving electron's seed, au along +x, from the kernel. With ?flat=
     //       this seeds it as a SPHERE CENTRED OFF THE KERNEL -- a separate ball beside Li+,
     //       not a half-shell around it. Every domain is otherwise seeded at the box centre,
@@ -134,7 +148,7 @@
     CFG.forEach(function(nel,idx){
       var isOuter=(idx===CFG.length-1);
       var e={i:N2+((isOuter&&XP!==0)?Math.round(XP/h):0),j:N2,k:N2, Z:(idx===0?ZK:0), rc:0.0,
-             z_init:Math.max(ZK-2*idx,0.7), fixed:true};
+             z_init:(isOuter&&ZIN>0)?ZIN:Math.max(ZK-2*idx,0.7), fixed:true};
       if(idx<CFG.length-1) e.r_out=R0*(idx+1);     // outermost shell unconstrained
       if(idx===CFG.length-1 && LAUNCH!==0) e.hs=(LAUNCH>0?1:-1);
       // THE INCOMING ELECTRON. The outermost domain is the arriving charge, and how it is
@@ -226,7 +240,8 @@
     var KEY='mf3d_Z'+(qs.get('Z')||'3')+'_c'+(qs.get('cfg')||'2,1').replace(/,/g,'')
             +(qs.get('asplit')==='1'?'_as':'')+'_b'+(qs.get('scr')||'12')+'x'+(qs.get('nn')||'160')+'_R'+(qs.get('R0')||'1.0')+'_f'+(qs.get('flat')||'0')+'_h'+(qs.get('half')||'0')+'w'+(qs.get('wedge')||'2')
             +(qs.get('launch')?('_L'+qs.get('launch')):'')
-            +(qs.get('xp')?('_xp'+qs.get('xp')):'')+(qs.get('wd')==='0'?'_nowd':'');
+            +(qs.get('xp')?('_xp'+qs.get('xp')):'')+(qs.get('zin')?('_zin'+qs.get('zin')):'')
+            +(qs.get('outer')==='0'?'_noouter':'')+(qs.get('wd')==='0'?'_nowd':'');
     try{localStorage.removeItem(KEY);}catch(e){}
     var t0=Date.now(),published=false,trace=[],lastStep=-1,stallN=0,MAXSEC=window.MAXSEC||1500;
     // ?snaps=  elapsed seconds at which to capture a 2D slice through the kernel. These are the
