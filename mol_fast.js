@@ -153,6 +153,23 @@ struct P {
   // is the inherited value.
   const W_DIFF = (typeof window !== 'undefined' && window.USER_W_DIFF !== undefined)
                  ? Number(window.USER_W_DIFF) : 0.05;
+  // W_FLOOR: occupancy below this is set to zero, so a RETREATING domain leaves no residue.
+  // Why it is needed. The w update is nw = w + W_DIFF*dt*|cm|*lap(w) + dt*cm*|grad w|, and both
+  // terms vanish where w is uniform -- so territory cannot nucleate in a w=0 interior, which is the
+  // lock that makes an outward-seeded charge unable to enter a formed shell. But a domain being
+  // pushed OUT does not reach w=0: the diffusion term smears a small residue behind the retreating
+  // front and clamp() keeps it non-negative, so when the competitor's amplitude later recedes from
+  // those cells the advection term regrows the domain from the residue. Observed directly in the
+  // inner-seed run: a charge seeded inside the Li+ core starts to be expelled, then reappears inside
+  // and stays. That reappearance is the residue, not the physics.
+  // A floor is the minimal fix and it tests the diagnosis: if the reappearance goes away, the
+  // residue was the cause. The principled fix is a curvature term on the free boundary -- motion by
+  // mean curvature shrinks small islands -- but that needs mixed second derivatives of w, hence the
+  // twelve edge neighbours the shader does not currently fetch.
+  // Default 0 = exactly the previous behaviour, so the forty-odd pages loading this file are
+  // untouched unless they ask.
+  const W_FLOOR = (typeof window !== 'undefined' && window.USER_W_FLOOR !== undefined)
+                 ? Number(window.USER_W_FLOOR) : 0.0;
   const SOFT_MULT = (typeof window !== 'undefined' && window.USER_SOFT !== undefined)
                     ? Number(window.USER_SOFT) : 2.0;
   const SOFT_SQ = SOFT_MULT * SOFT_MULT;
@@ -270,6 +287,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     + ${W_DIFF.toFixed(6)} * p.dt * abs(cm) * lw
     + 1.0  * p.dt * cm * sqrt(gx * gx + gy * gy + gz * gz);
   nw = clamp(nw, 0.0, 1.0);
+  if (nw < ${W_FLOOR.toFixed(6)}) { nw = 0.0; }   // no residue behind a retreating front
 
   // --- Smooth rc cusp on w. SHELL_MODE=${SHELL_MODE}: ${SHELL_MODE ? "per-orbital (only own rc)" : "per-atom (any atom's rc)"}
   ${SHELL_MODE ? `
