@@ -23,8 +23,9 @@ backward propagation. Mathematics done this way constructs an object rather than
 exists, and AI in this sense may be seen as a form of automated thinking. We describe a far more
 restricted version of the same thing, developed over a long period and implemented in the FEniCS
 software: the automated solution of differential equations, ASDE, a self-learning computational
-algorithm with dual-based output error control directed at minimal computational effort, whose
-backward pass is the adjoint and is the same computation as backpropagation. We then present what
+algorithm in which output error control from the residual weighted by the dual solution feeds back to
+mesh optimisation, and whose backward pass is the adjoint and is the same computation as
+backpropagation. We then present what
 ASDE delivers when directed at alternative~(A): constructive existence of turbulent solutions of the
 incompressible Navier--Stokes equations at high Reynolds number, for data given in advance, together
 with qualitative uniqueness of their mean-value outputs, drawn quantitatively by computed stability
@@ -89,8 +90,8 @@ recalls that chapter and brings it up to date. What is new is the occasion.
 
 \section{Basics of ASDE}\label{sec:asde}
 
-ASDE is a self-learning computational algorithm with dual-based output error control, directed at
-minimal computational effort. Three parts, and no more.
+ASDE is a self-learning computational algorithm: output error control from the residual weighted by
+the dual solution, feeding back to mesh optimisation. Three parts, and no more.
 
 \paragraph{Discretisation.} Given a differential equation, a domain and data, a finite element method
 produces a solution on a mesh together with its \emph{residual}, the amount by which it fails to
@@ -109,10 +110,11 @@ pass is the same object, and the same computation, as the backward pass in train
 ASDE and AI run the same linear algebra in opposite directions through the same trajectory, which is
 the sense in which ASDE is the restricted case.
 
-\paragraph{Self-learning adaptivity.} The dual weight also says where refinement would pay: cells are
-added where residual times weight is largest, and the process stops when the bound meets the
-tolerance asked. Error control and adaptivity are one mechanism, not two, and what it converges to is
-the least work achieving the stated accuracy --- the algorithm learns the mesh its own output
+\paragraph{Feedback to the mesh.} The weighted residual is not only a bound but a map of where the
+error comes from, and that is what closes the loop: cells are added where residual times weight is
+largest, the bound is recomputed, and the process stops when it meets the tolerance asked. Error
+control and mesh optimisation are therefore one mechanism rather than two, and what it converges to
+is the least work achieving the stated accuracy --- the algorithm learns the mesh its own output
 requires~\cite{cedya01,eriksson17}.
 
 \paragraph{What it produces.} Not an assertion that a solution exists but an object: a mesh, a
