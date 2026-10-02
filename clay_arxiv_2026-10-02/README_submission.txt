@@ -1,4 +1,5 @@
-arXiv submission -- Constructive Solution of the Clay Navier-Stokes Problem
+arXiv submission -- Constructive Existence and Qualitative Uniqueness of
+                    Turbulent Navier-Stokes Solutions
 Claes Johnson, KTH Royal Institute of Technology
 
 CONTENTS
@@ -12,8 +13,14 @@ NOTES FOR THE UPLOAD
   - Packages used: geometry, amsmath, amssymb, hyperref. All standard on arXiv.
   - Compiles with pdflatex, two passes, 10 pages, no errors and no undefined references.
     Verified by building in an empty directory containing only the .tex.
-  - Suggested primary class: math.AP (Analysis of PDEs).
-    Cross-list candidates: physics.flu-dyn, math.NA, cs.NA.
+  - Primary class: math.NA (Numerical Analysis).
+    Cross-list: physics.flu-dyn, math.AP, cs.NA.
+    math.NA rather than math.AP: the content is a computational method and its
+    output error control, which is what math.NA covers. A first submission under
+    the earlier title was rejected on moderation; the title named the Millennium
+    Problem while the article explicitly does not claim to discharge alternative
+    (A), so the title overstated the content and is now corrected. Endorsement
+    is in place, so moderation was the only obstacle.
   - MSC: 35Q30 (Navier-Stokes), 65M60 (finite element methods), 76F65 (turbulence
     modelling / DNS).
 
