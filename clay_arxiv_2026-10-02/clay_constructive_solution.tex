@@ -1,0 +1,464 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1.1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage[hidelinks]{hyperref}   % loads url too, and makes \url{} actually clickable
+\newcommand{\grad}{\nabla}
+\newcommand{\eps}{\varepsilon}
+\setlength{\parskip}{4pt}
+
+\title{\vspace{-2em}Constructive Solution of the Clay Navier--Stokes Problem}
+\author{Claes Johnson\\[0.2em]
+\small KTH Royal Institute of Technology, SE-100 44 Stockholm, Sweden\\
+\small \texttt{claesjohnson@gmail.com}}
+\date{\today\\[0.4em]\small\textit{written up with AI assistance (Claude, Anthropic)}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+The solution of alternative~(C) of the Clay Navier--Stokes problem announced in September 2026
+represents, beyond its result, a new form of mathematics: one performed by AI as a digital
+optimisation process, fitting a large set of network parameters to given data by forward and
+backward propagation. Mathematics done this way constructs an object rather than asserting that one
+exists, and AI in this sense may be seen as a form of automated thinking. We describe a far more
+restricted version of the same thing, developed over a long period and implemented in the FEniCS
+software: the automated solution of differential equations, ASDE, a self-learning computational
+algorithm in which output error control from the residual weighted by the dual solution feeds back to
+mesh optimisation, and whose backward pass is the adjoint and is the same computation as
+backpropagation. We then present what
+ASDE delivers when directed at alternative~(A): constructive existence of turbulent solutions of the
+incompressible Navier--Stokes equations at high Reynolds number, for data given in advance, together
+with qualitative uniqueness of their mean-value outputs, drawn quantitatively by computed stability
+factors so that a functional can fail the test. We do not claim a discharge of (A) as that
+alternative is formulated, since (A) asks for smoothness and the solutions that occur are not
+smooth: their gradients grow like $\nu^{-1/2}$ while their velocities stay bounded, a
+H\"older-$1/3$ field neither differentiable nor unbounded. We argue that this third case is what
+the equations produce, and close with a scaling test which shows that the singular solution
+constructed for (C) vanishes in the limit of small viscosity in which fluid mechanics lies: held to
+a fixed admissible forcing class its amplitude, support and lifetime all tend to zero, and held at
+fixed amplitude its forcing diverges like $\nu^{-1}$ and leaves the class.
+\end{abstract}
+
+\section{A new form of mathematics, and a restricted version of it}
+
+On 8~September 2026 OpenAI presented a solution of alternative~(C) of the Navier--Stokes
+Millennium problem~\cite{openai}: a proof that a singular solution exists, obtained with ten
+thousand agents and of the order of $3\times10^{11}$ output tokens~\cite{buckmaster}.
+
+An AI is a digital optimisation process: a very large set of network parameters is fitted to
+given data by forward and backward propagation, the backward pass carrying the sensitivity of an
+output to everything that fed it. Mathematics done this way does not establish that an object exists and
+leave it there; it \emph{constructs} one, by fitting. AI in this sense is a form of
+\emph{automated thinking}, and the (C) solution is an instance: the singular velocity and pressure
+fields are built first, to have the required growth, and the force is then defined as what is left
+over --- the residual of the construction, arranged to be smooth.
+
+Over a long period, together with students and colleagues, we have developed a far more restricted
+version of the same thing: the \emph{automated solution of differential equations}, which we will
+call ASDE. The project was founded in 2003 with the aim of automated computational mathematical
+modelling~\cite{fenics03}, and the programme was set out in Anders Logg's thesis of the following
+year, \emph{Automation of Computational Mathematical Modeling}~\cite{logg04,logg07}. It is realised in the FEniCS
+software~\cite{fenicsbook,fenics15,unicorn,massparallel,fenicshpc,fenicsmulti}, whose standard
+reference is titled for it --- \emph{Automated Solution of Differential Equations by the Finite
+Element Method}~\cite{fenicsbook} --- and which is now widely used. ASDE fits a \emph{digital} solution to a differential equation rather than a
+network to data, and it does so by the same forward and backward passes. It is a small, exactly specified
+corner of automated thinking, and it has one advantage over the general case: what it constructs
+comes with a bound on the error in whatever is asked of it.
+
+\textbf{What follows is a constructive solution directed to alternative~(A).} We do not claim it is a
+solution of (A) as that alternative is formulated, and the difference should be stated at the outset
+rather than discovered later. (A) asks, for \emph{all} admissible data and with $f\equiv0$, for a
+solution that exists and is \emph{smooth} for all time. What ASDE delivers, for data given in
+advance, is \emph{constructive existence} and \emph{qualitative uniqueness} of \emph{turbulent}
+solutions in the case of high Reynolds number --- that is, of small viscosity $\nu$, with the
+velocity scale and the size of the domain normalised to unity so that $\nu$ is the one parameter
+left and the limit $\nu\to0$ can be taken at all --- and in \emph{bounded} domains of space, which
+is where drag, lift and the other outputs of interest are produced. It does not deliver smoothness, because the solutions that occur do not have it --- their gradients
+grow like $\nu^{-1/2}$ while their velocities stay bounded (Section~\ref{sec:third}).
+
+So this is offered as an answer to what (A) is \emph{about} --- whether the equations determine a
+flow, and what of it they determine --- and not as a discharge of (A) as written. Whether the two
+coincide is for the reader to judge, and it is the one judgement we would ask for.
+
+The Clay Navier--Stokes problem was first addressed on these lines in Chapter~14 of
+\emph{Computational Turbulent Incompressible Flow}, a book by Johan Hoffman and Claes Johnson
+published by Springer in 2007 as volume~4 of \emph{Applied Mathematics: Body and
+Soul}~\cite{cfd}. What follows
+recalls that chapter and brings it up to date. What is new is the occasion.
+
+
+\section{Basics of ASDE}\label{sec:asde}
+
+ASDE is a self-learning computational algorithm: output error control from the residual weighted by
+the dual solution, feeding back to mesh optimisation. Three parts, and no more.
+
+\paragraph{Discretisation.} Given a differential equation, a domain and data, a finite element method
+produces a solution on a mesh together with its \emph{residual}, the amount by which it fails to
+satisfy the equation --- a quantity the computation has in hand and can measure. The method here is
+General Galerkin, G2: continuous piecewise linear in space and time with least-squares control of the
+residual~\cite{fehn}. Nothing is supplied beyond equation, domain and data: no mesh chosen by hand, no
+turbulence model, no closure, no fitted constant. A computation carrying a fitted turbulence model
+could not say what the Navier--Stokes equations contain, the turbulence having been put in by hand.
+
+\paragraph{Output error control by duality.} A residual is not yet an error. What converts one into
+the other is the \emph{dual} problem: the equation linearised about the computed solution and solved
+\emph{backward in time} from the output of interest. Its solution weights spacetime by how much the
+residual at each point matters for that output, so weighting the residual by it gives the error and a
+bound on it --- computed rather than assumed, and specific to the output asked for. This backward
+pass is the same object, and the same computation, as the backward pass in training a neural network.
+ASDE and AI run the same linear algebra in opposite directions through the same trajectory, which is
+the sense in which ASDE is the restricted case.
+
+\paragraph{Feedback to the mesh.} The weighted residual is not only a bound but a map of where the
+error comes from, and that is what closes the loop: cells are added where residual times weight is
+largest, the bound is recomputed, and the process stops when it meets the tolerance asked. Error
+control and mesh optimisation are therefore one mechanism rather than two, and what it converges to
+is the least work achieving the stated accuracy --- the algorithm learns the mesh its own output
+requires~\cite{cedya01,eriksson17}.
+
+\paragraph{What it produces.} Not an assertion that a solution exists but an object: a mesh, a
+solution on it, a measured residual, and for each output a value with a bound on its error. That is
+the solution \emph{de facto}. The record is in~\cite{cfd}, with the residual-based dissipation
+in~\cite{hjv}, the parameter-free formulation in~\cite{hjja}, the earlier statement
+in~\cite{newapproach}. Further material is under the label \emph{clay problem}~\cite{blog}.
+
+\paragraph{Where it now stands.} The development since 2007 has gone to compressible flow and to
+aeronautical Reynolds numbers, carried substantially by Johan Jansson, who has a leading role in
+the AIAA CFD High Lift Prediction Workshop (HLPW-5 and HLPW-6), where computational predictions of
+high-lift configurations are submitted blind and compared against wind-tunnel measurement. That is
+the hardest ordinary test there is for a turbulence prediction: separated flow at aeronautical
+Reynolds number, outputs that are exactly the mean-value functionals treated below, and a
+comparison made before the measurement is known. The same method had earlier been submitted to the
+high-order CFD benchmark workshops, on the tandem-sphere case and on workshop-provided
+meshes~\cite{cs1}. ASDE is tested in the ordinary way, against experiment, by people with no stake in
+this article.
+
+The method has also left the laboratory. It is in industrial use for the design of aircraft, wind
+turbines and ships under the name Adaptive Euler predictive simulation, with FEniCS as
+a core component. Simulations of three cases were presented at IFASD~2026~\cite{ifasd}: a validation
+against the benchmarking data of NASA's High Lift Prediction Workshop~4, and --- both described there
+as preliminary --- tail buffet on the Saab Open Aircraft Research~2 configuration and a
+fluid--structure interaction computation of transonic buffet on the NASA AePW8/DPW4 full-aircraft
+benchmark.
+
+These are worth more here than a demonstration of software. They are the computation this article
+offers as a solution, run on geometries nobody chose for being tractable, and judged against
+measurement by people who did not make the prediction --- which is the only test of qualitative
+uniqueness that matters. A mean-value output either comes out right or it does not, and a benchmark
+workshop settles it without reference to any argument made above.
+
+
+\section{ASDE applied to Navier--Stokes}\label{sec:ns}
+
+The problem is the incompressible Navier--Stokes equations
+\begin{equation}\label{eq:ns}
+\dot u + (u\cdot\grad)u - \nu\Delta u + \grad p = f,\qquad \grad\cdot u = 0,
+\end{equation}
+on a domain $\Omega\subset\mathbb{R}^3$ with initial data $u_0$, forcing $f$ and boundary
+conditions, at small viscosity, that is at high Reynolds number. The official statement, as set out
+by Charles Fefferman~\cite{fefferman}, poses them instead on $\mathbb{R}^3$ or a periodic box with
+the viscosity fixed, and asks whether solutions remain smooth for all time. Applied to it, ASDE delivers the
+following two things.
+
+\paragraph{Constructive existence of turbulent solutions.} A G2 computation of \eqref{eq:ns}
+started from smooth potential data becomes turbulent and stays bounded. The stabilisation supplies
+dissipation in proportion to the residual, so the dissipation is generated by the computation
+rather than prescribed by a model; in the vanishing-viscosity limit the same scheme is an Euler
+solver whose turbulent dissipation appears automatically. Existence here is not an assertion about
+a solution set being non-empty: a solution is exhibited, for data given in advance, with the error
+in each output bounded by duality. Ask a non-constructive existence theorem for the drag
+and there is nothing there to ask; ask a computed solution and it answers with a number and a bound.
+
+There is more to this than error control. A computed solution is an elaborate explicit construction
+of a velocity--pressure field --- millions of numbers on a spacetime mesh, every one available ---
+and such an object can be taken apart: where vorticity concentrates and in what shape, how the
+velocity gradient decomposes at a point, where energy passes from large scales to small, where the
+dissipation actually sits as against where a model would put it. A solution concept whose objects
+can be inspected generates conjectures; one whose objects cannot be exhibited does not. The triple
+decomposition of the velocity gradient~\cite{triple}, and the energy stability analysis built on
+it~\cite{energystab}, came out of looking closely at resolved velocity fields, and at measured
+ones~\cite{musci}.
+
+Two larger results came the same way, and they are why we press the point. Inspecting computed
+turbulent solutions --- asking where the drag is actually generated, and what the flow does at the
+trailing edge of a wing --- opened both to mathematical analysis: the resolution of d'Alembert's
+paradox~\cite{dalembert}, which asks how a body can feel drag in a flow that classical analysis says
+can exert none; and an account of the apparent miracle of flight~\cite{flight}, which asks why a wing
+lifts at all. Neither was obtained by assuming a model of the small scales, and neither could have
+been read off a solution known only to exist. Analysis of a constructed solution is not second best to
+analysis of an exact one --- it is where the conjectures come from.
+
+\paragraph{Qualitative uniqueness.} Classical uniqueness asks that the data determine the field
+pointwise. At high Reynolds number that is false, and not marginally: two computations of the same
+flow on independently generated meshes give velocity fields differing by order one at any chosen
+point, and continuing to differ under refinement. What the data \emph{do} determine is the
+qualitative content, and this is what the two computations are found to share: the drag agrees to a
+few per cent~\cite{drag} and the lift likewise; the separation line sits in the same place; the wake
+is organised the same way and sheds at the same frequency; the total dissipation rate is the same.
+
+Qualitative uniqueness is the statement that this is so, with the line between the two lists drawn
+\emph{quantitatively} rather than by assertion --- and that last clause is what keeps it from being
+a soft version of uniqueness. The dual solution attaches to each functional a computed stability
+factor: where it is moderate the output is determined by the data to a stated precision, and
+refinement where the dual weight is large will improve it; where the factor is large the output is
+not determined, and no refinement will make it so. The claim is falsifiable one functional at a
+time, and a functional can fail it. That last case is not a failure of the method but an answer:
+the equations do not determine that quantity, and no computation should be believed which claims
+otherwise.
+
+\paragraph{Turbulence is a necessity, not a possibility.} High Reynolds number flow starting out
+laminar develops shear instabilities with sharp velocity gradients, which are eventually damped by
+viscosity in turbulent flow. All high Reynolds number laminar flow is thus unstable and cannot
+continue to exist over time; it turns turbulent in order to continue to exist. What ASDE constructs
+is therefore not one possibility among several but what the equations must do.
+
+
+\section{Why smoothness is not what the solutions have}\label{sec:third}
+
+Since (A) as written asks for smoothness, it is worth being precise about what the computed
+solutions are instead, because they are neither smooth nor singular. Dissipation at a rate
+independent of the viscosity gives gradients $|\grad u|\sim\nu^{-1/2}$, and the scales at which
+that gradient is realised follow from the same constant:
+\begin{equation}\label{eq:delta}
+\eta \sim \Big(\frac{\nu^3}{\eps}\Big)^{1/4} \sim \nu^{3/4},
+\qquad
+\delta u(\eta) \sim (\eps\,\eta)^{1/3} \sim \nu^{1/4},
+\qquad
+\frac{\delta u(\eta)}{\eta} \sim \nu^{-1/2},
+\end{equation}
+the first two being the Kolmogorov--Obukhov scaling~\cite{kolmogorov41,obukhov41}, refined by the
+intermittency corrections of~\cite{kolmogorov62,obukhov62} and the multifractal picture
+of~\cite{frischparisi}, and the middle relation being H\"older continuity with exponent $1/3$, the
+Onsager exponent. As $\nu\to0$ the structures refine without limit while the velocity stays bounded
+at every scale: the gradient diverges, so the solution is not smooth, and the velocity does not, so
+it is not singular. A H\"older-$1/3$ field is exactly the object that is neither differentiable nor
+unbounded, which is why no amount of regularity theory reaches it.
+
+This category is not merely hypothetical. On Onsager's account~\cite{onsager}, developed
+in~\cite{eyink,dls,bdlis}, non-smoothness is the \emph{mechanism} by which a
+turbulent flow dissipates energy at a rate that does not vanish with the viscosity --- the
+dissipation anomaly, observed since Taylor~\cite{taylor} and still under active
+examination~\cite{iyer} --- and a local energy equation can be written in which the non-smoothness
+is the direct cause of the dissipation~\cite{duchonrobert}. Existence of weak solutions has been
+available since Leray~\cite{leray,lions}, and for small data, the low Reynolds number case for
+suitably scaled problems, global existence of a smooth solution has been known for sixty
+years~\cite{fujitakato,kato}. The difficulty lies at the other end, and that is the end ASDE
+addresses.
+
+
+\section{The (C) solution under the viscosity test}\label{sec:nu}
+
+Two observations about the announced solution, offered without disputing it.
+
+\paragraph{(C) is not the negation of (A).} Fefferman's four statements do not form two pairs of
+negations. (A) and (B) are posed with $f\equiv0$ and quantify over \emph{all} admissible data;
+(C) and (D) ask for the \emph{existence} of admissible data \emph{together with an admissible
+smooth forcing} $f$ for which smoothness fails. So a proof of (C) leaves (A) untouched: it does not
+show that a fluid tears itself into a singularity, only that something can be done to it that does.
+The paper states its own scope in just these terms --- it establishes (C), with the periodic case
+giving (D) --- and does not claim (A) or (B). So (A) remains open after it, which is why a solution
+of (A) is worth presenting.
+
+\paragraph{The viscosity test.} The test is general and applies to any construction exhibiting a
+singularity at prescribed forcing. Navier--Stokes rescales: if $v$ solves the equations at viscosity
+one with forcing $g$, then
+\begin{equation}\label{eq:rescale}
+u(x,t) = a\,v(bx,ct),\qquad a = \nu b,\quad c = ab,\quad f = a^2 b\,g,
+\end{equation}
+solves them at viscosity $\nu$, and the map is onto: \emph{one} unit-viscosity blowup generates the
+entire family. A theorem asserting blowup ``for every $\nu>0$'' is therefore not a family of
+results. It is one result, rescaled, containing exactly what its $\nu=1$ member contains.
+
+Everything then turns on what \eqref{eq:rescale} does to the constants, and since it is the forcing
+class that the official statement fixes, two normalisations bear on it. Hold the solution at size
+one, $a=1$: then the forcing amplitude is $a^2b=\nu^{-1}$, so the force required \emph{blows up} as
+the viscosity falls and leaves any fixed admissible class. Or hold the forcing in a fixed class,
+$a^2b=1$: then $b=\nu^{-2/3}$ and
+\begin{equation}\label{eq:shrink}
+\text{amplitude } a = \nu^{1/3}\to 0,\qquad
+\text{length } b^{-1} = \nu^{2/3}\to 0,\qquad
+\text{time } c^{-1} = \nu^{1/3}\to 0 .
+\end{equation}
+The singularity shrinks to nothing: at $\nu=10^{-6}$ the velocity reaches $10^{-2}$ on a scale of
+$10^{-4}$ before blowing up. Neither branch survives the limit --- one exits the admissible data,
+the other converges to the zero solution --- and there is no third option. Set this beside the flow
+the problem is about: turbulence at small viscosity has amplitude \emph{fixed} and structure
+refining, by \eqref{eq:delta}. The constructed family has amplitude vanishing like $\nu^{1/3}$,
+which is the opposite behaviour, or else forcing diverging like $\nu^{-1}$, which is not a fluid at
+all. The independent exclusion of the mechanism under analytic forcing~\cite{civ} points the same
+way from a different direction.
+
+
+\section{In closing}
+
+Two constructions, then, of the same formal kind and opposite in direction. The (C) solution fixes
+the singularity wanted and solves backwards for a force that produces it, the force being whatever
+the residual requires. ASDE fixes the data a flow actually has and solves forwards, the residual
+becoming the bound on what may be asked of the result. Both are automated, both exhibit, and only
+the second exhibits a fluid.
+
+We do not ask for the problem to be restated, and we do not claim to have discharged (A) as it is
+formulated. What we present is what ASDE delivers when directed at it --- constructive existence of
+turbulent solutions and qualitative uniqueness of their mean-value outputs, for specific data, with
+error bounds the computation itself produces --- and we leave the reader to judge how near that comes
+to the question the problem was meant to ask. The material has been in print
+for some twenty years, from~\cite{newapproach} onward and set out in Chapter~14 of~\cite{cfd}; the
+programme has continued since into compressible flow and aeronautical Reynolds numbers. What has changed is that a solution of (C) now exists, by methods
+that are themselves a new form of mathematics, and that makes it worth asking what the same kind of
+mathematics delivers on (A).
+
+We end on the terms the problem set for itself. Fefferman is explicit about why four alternatives are
+offered rather than one: ``To give reasonable leeway to solvers while retaining the heart of the
+problem, we ask for a proof of one of the following four statements''~\cite{fefferman}. The
+Institute's description says where that heart lies --- waves follow the boat across the lake,
+turbulent air currents follow the aircraft, and the secrets are said to be hidden in the equations.
+
+We have taken the leeway and used it to reach the heart. The flows constructed here are turbulent, at
+high Reynolds number, in bounded domains, for data a fluid actually has; they exist by exhibition and
+their mean-value outputs are determined to a stated precision. That is what ASDE delivers when
+directed at alternative~(A), and we offer it for what it is worth.
+
+\section*{Declaration of interest}
+
+The Adaptive Euler simulations cited above are the work of Icarus Digital Math, of which the author
+is a co-founder; Johan Jansson, whose results are cited, is a co-founder and its chief executive. The
+evidence those simulations provide is therefore not independent of the author, and should be weighed
+accordingly.
+
+What is independent is the comparison. The High Lift Prediction Workshop and the high-order CFD
+workshops set the cases, supply the meshes and hold the measurements, and a prediction submitted
+before the measurement is disclosed is judged by people with no interest in this article. That is the
+part of the argument we would ask a sceptical reader to rely on, and it does not require taking
+anything here on trust.
+
+\begin{thebibliography}{9}
+\bibitem{fujitakato} H.~Fujita and T.~Kato, \emph{On the Navier--Stokes initial value problem~I},
+Arch.\ Rational Mech.\ Anal.\ \textbf{16} (1964) 269--315.
+
+\bibitem{kato} T.~Kato, \emph{Strong $L^p$-solutions of the Navier--Stokes equation in
+$\mathbb{R}^m$, with applications to weak solutions}, Math.\ Z.\ \textbf{187} (1984) 471--480.
+
+\bibitem{kolmogorov41} A.~N.~Kolmogorov, \emph{The local structure of turbulence in incompressible
+viscous fluid for very large Reynolds numbers}, Dokl.\ Akad.\ Nauk SSSR \textbf{30} (1941) 301--305.
+
+\bibitem{obukhov41} A.~M.~Obukhov, \emph{On the distribution of energy in the spectrum of turbulent
+flow}, Bull.\ Acad.\ Sci.\ USSR, Geog.\ Geophys.\ Ser.\ \textbf{5} (1941) 453--466.
+
+\bibitem{kolmogorov62} A.~N.~Kolmogorov, \emph{A refinement of previous hypotheses concerning the
+local structure of turbulence in a viscous incompressible fluid at high Reynolds number}, J.\ Fluid
+Mech.\ \textbf{13} (1962) 82--85.
+
+\bibitem{obukhov62} A.~M.~Obukhov, \emph{Some specific features of atmospheric turbulence}, J.\
+Geophys.\ Res.\ \textbf{67} (1962) 3011--3014.
+
+\bibitem{frischparisi} U.~Frisch and G.~Parisi, \emph{On the singularity structure of fully developed
+turbulence}, in M.~Ghil, R.~Benzi and G.~Parisi (eds.), \emph{Turbulence and Predictability in
+Geophysical Fluid Dynamics and Climate Dynamics}, North-Holland, 1985.
+
+\bibitem{musci} B.~Musci, B.~Dubrulle, J.~LeBris, D.~Geneste, P.~Braganca, J.-M.~Foucaut, C.~Cuvier
+and A.~Cheminet, \emph{Experimental measurement of the vorticity--strain alignment around extreme
+energy transfer events}, J.\ Fluid Mech.\ \textbf{1016} (2025) A53.
+
+\bibitem{iyer} K.~P.~Iyer, T.~D.~Drivas, G.~L.~Eyink and K.~R.~Sreenivasan, \emph{Turbulence without
+walls: whither the zeroth law of turbulence?}, Phys.\ Rev.\ Lett.\ \textbf{135} (2025) 134001.
+
+\bibitem{taylor} G.~I.~Taylor, \emph{Statistical theory of turbulence}, Proc.\ R.\ Soc.\ Lond.\ A
+\textbf{151} (1935) 421--444.
+
+\bibitem{eyink} G.~L.~Eyink, \emph{Energy dissipation without viscosity in ideal hydrodynamics~I.
+Fourier analysis and local energy transfer}, Physica~D \textbf{78} (1994) 222--240.
+
+\bibitem{dls} C.~De~Lellis and L.~Sz\'ekelyhidi~Jr., \emph{Dissipative Euler flows and Onsager's
+conjecture}, J.\ Eur.\ Math.\ Soc.\ \textbf{16} (2014) 1467--1505.
+
+\bibitem{bdlis} T.~Buckmaster, C.~De~Lellis, P.~Isett and L.~Sz\'ekelyhidi~Jr., \emph{Anomalous
+dissipation for $1/5$-H\"older Euler flows}, Ann.\ of Math.\ \textbf{182} (2015) 127--172.
+
+\bibitem{duchonrobert} J.~Duchon and R.~Robert, \emph{Inertial energy dissipation for weak solutions
+of incompressible Euler and Navier--Stokes equations}, Nonlinearity \textbf{13} (2000) 249--255.
+
+\bibitem{fehn} N.~Fehn, M.~Kronbichler and G.~Lube, \emph{From anomalous dissipation through Euler
+singularities to stabilized finite element methods for turbulent flows}, Flow Turbul.\ Combust.\
+\textbf{115} (2025) 347--388.
+
+\bibitem{triple} J.~Kronborg and J.~Hoffman, \emph{The triple decomposition of the velocity gradient
+tensor as a standardized real Schur form}, Phys.\ Fluids \textbf{35} (2023) 031703.
+
+\bibitem{energystab} J.~Hoffman, \emph{Energy stability analysis of turbulent incompressible flow based
+on the triple decomposition of the velocity gradient tensor}, Phys.\ Fluids \textbf{33} (2021) 081707.
+
+\bibitem{hjv} J.~Hoffman, J.~Jansson and R.~Vilela de Abreu, \emph{Adaptive modeling of turbulent
+flow with residual based turbulent kinetic energy dissipation}, Comput.\ Methods Appl.\ Mech.\
+Engrg.\ \textbf{200} (2011) 2758--2767.
+
+\bibitem{hjja} J.~Hoffman, J.~Jansson, N.~Jansson and R.~Vilela de Abreu, \emph{Towards a
+parameter-free method for high Reynolds number turbulent flow simulation based on adaptive finite
+element approximation}, Comput.\ Methods Appl.\ Mech.\ Engrg.\ \textbf{288} (2015) 60--74.
+
+\bibitem{unicorn} J.~Hoffman, J.~Jansson \emph{et al.}, \emph{Unicorn: Parallel adaptive finite
+  element simulation of turbulent flow and fluid--structure interaction}, Comput.\ Fluids, 2013.
+\bibitem{massparallel} N.~Jansson, J.~Hoffman and J.~Jansson, \emph{Framework for massively parallel
+  adaptive finite element computational fluid dynamics}, SIAM J.\ Sci.\ Comput., 2012.
+\bibitem{fenicshpc} J.~Hoffman, J.~Jansson and N.~Jansson, \emph{FEniCS-HPC: Automated predictive
+  high-performance finite element computing with aerodynamics applications}, Lecture Notes in
+  Computer Science, Springer, 2016.
+\bibitem{fenicsmulti} J.~Hoffman, J.~Jansson \emph{et al.}, \emph{FEniCS-HPC: Coupled multiphysics
+  in computational fluid dynamics}, Lecture Notes in Computer Science, Springer, 2017.
+\bibitem{fenics03} A.~Logg, T.~Dupont, J.~Hoffman, C.~Johnson, R.~C.~Kirby, M.~G.~Larson and
+  L.~R.~Scott, \emph{The FEniCS project}, Technical Report 2003--21, Chalmers Finite Element Center
+  Preprint Series, 2003.
+\bibitem{logg04} A.~Logg, \emph{Automation of Computational Mathematical Modeling}, Ph.D.\ thesis,
+  Chalmers University of Technology, 2004.
+\bibitem{logg07} A.~Logg, \emph{Automated solution of differential equations}, Sixth International
+  Congress on Industrial and Applied Mathematics (ICIAM07) and GAMM Annual Meeting, Z\"urich, 2007.
+\bibitem{fenicsbook} A.~Logg, K.-A.~Mardal and G.~N.~Wells (eds.), \emph{Automated Solution of
+  Differential Equations by the Finite Element Method: The FEniCS Book}, Springer, 2012.
+\bibitem{fenics15} M.~S.~Aln\ae s, J.~Blechta, J.~Hake, A.~Logg \emph{et al.}, \emph{The FEniCS
+  Project Version 1.5}, Archive of Numerical Software \textbf{3} (100) (2015) 9--23.
+\bibitem{eriksson17} K.~Eriksson, A.~Logg and C.~Johnson, \emph{Adaptive computational methods for
+  parabolic problems}, in \emph{Encyclopedia of Computational Mechanics}, 2017, pp.~1--28.
+\bibitem{cedya01} C.~Johnson, J.~Hoffman and A.~Logg, \emph{Topics in adaptive computational methods
+  for differential equations}, CEDYA 2001: Congreso de Ecuaciones Diferenciales y Aplicaciones, 2001.
+\bibitem{newapproach} J.~Hoffman and C.~Johnson, \emph{A new approach to computational turbulence
+modeling}, Comput.\ Methods Appl.\ Mech.\ Engrg.\ \textbf{195} (2006) 2865--2880.
+
+\bibitem{openai} OpenAI, \emph{Finite time blowup for Navier--Stokes}, preprint, 2026.
+\newblock \url{https://cdn.openai.com/pdf/32d9f210-8b73-45e0-91bc-82a30aef8a9a/navier-stokes.pdf}
+
+\bibitem{buckmaster} T.~Buckmaster, \emph{Statement}, 2026.
+\newblock \url{https://cims.nyu.edu/~tristanb/statement.pdf}
+
+\bibitem{civ} P.~Constantin, M.~Ignatova and V.~Vicol, \emph{Regularity of asymptotically
+axisymmetric solutions to the 3D Navier--Stokes equations with analytic forcing},
+arXiv:2609.20803, 2026.
+
+\bibitem{onsager} L.~Onsager, \emph{Statistical hydrodynamics}, Nuovo Cimento \textbf{6},
+Suppl.~2 (1949) 279--287.
+
+\bibitem{fefferman} C.~Fefferman, \emph{Existence and smoothness of the Navier--Stokes equation},
+Official Problem Description, Clay Mathematics Institute, 2000.
+\bibitem{leray} J.~Leray, \emph{Sur le mouvement d'un liquide visqueux emplissant l'espace},
+Acta Math.\ \textbf{63} (1934) 193--248.
+\bibitem{cfd} J.~Hoffman and C.~Johnson, \emph{Computational Turbulent Incompressible Flow},
+Applied Mathematics: Body and Soul, vol.~4, Springer, 2007.
+\bibitem{dalembert} J.~Hoffman and C.~Johnson, \emph{Resolution of d'Alembert's paradox},
+J.\ Math.\ Fluid Mech.\ \textbf{12} (2010) 321--334.
+\bibitem{flight} J.~Hoffman, J.~Jansson and C.~Johnson, \emph{New theory of flight},
+J.\ Math.\ Fluid Mech.\ \textbf{18} (2016) 219--241.
+\bibitem{drag} J.~Hoffman, \emph{Efficient computation of mean drag for the subcritical flow past a
+circular cylinder using general Galerkin G2}, Int.\ J.\ Numer.\ Meth.\ Fluids \textbf{59} (2009)
+1241--1258.
+\bibitem{lions} J.-L.~Lions, \emph{Quelques m\'ethodes de r\'esolution des probl\`emes aux
+limites non lin\'eaires}, Dunod, Paris, 1969.
+
+\bibitem{cs1} J.~Jansson, \emph{Adaptive Direct FEM Simulation with Unicorn/FEniCS-HPC for CS1},
+  5th International Workshop on High Order CFD Methods; Zenodo, 2022.
+  \newblock \url{https://doi.org/10.5281/zenodo.6942599}.
+\bibitem{ifasd} J.~Jansson, \emph{Adaptive Euler: validation against NASA High Lift Prediction
+  Workshop~4, and preliminary tail-buffet and transonic-buffet simulations}, presented at
+  IFASD~2026; video,
+  \url{https://www.linkedin.com/posts/johan-jansson-56aa0a41_fenics-activity-7472908903618338817--spa}.
+\bibitem{blog} C.~Johnson, posts under the label \emph{clay problem},
+\url{https://claesjohnson.blogspot.com/search/label/clay\%20problem}.
+\end{thebibliography}
+\end{document}
