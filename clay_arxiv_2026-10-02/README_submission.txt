@@ -5,6 +5,7 @@ Claes Johnson, KTH Royal Institute of Technology
 CONTENTS
   clay_constructive_solution.tex   the complete source; this is the only file arXiv needs
   ABSTRACT_plaintext.txt           abstract as plain text, for the web form
+  SUBMISSION_FIELDS.txt            title, categories, MSC and comments field to paste
   README_submission.txt            this file
 
 NOTES FOR THE UPLOAD
