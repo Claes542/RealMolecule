@@ -820,6 +820,7 @@ const RESULTS = [
            : /[?&]auto=mgpt(?:&|$)/.test(location.search) ? 'g'
            : /[?&]auto=aufbau(?:&|$)/.test(location.search) ? 'a'
            : /[?&]auto=chi(?:&|$)/.test(location.search) ? 'x'
+           : /[?&]auto=geocap(?:&|$)/.test(location.search) ? 'G'
            : /[?&]auto=row4(?:&|$)/.test(location.search) ? 'W'
            : /[?&]auto=se4(?:&|$)/.test(location.search) ? 'E'
            : /[?&]auto=scan4(?:&|$)/.test(location.search) ? 'S'
@@ -843,6 +844,76 @@ const RESULTS = [
   // For nitrogen the spectroscopic structure is 2+2+3 (2s2 2p3, outer shell HALF FILLED) while
   // the cap-4 balanced rule gives 2+3+2 -- more in the inner shell than the outer, which is
   // backwards, and removes the half-filled outer shell that produces the N>O anomaly.
+  // GEOMETRIC CAPACITY PER SHELL (?auto=geocap). Settles the question the paper leaves open at
+  // sec:twoeight: does the capacity a shell can geometrically hold track the ROW capacities
+  // 2,8,8,18,18 -- repetitions and all -- or the hydrogenic 2n^2?
+  // THE CONSTRUCTION. A shell between radii R_{i-1} and R_i has thickness d = R_i - R_{i-1} and
+  // mid-radius r. If a charge occupies a volume of order d^3, the shell of volume 4*pi*r^2*d holds
+  //       N_geo = 4*pi*(r/d)^2
+  // charges. This is the capacity-as-area reading, with the charge's own size as the unit, and it
+  // is the only form of that reading the measured radii permit -- absolute radii will not serve,
+  // since r/d is of order one rather than large.
+  // WHAT TO LOOK FOR. Run the row-structured fillings: Ne as 2+8, Ar as 2+8+8, Kr as 2+8+8+18.
+  // If N_geo comes out near the occupancy of each shell, the row capacities are geometrically
+  // determined and Claes's reading holds -- the third row is 8 and not 18 because a shell at that
+  // radius cannot hold 18. If instead N_geo rises as 2n^2 regardless, the row lengths are not a
+  // capacity matter and the doubling must be sought in the filling order.
+  // THE CAVEAT, which no run removes: occupancies are SUPPLIED, so the geometry relaxes around a
+  // filling it did not choose. Each configuration is therefore tested for CONSISTENCY with itself
+  // -- N_geo against its own occupancy -- and the alternative cap-4 filling is run alongside for
+  // comparison, rather than one being declared correct.
+  // The OUTERMOST shell is reported but marked: its outer boundary is the box edge, not a relaxed
+  // interface, so its thickness is an artefact and its N_geo means nothing.
+  window.__autoGeoCap = function(){
+    var KEY='atomsim_geocap', out=[];
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    var ST = parseInt((location.search.match(/[?&]steps=(\d+)/)||[])[1] || '20000', 10);
+    var cases = [
+      { el:'He', Z:2,  N:400, cfg:[2],              tag:'row-structured' },
+      { el:'Ne', Z:10, N:400, cfg:[2,8],            tag:'row-structured' },
+      { el:'Ne', Z:10, N:400, cfg:[2,4,4],          tag:'cap-4' },
+      { el:'Ar', Z:18, N:400, cfg:[2,8,8],          tag:'row-structured' },
+      { el:'Ar', Z:18, N:400, cfg:[2,4,4,4,4],      tag:'cap-4' },
+      { el:'Kr', Z:36, N:800, cfg:[2,8,8,18],       tag:'row-structured' },
+      { el:'Kr', Z:36, N:800, cfg:[2,8,8,2,8,8],    tag:'row-4 as 2+8+8' }
+    ];
+    (async function(){
+      PK_MODE=false; var Nsave=N;
+      for (var ci=0; ci<cases.length; ci++){
+        var c=cases[ci];
+        var rec={ el:c.el, Z:c.Z, tag:c.tag, cfg:c.cfg.join('+'), N:c.N, steps:ST,
+                  sum:c.cfg.reduce(function(a,b){return a+b;},0) };
+        try{ localStorage.setItem('geocap_progress', c.el+' '+c.cfg.join('+')); }catch(e){}
+        await new Promise(function(r){ setTimeout(r,0); });
+        if (rec.sum!==c.Z){ rec.skip='count '+rec.sum+' != Z'; out.push(rec); continue; }
+        try{
+          N=c.N;
+          var r=solveAtomPure(c.Z, c.cfg, ST, {tol:0});
+          rec.E = isFinite(r.etot)?Number(r.etot.toFixed(3)):'NONFIN';
+          var R=[0];
+          for (var sN=0; sN<NSHELLS; sN++) R.push(M[sN+1]*h);
+          var sh=[];
+          for (var i=0; i<NSHELLS; i++){
+            var d=R[i+1]-R[i], rm=(R[i+1]+R[i])/2;
+            sh.push({ n:i+1, occ:Es[i],
+                      r_in:Number(R[i].toFixed(4)), r_out:Number(R[i+1].toFixed(4)),
+                      d:Number(d.toFixed(4)), r_over_d: d>0?Number((rm/d).toFixed(3)):null,
+                      N_geo: d>0?Number((4*Math.PI*(rm/d)*(rm/d)).toFixed(1)):null,
+                      two_n2: 2*(i+1)*(i+1),
+                      outermost: (i===NSHELLS-1) });
+          }
+          rec.shells=sh;
+        }catch(e){ rec.E='ERR'; rec.msg=String(e).slice(0,70); }
+        out.push(rec);
+        try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){
+          console.error('SAVE FAILED ('+KEY+'): '+e.name); document.title='SAVE FAILED'; }
+      }
+      N=Nsave;
+      try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+      document.title='GEOCAP DONE';
+    })();
+  };
+
   // FOURTH ROW UNDER BOTH FILLING RULES (?auto=row4). The question Claes put: are the fourth-row
   // occupations optimal? Table 2 of the paper computes Z=19-36 in configurations IMPORTED from the
   // ionisation order (genConfigObserved), because an outward build-up cannot place a charge inside an
@@ -1719,6 +1790,7 @@ const RESULTS = [
                        : MODE === 'g' ? window.__autoMGPT
                        : MODE === 'a' ? window.__autoAufbau
                        : MODE === 'x' ? window.__autoChi
+                       : MODE === 'G' ? window.__autoGeoCap
                        : MODE === 'W' ? window.__autoRow4
                        : MODE === 'E' ? window.__autoSe4
                        : MODE === 'S' ? window.__autoScan4
