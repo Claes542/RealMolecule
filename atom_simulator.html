@@ -820,6 +820,7 @@ const RESULTS = [
            : /[?&]auto=mgpt(?:&|$)/.test(location.search) ? 'g'
            : /[?&]auto=aufbau(?:&|$)/.test(location.search) ? 'a'
            : /[?&]auto=chi(?:&|$)/.test(location.search) ? 'x'
+           : /[?&]auto=psiscale(?:&|$)/.test(location.search) ? 'p'
            : /[?&]auto=geocap(?:&|$)/.test(location.search) ? 'G'
            : /[?&]auto=row4(?:&|$)/.test(location.search) ? 'W'
            : /[?&]auto=se4(?:&|$)/.test(location.search) ? 'E'
@@ -844,6 +845,72 @@ const RESULTS = [
   // For nitrogen the spectroscopic structure is 2+2+3 (2s2 2p3, outer shell HALF FILLED) while
   // the cap-4 balanced rule gives 2+3+2 -- more in the inner shell than the outer, which is
   // backwards, and removes the half-filled outer shell that produces the N>O anomaly.
+  // DOES psi SCALE AS sqrt(Z)/r ?  (?auto=psiscale)
+  // The solver's charge element is (u[i]*i*h)^2*h = u^2 r^2 dr, so u is proportional to psi itself
+  // and NOT to the usual radial function rR(r). The claim psi ~ sqrt(Z)/r therefore says two things,
+  // and they are tested separately:
+  //   (a) SHAPE: u*r is flat across a shell. Equivalently the density goes as 1/r^2, so the charge
+  //       per unit radius u^2 r^2 is constant -- charge spread evenly in r, which is what a thick
+  //       shell would do. Reported as the coefficient of variation of u*r inside the shell.
+  //   (b) LEVEL: the flat value scales as sqrt(Z). Normalising a 1/r profile over a shell of
+  //       thickness d gives u*r = sqrt(occ/(4 pi d)), so with d ~ n/Z_eff the level goes as
+  //       sqrt(Z_eff) at fixed occupancy and n -- which is why the test is run on the FIRST shell,
+  //       where the occupancy is 2 for every atom and only Z varies.
+  // Note psi ~ 1/r cannot hold at the nucleus, where the hydrogenic 1s is finite and goes as
+  // exp(-Zr); the claim can only be about the interior of a shell, so the outer and inner tenths of
+  // each shell are excluded from the statistics.
+  window.__autoPsiScale = function(){
+    var KEY='atomsim_psiscale', out=[];
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    var ST = parseInt((location.search.match(/[?&]steps=(\d+)/)||[])[1] || '20000', 10);
+    var cases = [
+      { el:'He', Z:2,  N:400, cfg:[2] },
+      { el:'Be', Z:4,  N:400, cfg:[2,2] },
+      { el:'C',  Z:6,  N:400, cfg:[2,2,2] },
+      { el:'Ne', Z:10, N:400, cfg:[2,8] },
+      { el:'Ar', Z:18, N:400, cfg:[2,8,8] },
+      { el:'Kr', Z:36, N:800, cfg:[2,8,8,18] }
+    ];
+    (async function(){
+      PK_MODE=false; var Nsave=N;
+      for (var ci=0; ci<cases.length; ci++){
+        var c=cases[ci];
+        var rec={ el:c.el, Z:c.Z, cfg:c.cfg.join('+'), N:c.N, steps:ST };
+        try{ localStorage.setItem('psi_progress', c.el); }catch(e){}
+        await new Promise(function(r){ setTimeout(r,0); });
+        try{
+          N=c.N;
+          var r=solveAtomPure(c.Z, c.cfg, ST, {tol:0});
+          rec.E = isFinite(r.etot)?Number(r.etot.toFixed(3)):'NONFIN';
+          var sh=[];
+          for (var sN=0; sN<NSHELLS; sN++){
+            var lo=M[sN], hi=M[sN+1];
+            var span=hi-lo, cut=Math.max(1,Math.round(0.1*span));
+            var a=lo+cut, b=hi-cut, vals=[];
+            for (var i=Math.max(1,a); i<=b && i<=N; i++) vals.push(u[i]*i*h);
+            if (vals.length<3){ sh.push({n:sN+1, occ:Es[sN], note:'too few cells'}); continue; }
+            var m=0; for (var k=0;k<vals.length;k++) m+=vals[k]; m/=vals.length;
+            var v=0; for (var k2=0;k2<vals.length;k2++) v+=(vals[k2]-m)*(vals[k2]-m);
+            v=Math.sqrt(v/vals.length);
+            sh.push({ n:sN+1, occ:Es[sN], cells:vals.length,
+                      ur_mean:Number(m.toPrecision(5)),
+                      ur_cv:Number((v/Math.abs(m)).toFixed(3)),
+                      ur_first:Number(vals[0].toPrecision(5)),
+                      ur_last:Number(vals[vals.length-1].toPrecision(5)),
+                      d:Number(((hi-lo)*h).toFixed(4)) });
+          }
+          rec.shells=sh;
+        }catch(e){ rec.E='ERR'; rec.msg=String(e).slice(0,70); }
+        out.push(rec);
+        try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){
+          console.error('SAVE FAILED ('+KEY+'): '+e.name); document.title='SAVE FAILED'; }
+      }
+      N=Nsave;
+      try{ localStorage.setItem(KEY, JSON.stringify(out)); }catch(e){}
+      document.title='PSISCALE DONE';
+    })();
+  };
+
   // GEOMETRIC CAPACITY PER SHELL (?auto=geocap). Settles the question the paper leaves open at
   // sec:twoeight: does the capacity a shell can geometrically hold track the ROW capacities
   // 2,8,8,18,18 -- repetitions and all -- or the hydrogenic 2n^2?
@@ -1790,6 +1857,7 @@ const RESULTS = [
                        : MODE === 'g' ? window.__autoMGPT
                        : MODE === 'a' ? window.__autoAufbau
                        : MODE === 'x' ? window.__autoChi
+                       : MODE === 'p' ? window.__autoPsiScale
                        : MODE === 'G' ? window.__autoGeoCap
                        : MODE === 'W' ? window.__autoRow4
                        : MODE === 'E' ? window.__autoSe4
