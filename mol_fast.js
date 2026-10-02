@@ -176,10 +176,12 @@ struct P {
   // cross a shell. The u-field then equilibrates at essentially fixed territory and the geometry
   // is the last thing to settle, which is the wrong order for a free-boundary problem and is why
   // the inner-seed runs drift for the whole run without arriving.
-  // STABILITY. The term is explicit advection, so the front CFL is W_ADV*cm*dt/h < 1; with
-  // dt = h^2/2 that is W_ADV*cm*h/2 < 1, i.e. W_ADV < 2/(cm*h). At h = 0.03 and cm of order one
-  // the limit is about 67, so values up to ~20 keep a comfortable margin. Raising it does NOT
-  // relax the u-update stability, which is set by dt alone and untouched here.
+  // STABILITY. The term is explicit advection, so the front CFL is W_ADV*cm*dt/h < 1. Note
+  // dt = dv*h^2 with dv = 0.12 by default (NOT h^2/2 -- that is the 1D solver's step), so the
+  // limit is W_ADV < 1/(cm*dv*h), about 1200 at h = 0.06 with cm of order one. The front is
+  // nowhere near its stability limit at any value used here; if the interface looks wild the cause
+  // is oscillation of cm, which the diffusion term damps, and not a CFL violation. Raising W_ADV
+  // does not touch the u-update stability, which dv sets and which is untouched here.
   // Default 1 reproduces present behaviour exactly.
   const W_ADV = (typeof window !== 'undefined' && window.USER_W_ADV !== undefined)
                  ? Number(window.USER_W_ADV) : 1.0;
