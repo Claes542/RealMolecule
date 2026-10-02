@@ -97,18 +97,20 @@ function shellString() {
 function setup() {
   createCanvas(880, 560);
 
-  // Opens on BORON, Z=5, in the configuration the paper reports for it (2+2+1). The default
-  // was Z=4 against shell sliders of 2+1 -- three electrons on a Z=4 kernel, so the first thing
-  // a reader from the paper saw was a beryllium CATION in a configuration appearing nowhere in
-  // Table 1. Z and the occupations must agree at startup, and 2+2+1 also shows three shells at
-  // once, which a two-shell default does not.
+  // Opens on BORON, Z=5, in the configuration the paper reports for it, 2+2+1.
+  // READ readSliders() BEFORE TOUCHING THESE. It hardwires Es[0] = 2 and the five sliders fill
+  // shells 1..5, so a slider array [a,b,c,d,e] means the configuration 2+a+b+c+d+e. The leading
+  // pair is NOT a slider. Two defaults have been wrong here for that reason: the original
+  // [2,1,0,0,0] with Z=4 gave 2+2+1 = 5 electrons on a Z=4 kernel (a beryllium anion), and the
+  // first correction [2,2,1,0,0] with Z=5 gave 2+2+2+1 = 7 on Z=5, worse. The invariant to check
+  // is 2 + sum(sliders) == sliderZ.
   sliderZ = createSlider(2, 86, 5, 1);
   sliderZ.position(20, 520);
   sliderZ.style('width', '100px');
 
   // Manual mode keeps 5 shell sliders (light atoms, spot checks); heavy atoms use the sweep.
   for (let s = 0; s < 5; s++) {
-    const DEF = [2, 2, 1, 0, 0];               // sums to Z=5 above; keep the two in step
+    const DEF = [2, 1, 0, 0, 0];               // 2 (hardwired) + 2+1 = 5 = Z above
     let sl = createSlider(0, 4, DEF[s], 1);
     sl.position(160 + s * 90, 520);
     sl.style('width', '70px');
