@@ -8,6 +8,13 @@ WHAT TO UPLOAD
   IJQC_response_letter.pdf        point-by-point response to both referees (7 pp)
   RealQM_atoms.tex                manuscript source
   RealQM_atoms.pdf                manuscript, 35 pages
+  RealQM_atoms_tracked_changes.pdf  upload under the "Tracked Changes" file category.
+                                  latexdiff against the version the referees reviewed
+                                  (the .tex inside RealQM_atoms_IJQC_resubmission.zip,
+                                  3 July 2026). Wavy underline = added, strike = removed.
+                                  Tables appear as caption lines, not typeset: every table
+                                  was rewritten and markup inside a tabular does not
+                                  typeset. A box on page 1 explains this to the reader.
   fig_essence.pdf                 Figure 1
   fig_octet.pdf                   Figure 2
   fig_li_wrap.pdf                 Figure 3
