@@ -3,6 +3,7 @@
 \documentclass[11pt]{article}
 \usepackage[margin=1.15in]{geometry}
 \usepackage{amsmath,amssymb}
+\usepackage{url}
 \usepackage[hidelinks]{hyperref}
 \setlength{\parskip}{3pt}
 
@@ -64,12 +65,20 @@ wall layer, because there is no viscosity to make one; and there is nothing for 
 past. The solution is the initial data, unchanged, for all time. One may compute it, but there is
 nothing in it to compute.
 
-This is not a curiosity about pipes. It is the general situation. The Euler equations with slip have
-no internal mechanism for generating structure: vorticity is transported and stretched but not
-created, so a flow that begins irrotational and meets nothing stays irrotational, and a flow that
-meets nothing at all stays whatever it was. Everything that makes a flow a flow --- vorticity,
-separation, a wake, drag, turbulence --- enters because the fluid is obliged to go around something.
-The obstruction is not one case among many. It is the only source.
+This is not a curiosity about pipes, and the general statement should be made exactly, because it is
+the hinge of the paper. \emph{The Euler equations do not create vorticity.} The vorticity equation
+$\dot\omega + (u\cdot\grad)\omega = (\omega\cdot\grad)u$ transports and stretches $\omega$ and has no
+source term; with slip and no viscosity there is none at the wall either. So the vorticity in an
+Euler flow is either present in the initial data, or it is produced where the fluid is obliged to go
+around something.
+
+That is a dichotomy, not a preference, and it divides the subject. If the vorticity is in the data,
+it was put there by whoever wrote the data down, and what is being studied is an initial-value
+problem: the flow's structure is an input. If it is produced at an obstruction, the flow generates
+its own structure and one is studying a fluid. Everything that makes a flow a flow --- vorticity,
+separation, a wake, drag, turbulence --- belongs to the second case, and no fluid ever arrives at the
+first, because a fluid acquires its vorticity from boundaries. The obstruction is not one case among
+many. It is the only physical source.
 
 And once there is an obstruction, there is a forward surface where the flow is accelerated and a
 rear surface where it is retarded, because the pressure must return to what it was. The first is
@@ -270,6 +279,31 @@ computer-assisted proof for the 2D Boussinesq and 3D axisymmetric Euler equation
 smooth initial data~\cite{chenhou}; and the regularity has since been pushed to
 $C^{1,1/3}$~\cite{chen2026}, with stability on the whole space also claimed~\cite{stable}.
 
+\paragraph{The unforced construction of September 2026.} The sharpest case is the most recent. On
+26 September 2026 OpenAI released a proof of finite-time blowup for the three-dimensional
+incompressible Euler equations, \emph{unforced}, from smooth, compactly supported, divergence-free
+initial data, accompanied by a formalisation in Lean~\cite{openaieuler}. It is the strongest form of
+the claim: no forcing to object to, no low-regularity data, and a machine-checked proof. We take it
+as correct and our argument does not depend on whether it is --- what follows would be unaffected by
+a verification or by a retraction.
+
+It is also the cleanest illustration of both points above, which is why we give it separately.
+
+Its data is \emph{smooth}, so until the blowup time the solution is smooth, hence far above
+Onsager's exponent, hence by~\cite{cet} energy is conserved \emph{exactly}. The construction
+therefore has no cascade at any moment of its existence. Its energy cannot leave, and as the gradient
+grows the integral can only be kept by concentrating. The singularity is not something the flow
+discovers; it is the only remaining option, and the smoothness is what removed the others.
+
+And its data is compactly supported on $\mathbb{R}^3$ --- so there is no body, no wall and no
+separation, and by Section~\ref{sec:setting} the vorticity it starts with was put there by hand. It
+is a divergence-free field chosen so that the stretching term concentrates it, and the proof is the
+demonstration that it does. No fluid arrives at that state. A fluid gets its vorticity from a
+boundary, which is to say from the separation instability, which is to say with the roughness that
+instability immediately produces --- and a rough flow has the cascade available and takes it. The
+construction and the flow differ at the first step, in where the vorticity came from, and everything
+else follows from that.
+
 We have been here before, and it is worth saying where we stood. In~\cite{blowupHJ} we studied
 blowup of incompressible Euler solutions computationally and concluded that what the equations
 produce is not a point singularity but a breakdown of the flow into turbulence --- the velocity
@@ -359,6 +393,11 @@ J.\ Math.\ Fluid Mech.\ \textbf{18} (2016) 219--241.
 \bibitem{drag} J.~Hoffman, \emph{Efficient computation of mean drag for the subcritical flow past a
 circular cylinder using general Galerkin G2}, Int.\ J.\ Numer.\ Meth.\ Fluids \textbf{59} (2009)
 1241--1258.
+
+\bibitem{openaieuler} OpenAI, \emph{Finite time blowup for the Euler equation}, preprint,
+26~September 2026.
+\newblock \url{https://cdn.openai.com/pdf/315b36cd-ec98-4023-8342-93345194ece1/euler.pdf}
+[TO READ IN FULL: the description here is from the announcement, not from the proof.]
 
 \bibitem{blowupHJ} J.~Hoffman and C.~Johnson, \emph{Blowup of incompressible Euler solutions},
 BIT Numer.\ Math.\ \textbf{48} (2008) 285--307.
