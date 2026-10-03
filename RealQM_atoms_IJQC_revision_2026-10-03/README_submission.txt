@@ -1,0 +1,40 @@
+IJQC manuscript 1568909 -- revised submission
+"A 3D Multiphase Continuum Model for Atoms and the Periodic Table"
+Claes Johnson, KTH Royal Institute of Technology
+
+WHAT TO UPLOAD
+
+  cover_letter_IJQC_revision.txt  cover letter to Dr. Felix Plasser
+  IJQC_response_letter.pdf        point-by-point response to both referees (7 pp)
+  RealQM_atoms.tex                manuscript source
+  RealQM_atoms.pdf                manuscript, 35 pages
+  fig_essence.pdf                 Figure 1
+  fig_octet.pdf                   Figure 2
+  fig_li_wrap.pdf                 Figure 3
+  fig_li_snaps.pdf                Figure 4
+  graphical_abstract.png          table-of-contents image, 4200x1500 at 600 dpi
+  TOC_summary_75w.txt             table-of-contents summary, 72 words
+
+  IJQC_response_letter.tex        source of the response letter, not needed by the journal
+  geocap_results.json             raw output behind the geometric-capacity numbers
+                                  in the discussion of the period doubling; include as
+                                  supporting information or omit, as preferred
+
+CHECKED BEFORE PACKAGING
+
+  - Builds in an empty directory containing only RealQM_atoms.tex and the four
+    figures: 35 pages, no errors, no undefined references or citations, no
+    missing figures. No .bib or .bbl is needed; the bibliography is an inline
+    thebibliography environment.
+  - Abstract 145 words, within the 150-word guideline, with no bold-face
+    elements and no numerical literature references.
+  - Table-of-contents summary 72 words, within the 75-word limit.
+  - Keywords present.
+  - Every number the two letters assert about the manuscript re-measured
+    against it: the page count (35) and the abstract length (145).
+  - Response letter free of the markdown artefacts present in the earlier
+    draft; the only asterisks remaining are LaTeX \section*.
+
+NOT DONE
+  - Figure files are PDF. If the journal requires TIFF or EPS at production,
+    they will be requested at that stage.
