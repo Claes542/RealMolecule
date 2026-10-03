@@ -12,7 +12,9 @@ WHAT TO UPLOAD
   fig_octet.pdf                   Figure 2
   fig_li_wrap.pdf                 Figure 3
   fig_li_snaps.pdf                Figure 4
-  graphical_abstract.png          table-of-contents image, 4200x1500 at 600 dpi
+  graphical_abstract.png          graphical abstract image, 2783x3017 at 600 dpi
+                                  (IJQC's form calls for "Graphical Abstract Image";
+                                   the accompanying "Text" is TOC_summary_75w.txt)
   TOC_summary_75w.txt             table-of-contents summary, 72 words
 
   IJQC_response_letter.tex        source of the response letter, not needed by the journal
