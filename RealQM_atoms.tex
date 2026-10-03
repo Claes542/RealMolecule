@@ -23,51 +23,16 @@
 \maketitle
 
 \begin{abstract}
-RealQM is a free-boundary multiphase continuum model of atoms in three space dimensions:
-non-overlapping unit electron charge densities, continuous across free interfaces whose position is
-an unknown, interacting by Coulomb potentials without self-repulsion. The ground state is the steady
-state of a parabolic relaxation of the Coulomb energy. The only number supplied is
-the nuclear charge $Z$ --- the atoms are neutral, so the electron count is $Z$ as well --- and no
-constant is adjusted anywhere. Work scales
-as $Z$ times the mesh --- one Poisson solve per charge density, and a neutral atom has $Z$ of them ---
-and so linearly in $Z$ at fixed resolution. Molecules, condensed phases and nuclei are treated in
-companion articles.
-
-The model is built from the foundational elements of the Schr\"odinger equation --- charge densities
-interacting by Coulomb potentials while carrying kinetic energy --- and differs from the textbook
-form in one respect: the densities are \emph{non-overlapping}, meeting with continuity across free
-interfaces rather than superposing. From those elements we compute the periodic table: the ground
-states of the
-neutral atoms, nothing fitted. The shell structure comes from the build-up, which recovers Li, Be, B and C with no empirical
-input and is established to carbon; beyond carbon the filling is supplied rather than derived, which
-is the paper's principal limitation. Given the structure, the energy is
-accurate to a few per cent over periods~1--4, hydrogen to krypton, with no adjustable quantity
-anywhere.
-
-Two filled packings appear and no third, and they are the building blocks of the whole table: the
-antipodal pair, $2$, and the octet, $8=4{+}4$, two dual tetrahedra. The row capacities are sums of these and
-nothing else --- $2$, $8$, $18=2{+}8{+}8$, $32=8{+}8{+}8{+}8$ --- each serving two periods after the
-first, so that the closures are $2,10,18,36,54,86,118$. The decomposition is into units of two and eight, \emph{not} into the
-$2,6,10,14$ of $s$, $p$, $d$ and $f$: no $2n^2$ enters the construction, and its agreement with the hydrogenic count is a
-result rather than an input. The same two units are the first two nuclear magic numbers, and
-organise nuclei in a companion article. The Allen configuration energy reproduces the
-electronegativity ordering across period~2 exactly, with too steep a gradient.
-
-The solutions obey a scaling the construction does not contain: the charge per unit radius is the
-same in every shell and equal to $Z/2$, so the density falls as $Z/r^2$. Integrated to the atom's
-edge this must give $Z$, fixing the size at $2$~a.u.\ \emph{independently of $Z$} --- a stronger
-kernel thins every shell in proportion to the charge it holds, so an atom cannot shrink as $1/Z$.
-Measured van der Waals radii vary by a factor $1.47$ from carbon to xenon while $Z$ rises ninefold,
-so the near-constancy of atomic size comes out as a consequence, at a value some thirty per cent low.
-The law holds, however, on the groupings that over-bind and fails on those that give the best
-energies, which is unexplained.
-
-The energies are computed in spherical symmetry; three-dimensional results from the same model are
-included, among them a build-up in which a charge arriving at a closed Li$^+$ core closes a shell
-outside it rather than entering it. Every atom is solved all-electron, with no core radius and no
-fitted length, to krypton; what is bounded at argon is the build-up, and beyond carbon the filling is
-supplied rather than derived, which is the principal limitation. Ionization and excitation are
-treated in upcoming work.
+RealQM models atoms as non-overlapping unit electron charge densities, continuous across free
+interfaces, interacting by Coulomb potentials without self-repulsion; the ground state follows by
+parabolic relaxation in three space dimensions. The only number supplied is the nuclear charge $Z$,
+and nothing is fitted. Neutral atoms are computed all-electron, hydrogen to krypton, to a few per
+cent. Two filled packings appear and no third: the antipodal pair, $2$, and the octet, $8=4{+}4$, two
+dual tetrahedra. Row capacities are sums of these alone, $2$, $8$, $18=2{+}8{+}8$,
+$32=8{+}8{+}8{+}8$, and a period ends when its capacity is exhausted, giving the closures
+$2,10,18,36,54,86,118$. Each capacity serves two periods, measured here but not derived. The computed
+charge per unit radius is $Z/2$ in every shell, fixing atomic size near $2$~a.u.\ independently of
+$Z$. Beyond carbon the filling is supplied rather than derived, the principal limitation.
 \end{abstract}
 
 \medskip
@@ -890,7 +855,24 @@ and because the occupancies here are supplied: the solver was told to place $2{+
 the geometry relaxed around a filling it did not choose, and a capacity read off that geometry cannot
 be independent of it. What would settle it is the same measurement across atoms and across candidate
 fillings --- does $4\pi(r/d)^2$ track $2,8,8,18,18$, repetitions and all, or does it track $2n^2$?
-That is a definite computation, it bears directly on the doubling, and it is not done here.
+That computation has since been made, on four atoms and three candidate fillings, and it does not
+settle the question so much as bound it. Tested shell by shell against the occupancy it was given,
+the pair-and-octet filling is the more self-consistent of the two we use: the mean departure of
+$4\pi(r/d)^2$ from the occupancy it is supposed to hold is $0.55$, against $1.34$ for the balanced
+cap-4 rule, while a filling that buries a pair \emph{inside} the fourth row ---
+$2{+}8{+}8{+}2{+}8{+}8$ for krypton --- fails outright, a two-charge shell at $r/d=3.7$ returning a
+capacity of $175$. That comparison assumes no answer: it asks of each candidate filling only whether
+the geometry it relaxes into can hold what it was given.
+
+Its weight should not be overstated. The innermost shell is an \emph{identity} and not a
+measurement --- with $r_{\rm in}=0$ the mid-radius is half the thickness, so $r/d=1/2$ and
+$4\pi(r/d)^2=\pi$ exactly, which is where the factor $\pi$ against the required $2$ above comes from
+--- and the outermost shell's thickness is set by the box rather than by a relaxed interface. Removing
+both leaves three informative shells for the pair-and-octet rule, and krypton's third shell misses by
+a factor of two. We therefore record the capacity estimate as an \emph{anticipation} of the filling at
+larger $Z$, to be confirmed or refuted when the build-up of Section~\ref{sec:aufbau} is carried past
+carbon, and not as a derivation of it. The true filling can come only from the build-up; capacity is
+what lets us guess it where the build-up does not yet reach.
 
 \paragraph{What closure requires, and what precedes it.} \emph{Closure is exhaustion of a row's
 capacity}, and that is what this construction means by a noble gas: at $Z=2,10,18,36,54,86,118$ ---
