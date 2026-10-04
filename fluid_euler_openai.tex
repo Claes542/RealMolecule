@@ -25,8 +25,11 @@ a model of it; and a proof about the equations, which is a statement about the m
 equations, note that they are parameter free, and observe that the mathematical question asked of
 them --- existence, regularity, uniqueness --- has not been answered by analysis in symbolic form,
 because the solutions turn out to have a complicated nature which symbolic analysis has no grip on.
-Solutions in digital form over a mesh can be computed, are turbulent, fluctuate over a range of
-scales, and have well determined mean values such as drag and lift which agree with measurement. We
+Solutions in digital form over a mesh can be computed by a model we name \emph{Adaptive Euler} ---
+a stabilised finite element discretisation together with duality-based output error control and
+adaptive refinement --- and they are turbulent, fluctuating over a range of scales, with well
+determined mean values such as drag and lift which agree with measurement and arrive with a computed
+bound on their error. We
 then ask what a recent symbolic proof of finite-time blowup establishes, and conclude that it is a
 statement about the model which does not reach either of the other two levels: it exhibits no
 individual case, so nothing can be inserted into the equations, inspected, or measured.
@@ -91,12 +94,28 @@ an expression exponential in $A$ iterated several times. As theorems these are r
 about a fluid they are empty, since a bound of size $\exp\exp\exp A$ is not one any flow can be said
 to respect.
 
-\section{Solutions in digital form}\label{sec:digital}
+\section{Adaptive Euler: solutions in digital form}\label{sec:digital}
 
-The same equations treated in digital form behave quite differently. Over a mesh, with a stabilised
-finite element method~\cite{book}, a solution can be computed --- a \emph{viscosity solution} in the sense that
-it is obtained with a vanishing artificial viscosity, the limit being taken as the mesh is refined.
-What is obtained has the following properties, and none of them was put in.
+The same equations treated in digital form behave quite differently. We name the computational model
+\textbf{Adaptive Euler}. It has three parts and the third is not an afterthought:
+
+\begin{enumerate}
+\item the equations \eqref{eq:mom}--\eqref{eq:slip}, discretised by a stabilised finite element
+method over a mesh~\cite{book}, the stabilisation acting as a vanishing artificial viscosity so that
+what is computed is a \emph{viscosity solution} of Euler, the limit taken as the mesh is refined;
+\item \emph{duality-based output error control}: for each output of interest --- a drag, a lift ---
+the error is bounded by the residual of the computed solution weighted by the solution of an adjoint
+problem, which measures how much the residual matters for that output;
+\item \emph{adaptivity}: the mesh is refined where the weighted residual says the error lives, and
+not uniformly, until the bound on the output is below what is asked.
+\end{enumerate}
+
+The error control is part of the model rather than an assessment of it. What Adaptive Euler returns is
+not a flow but a \emph{pair}: an output and a bound on how wrong that output may be, computed
+together. A model which returned the first without the second would be a different model and a much
+weaker one, since nothing could then be concluded from it.
+
+What Adaptive Euler produces has the following properties, and none of them was put in.
 
 \paragraph{It is turbulent.} The computed flow fluctuates, in time and across a range of scales
 widening as the mesh is refined. It is not a steady solution, not a symmetric one, and not one that
@@ -104,9 +123,8 @@ could have been guessed.
 
 \paragraph{Its mean values are determined.} The flow field itself is not reproducible in detail ---
 and could not be, since for weak solutions of Euler uniqueness is false. But mean-value outputs are:
-drag, lift, the position of the separation line. These converge under refinement, and their error is
-bounded by a quantity the computation produces, from the residual of the computed solution weighted
-by the solution of an adjoint problem. The answer comes with a statement of how wrong it may be.
+drag, lift, the position of the separation line. These converge under refinement, and each arrives
+with the bound of part~2 above, so the answer carries a statement of how wrong it may be.
 
 \paragraph{They agree with measurement.} Drag within a few per cent, the separation line where
 experiment puts it, the lift curve and the stall, the drag crisis~\cite{dragcrisis}. These are quantities measured by
@@ -191,7 +209,7 @@ none here.
 The equations \eqref{eq:mom}--\eqref{eq:slip} are parameter free and have only geometry and forcing
 as data. The mathematical questions asked of them --- existence, regularity, uniqueness --- have gone
 unanswered in symbolic form because turbulent solutions have no structure for symbolic analysis to
-exploit, this being what turbulence is rather than a gap in technique. In digital form the same
+exploit, this being what turbulence is rather than a gap in technique. In digital form, by Adaptive Euler, the same
 questions are answered, in altered shape: solutions exist by exhibition, are not regular, are not
 unique as fields, and are unique in the mean values anybody wants, with computed error bounds and
 agreement with measurement.
