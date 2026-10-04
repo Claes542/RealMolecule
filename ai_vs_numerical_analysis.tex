@@ -175,6 +175,54 @@ amplifies the half of mathematics that was already good at special objects, and 
 deal. It does not convert the other half. No scale of model makes a turbulent flow analytically
 constructible, because the obstruction is in the object and not in the searcher.
 
+\section{Checking the result, or checking the steps}\label{sec:check}
+
+Neither form of computation can be verified step by step by a person. A finite element computation
+performs billions of floating-point operations; a fifty-seven page formal development has more
+inferences than anyone will read. On that both are in the same position, and it is usually where the
+discussion stops. It should not, because the two escape the position in entirely different ways, and
+only one of them escapes.
+
+\paragraph{A numerical result can be checked without checking the computation.} Given any candidate
+velocity field, substitute it into the Euler equations and evaluate what is left over:
+\[
+R(u) \;=\; \dot u + (u\cdot\nabla)u + \nabla p ,\qquad \nabla\cdot u .
+\]
+If the residual is small in the appropriate weighted sense, the field nearly solves the equations;
+and weighted by the solution of an adjoint problem it bounds the error in any output of interest.
+The decisive feature of this test is that it is \emph{independent of how the field was obtained}. It
+does not inspect the mesh, the solver, the arithmetic or the order of operations. The candidate could
+have come from a different program, a different method, or a guess, and the test would be the same
+test. Consequently nobody needs to verify the individual computational steps, and nobody does: an
+error at the three-millionth operation is not caught by examining that operation, it is caught
+because the residual comes out large. The equation itself performs the audit, once, on the answer.
+
+\paragraph{A symbolic result cannot.} There is no corresponding operation on a proof. A proof does
+not have a residual, because what it produces is a statement rather than an object, and a statement
+cannot be substituted into anything. Its correctness simply \emph{is} the correctness of its steps,
+so there is no alternative to checking them --- which is what a proof assistant does, mechanically
+and reliably, and at a scale no person matches.
+
+Observe that this is not a defect of formalisation but of what is being verified. Had the
+construction exhibited a datum, one could take that datum and compute with it, and the computation
+would be an independent check in the sense above. It does not: it proves existence without exhibiting
+an individual case (Section~\ref{sec:example}). So that route is closed too, and the two
+observations are one observation. \emph{Because there is no instance, there is nothing to test; because
+there is nothing to test, only the steps remain.}
+
+\paragraph{What Lean settles and what it leaves.} A proof assistant establishes that the steps follow
+from the stated definitions. It does not establish that the stated definitions say what was intended,
+and that question cannot be mechanised --- somebody has to read the formal statement and agree that
+it is the theorem. For a development of this length, with its own hierarchy of definitions, that
+reading is itself substantial work, and it is the part no machine does. So the verification burden is
+reduced and relocated rather than removed, and what remains of it falls on a human mathematician who
+must in the end understand something.
+
+The asymmetry is therefore not that one discipline is careful and the other careless. It is that the
+numerical computation is answerable to an external object --- the equation, and beyond it the
+measurement --- which audits the result wholesale, while the symbolic computation is answerable only
+to its own steps, which must be audited one at a time.
+
 \section{Certainty, and what it is about}\label{sec:certainty}
 
 Both accounts have now outrun human reading, and they have done so in the same week, which makes the
