@@ -1,0 +1,241 @@
+% Fluid Flow vs Euler's Equations vs OpenAI
+% Johan Hoffman and Claes Johnson. DRAFT -- summing up.
+\documentclass[11pt]{article}
+\usepackage[margin=1.15in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\setlength{\parskip}{3pt}
+
+\newcommand{\grad}{\nabla}
+\newcommand{\eps}{\varepsilon}
+
+\title{\vspace{-2em}Fluid Flow versus Euler's Equations versus OpenAI}
+\author{Johan Hoffman \and Claes Johnson\\[0.2em]
+\small KTH Royal Institute of Technology, Stockholm}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+Three things are to be kept apart: a fluid flow, which is a phenomenon; Euler's equations, which are
+a model of it; and a proof about the equations, which is a statement about the model. We state the
+equations, note that they are parameter free, and observe that the mathematical question asked of
+them --- existence, regularity, uniqueness --- has not been answered by analysis in symbolic form,
+because the solutions turn out to have a complicated nature which symbolic analysis has no grip on.
+Solutions in digital form over a mesh can be computed, are turbulent, fluctuate over a range of
+scales, and have well determined mean values such as drag and lift which agree with measurement. We
+then ask what a recent symbolic proof of finite-time blowup establishes, and conclude that it is a
+statement about the model which does not reach either of the other two levels: it exhibits no
+individual case, so nothing can be inserted into the equations, inspected, or measured.
+\end{abstract}
+
+\section{The equations}\label{sec:eq}
+
+Let $\Omega\subset\mathbb{R}^3$ be a domain with boundary $\Gamma$, let $x=(x_1,x_2,x_3)$ be a
+Euclidean coordinate in $\Omega$ and $t$ time. An inviscid incompressible fluid of unit density
+filling $\Omega$ is described by a velocity $u(x,t)\in\mathbb{R}^3$ and a pressure $p(x,t)$
+satisfying, for $0<t\le T$,
+\begin{align}
+\dot u + (u\cdot\grad)u + \grad p &= f \qquad\text{in }\Omega, \label{eq:mom}\\[2pt]
+\grad\cdot u &= 0 \qquad\;\;\text{in }\Omega, \label{eq:inc}
+\end{align}
+together with the \emph{slip} boundary condition
+\begin{equation}\label{eq:slip}
+u\cdot n = 0 \qquad\text{on }\Gamma ,
+\end{equation}
+$n$ the outward normal, and an initial velocity $u(\cdot,0)=u^0$ in $\Omega$.
+
+Equation~\eqref{eq:mom} is Newton's second law. For unit density the mass of a fluid particle is its
+volume, so force equals acceleration directly: the left-hand side $\dot u+(u\cdot\grad)u$ is the
+acceleration of a particle following the flow, and the right-hand side is the force acting on it ---
+the pressure gradient $-\grad p$, which is the force the surrounding fluid exerts, together with any
+body force $f$. Equation~\eqref{eq:inc} states incompressibility: the volume of a fluid particle does
+not change, so the velocity field is divergence free, and the pressure is whatever field enforces
+this. Condition~\eqref{eq:slip} states that the fluid does not pass through the wall, and nothing
+more. It is the only boundary condition the equations admit: the normal component is fixed by
+impermeability, nothing in~\eqref{eq:mom}--\eqref{eq:inc} determines the tangential velocity at the
+wall, and prescribing it as well would over-determine the problem. The no-slip condition belongs to
+Navier--Stokes, where a second-order viscous term carries the extra condition; here there is no
+viscosity, and therefore no boundary layer either.
+
+\paragraph{The model is parameter free.} There is no constant in
+\eqref{eq:mom}--\eqref{eq:slip} to be measured, fitted or chosen. What enters as data is the
+\emph{geometry} --- the domain $\Omega$, which is to say the shape of the body the fluid flows past
+--- the \emph{forcing} $f$, and the initial state $u^0$. Nothing else. Whatever the equations predict
+is therefore a consequence of the geometry and the forcing alone, and any disagreement with
+observation is a fault of the model and cannot be repaired by adjustment.
+
+\section{The mathematical question}\label{sec:question}
+
+The question mathematics asks of a system such as
+\eqref{eq:mom}--\eqref{eq:slip} is about the \emph{properties of its solutions}. Does a solution
+exist for the given data? Is it regular --- does it stay smooth, or do derivatives become unbounded?
+Is it unique, so that the data determine the flow?
+
+These are the right questions to ask and they have not been answered in symbolic form. The reason is
+not that the problem has been neglected; it is that the solutions turn out to have a complicated
+nature. A flow at a Reynolds number of any interest is turbulent: it fluctuates on a range of scales
+from the size of the body down to scales many orders smaller, with no symmetry, no similarity
+variable and no closed form. Symbolic analysis works by rewriting, and rewriting needs something to
+grip. Against an object defined by carrying structure at every scale with no organising principle to
+exploit, there is nothing for it to take hold of, and this is not a temporary state of the technique
+but a description of what turbulence is.
+
+What symbolic analysis has produced instead are statements about objects which do possess exploitable
+structure --- self-similar profiles, symmetric configurations, families built by iteration --- and
+conditional bounds of the form: if the velocity is bounded by $A$, then the derivatives are bounded by
+an expression exponential in $A$ iterated several times. As theorems these are real. As statements
+about a fluid they are empty, since a bound of size $\exp\exp\exp A$ is not one any flow can be said
+to respect.
+
+\section{Solutions in digital form}\label{sec:digital}
+
+The same equations treated in digital form behave quite differently. Over a mesh, with a stabilised
+finite element method, a solution can be computed --- a \emph{viscosity solution} in the sense that
+it is obtained with a vanishing artificial viscosity, the limit being taken as the mesh is refined.
+What is obtained has the following properties, and none of them was put in.
+
+\paragraph{It is turbulent.} The computed flow fluctuates, in time and across a range of scales
+widening as the mesh is refined. It is not a steady solution, not a symmetric one, and not one that
+could have been guessed.
+
+\paragraph{Its mean values are determined.} The flow field itself is not reproducible in detail ---
+and could not be, since for weak solutions of Euler uniqueness is false. But mean-value outputs are:
+drag, lift, the position of the separation line. These converge under refinement, and their error is
+bounded by a quantity the computation produces, from the residual of the computed solution weighted
+by the solution of an adjoint problem. The answer comes with a statement of how wrong it may be.
+
+\paragraph{They agree with measurement.} Drag within a few per cent, the separation line where
+experiment puts it, the lift curve and the stall, the drag crisis. These are quantities measured by
+other people at facilities with no interest in the computation, and in several cases submitted before
+the measurements were released.
+
+\paragraph{And it is a solution of Euler.} That the limit satisfies \eqref{eq:mom}--\eqref{eq:slip}
+weakly is not an identification offered because the numbers look right. The stabilisation of the
+method is a weighted least-squares control of the residual; the discrete energy estimate bounds that
+residual in a weighted norm; testing against a smooth function sends it to zero in the sense the weak
+formulation requires. The limit is a weak solution, as a theorem.
+
+So the questions of Section~\ref{sec:question} do have answers in digital form, though not the
+answers the symbolic form was looking for. Existence: by construction and exhibition. Regularity:
+none --- the velocity stays bounded while its gradients do not, the solution being H\"older continuous
+with exponent about $1/3$ and dissipating energy at a rate independent of the vanishing viscosity.
+Uniqueness: false for the flow field, true for the mean values, which is the form in which the
+question has an affirmative answer and the form in which anybody wants one.
+
+\section{What the symbolic proof establishes}\label{sec:openai}
+
+Against this stands a recent proof, produced by an AI system and formalised in Lean, that there
+exists smooth, compactly supported, divergence-free initial data on $\mathbb{R}^3$ whose smooth Euler
+solution has finite maximal lifespan: the velocity gradient becomes unbounded, and the
+Beale--Kato--Majda vorticity integral diverges~\cite{openaieuler}. Comparable results were being
+prepared independently and by hand~\cite{buckmaster}. We take the proof to be correct, and nothing
+below depends on whether it is.
+
+It is a statement about the \emph{model}, and it is a real one: a question open for decades is
+settled. Three observations place it.
+
+\paragraph{The velocity does not become infinite.} What diverges is the gradient. That is the same
+signature as the computed turbulent solution --- gradients unbounded, velocity bounded --- so the two
+accounts agree that smooth solutions of \eqref{eq:mom}--\eqref{eq:slip} break down in finite time,
+which is what we reported computationally in~\cite{blowupHJ}. The disagreement lies elsewhere.
+
+\paragraph{It conserves energy, and therefore cannot be a fluid.} With smooth data the solution is
+classical up to the blowup time, and a classical solution of \eqref{eq:mom}--\eqref{eq:inc} with
+decaying data satisfies
+\[
+\frac{d}{dt}\int \tfrac12 |u|^2 = 0 ,
+\]
+by an integration by parts. The construction therefore dissipates \emph{nothing} over the whole of
+its existence. The singularity is not a mechanism by which energy is lost but one by which it is
+piled up: at the singular time all of it is still present, gathered into a vanishing region. A fluid
+loses energy continuously from the moment it meets a body, and the loss is the drag.
+
+\paragraph{It exhibits no individual case.} The datum is the limit of an iteration over stages and
+has no closed form. Nothing can be plotted, nothing measured. Nor can either check on a \emph{result}
+be applied: there is no symbolic expression to insert into
+\eqref{eq:mom}--\eqref{eq:inc} and reduce, and no numerical field either, since no finite stage of
+the iteration blows up --- the property belongs to the limit. What exists is the existence.
+
+\section{Three levels, and what reaches which}\label{sec:levels}
+
+The title names three things and the point of the paper is that they are three.
+
+\emph{A fluid flow} is a phenomenon. It has a drag which can be measured.
+
+\emph{Euler's equations} are a model of it, parameter free, with geometry and forcing as data. They
+are answerable to the phenomenon: if the drag they give is wrong, nothing can be adjusted to repair
+it.
+
+\emph{A proof about the equations} is a statement about the model. It is answerable to the model
+alone.
+
+The digital solution reaches all three levels. It is a solution of the equations, by the residual
+control; it is an object that can be inspected, and inspecting such objects is where the resolution
+of d'Alembert's paradox~\cite{dalembert} and the account of flight~\cite{flight} came from; and its
+mean values can be set beside a measurement, where they survive.
+
+The symbolic proof reaches the first of the three and stops. That is not a criticism of it as
+mathematics, where it is an advance, and existence without an exhibited instance is ordinary and
+accepted practice --- the disproof of the Mertens conjecture~\cite{mertens} established that a
+counterexample exists and exhibited none. It is a statement about what the result can be offered as.
+A theorem about a model becomes a statement about fluids only by way of an instance, and there is
+none here.
+
+\section{Summary}\label{sec:summary}
+
+The equations \eqref{eq:mom}--\eqref{eq:slip} are parameter free and have only geometry and forcing
+as data. The mathematical questions asked of them --- existence, regularity, uniqueness --- have gone
+unanswered in symbolic form because turbulent solutions have no structure for symbolic analysis to
+exploit, this being what turbulence is rather than a gap in technique. In digital form the same
+questions are answered, in altered shape: solutions exist by exhibition, are not regular, are not
+unique as fields, and are unique in the mean values anybody wants, with computed error bounds and
+agreement with measurement.
+
+A symbolic proof of finite-time blowup settles a long-open question about the model. Its solution
+conserves energy exactly and so dissipates nothing, whereas a fluid dissipates and the dissipation is
+the drag; and it exhibits no individual case, so nothing can be inserted into the equations,
+inspected or measured. It is an exact statement about an object with no observables, set beside
+approximate statements about observables which agree with experiment. Each has what the other lacks,
+and only one of them is answerable to a fluid.
+
+\begin{thebibliography}{99}
+
+\bibitem{openaieuler} OpenAI, \emph{Finite time blowup for the Euler equation}, preprint, 2026,
+57~pp.
+\newblock \url{https://cdn.openai.com/pdf/315b36cd-ec98-4023-8342-93345194ece1/euler.pdf}
+
+\bibitem{buckmaster} T.~Buckmaster and L.~Alp\"oge, \emph{Statement}, 2026.
+\newblock \url{https://cims.nyu.edu/~tristanb/statement.pdf}
+
+\bibitem{blowupHJ} J.~Hoffman and C.~Johnson, \emph{Blowup of incompressible Euler solutions},
+BIT Numer.\ Math.\ \textbf{48} (2008) 285--307.
+
+\bibitem{book} J.~Hoffman and C.~Johnson, \emph{Computational Turbulent Incompressible Flow},
+Applied Mathematics: Body and Soul, vol.~4, Springer, 2007.
+
+\bibitem{dalembert} J.~Hoffman and C.~Johnson, \emph{Resolution of d'Alembert's paradox},
+J.\ Math.\ Fluid Mech.\ \textbf{12} (2010) 321--334.
+
+\bibitem{flight} J.~Hoffman, J.~Jansson and C.~Johnson, \emph{New theory of flight},
+J.\ Math.\ Fluid Mech.\ \textbf{18} (2016) 219--241.
+
+\bibitem{dragcrisis} J.~Hoffman, \emph{Simulation of turbulent flow past bluff bodies on coarse
+meshes using General Galerkin methods: drag crisis and turbulent Euler solutions}, Comput.\ Mech.\
+\textbf{38} (2006) 390--402.
+
+\bibitem{bkm} J.~T.~Beale, T.~Kato and A.~Majda, \emph{Remarks on the breakdown of smooth solutions
+for the 3-D Euler equations}, Comm.\ Math.\ Phys.\ \textbf{94} (1984) 61--66.
+
+\bibitem{onsager} L.~Onsager, \emph{Statistical hydrodynamics}, Nuovo Cimento \textbf{6},
+Suppl.~2 (1949) 279--287.
+
+\bibitem{mertens} A.~M.~Odlyzko and H.~J.~J.~te~Riele, \emph{Disproof of the Mertens conjecture},
+J.\ reine angew.\ Math.\ \textbf{357} (1985) 138--160.
+
+\end{thebibliography}
+
+\end{document}
