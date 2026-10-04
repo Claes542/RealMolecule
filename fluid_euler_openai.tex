@@ -64,6 +64,14 @@ wall, and prescribing it as well would over-determine the problem. The no-slip c
 Navier--Stokes, where a second-order viscous term carries the extra condition; here there is no
 viscosity, and therefore no boundary layer either.
 
+\paragraph{What `inviscid' means.} Not that the viscosity is zero. Air and water have viscosity,
+and no flow of either is literally inviscid. What is meant is that the Reynolds number is large ---
+$10^6$ to $10^8$ in the flows of aerodynamics and ship hydrodynamics --- so that viscous forces are
+negligible beside inertial ones everywhere except in layers which are thin and, as it turns out, do
+not determine the forces on the body. Euler's equations are the model of that limit, and the limit is
+where the flows of practical interest live. The question is never whether a real fluid has viscosity.
+It is whether the quantities one wants depend on how much.
+
 \paragraph{The model is parameter free.} There is no constant in
 \eqref{eq:mom}--\eqref{eq:slip} to be measured, fitted or chosen. What enters as data is the
 \emph{geometry} --- the domain $\Omega$, which is to say the shape of the body the fluid flows past
@@ -114,6 +122,24 @@ The error control is part of the model rather than an assessment of it. What Ada
 not a flow but a \emph{pair}: an output and a bound on how wrong that output may be, computed
 together. A model which returned the first without the second would be a different model and a much
 weaker one, since nothing could then be concluded from it.
+
+\paragraph{The viscosity introduced, and why its size does not matter.} A computation at finite
+resolution cannot have zero dissipation, so Adaptive Euler necessarily introduces a viscosity. This is
+the obvious objection to it --- that what is being solved is not Euler's equations but some nearby
+viscous system --- and the answer is a computational fact rather than an argument.
+
+\emph{The mean-value outputs do not depend on the absolute size of the viscosity introduced.} Refine
+the mesh: the artificial viscosity falls, the resolved scales multiply, the flow field changes in
+every detail --- and the drag does not move. The dissipation rate does not fall with the viscosity
+either; it settles at a value fixed by the geometry and the free stream. That independence is the
+dissipation anomaly in computational form, the phenomenon Onsager accounted for~\cite{onsager} and
+Taylor measured, and it is the reason the limit is meaningful at all.
+
+It also places the computation and the fluid in the \emph{same} position rather than in different
+ones. Air has a small viscosity whose absolute size does not determine the drag of a wing; Adaptive
+Euler has a small viscosity whose absolute size does not determine the computed drag. Neither is
+inviscid and neither needs to be. What both exhibit is a flow in which the viscosity sets the
+smallest scale present and nothing that is asked about.
 
 What Adaptive Euler produces has the following properties, and none of them was put in.
 
