@@ -1,0 +1,268 @@
+% AI vs Numerical Analysis -- two forms of computation
+% Claes Johnson. DRAFT. Companion to euler_bluff_body.tex
+\documentclass[11pt]{article}
+\usepackage[margin=1.15in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\setlength{\parskip}{3pt}
+
+\title{\vspace{-2em}AI versus Numerical Analysis:\\Two Forms of Computation}
+\author{Claes Johnson\\[0.2em]
+\small KTH Royal Institute of Technology, Stockholm\\
+\small \texttt{claesjohnson@gmail.com}}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+A large language model computes with symbols; numerical analysis computes with numbers in digital
+form. Both are machine computation, both run on the same hardware, and the difference between them
+is not rigour but what the computed objects denote and how the result is certified. A symbolic
+computation is certified by derivability: each step follows, and a proof assistant can check that it
+does. A numerical computation is certified by an error bound that the computation itself produces.
+The first gives certainty about a statement; the second gives a quantity with a stated accuracy,
+which can be compared with a measurement.
+
+We take as example the two recent accounts of the incompressible Euler equations. An AI system has
+produced a proof, formalised in Lean, that smooth compactly supported data can develop infinite
+velocity gradients in finite time. Adaptive finite element computation produces turbulent solutions
+past a body whose mean-value outputs --- drag, lift, separation --- are determined to a computed
+tolerance and agree with measurement. The first proves \emph{existence without exhibiting an
+individual case}; the second \emph{computes an individual case} and exhibits nothing general. Each
+has exactly what the other lacks, neither is the other's refutation, and the pair is instructive
+about both ways of computing.
+
+We draw two conclusions. Symbolic computation reaches objects that possess exploitable structure ---
+a symmetry, an ansatz, a closed form --- and reaches them exactly; it does not reach objects defined
+by the absence of such structure, of which turbulence is the standing example, and no increase in
+scale will alter this. And the problem AI now faces, that of trusting a computation no person has
+followed, is one numerical analysis met fifty years ago and solved, by computing the error alongside
+the answer. We suggest that a posteriori error control is what symbolic computation presently lacks
+and what it should take from the older discipline.
+\end{abstract}
+
+\section{Two forms of computation}\label{sec:two}
+
+A large language model and a finite element solver are both programs. Both execute on the same
+processors, both reduce in the end to floating-point arithmetic, and both produce in finite time an
+output no person could have produced by hand. The distinction between them is not that one is
+mathematics and the other machinery.
+
+The distinction is in what the computation manipulates and in what it means for the output to be
+right.
+
+\paragraph{Computation with symbols.} A language model operates on tokens --- words, formulas, proof
+steps --- and its output is a text. When that text is a proof, correctness means \emph{derivability}:
+every step follows from previous steps by a rule, and the question of whether it does is decidable
+by a proof assistant. The verdict is binary. A proof is valid or it is not, and no quantity attaches
+to it.
+
+\paragraph{Computation with digital numbers.} A numerical method operates on numbers held in finite
+precision over a finite mesh, and its output is a number. Correctness cannot mean derivability, since
+the computed object is not the exact one and never will be. It means instead a \emph{bound}:
+\[
+|\,\text{output computed} - \text{output exact}\,| \;\le\; E ,
+\]
+where $E$ is itself computed, from the residual of the computed solution weighted by the solution of
+an adjoint problem. The verdict is quantitative. The answer is right to within a stated amount, and
+the amount is part of the answer.
+
+\paragraph{Where the difference lies.} It is tempting to rank these, and the ranking usually proposed
+is that derivability is the stronger notion because it is exact. That is true of the notion and
+misleading about the practice. A derivation is exact about the statement it derives, and a statement
+can be exactly established and say nothing about the world. A bound is inexact about a quantity, and
+a quantity can be compared against a measurement made by somebody else. The two kinds of certainty
+point in different directions: one inward, to consistency; one outward, to agreement.
+
+\section{The example}\label{sec:example}
+
+The incompressible Euler equations have lately received both treatments, which makes them an unusually
+clean case.
+
+\paragraph{The symbolic account.} An AI system has produced a proof that there exists smooth,
+compactly supported, divergence-free initial data on $\mathbb{R}^3$ whose smooth Euler solution has
+finite maximal lifespan: the velocity gradient becomes unbounded and the Beale--Kato--Majda vorticity
+integral diverges~\cite{openaieuler}. The proof is fifty-seven pages and is formalised in Lean, so
+that its correctness is machine-checked. Comparable results were being prepared independently and by
+hand~\cite{buckmaster}.
+
+What the result delivers is an existence statement. It does not say which data blow up; there is no
+measure on the set and no claim of genericity. It does not say what the flow looks like. It yields
+no drag, no lift, no length, no time that could be set beside an experiment. The datum itself is
+produced as the limit of an iteration and cannot be written down. The result is nonetheless a real
+advance: a question open for decades is settled, and the settling is exact.
+
+\paragraph{The numerical account.} Adaptive finite element computation of the same equations past a
+body produces turbulent solutions~\cite{book,dalembert,flight}. The velocity stays bounded, the
+gradients do not, the solution dissipates energy at a rate independent of the viscosity, and the
+limit of the computed sequence is a weak solution of Euler by the residual control the method
+carries. Its mean-value outputs are determined: drag to within a few per cent of measurement, the
+separation line where experiment puts it, the lift curve and the stall.
+
+What this delivers is not a solution. For weak solutions of Euler uniqueness is false, so there is no
+unique solution to deliver. What is delivered is the quantities that are determined, each with an
+error bound the computation produces, each open to check by somebody with no interest in the outcome.
+
+\paragraph{The shape of the comparison.} Put at its plainest, the difference is between a proof of
+\emph{existence without an individual case} and the \emph{direct computation of an individual case}.
+
+The symbolic account establishes that a datum with the stated property exists. It does not hand one
+over. The datum is the limit of an iteration over stages, each adding an oscillation to the one
+before, and no finite description of it is produced or intended --- nothing can be plotted, measured
+or shown to anybody. What exists is the existence.
+
+The numerical account computes one case: this body, this free stream, this flow, with this drag. It
+establishes nothing about all data or about any other case. What it produces can be looked at. The
+wake has a shape, the separation line a position, the drag a value with a bound on its error, and
+each can be set beside a measurement.
+
+So the two are complementary in the strict sense: each has exactly what the other lacks. Generality
+without instance, instance without generality. The first is mathematically substantial and
+physically empty, the second physically substantial and mathematically the weaker. The companion
+paper~\cite{euler} argues the fluid mechanics of this and concludes that the singular solutions,
+whatever their mathematical interest, are not flows. Here we are concerned with what the pair says
+about the two ways of computing.
+
+\section{What each form can reach}\label{sec:reach}
+
+The division of labour is not a division between rigour and approximation. It follows from what each
+form of computation requires of its object.
+
+\paragraph{Symbolic computation requires exploitable structure.} A proof proceeds by rewriting, and
+rewriting needs something to grip. Every construction of a singular solution buys its tractability
+with a structure: self-similarity, which collapses a partial differential equation to a profile and
+leaves a fixed point; or axisymmetry, which removes a variable; or an iterative scheme whose stages
+are similar to one another. This is not a criticism. It is what makes the object reachable at all,
+and the skill lies in finding the structure that a given problem will support.
+
+\paragraph{Numerical computation requires none.} A mesh does not care whether the solution has a
+symmetry. The computation proceeds identically whether the object is a self-similar profile or a
+turbulent wake, and the cost is set by the resolution rather than by the structure.
+
+\paragraph{Hence the complementarity, and its sharp edge.} Objects \emph{with} structure are reachable
+both ways, and symbolically with greater precision. Objects \emph{without} structure are reachable
+only numerically. Turbulence is the standing example of the second kind --- it is \emph{defined} by
+carrying structure at every scale with no organising principle to exploit, so there is no ansatz to
+be found, and the absence is the phenomenon rather than a gap in anybody's technique.
+
+This bears directly on what AI changes. A language model is a search over symbol sequences, and what
+it does superlatively is find structures that a human might have found given longer. It therefore
+amplifies the half of mathematics that was already good at special objects, and amplifies it a great
+deal. It does not convert the other half. No scale of model makes a turbulent flow analytically
+constructible, because the obstruction is in the object and not in the searcher.
+
+\section{Certainty, and what it is about}\label{sec:certainty}
+
+Both accounts have now outrun human reading, and they have done so in the same week, which makes the
+comparison of their epistemic positions unusually direct.
+
+The proof is fifty-seven pages, machine-checked, and has not been verified in full by a person. The
+computation produces an error bound no person derived by hand and which refers to an adjoint solution
+no person inspected. In both cases a result is believed on the strength of a procedure rather than
+of an understanding, and the discomfort this produces is being discussed as though it were new.
+
+It is not new. It is the condition numerical analysis has worked in since the 1950s, and the
+discipline's response was not to argue about whether machine results count. It was to make them
+accountable: to compute, alongside the answer, a bound on how wrong the answer may be, and to refine
+where the bound says the error lives. That is the content of a posteriori error estimation and
+adaptivity, and it is why a computed drag coefficient is a scientific statement and not an opinion
+produced by a program.
+
+The two forms of certainty differ in what they are about, and the difference is worth stating
+without rancour.
+
+\emph{A formal proof is internally certain.} Lean guarantees that the steps follow. It guarantees
+nothing about whether the statement proved is about anything, and in the present case the statement
+is about a datum that cannot be prepared and a flow that no instrument will see. The certainty is
+real and it is certainty of consistency.
+
+\emph{A numerical computation is externally checkable.} Its output is a number with a tolerance, and
+the number can be set beside a measurement that somebody else made, at a facility with no stake in
+the result. The High Lift Prediction Workshop and the high-order workshops exist for exactly this:
+predictions are submitted before the measurements are released. That is a form of accountability a
+proof does not have and does not need, and a computation does need.
+
+\section{What symbolic computation might take from the older discipline}\label{sec:take}
+
+The central practical problem now facing AI in mathematics and elsewhere is this: a system produces
+an output that is too long to check and too important to trust blindly. That is, exactly, the
+problem numerical analysis faced when machines first outran hand calculation, and it has a
+developed answer.
+
+The answer has three parts, and all three transfer in principle.
+
+\paragraph{Compute the error, not merely the answer.} A finite element computation returns a solution
+and a bound on the error in each output of interest. The bound comes from the residual --- what the
+computed solution fails to satisfy --- weighted by the solution of an adjoint problem which measures
+how much that failure matters for the output in question. The structure is general: a residual, a
+sensitivity, and their product. A language model has a residual in the same sense --- the respects
+in which its output fails to satisfy the conditions it should --- and nothing at present weights it.
+
+\paragraph{Let the error direct the effort.} Adaptivity refines where the bound says the error is,
+not uniformly. The analogue for a symbolic system is to concentrate verification where the proof is
+weakest rather than uniformly over its length, which requires knowing where that is, which requires
+the weighting above.
+
+\paragraph{Report what is \emph{not} determined.} An honest a posteriori estimate sometimes returns a
+large bound, and that is information: the computation does not determine this output, and no
+refinement of this kind will make it do so. A system that cannot return that verdict about its own
+output is not yet accountable, whatever its success rate.
+
+We put this forward as the constructive half of the comparison. The debate about whether machine
+proof is mathematics will be settled the way the corresponding debate about machine computation was
+settled, which is not by argument but by the development of error control. Numerical analysis has
+fifty years of that, and it was built for precisely the situation symbolic computation is now in.
+
+\section{Summary}\label{sec:summary}
+
+Symbolic computation and numerical computation are both machine computation and differ in what they
+manipulate and in how they are certified: derivability against an error bound, consistency against
+agreement. Symbolic computation reaches objects possessing exploitable structure and reaches them
+exactly; numerical computation reaches objects without it and reaches them to a stated tolerance.
+Turbulence is of the second kind by definition, and no amount of symbolic power alters that. The
+Euler equations have lately been treated both ways, and the results stand in exactly this relation:
+a proof that blow-up data exists which exhibits no individual case, and the direct computation of an
+individual case whose observables agree with measurement. Generality without instance, and instance
+without generality.
+
+The question now being asked of AI --- how to trust a result no one has followed --- is the question
+numerical analysis answered by computing the error alongside the answer and refining where it lives.
+It is the better part of what the older discipline has to offer the newer, and it is not yet taken up.
+
+\begin{thebibliography}{99}
+
+\bibitem{euler} J.~Hoffman and C.~Johnson, \emph{Incompressible Euler flow: turbulence vs blow-up},
+companion paper, 2026.
+
+\bibitem{openaieuler} OpenAI, \emph{Finite time blowup for the Euler equation}, preprint, 2026,
+57~pp.
+\newblock \url{https://cdn.openai.com/pdf/315b36cd-ec98-4023-8342-93345194ece1/euler.pdf}
+
+\bibitem{buckmaster} T.~Buckmaster and L.~Alp\"oge, \emph{Statement}, 2026.
+\newblock \url{https://cims.nyu.edu/~tristanb/statement.pdf}
+
+\bibitem{book} J.~Hoffman and C.~Johnson, \emph{Computational Turbulent Incompressible Flow},
+Applied Mathematics: Body and Soul, vol.~4, Springer, 2007.
+
+\bibitem{dalembert} J.~Hoffman and C.~Johnson, \emph{Resolution of d'Alembert's paradox},
+J.\ Math.\ Fluid Mech.\ \textbf{12} (2010) 321--334.
+
+\bibitem{flight} J.~Hoffman, J.~Jansson and C.~Johnson, \emph{New theory of flight},
+J.\ Math.\ Fluid Mech.\ \textbf{18} (2016) 219--241.
+
+\bibitem{ek} K.~Eriksson, D.~Estep, P.~Hansbo and C.~Johnson, \emph{Computational Differential
+Equations}, Cambridge University Press, 1996.
+
+\bibitem{logg} A.~Logg, \emph{Automation of computational mathematical modeling}, Ph.D.\ thesis,
+Chalmers University of Technology, 2004.
+
+\bibitem{fenics} A.~Logg, K.-A.~Mardal and G.~N.~Wells (eds.), \emph{Automated Solution of
+Differential Equations by the Finite Element Method}, Lecture Notes in Computational Science and
+Engineering~84, Springer, 2012.
+
+\end{thebibliography}
+
+\end{document}
