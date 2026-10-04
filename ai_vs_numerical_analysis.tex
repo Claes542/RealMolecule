@@ -77,6 +77,27 @@ can be exactly established and say nothing about the world. A bound is inexact a
 a quantity can be compared against a measurement made by somebody else. The two kinds of certainty
 point in different directions: one inward, to consistency; one outward, to agreement.
 
+\paragraph{And the symbolic layer is numerical underneath.} The two forms are not disjoint, and it
+is as well to say where they meet. A language model is not a symbolic engine in the sense of a term
+rewriter. It is a numerical one. Tokens are vectors, attention is matrix multiplication, the whole
+forward pass is dense linear algebra in finite precision, and the weights were obtained by gradient
+descent on a non-convex objective --- which is to say by a numerical method for an optimisation
+problem, run to a tolerance nobody states. Symbolic computation, as practised by these systems, is
+\emph{implemented as} numerical computation. At the bottom there is floating-point arithmetic and
+nothing else, and it is the same arithmetic a finite element solver performs.
+
+So the distinction of this section is one of level and not of kind. What is manipulated at the top is
+symbols; what happens at the bottom is numbers in digital form. Numerical analysis is in that sense
+logically prior to the symbolic layer rather than an alternative to it.
+
+Two things follow, and the second is the point of Section~\ref{sec:take}. The arithmetic being the
+same, its difficulties are the same: conditioning, precision, and a dependence on the order of
+summation which makes a large model's output irreproducible in the way an unstabilised computation is
+irreproducible --- run it again and the proof may differ. And the numerical layer of these systems
+carries, at present, no error control whatever. The finite element solver computes a bound on how
+wrong it is; the transformer computes no such thing, at either level. That is not a limitation of
+numerical computation. It is a facility of numerical computation which has not been built.
+
 \section{The example}\label{sec:example}
 
 The incompressible Euler equations have lately received both treatments, which makes them an unusually
@@ -210,6 +231,11 @@ the weighting above.
 large bound, and that is information: the computation does not determine this output, and no
 refinement of this kind will make it do so. A system that cannot return that verdict about its own
 output is not yet accountable, whatever its success rate.
+
+That the machinery is numerical underneath makes this less of an analogy than it may appear. The
+quantities a posteriori estimation works with --- a residual, a sensitivity, their product --- are
+numerical quantities, and a language model is a numerical object. The tools would not have to be
+carried across a gap; they would have to be applied one level down from where the symbols are.
 
 We put this forward as the constructive half of the comparison. The debate about whether machine
 proof is mathematics will be settled the way the corresponding debate about machine computation was
