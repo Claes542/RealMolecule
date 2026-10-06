@@ -1,0 +1,669 @@
+% Euler's Equations: Symbolic vs Numerical Mathematics
+% Claes Johnson, sole author. DRAFT -- summing up.
+\documentclass[11pt]{article}
+\usepackage[margin=1.15in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\setlength{\parskip}{3pt}
+
+\newcommand{\grad}{\nabla}
+\newcommand{\eps}{\varepsilon}
+
+\title{\vspace{-2em}Euler's Equations:\\Symbolic versus Numerical Mathematics}
+\author{Claes Johnson\\[0.4em]
+\small KTH Royal Institute of Technology, Stockholm\\
+\small \texttt{claesjohnson@gmail.com}}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+Euler wrote down his equations in 1755 and said that what barred a complete knowledge of the motion
+of fluids was not mechanics but analysis. The bar held for two and a half centuries: d'Alembert's
+paradox gave a body moving through an ideal fluid no resistance, while analysis produced smooth
+solutions describing nothing.
+
+The history is one of what a solution was taken to be. A pointwise solution exists and is unstable,
+so determines nothing. Leray's weak solution of 1934 exists without uniqueness, so determines nothing
+either. A weak solution with its residual controlled is not a single flow: the field is undetermined
+pointwise in space and time, while drag and lift are well determined, each with a computed error
+bound and confirmed at workshops where predictions precede measurement.
+
+A recent symbolic proof of finite-time blowup, by an AI system, concerns the first concept. Its
+solution conserves energy exactly and so is not a fluid, and exhibits no individual case to insert,
+inspect or measure.
+\end{abstract}
+
+\section{Euler, 1755}\label{sec:eq}
+
+In 1755 Leonhard Euler presented to the Berlin Academy the memoir \emph{Principes g\'en\'eraux du
+mouvement des fluides}~\cite{euler1755}, in which he wrote down the equations of motion of an
+incompressible fluid. He took them to contain the whole of the mechanics of fluids, and he was
+explicit that what then stood in the way of using them was not physics but mathematics:
+
+\begin{quote}\small
+And if it is not permitted to us to penetrate to a complete knowledge concerning the motion of
+fluids, it is not to mechanics, or to the insufficiency of the known principles of motion, that we
+must attribute the cause. It is analysis itself which abandons us here.
+\end{quote}
+
+\noindent What Euler had in mind was \emph{ideal} fluid flow --- inviscid incompressible flow --- as
+a model of the slightly viscous, nearly incompressible flow of real fluids such as water and air at
+subsonic speeds. He formulated his model in the following form, named \emph{Euler's equations}:
+\begin{align}
+\dot u + (u\cdot\grad)u + \grad p &= f \qquad\text{in }\Omega, \label{eq:mom}\\[2pt]
+\grad\cdot u &= 0 \qquad\;\;\text{in }\Omega, \label{eq:inc}\\[2pt]
+u\cdot n &= 0 \qquad\;\;\text{on }\Gamma . \label{eq:slip}
+\end{align}
+Here $\Omega\subset\mathbb{R}^3$ is the domain occupied by the fluid and $\Gamma$ its boundary,
+$x=(x_1,x_2,x_3)$ is a Euclidean coordinate and $t$ time; $u(x,t)\in\mathbb{R}^3$ is the velocity and
+$p(x,t)$ the pressure of a fluid of unit density; $f$ is a given force, $n$ the outward normal to
+$\Gamma$, and $u(\cdot,0)=u^0$ a given initial velocity. The equations hold for $0<t\le T$.
+
+What they say is the following. Equation~\eqref{eq:mom} is Newton's second law: for unit density the
+mass of a fluid particle is its volume, so force equals acceleration directly, the left-hand side
+being the acceleration of a particle following the flow and the right-hand side the force on it ---
+the pressure gradient, which is what the surrounding fluid exerts, together with any body force.
+Equation~\eqref{eq:inc} states incompressibility, the volume of a particle not changing, with the
+pressure as whatever field enforces it. Condition~\eqref{eq:slip} states that the fluid does not pass
+through the wall, and nothing more: the normal component is fixed by impermeability, nothing in the
+equations determines the tangential velocity there, and prescribing it as well would over-determine
+the problem. There is no viscosity anywhere, and therefore no boundary layer.
+
+\paragraph{The Eulerian representation is a mathematical invention.} The equations look simple and
+innocent, and they are neither. They embody a fundamental innovation of mathematical rather than
+physical nature, in what is called the \emph{Eulerian} representation. A fictional observer is posted
+at each point $(x,t)$ of space-time, and records the velocity $u(x,t)$ of whatever fluid particle is
+passing at that instant, together with the pressure $p(x,t)$ there. No such observer exists in the
+fluid. Nothing physical sits at a fixed point in space watching particles go by; the fluid consists
+of the particles.
+
+The physical description is the other one. In the \emph{Lagrangian} representation the individual
+particles are followed along their paths, each governed directly by Newton's second law, which is
+what the mechanics actually says. That description is the faithful one and it is close to
+unusable for computation: the particles go where they go, the mesh one would have to carry with them
+deforms without bound, and in a turbulent flow it is destroyed within a few time units.
+
+The Eulerian description, which corresponds to nothing physical, is what makes efficient numerics
+possible --- a fixed domain, a fixed mesh, fields evaluated at fixed points, and the particle motion
+appearing only through the convective term $(u\cdot\grad)u$. This is worth noticing early, because
+the paper is about what symbolic mathematics contributes. Here it contributes the representation
+itself: a mathematical fiction with no physical counterpart, invented in 1755, without which the
+computations of Section~\ref{sec:fenics} could not be carried out at all.
+
+\paragraph{The model is parameter free.} There is no constant in
+\eqref{eq:mom}--\eqref{eq:slip} to be measured, fitted or chosen. What enters as data is the
+\emph{geometry} --- the domain, which is to say the shape of the body the fluid flows past --- the
+\emph{forcing}, and the initial state. Nothing else. Whatever the equations predict is a consequence
+of the geometry and the forcing alone, and any disagreement with observation is a fault of the model
+and cannot be repaired by adjustment.
+
+\paragraph{Physics without physical input.} One consequence of that deserves to be stated at the
+outset, since it is easy to pass over. The drag and the lift of a body of \emph{arbitrary shape} can
+be computed from \eqref{eq:mom}--\eqref{eq:slip} alone. No measurement enters, no coefficient is
+looked up, and nothing shape-specific is supplied: one states the geometry and solves. A correct
+statement about the physical world is thereby obtained with no input from the physical world beyond
+Newton's second law and the incompressibility of the fluid --- which were in hand before the body was
+drawn.
+
+It is instructive to set that against the hydraulics of Section~\ref{sec:dalembert}, where every
+shape requires its own measured coefficient and nothing can be said about a body before it is built
+and tested. Here the drag of a shape nobody has ever constructed follows from the equations, and the
+place where this is put to the test is the workshops of Section~\ref{sec:fenics}, at which
+predictions are submitted \emph{before} the measurements are released.
+
+The character of the knowledge so obtained is worth a word. It is close to an \emph{a priori} truth
+reached by a thought experiment, in the spirit in which Einstein used them: the conclusion about the
+world is forced by principles already accepted, and the experiment is performed in the equations
+rather than in the laboratory. One should not overstate it --- Newton's law and incompressibility are
+themselves empirical, and the parameter-free claim is that nothing \emph{further} is needed. But
+granted those, the resistance of any shape whatever is a matter of computation and not of
+measurement, and that is a stronger thing than fluid mechanics was taken to possess for most of its
+history.
+
+\section{d'Alembert's paradox, and the split}\label{sec:dalembert}
+
+The expectation that the mechanics of fluids was contained in two short mathematical equations met an
+objection which was in print before the equations were. Three years earlier, in the \emph{Essai d'une
+nouvelle th\'eorie de la r\'esistance des fluides} of 1752~\cite{dalembert1752}, d'Alembert had shown
+that a body moving steadily through an ideal fluid experiences \emph{no resistance at all}. Ships
+meet resistance and cannonballs are slowed, so the conclusion is absurd --- and it is a conclusion
+about precisely the solutions of \eqref{eq:mom}--\eqref{eq:slip}, to which it duly attached itself.
+
+It deepened rather than dissolved. In the nineteenth century complex analysis supplied a machinery
+generating ideal flow as \emph{potential flow} for any body one cared to draw, all of it smooth, all
+of it elegant, and all of it with zero drag. The better the mathematics got, the larger grew the
+family of solutions describing nothing. Something was wrong with the equations and nobody could say
+what.
+
+\paragraph{What it cost.} The consequence was not a puzzle set aside for later. It was a divorce.
+Mathematical fluid mechanics, unable to predict the resistance of a body moving through water, became
+a subject whose central prediction was known to be false --- which is to say a joke, and it was
+treated as one by the people who had to build ships and, later, aircraft. The practical science went
+its own way as \emph{hydraulics}: correlations, loss coefficients, model tests in towing tanks and
+wind tunnels, and a working knowledge of turbulent flow that owed nothing to Euler's equations and
+could not be derived from them. The division is well known and was put best as a distinction between
+engineers who observed what could not be explained and mathematicians who explained what could not be
+observed.\footnote{The remark is usually credited to Hinshelwood and is quoted by Lighthill.
+[TO VERIFY.]}
+
+So the two halves of the subject parted. Real fluids were understood empirically and without
+mathematics; the mathematics was exact, beautiful and about nothing.
+
+\section{Leray, 1934: turbulent solutions without uniqueness}\label{sec:leray}
+
+Nothing in the mathematics moved this position for the better part of two centuries. What moved it
+was Leray, in the paper of 1934 on the motion of a viscous liquid filling space~\cite{leray}. Leray
+abandoned the requirement that a solution be smooth and defined a \emph{weak} solution, satisfying
+the equations in an integrated sense against test functions. For such solutions he proved global
+existence. And he named them for what he took them to represent: \emph{solutions turbulentes}.
+
+This was the decisive step and it did not finish the job. What Leray obtained was existence without
+\emph{uniqueness}, and uniqueness is what a model needs if it is to predict anything. A theory which
+says that solutions exist, and cannot say which one a given body in a given stream will produce,
+determines no drag and no lift. The subject gained a solution concept adequate to turbulence and
+still could not deliver a number, and the uniqueness question has remained open since --- for weak
+solutions of Euler it is now known to be \emph{false}.
+
+\section{Numerical Euler: weak solutions with residual control}\label{sec:digital}
+
+The gap Leray left is where the present account begins. It was closed, in our view, not by proving
+uniqueness of the solution --- which is unavailable, and false --- but by changing what uniqueness is
+asked of. The solution concept set out in~\cite{book} is a weak solution together with
+\emph{control of the residual}, and what it delivers is \emph{uniqueness of mean-value outputs}: the
+flow field is not determined \emph{pointwise in space and time}, but the drag and the lift, as
+\emph{mean-value outputs}, are well determined quantities.
+
+We name the computational model \textbf{Numerical Euler}. It has three parts and the third is not an
+afterthought:
+
+\begin{enumerate}
+\item the equations \eqref{eq:mom}--\eqref{eq:slip}, discretised by a stabilised finite element
+method over a mesh~\cite{book}, the stabilisation acting as a vanishing artificial viscosity, so that
+what is computed is a viscosity solution of Euler, the limit taken as the mesh is refined;
+\item \emph{duality-based output error control}: for each output of interest --- a drag, a lift ---
+the error is bounded by the residual of the computed solution weighted by the solution of an adjoint
+problem, which measures how much the residual matters for that output;
+\item \emph{adaptivity}: the mesh is refined where the weighted residual says the error lives, and
+not uniformly, until the bound on the output is below what is asked.
+\end{enumerate}
+
+The error control is part of the model rather than an assessment of it. What Numerical Euler returns
+is not a flow but a \emph{pair}: an output and a bound on how wrong that output may be, computed
+together. A model returning the first without the second would be a weaker thing, since nothing could
+be concluded from it.
+
+\paragraph{And it is a solution of Euler.} That the limit satisfies
+\eqref{eq:mom}--\eqref{eq:slip} weakly is not an identification offered because the numbers look
+right. The stabilisation is a weighted least-squares control of the residual; the discrete energy
+estimate bounds that residual in a weighted norm; testing against a smooth function sends it to zero
+in the sense the weak formulation requires. The limit is a weak solution in Leray's sense, as a
+theorem --- and unlike Leray's, it comes with a statement of what is determined.
+
+\paragraph{What it produces, none of it put in.} The computed flow is \emph{turbulent}: fluctuating
+in time and over a range of scales which widens as the mesh is refined, with no symmetry and no
+steady state. Its \emph{mean values are determined}: drag, lift, and the position of the separation
+line converge under refinement, each arriving with its bound. And its \emph{velocity stays bounded
+while its gradients do not}, the solution being H\"older continuous with exponent about $1/3$ --- the
+exponent below which Onsager observed that energy conservation can fail~\cite{onsager} --- and
+dissipating energy at a rate independent of the vanishing viscosity.
+
+\paragraph{The viscosity introduced, and why its size does not matter.} A computation at finite
+resolution cannot have zero dissipation, so Numerical Euler necessarily introduces a viscosity. This
+is the obvious objection to it, and the answer is a computational fact rather than an argument:
+\emph{the mean-value outputs do not depend on the absolute size of the viscosity introduced}. Refine
+the mesh and the artificial viscosity falls, the resolved scales multiply, the flow field changes in
+every detail --- and the drag does not move. The dissipation rate does not fall with the viscosity
+either; it settles at a value fixed by the geometry and the free stream.
+
+That last is worth stating as a result and not only as a reassurance about the method. A dissipation
+rate which does not vanish with the viscosity is precisely \emph{Kolmogorov's conjecture of finite
+dissipation}~\cite{kolmogorov41} --- the zeroth law of turbulence, assumed in the theory of 1941,
+observed in experiment since Taylor~\cite{taylor}, and still unproved. The computation supports it
+directly: the rate is measured, over a sequence of refinements in which the artificial viscosity
+falls by orders of magnitude, and it does not follow the viscosity down. That independence is the
+dissipation anomaly in computational form, and it places the computation and the fluid in the same
+position rather than in different ones: air has a small viscosity whose absolute size does not
+determine the drag of a wing, and Numerical Euler has a small viscosity whose absolute size does not
+determine the computed drag. Neither is inviscid and neither needs to be.
+
+\paragraph{d'Alembert's paradox, resolved.} With turbulent solutions available for inspection the
+paradox can be answered, and was~\cite{dalembert}. Potential flow is a solution and it is
+\emph{unstable} --- stable where the flow attaches on the forward surface and accelerates, unstable
+where it separates on the rear surface and is retarded. The instability generates streamwise
+vorticity which stretches and breaks down into a turbulent wake, and the wake carries the drag. The
+same mechanism applied to a wing gives lift with no circulation condition imposed by
+hand~\cite{flight}. The equations were never wrong. What was wrong was the assumption that the
+solution of interest is a smooth one, and two centuries of symbolic mathematics had been spent
+elaborating exactly the solutions that do not occur.
+
+\section{FEniCS, automation, and the workshops}\label{sec:fenics}
+
+A solution concept is of no use to an engineer who cannot compute with it, and the step from the
+concept to a tool was automation. The FEniCS project~\cite{fenics} automates the step from a
+variational form to compiled code: the equations are stated, the discretisation is generated, and the
+adjoint problem required by the error control is generated with them. What had been a research
+computation became a method that could be run by somebody who had not written it.
+
+The result has been taken into use, and the place to see whether it works is not our own publications
+but the benchmark workshops, where the cases, the geometries and the measurements belong to the
+organisers and predictions are submitted before the measurements are released. Numerical Euler has
+been put through them: the high-order CFD workshop case CS1~\cite{cs1}, and validation against the
+NASA High Lift Prediction Workshop~4~\cite{ifasd}. Drag within a few per cent, the separation line
+where experiment puts it, the lift curve and the stall, the drag crisis~\cite{dragcrisis}.
+
+\paragraph{Three solution concepts.} The arc is a history of what a solution of
+\eqref{eq:mom}--\eqref{eq:slip} was taken to be, and it has three stages.
+
+\begin{center}\small
+\begin{tabular}{@{}llp{0.40\textwidth}@{}}
+\hline
+\textbf{potential flow} & pointwise solution & exists, and is \emph{unstable}: determines nothing,
+since it does not occur \\[3pt]
+\textbf{Leray, 1934} & weak solution & exists globally, \emph{without uniqueness}: determines
+nothing, since it does not say which \\[3pt]
+\textbf{Numerical Euler} & weak solution with residual control & not determined pointwise in space
+and time, but the \emph{mean-value outputs} --- drag, lift --- are well determined, each with a
+bound \\
+\hline
+\end{tabular}
+\end{center}
+
+\noindent Each stage weakens the demand made of the solution and strengthens what can be concluded
+from it, which is the opposite of the order one expects. The pointwise solution is the strongest
+object and settles nothing. The weak solution is a weaker object and settles existence. The weak
+solution with its residual controlled is weaker still --- it is not even a single flow --- and it
+settles the only question an engineer asks.
+
+That is the end of the arc begun in 1752. The subject which split into a mathematics that explained
+what could not be observed and a hydraulics that observed what could not be explained has a model
+with no parameters, solved from the equations, delivering the numbers an aircraft designer asks for,
+to a tolerance the computation itself states, against measurements held by somebody else.
+
+\paragraph{Symbolic and numerical mathematics together.} None of this is an argument against symbolic
+mathematics, and a paper whose first act is to write down three equations is in no position to make
+one. The relation is not a rivalry, and it is worth setting out what each contributes, because the
+account above has symbolic mathematics doing the decisive work at three separate points.
+
+\emph{It formulates the equations.} Newton's second law is a statement about particles. Writing it
+for a continuum, identifying the force of the surrounding fluid as a pressure gradient, and adjoining
+incompressibility with the pressure as its multiplier, is symbolic work of the first order, and every
+step of it was a judgement about what a fluid is. Three lines with no parameters, from which
+everything else here follows.
+
+\emph{It exhibits the nature of the instability.} That potential flow is unstable at separation is
+not read off a picture. It is shown by analysis of the \emph{linearised} equations --- a symbolic
+calculation, of exactly the classical kind --- which identifies the growing mode, its orientation and
+its rate. The computation then confirms what the analysis identifies and shows what becomes of it.
+Neither half would do on its own: the linear analysis says what begins and cannot say where it ends,
+and the computation shows the end without naming the mechanism.
+
+\emph{It sets up the computation, and interprets it.} The discretisation is derived from the
+equations; the residual is defined symbolically; the adjoint problem and the error representation are
+derived, not discovered; and the reading of what comes out --- that the gradients scale as they do,
+that the dissipation is anomalous in Onsager's sense, that the wake carries the drag --- is
+conceptual analysis of computed solutions, which is symbolic mathematics applied to numerical output.
+
+So the two reinforce one another at every stage, and the division of Section~\ref{sec:dalembert} was
+a pathology rather than a natural state. The compact way to put it, with apologies to Kant: symbolic
+mathematics without numerical computation is impotent, and numerical computation without symbolic
+mathematics is confused.
+
+\section{Inspection of blow-up proofs by OpenAI}\label{sec:openai}
+
+Against this stands a recent proof, produced by an AI system and formalised in Lean, that there
+exists smooth, compactly supported, divergence-free initial data on $\mathbb{R}^3$ whose smooth Euler
+solution has finite maximal lifespan: the velocity gradient becomes unbounded, and the
+Beale--Kato--Majda~\cite{bkm} vorticity integral diverges~\cite{openaieuler}. Comparable results were being
+prepared independently and by hand~\cite{buckmaster}. We take the proof to be correct, and nothing
+below depends on whether it is.
+
+It is a statement about the \emph{model}, and it is a real one: a question open for decades is
+settled. Three observations place it.
+
+\paragraph{What blows up is the gradient, and that is what turbulence does too.} The word blowup
+invites the reading that the velocity becomes infinite. It does not, and the theorem does not claim
+it. What is asserted is
+\[
+\limsup_{t\uparrow T_*}\|\grad u(t)\|_{L^\infty}=\infty ,
+\qquad
+\int_0^{T_*}\|\operatorname{curl}u(t)\|_{L^\infty}\,dt=\infty ,
+\]
+the gradient and the vorticity integral, with nothing said about the velocity becoming unbounded.
+
+That is precisely the signature of the computed turbulent solution of
+Section~\ref{sec:digital}: gradients diverging while the velocity stays bounded. The two accounts
+therefore agree on the fact, that smooth solutions of \eqref{eq:mom}--\eqref{eq:slip} break down in
+finite time with unbounded gradients, which was reported computationally
+in~\cite{blowupHJ}. The agreement is larger than the vocabulary of blowup against turbulence
+suggests, and it is worth stating before the differences.
+
+\paragraph{But the same quantity diverges for opposite reasons.} In the turbulent flow the gradient
+grows because the cascade carries energy to smaller and smaller scales and \emph{the energy leaves};
+the divergence of $\grad u$ is the mechanism of dissipation, which is the drag. In the construction
+the gradient grows because the energy \emph{cannot} leave --- the solution is classical and conserves
+it exactly --- so a growing gradient can be accommodated only by concentrating what is there. One
+divergence is energy departing, the other is energy piling up. The symptom is shared and the
+physiology is opposite.
+
+They differ also in kind of event. In the turbulent solution the unboundedness of the gradient is a
+\emph{persistent condition}: the solution goes on existing, as a weak solution, dissipating, for as
+long as one cares to run it. In the construction it is a \emph{terminal event}: at $T_*$ the smooth
+solution ceases, and the theorem says nothing about what follows.
+
+\paragraph{Which locates the result rather exactly.} $T_*$ is the end of the laminar regime. That is
+a real thing to have established, and we would not have it dismissed: the breakdown of smooth Euler
+flow in finite time was asserted on computational evidence and is now proved, for one constructed
+datum. But a fluid spends essentially none of its life before $T_*$ and essentially all of it
+after. The flows of Section~\ref{sec:digital} --- a wake, a separation line, a drag --- are what
+happens beyond the breakdown, and they are what the equations were written to describe. The theorem
+stops at the point where fluid mechanics begins.
+
+\paragraph{It conserves energy, and therefore cannot be a fluid.} With smooth data the solution is
+classical up to the blowup time, and a classical solution of \eqref{eq:mom}--\eqref{eq:inc} with
+decaying data satisfies
+\[
+\frac{d}{dt}\int \tfrac12 |u|^2 = 0 ,
+\]
+by an integration by parts. The construction therefore dissipates \emph{nothing} over the whole of
+its existence. The singularity is not a mechanism by which energy is lost but one by which it is
+piled up: at the singular time all of it is still present, gathered into a vanishing region. A fluid
+loses energy continuously from the moment it meets a body, and the loss is the drag.
+
+\paragraph{It exhibits no individual case.} The datum is the limit of an iteration over stages and
+has no closed form. Nothing can be plotted, nothing measured. Nor can either check on a \emph{result}
+be applied: there is no symbolic expression to insert into
+\eqref{eq:mom}--\eqref{eq:inc} and reduce, and no numerical field either, since no finite stage of
+the iteration blows up --- the property belongs to the limit. What exists is the existence.
+
+\paragraph{What is proved was already claimed.} There is a further observation, and it is not
+ungenerous. The theorem asserts that \emph{some} smooth datum has finite lifespan. The position
+of~\cite{blowupHJ}, stated in 2008 and resting on computation, is stronger: \emph{every} laminar Euler
+flow at high Reynolds number is unstable and breaks down, with the velocity staying bounded while the
+gradients do not. The existence statement follows from that as a corollary; if all smooth solutions
+break down then certainly one does.
+
+What is new is therefore the proof and not the fact. That is a genuine contribution --- a fact
+asserted on computational evidence is not the same as a fact established --- and we do not diminish
+it. But it should be seen for what it is: a demonstration, in a special constructed case, of a
+phenomenon which is generic, which has been exhibited computationally for two decades, and which the
+instability of Section~\ref{sec:digital} predicts of every flow past every body.
+
+\paragraph{And the viscous case does not say what it is taken to say.} Two things about the
+companion proof for Navier--Stokes, offered without disputing it.
+
+The first is a matter of what was proved. Fefferman's four alternatives do not form two pairs of
+negations: (A) and (B) are posed with $f\equiv0$ and quantify over \emph{all} admissible data, while
+(C) and (D) ask for the existence of admissible data \emph{together with an admissible smooth
+forcing} for which smoothness fails. A proof of (C) therefore leaves (A) untouched. It does not show
+that a fluid tears itself into a singularity; it shows that \emph{something can be done to a fluid}
+which does. Those are different statements and only the first would be about fluid flow.
+
+The second is a matter of scale. Navier--Stokes rescales: if $v$ solves the equations at unit
+viscosity with forcing $g$, then
+\begin{equation}\label{eq:rescale}
+u(x,t)=a\,v(bx,ct),\qquad a=\nu b,\quad c=ab,\quad f=a^2b\,g,
+\end{equation}
+solves them at viscosity $\nu$, and the map is onto --- one unit-viscosity construction generates the
+whole family. Running it down to the viscosity of a fluid then forces a choice, and there are only
+two. Hold the solution at size one, $a=1$: the forcing amplitude is $a^2b=\nu^{-1}$, so the force
+required diverges as the viscosity falls and leaves any fixed admissible class. Or hold the forcing,
+$a^2b=1$: then
+\[
+\text{amplitude } \nu^{1/3},\qquad \text{length } \nu^{2/3},\qquad \text{time } \nu^{1/3},
+\]
+all tending to zero --- at $\nu=10^{-6}$ the velocity reaches $10^{-2}$ on a scale of $10^{-4}$
+before blowing up.
+
+Set that beside the flow the problem is about. Turbulence at small viscosity has amplitude
+\emph{fixed} and structure refining. The constructed family has amplitude \emph{vanishing} like
+$\nu^{1/3}$, which is the opposite behaviour, or else a forcing diverging like $\nu^{-1}$, which is
+not a fluid at all. Neither branch survives the limit and there is no third. An independent exclusion
+of the mechanism under analytic forcing points the same way~\cite{civ}.
+
+So the construction requires either a force no fluid is subject to, or a singularity too small to
+constitute anything, and Horace supplies the description: \emph{parturient montes, nascetur
+ridiculus mus}.
+
+\paragraph{Forwards and backwards.} The two constructions of this paper are of the same formal kind
+and opposite in direction, and it is worth saying so plainly. The singular solution fixes the
+singularity wanted and solves \emph{backwards} for data and a force that will produce it, the force
+being whatever the residual requires. Numerical Euler fixes the data a flow actually has and solves
+\emph{forwards}, the residual becoming the bound on what may be asked of the result. Both are
+automated and both exhibit something. Only the second exhibits a fluid.
+
+\section{Three levels, and what reaches which}\label{sec:levels}
+
+The title names three things and the point of the paper is that they are three.
+
+\emph{A fluid flow} is a phenomenon. It has a drag which can be measured.
+
+\emph{Euler's equations} are a model of it, parameter free, with geometry and forcing as data. They
+are answerable to the phenomenon: if the drag they give is wrong, nothing can be adjusted to repair
+it.
+
+\emph{A proof about the equations} is a statement about the model. It is answerable to the model
+alone.
+
+The digital solution reaches all three levels. It is a solution of the equations, by the residual
+control; it is an object that can be inspected, and inspecting such objects is where the resolution
+of d'Alembert's paradox~\cite{dalembert} and the account of flight~\cite{flight} came from; and its
+mean values can be set beside a measurement, where they survive.
+
+The symbolic proof reaches the first of the three and stops. That is not a criticism of it as
+mathematics, where it is an advance, and existence without an exhibited instance is ordinary and
+accepted practice --- the disproof of the Mertens conjecture~\cite{mertens} established that a
+counterexample exists and exhibited none. It is a statement about what the result can be offered as.
+A theorem about a model becomes a statement about fluids only by way of an instance, and there is
+none here.
+
+\section{A larger split, and where it has arrived}\label{sec:split}
+
+The divorce of Section~\ref{sec:dalembert} was not confined to fluid mechanics. It is a local
+instance of a division which ran through twentieth-century mathematics and has not closed: between
+symbolic, analytical, pure mathematics on one side and numerical mathematics on the other. The first
+was held to be mathematics proper, concerned with existence, regularity and structure, and conducted
+in symbols. The second was regarded in many departments as a service activity, a matter of machines
+and approximations, and not quite the subject.
+
+We make no case against pure mathematics, which needs none. We observe only what the division did to
+\emph{this} subject. The questions the analytical side asked of Euler's and Navier--Stokes' equations
+--- does a smooth solution exist, does it remain smooth, is it unique --- are questions about the
+pointwise solution concept, which Section~\ref{sec:fenics} places at the stage the subject left
+behind. They are hard, they are respectable, and a fluid answers none of them. Meanwhile the
+quantities a fluid does determine, and which can be measured --- drag, lift, the separation line ---
+were not regarded as mathematical questions at all, and the people who needed them went to a towing
+tank.
+
+The institutional expression of this is the Millennium Problem, which offers a prize for the
+regularity of Navier--Stokes solutions: the apex of the analytical side, posing about fluid flow the
+one question whose answer, either way, no measurement could detect.
+
+\paragraph{And now the arrival.} That trajectory has reached a natural endpoint, and the OpenAI
+proofs are it. Symbolic mathematics, equipped at last with a machine which derives faster and more
+tirelessly than any person, was turned on fluid mechanics --- and what it produced, in a matter of
+days, was a theorem about a datum which cannot be written down, concerning a solution which conserves
+energy and therefore is not a fluid, settling a question about the pointwise concept which the
+subject had already moved past. The branch has been perfected and remains disconnected. It is the
+purest demonstration available of what the split costs: not that the mathematics is bad, which it is
+not, but that no amount of it, done faster, reaches the thing the equations are about.
+
+The remedy is not more symbolic power and not less. It is the collaboration of
+Section~\ref{sec:fenics}: formulate symbolically, compute numerically, inspect what is computed, and
+interpret symbolically what inspection shows. That loop is closed in this subject and it took two and
+a half centuries to close.
+
+\paragraph{This is not a conclusion drawn here.} The synthesis just described has been pursued as a
+programme for some twenty-five years, under the name \emph{Applied Mathematics: Body and
+Soul}~\cite{bodysoul,bsbooks}, and the name is the thesis: the \emph{body} of a mathematical subject
+is its computational content and the \emph{soul} its analytical content, and a subject which has lost
+either is crippled. The programme set out to rebuild applied mathematics and its teaching on that
+union --- analysis and computation developed together from the start, rather than analysis taught as
+mathematics and computation added afterwards as a skill.
+
+The account in this paper is one instance of that programme carried through on one set of equations.
+The equations are formulated symbolically; the discretisation, the residual and the adjoint are
+derived symbolically; the solutions are computed; the instability is exhibited by linear analysis and
+confirmed by computation; d'Alembert's paradox is resolved by inspecting what was computed; and the
+result is a model which predicts drag and lift to a stated tolerance. Volume~4 of the series is the
+fluid mechanics itself~\cite{book}. What the present episode supplies is a test of the thesis from
+the other direction: a demonstration of what the symbolic half achieves when it is pursued, with
+unprecedented power, entirely alone.
+
+\section{The shock, and the question it raises}\label{sec:shock}
+
+The OpenAI proofs of singularity formation for Euler and for Navier--Stokes have sent a shock wave
+through the mathematical community, and the question being asked is plain enough. If a machine can
+produce proofs of theorems better than people can, what is left for those whose main occupation is
+proving theorems?
+
+The question is legitimate and we do not propose to soften it. But two things about the present case
+bear on it, and both follow from the argument above.
+
+\emph{What was automated was the derivation, not the judgement.} The system worked on a problem
+already posed, already named, already agreed to be worth settling, and already being attacked by
+others along related lines~\cite{buckmaster}. It did not decide that finite-time blowup for Euler
+was the question to ask. It did not decide that Euler's equations were the right model of a fluid,
+which is a judgement about the world and not about symbols. And it did not connect its theorem to
+anything: the step from a statement about a model to a statement about fluids is not a proof step,
+and nothing in the output performs it. Sections~\ref{sec:openai} and~\ref{sec:levels} are an
+instance of that gap rather than a complaint about it.
+
+\emph{And this has happened before, to the discipline in this paper.} Machines outran hand
+calculation in the 1950s, and numerical analysis did not end. It changed what it was about. The
+object of study moved from finding a solution --- which the machine would do --- to bounding the
+error in what the machine produced, to deciding what was worth computing, and to establishing when a
+computed quantity is determined by the equations at all and when it is not. That is a harder subject
+than the one it replaced, and it is the subject that produced the error control of
+Section~\ref{sec:digital}.
+
+We would therefore expect the answer for mathematics to have the same shape, without pretending to
+know it. Deriving will be automated, and probably well. What will not be is choosing the question,
+judging whether a model deserves the attention, supplying the instance which lets a theorem touch
+something, and saying what a result means. On the evidence of this episode those are separate
+activities from derivation, because here they were left undone.
+
+\paragraph{And there is relevant symbolic mathematics, which is not theorem-proving.} If the proofs
+discussed here concern the model and not fluids, that is no reflection on symbolic mathematics as
+such. It is a reflection on one use of it. The most consequential symbolic work in physics has never
+been the proving of theorems about given equations. It has been the \emph{formulation of the
+equations}, from principles.
+
+Equations \eqref{eq:mom}--\eqref{eq:slip} are themselves such a piece of work. Newton's second law is
+a statement about particles; writing it for a continuum, deciding that the force of the surrounding
+fluid is a pressure gradient, and adjoining incompressibility as a constraint with the pressure as
+its multiplier, is symbolic mathematics of the first order --- and every step of it required deciding
+what a fluid \emph{is}. The result is three lines carrying no parameters, from which everything in
+this paper follows. Schr\"odinger's equation is the same kind of achievement for atoms, and the
+reformulation of atomic physics as non-overlapping charge densities meeting at free interfaces, which
+the present author has pursued under the name RealQM~\cite{realqm}, is an attempt at the same activity rather
+than at theorem-proving: the work is in what the equations should be, not in what follows from them.
+
+This is where symbolic mathematics does its heaviest lifting, where physical judgement enters
+mathematics, and where, so far, no machine has done anything at all. A system which proves a theorem
+about Euler's equations has been handed the hard part.
+
+\section{Summary}\label{sec:summary}
+
+Euler's equations are parameter free, with geometry and forcing as the only data, and the history of
+the subject is the history of what a solution of them was taken to be. Potential flow is a pointwise
+solution which exists and is unstable, so determines nothing. Leray's weak solution exists globally
+and is not unique, so determines nothing either. A weak solution \emph{with its residual controlled}
+is not a single flow at all: the field is not determined pointwise in space and time, but the
+mean-value outputs --- drag, lift, separation --- are well determined quantities, each with a bound
+the computation produces. The demand made of the solution weakens at every stage
+and what can be concluded from it strengthens.
+
+The questions symbolic analysis asks --- existence, regularity, uniqueness --- have gone unanswered
+in symbolic form because turbulent solutions carry structure at every scale with nothing for
+rewriting to grip, this being what turbulence is rather than a gap in technique. In digital form, by
+Numerical Euler, they are answered in altered shape: solutions exist by exhibition, are not regular,
+are not unique as fields, and are unique in the mean values anybody wants, with computed error bounds
+and agreement with measurement.
+
+A symbolic proof of finite-time blowup settles a long-open question about the model. Its solution
+conserves energy exactly and so dissipates nothing, whereas a fluid dissipates and the dissipation is
+the drag; and it exhibits no individual case, so nothing can be inserted into the equations,
+inspected or measured. It is an exact statement about an object with no observables, set beside
+approximate statements about observables which agree with experiment. Each has what the other lacks,
+and only one of them is answerable to a fluid.
+
+\begin{thebibliography}{99}
+
+\bibitem{openaieuler} OpenAI, \emph{Finite time blowup for the Euler equation}, preprint, 2026,
+57~pp.
+\newblock \url{https://cdn.openai.com/pdf/315b36cd-ec98-4023-8342-93345194ece1/euler.pdf}
+
+\bibitem{buckmaster} T.~Buckmaster and L.~Alp\"oge, \emph{Statement}, 2026.
+\newblock \url{https://cims.nyu.edu/~tristanb/statement.pdf}
+
+\bibitem{blowupHJ} J.~Hoffman and C.~Johnson, \emph{Blowup of incompressible Euler solutions},
+BIT Numer.\ Math.\ \textbf{48} (2008) 285--307.
+
+\bibitem{euler1755} L.~Euler, \emph{Principes g\'en\'eraux du mouvement des fluides},
+M\'emoires de l'Acad\'emie des Sciences de Berlin \textbf{11} (1757) 274--315; presented 1755.
+[TO VERIFY: volume and pages, and the wording of the translation quoted.]
+
+\bibitem{bodysoul} The Body and Soul project, \url{www.bodysoulmath.org}.
+
+\bibitem{bsbooks} K.~Eriksson, D.~Estep and C.~Johnson, \emph{Applied Mathematics: Body and Soul},
+vols.~1--3, Springer, 2004; the series continuing to vol.~4 and beyond.
+
+\bibitem{leray} J.~Leray, \emph{Sur le mouvement d'un liquide visqueux emplissant l'espace},
+Acta Math.\ \textbf{63} (1934) 193--248.
+
+\bibitem{fenics} A.~Logg, K.-A.~Mardal and G.~N.~Wells (eds.), \emph{Automated Solution of
+Differential Equations by the Finite Element Method}, Lecture Notes in Computational Science and
+Engineering~84, Springer, 2012.
+
+\bibitem{book} J.~Hoffman and C.~Johnson, \emph{Computational Turbulent Incompressible Flow},
+Applied Mathematics: Body and Soul, vol.~4, Springer, 2007.
+
+\bibitem{dalembert1752} J.~le~Rond d'Alembert, \emph{Essai d'une nouvelle th\'eorie de la
+r\'esistance des fluides}, Paris, 1752.
+
+\bibitem{dalembert} J.~Hoffman and C.~Johnson, \emph{Resolution of d'Alembert's paradox},
+J.\ Math.\ Fluid Mech.\ \textbf{12} (2010) 321--334.
+
+\bibitem{flight} J.~Hoffman, J.~Jansson and C.~Johnson, \emph{New theory of flight},
+J.\ Math.\ Fluid Mech.\ \textbf{18} (2016) 219--241.
+
+\bibitem{dragcrisis} J.~Hoffman, \emph{Simulation of turbulent flow past bluff bodies on coarse
+meshes using General Galerkin methods: drag crisis and turbulent Euler solutions}, Comput.\ Mech.\
+\textbf{38} (2006) 390--402.
+
+\bibitem{cs1} J.~Jansson, \emph{Adaptive Direct FEM simulation with Unicorn/FEniCS-HPC for CS1},
+5th International Workshop on High Order CFD Methods; Zenodo, 2022.
+\newblock \url{https://doi.org/10.5281/zenodo.6942599}
+
+\bibitem{ifasd} J.~Jansson, \emph{Adaptive Euler: validation against NASA High Lift Prediction
+Workshop~4, and preliminary tail-buffet and transonic-buffet simulations}, presented at IFASD~2026.
+
+\bibitem{bkm} J.~T.~Beale, T.~Kato and A.~Majda, \emph{Remarks on the breakdown of smooth solutions
+for the 3-D Euler equations}, Comm.\ Math.\ Phys.\ \textbf{94} (1984) 61--66.
+
+\bibitem{kolmogorov41} A.~N.~Kolmogorov, \emph{The local structure of turbulence in incompressible
+viscous fluid for very large Reynolds numbers}, Dokl.\ Akad.\ Nauk SSSR \textbf{30} (1941) 301--305.
+
+\bibitem{taylor} G.~I.~Taylor, \emph{Statistical theory of turbulence}, Proc.\ R.\ Soc.\ Lond.\ A
+\textbf{151} (1935) 421--444.
+
+\bibitem{onsager} L.~Onsager, \emph{Statistical hydrodynamics}, Nuovo Cimento \textbf{6},
+Suppl.~2 (1949) 279--287.
+
+\bibitem{realqm} C.~Johnson, \emph{A 3D multiphase continuum model for atoms and the periodic
+table}, submitted, 2026.
+
+\bibitem{civ} P.~Constantin, M.~Ignatova and V.~Vicol, \emph{Regularity of asymptotically
+axisymmetric solutions to the 3D Navier--Stokes equations with analytic forcing}, arXiv:2609.20803
+(2026).
+
+\bibitem{mertens} A.~M.~Odlyzko and H.~J.~J.~te~Riele, \emph{Disproof of the Mertens conjecture},
+J.\ reine angew.\ Math.\ \textbf{357} (1985) 138--160.
+
+\end{thebibliography}
+
+\end{document}
