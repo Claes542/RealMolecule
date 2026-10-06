@@ -72,12 +72,56 @@ through the wall, and nothing more: the normal component is fixed by impermeabil
 equations determines the tangential velocity there, and prescribing it as well would over-determine
 the problem. There is no viscosity anywhere, and therefore no boundary layer.
 
+\paragraph{The Eulerian representation is a mathematical invention.} The equations look simple and
+innocent, and they are neither. They embody a fundamental innovation of mathematical rather than
+physical nature, in what is called the \emph{Eulerian} representation. A fictional observer is posted
+at each point $(x,t)$ of space-time, and records the velocity $u(x,t)$ of whatever fluid particle is
+passing at that instant, together with the pressure $p(x,t)$ there. No such observer exists in the
+fluid. Nothing physical sits at a fixed point in space watching particles go by; the fluid consists
+of the particles.
+
+The physical description is the other one. In the \emph{Lagrangian} representation the individual
+particles are followed along their paths, each governed directly by Newton's second law, which is
+what the mechanics actually says. That description is the faithful one and it is close to
+unusable for computation: the particles go where they go, the mesh one would have to carry with them
+deforms without bound, and in a turbulent flow it is destroyed within a few time units.
+
+The Eulerian description, which corresponds to nothing physical, is what makes efficient numerics
+possible --- a fixed domain, a fixed mesh, fields evaluated at fixed points, and the particle motion
+appearing only through the convective term $(u\cdot\grad)u$. This is worth noticing early, because
+the paper is about what symbolic mathematics contributes. Here it contributes the representation
+itself: a mathematical fiction with no physical counterpart, invented in 1755, without which the
+computations of Section~\ref{sec:fenics} could not be carried out at all.
+
 \paragraph{The model is parameter free.} There is no constant in
 \eqref{eq:mom}--\eqref{eq:slip} to be measured, fitted or chosen. What enters as data is the
 \emph{geometry} --- the domain, which is to say the shape of the body the fluid flows past --- the
 \emph{forcing}, and the initial state. Nothing else. Whatever the equations predict is a consequence
 of the geometry and the forcing alone, and any disagreement with observation is a fault of the model
 and cannot be repaired by adjustment.
+
+\paragraph{Physics without physical input.} One consequence of that deserves to be stated at the
+outset, since it is easy to pass over. The drag and the lift of a body of \emph{arbitrary shape} can
+be computed from \eqref{eq:mom}--\eqref{eq:slip} alone. No measurement enters, no coefficient is
+looked up, and nothing shape-specific is supplied: one states the geometry and solves. A correct
+statement about the physical world is thereby obtained with no input from the physical world beyond
+Newton's second law and the incompressibility of the fluid --- which were in hand before the body was
+drawn.
+
+It is instructive to set that against the hydraulics of Section~\ref{sec:dalembert}, where every
+shape requires its own measured coefficient and nothing can be said about a body before it is built
+and tested. Here the drag of a shape nobody has ever constructed follows from the equations, and the
+place where this is put to the test is the workshops of Section~\ref{sec:fenics}, at which
+predictions are submitted \emph{before} the measurements are released.
+
+The character of the knowledge so obtained is worth a word. It is close to an \emph{a priori} truth
+reached by a thought experiment, in the spirit in which Einstein used them: the conclusion about the
+world is forced by principles already accepted, and the experiment is performed in the equations
+rather than in the laboratory. One should not overstate it --- Newton's law and incompressibility are
+themselves empirical, and the parameter-free claim is that nothing \emph{further} is needed. But
+granted those, the resistance of any shape whatever is a matter of computation and not of
+measurement, and that is a stronger thing than fluid mechanics was taken to possess for most of its
+history.
 
 \section{d'Alembert's paradox, and the split}\label{sec:dalembert}
 
