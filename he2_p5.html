@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>He2 RealQM p5 (corrected: 4 electrons, both kernels)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+</head><body style="margin:0">
+<script>
+
+// He2 RealQM -- CORRECTED from the original prototype.
+//   (1) M = 5 so all FOUR electrons evolve (was M = 3: only two, i.e. one atom)
+//   (2) K carries BOTH kernels (the second was commented out)
+//   (3) BOX and R exposed; R = separation in bohr, box sized to hold it
+// Reference: 2 x He(exact) = -5.808 Ha.  He2 is bound by dispersion alone,
+// D_e = 0.035 mHa at R_e = 5.6 bohr -- 1.1 K.  The qualitative question this
+// can answer is whether E(R) has ANY attractive well; the 0.035 mHa value is
+// far below what this grid resolves.
+let u=[],f=[],K=[],P=[],w=[],charge=[],norm=[],c=[];
+let r=0,E=0,N=100,N2=50,C=1,dt,dt1,h,t=1,d=0.05;
+let M=5, M2=8;            // M=5  ->  m = 1,2,3,4 all evolve
+let BOX=12.0;             // box size in bohr (was 5: too small for He2)
+let R=5.6;                // separation in bohr (was 2*D*h = 0.5)
+let D;                    // half-separation in cells, set from R
+let slider;
+
+function setup(){
+  createCanvas(400,420);
+  h=BOX/N; dt=d*h*h; dt1=dt/10; D=Math.round(0.5*R/h);
+  slider=createSlider(10,120,Math.round(R*10),1); slider.position(10,402); slider.style('width','260px');
+  for(let m=1;m<M2;m++){w[m]=[];u[m]=[];c[m]=1;charge[m]=1;P[m]=[];norm[m]=0;}
+  for(let m=1;m<M2;m++)for(let i=0;i<N+1;i++){
+    w[m][i]=[];u[m][i]=[];K[i]=K[i]||[];P[m][i]=[];
+    for(let j=0;j<N+1;j++){
+      w[m][i][j]=[];u[m][i][j]=[];K[i][j]=K[i][j]||[];P[m][i][j]=[];
+      for(let k=0;k<N+1;k++){w[m][i][j][k]=0;u[m][i][j][k]=0;K[i][j][k]=0;P[m][i][j][k]=0;}
+    }
+  }
+  initialise();
+}
+
+function initialise(){
+  D=Math.round(0.5*R/h); t=1;
+  for(let m=1;m<M;m++)for(let i=0;i<N+1;i++)for(let j=0;j<N+1;j++)for(let k=0;k<N+1;k++){
+    u[m][i][j][k]=0;w[m][i][j][k]=0;P[m][i][j][k]=0;K[i][j][k]=0;}
+  for(let i=0;i<N+1;i++)for(let j=0;j<N+1;j++)for(let k=0;k<N+1;k++){
+    let rl=Math.sqrt(Math.pow((i-N2+D)*h,2)+Math.pow((j-N2)*h,2)+Math.pow((k-N2)*h,2)+h*h);
+    let rr=Math.sqrt(Math.pow((i-N2-D)*h,2)+Math.pow((j-N2)*h,2)+Math.pow((k-N2)*h,2)+h*h);
+    if(i<N2-D-1){u[1][i][j][k]=Math.exp(-2*rl);w[1][i][j][k]=1;}
+    if(i>N2-D-3&&i<=N2){u[2][i][j][k]=Math.exp(-2*rl);w[2][i][j][k]=1;}
+    if(i>N2&&i<N2+D+3){u[3][i][j][k]=Math.exp(-2*rr);w[3][i][j][k]=1;}
+    if(i>=N2+D+1){u[4][i][j][k]=Math.exp(-2*rr);w[4][i][j][k]=1;}
+    K[i][j][k]=2/rl + 2/rr;                     // (2) BOTH kernels
+    P[1][i][j][k]=0.5/rl; P[2][i][j][k]=0.5/rl;
+    P[3][i][j][k]=0.5/rr; P[4][i][j][k]=0.5/rr;
+  }
+}
+
+function draw(){
+  background(220); noStroke();
+  let Rs=slider.value()/10; if(Math.abs(Rs-R)>1e-9){R=Rs;initialise();}
+  if(t<300){
+    t=t+1; E=0;
+    for(let i=1;i<N;i++)for(let j=1;j<N;j++)for(let k=1;k<N;k++){
+      for(let m=1;m<M;m++){
+        c[m]=0;
+        for(let n=1;n<M;n++) if(n!==m){ c[m]=c[m]-u[n][i][j][k]; }
+        c[m]=0.5*(c[m]+u[m][i][j][k]);
+      }
+      for(let m=1;m<M;m++){
+        u[m][i][j][k]=u[m][i][j][k]
+          +0.5*d*((u[m][i+1][j][k]-u[m][i][j][k])*(w[m][i+1][j][k]+w[m][i][j][k])/2-(u[m][i][j][k]-u[m][i-1][j][k])*(w[m][i][j][k]+w[m][i-1][j][k])/2)
+          +0.5*d*((u[m][i][j+1][k]-u[m][i][j][k])*(w[m][i][j+1][k]+w[m][i][j][k])/2-(u[m][i][j][k]-u[m][i][j-1][k])*(w[m][i][j][k]+w[m][i][j-1][k])/2)
+          +0.5*d*((u[m][i][j][k+1]-u[m][i][j][k])*(w[m][i][j][k+1]+w[m][i][j][k])/2-(u[m][i][j][k]-u[m][i][j][k-1])*(w[m][i][j][k]+w[m][i][j][k-1])/2)
+          +dt*(K[i][j][k]-2*P[m][i][j][k])*u[m][i][j][k]*w[m][i][j][k];
+        c[m]=0;
+        for(let n=1;n<M;n++) if(n!==m){ c[m]=c[m]+Math.pow(u[n][i][j][k],2); }
+        P[m][i][j][k]=P[m][i][j][k]+dt*(P[m][i+1][j][k]-6*P[m][i][j][k]+P[m][i-1][j][k]+P[m][i][j+1][k]+P[m][i][j-1][k]+P[m][i][j][k+1]+P[m][i][j][k-1])/(h*h)+2*Math.PI*dt*c[m];
+        if(w[m][i][j][k]>0.5){
+          E=E+0.5*(Math.pow(u[m][i+1][j][k]-u[m][i][j][k],2)+Math.pow(u[m][i][j+1][k]-u[m][i][j][k],2)+Math.pow(u[m][i][j][k+1]-u[m][i][j][k],2))*h;
+        }
+        E=E+(P[m][i][j][k]-K[i][j][k])*Math.pow(u[m][i][j][k],2)*Math.pow(h,3);
+      }
+    }
+    E=E+4/(2*D*h);                              // kernel-kernel, Z=2 each
+    for(let m=1;m<M;m++){
+      norm[m]=0;
+      for(let i=1;i<N;i++)for(let j=1;j<N;j++)for(let k=1;k<N;k++) norm[m]+=Math.pow(u[m][i][j][k],2)*Math.pow(h,3);
+      for(let i=1;i<N;i++)for(let j=1;j<N;j++)for(let k=1;k<N;k++) u[m][i][j][k]/=Math.sqrt(norm[m]);
+    }
+  }
+  for(let i=1;i<N;i++)for(let j=1;j<N;j++){
+    for(let m=1;m<M;m++){ fill(255,0,0,255*u[m][i][j][N2]); square(4*i,4*j,4); }
+  }
+  fill(0); circle(200-D*4,200,10); circle(200+D*4,200,10);
+  fill(0);
+  text("step "+t+"    E = "+E.toFixed(4)+" Ha",10,378);
+  text("R = "+R.toFixed(1)+" bohr    binding = "+((E+5.808)*1000).toFixed(2)+" mHa",10,394);
+  text("He2 RealQM, FOUR electrons, both kernels.  2xHe(exact) = -5.808 Ha.",5,20);
+  text("He2 is bound by dispersion alone: D_e = 0.035 mHa at R_e = 5.6 bohr.",5,36);
+  text("Question this can answer: is there ANY attractive well in E(R)?",5,52);
+}
+
+</script></body></html>
