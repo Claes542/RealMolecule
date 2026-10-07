@@ -202,3 +202,59 @@ if __name__ == "__main__":
     for n in (6, 8, 12, 16):
         print(f"  n = {n:3d}   relative mismatch = {duality_check(n):.3e}")
     print("=" * 70)
+
+
+# ---------------------------------------------------------------- H^-1 norm
+def h_minus1_norm(R, hx, h, shape):
+    """||R||_{H^-1} = ||grad psi||_L2 with -lap psi = R.
+
+    Solved spectrally.  This is the CORRECT norm for the residual: a turbulent
+    residual is a functional on H^1, not a function in L2, and ||R||_{L2} need
+    not stay finite under refinement while ||R||_{H^-1} should.  Computing it
+    needs no Galerkin orthogonality and no interpolation estimate, so it is
+    available to a finite-difference discrete adjoint, where ||hR||_{L2} is not.
+    """
+    nx, ny, nz = shape
+    kx = 2*np.pi*np.fft.fftfreq(nx, d=hx)
+    ky = 2*np.pi*np.fft.fftfreq(ny, d=h)
+    kz = 2*np.pi*np.fft.fftfreq(nz, d=h)
+    KX, KY, KZ = np.meshgrid(kx, ky, kz, indexing="ij")
+    k2 = KX**2 + KY**2 + KZ**2      # exact spectral Laplacian: only k=0 vanishes
+    k2[0,0,0] = 1.0
+    Rh = np.fft.fftn(R - R.mean())
+    psi = np.real(np.fft.ifftn(Rh / k2))
+    gx, gy, gz = ddx(psi, hx, 0), ddx(psi, h, 1), ddx(psi, h, 2)
+    return np.sqrt(((gx**2 + gy**2 + gz**2).sum()) * hx*h*h)
+
+
+def l2_norm(R, hx, h):
+    return np.sqrt((R**2).sum() * hx*h*h)
+
+
+if __name__ == "__main__" and True:
+    print()
+    print("=" * 70)
+    print("RESIDUAL NORMS UNDER REFINEMENT")
+    print("  The PHYSICAL field is held fixed -- Fourier coefficients a_k = |k|^(-5/6),")
+    print("  a k^-5/3 energy spectrum -- and refining admits more high-k modes.")
+    print("-" * 70)
+    print(f"{'n':>5}{'h':>9}{'||R||_L2':>12}{'||hR||_L2':>12}{'||R||_H-1':>12}")
+    rows = []
+    for n in (8, 12, 16, 24, 32, 48):
+        nx, ny, nz = 2*n, n, n
+        hx, h = 2.0/nx, 1.0/ny
+        kx = np.fft.fftfreq(nx, d=hx); ky = np.fft.fftfreq(ny, d=h); kz = np.fft.fftfreq(nz, d=h)
+        KX, KY, KZ = np.meshgrid(kx, ky, kz, indexing="ij")
+        K = np.sqrt(KX**2 + KY**2 + KZ**2); K[0,0,0] = 1.0
+        rng = np.random.default_rng(0)
+        # phases fixed by the wavenumber, so the same physical field at every n
+        ph = np.exp(2j*np.pi*((np.sin(KX*12.9898+KY*78.233+KZ*37.719)*43758.5453) % 1.0))
+        a_k = K**(-5.0/6.0); a_k[0,0,0] = 0.0
+        R = np.real(np.fft.ifftn(a_k*ph)) * (nx*ny*nz)
+        rows.append((h, l2_norm(R,hx,h), l2_norm(h*R,hx,h), h_minus1_norm(R,hx,h,(nx,ny,nz))))
+        print(f"{n:>5}{h:>9.4f}{rows[-1][1]:>12.4g}{rows[-1][2]:>12.4g}{rows[-1][3]:>12.4g}")
+    A = np.array(rows)
+    for name, col in (("||R||_L2",1), ("||hR||_L2",2), ("||R||_H-1",3)):
+        sl,_ = np.polyfit(np.log(A[:,0]), np.log(A[:,col]), 1)
+        print(f"  {name:>12} ~ h^{sl:+.2f}")
+    print("=" * 70)
