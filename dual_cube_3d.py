@@ -1,6 +1,29 @@
 """
 dual_cube_3d.py
 
+!!  WITHDRAWN -- DO NOT USE THE NUMBERS FROM THIS FILE  !!
+
+The FFT pressure projection is broken.  The symbol of the centred difference
+is sin(k h)/h, which vanishes at the NYQUIST modes as well as at k = 0, and
+project() guards only den[0,0,0].  Eight modes are divided by ~1e-32.  The
+measured effect: rms divergence falls from 19.7 to 0.92 instead of to machine
+precision, so the base flow is not solenoidal and is not a solution of
+incompressible Navier-Stokes.
+
+Consequently the dual solved here is not the adjoint of anything: the adjoint
+of -(U.grad)w contains a term phi div U which vanishes only for solenoidal U.
+A duality check on this operator gives a mismatch of 0.25-0.35 that does not
+decay under refinement.
+
+Withdrawn with it: S = 1.97-2.71 and the h^-0.29 growth, the slip vs no-slip
+comparison, ||R|| ~ const, S*||hR|| ~ h^0.74, and dual_cube_3d.png.
+
+Superseded by dual_cube_3d_comp.py, which is compressible and therefore has
+no projection at all, and whose adjoint is the exact discrete transpose
+verified to machine precision.
+
+----------------------------------------------------------------------------
+
 Linearised DUAL (adjoint) problem for drag on a CUBE in 3D incompressible flow,
 solved backward in time about a computed base flow, giving the stability factor
 S that multiplies the residual in the output error bound
