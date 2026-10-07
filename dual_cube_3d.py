@@ -48,7 +48,8 @@ XC     = 0.30          # cube centre, fraction of the x-length
 CFL    = 0.35
 T_FWD  = 6.0           # forward time to develop the wake
 T_DUAL = 1.0           # dual time window
-PEN    = 1.0e3         # slip penalisation strength on the body
+PEN    = 1.0e3         # penalisation strength on the body
+SLIP   = True          # True: normal component only.  False: all three (no-slip)
 
 
 def grid(N, AR):
@@ -63,13 +64,26 @@ def grid(N, AR):
 
 
 def cube_masks(x, y, z, side, xc):
-    """Solid mask and the three face-normal masks for slip penalisation."""
+    """Solid mask, plus the partition of the solid by NEAREST FACE.
+
+    SLIP means the normal component vanishes at the wall and the tangential
+    components are free.  On an axis-aligned cube the normal direction at a
+    point inside is the one in which the point is closest to a face, i.e. the
+    coordinate whose distance from the centre is largest.  Damping only that
+    component gives slip; damping all three would give no-slip.
+    """
     X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
     x0 = xc * x[-1]
     y0 = z0 = 0.5
     s = side / 2
     solid = (np.abs(X - x0) < s) & (np.abs(Y - y0) < s) & (np.abs(Z - z0) < s)
-    return solid
+    dx, dy, dz = np.abs(X - x0), np.abs(Y - y0), np.abs(Z - z0)
+    mx = solid & (dx >= dy) & (dx >= dz)      # nearest face has normal +-x
+    my = solid & (dy >  dx) & (dy >= dz)      # normal +-y
+    mz = solid & (dz >  dx) & (dz >  dy)      # normal +-z
+    sx, sy, sz = (X > x0), (Y > y0), (Z > z0)   # which side of the body
+    ns = int(np.ceil(0.5 * side / (x[1] - x[0]))) + 1   # sweeps to fill the half-width
+    return solid, mx, my, mz, sx, sy, sz, ns
 
 
 def ddx(f, h, axis):
@@ -102,16 +116,40 @@ def wavenumbers(nx, ny, nz, hx, h):
     return (np.sin(KX * hx) / hx) ** 2, (np.sin(KY * h) / h) ** 2, (np.sin(KZ * h) / h) ** 2
 
 
-def apply_body(u, v, w, solid, dt):
-    """Slip penalisation: damp the velocity inside the body."""
+def mirror_tangential(f, region, side, axis, nsweep):
+    """Extend f into the solid along the outward normal: zero normal gradient.
+
+    Leaving the tangential component merely UNDAMPED is not slip: viscosity
+    then relaxes it toward a value differing from the fluid outside, and the
+    jump across the interface is a shear layer, i.e. friction.  Mirroring
+    makes d(u_t)/dn = 0, so there is no gradient for viscosity to act on.
+    """
+    for _ in range(nsweep):
+        f = np.where(region &  side, np.roll(f, -1, axis), f)
+        f = np.where(region & ~side, np.roll(f, +1, axis), f)
+    return f
+
+
+def apply_body(u, v, w, masks, dt, slip=True):
+    """SLIP: damp the face-normal component, MIRROR the tangential ones.
+    NO-SLIP: damp all three."""
+    solid, mx, my, mz, sx, sy, sz, ns = masks
     f = 1.0 / (1.0 + PEN * dt)
-    u = np.where(solid, u * f, u)
-    v = np.where(solid, v * f, v)
-    w = np.where(solid, w * f, w)
+    if slip:
+        u = np.where(mx, u * f, u)            # normal on the x-faces
+        v = np.where(my, v * f, v)            # normal on the y-faces
+        w = np.where(mz, w * f, w)            # normal on the z-faces
+        v = mirror_tangential(v, mx, sx, 0, ns); w = mirror_tangential(w, mx, sx, 0, ns)
+        u = mirror_tangential(u, my, sy, 1, ns); w = mirror_tangential(w, my, sy, 1, ns)
+        u = mirror_tangential(u, mz, sz, 2, ns); v = mirror_tangential(v, mz, sz, 2, ns)
+    else:
+        u = np.where(solid, u * f, u)
+        v = np.where(solid, v * f, v)
+        w = np.where(solid, w * f, w)
     return u, v, w
 
 
-def forward(nx, ny, nz, hx, h, solid, T, seed=0):
+def forward(nx, ny, nz, hx, h, masks, T, seed=0):
     """Base flow: uniform inflow past the cube."""
     rng = np.random.default_rng(seed)
     u = np.ones((nx, ny, nz))
@@ -128,7 +166,7 @@ def forward(nx, ny, nz, hx, h, solid, T, seed=0):
         u = u + dt * (-cu + NU * lap(u, hx, h))
         v = v + dt * (-cv + NU * lap(v, hx, h))
         w = w + dt * (-cw + NU * lap(w, hx, h))
-        u, v, w = apply_body(u, v, w, solid, dt)
+        u, v, w = apply_body(u, v, w, masks, dt, slip=SLIP)
         # inflow left, free outflow right
         u[0] = 1.0; v[0] = 0.0; w[0] = 0.0
         u[-1] = u[-2]; v[-1] = v[-2]; w[-1] = w[-2]
@@ -185,13 +223,14 @@ def dual(U, V, W, nx, ny, nz, hx, h, solid, T, dt):
 
 def main():
     nx, ny, nz, hx, h, x, y, z = grid(N, AR)
-    solid = cube_masks(x, y, z, CUBE, XC)
+    masks = cube_masks(x, y, z, CUBE, XC)
+    solid = masks[0]
     print("=" * 72)
     print("DUAL PROBLEM FOR DRAG ON A CUBE, 3D")
     print(f"  grid {nx}x{ny}x{nz}   cube side {CUBE}  cells {solid.sum()}"
           f"   nu={NU}   Re_d ~ {CUBE/NU:.0f}")
     print("-" * 72)
-    U, V, W, dt = forward(nx, ny, nz, hx, h, solid, T_FWD)
+    U, V, W, dt = forward(nx, ny, nz, hx, h, masks, T_FWD)
     print("-" * 72)
     p, q, r, S = dual(U, V, W, nx, ny, nz, hx, h, solid, T_DUAL, dt)
     print("-" * 72)
