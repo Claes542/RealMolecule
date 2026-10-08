@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000">
+<!-- He on molecule.js (GPU) with a FIXED splitting plane.
+     he_molecule.html with the boundary unlock and the Z-perturbation removed, so the
+     midplane never moves. Purpose: test molecule.js's documented V_ee shortfall
+     (molecule.js:85-112, ~2.17x on H2) on a system with an exact answer.
+     Exact He = -2.9037 Ha.  Python fixed Neumann plane = -2.99.  CPU p5 front-tracked = -2.91. -->
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var gridN = parseInt(q.get('n') || '100', 10);
+  var scr   = parseFloat(q.get('box') || '10');
+  var N2    = Math.floor(gridN / 2);
+
+  // Two one-electron domains sharing a +2 kernel: each atom entry carries Z_nuc=1 at the
+  // SAME cell, and molecule.js:219 sums Z_eff for entries on one cell, giving +2.
+  window.USER_ATOMS = [
+    { i: N2, j: N2, k: N2, Z: 1, el: 'He' },
+    { i: N2, j: N2, k: N2, Z: 1, el: 'He' }
+  ];
+  window.USER_Z     = [1, 1];
+  window.USER_Z_NUC = [1, 1];
+  window.USER_RC    = [0, 0];
+  window.NO_NUC_REPULSION = true;      // both kernels on one cell
+  window.USER_DYNAMICS    = false;
+  window.NO_AUTO_DYNAMICS = true;
+
+  // Exact half-space split at i = N2; the midplane cell goes to domain 0.
+  window.CUSTOM_LABEL_INIT = function (S, h, nucPos, NELEC) {
+    var c = Math.floor(S / 2), lab = new Uint32Array(S * S * S), S2 = S * S;
+    for (var i = 0; i < S; i++) {
+      var v = (i <= c) ? 0 : 1;
+      for (var j = 0; j < S; j++) { var base = i * S2 + j * S;
+        for (var k = 0; k < S; k++) lab[base + k] = v; }
+    }
+    return lab;
+  };
+
+  window.FREEZE_BOUNDARY = true;       // and NO UNLOCK_AT_STEP -- that is the point
+  window.USER_NN = gridN;
+  window.USER_SCREEN = scr;
+  window.USER_STEPS = 200000;
+  window.CONVERGENCE_THRESHOLD = parseFloat(q.get('conv') || '0.00001');
+  window.onSweepDone = function (E) {
+    document.title = 'HEFIXED DONE E=' + Number(E).toFixed(6);
+    try { localStorage.setItem('he_gpu_fixedplane',
+      JSON.stringify({ E: Number(E), n: gridN, box: scr, h: scr / gridN })); } catch (e) {}
+  };
+  console.log('He GPU fixed plane: grid ' + gridN + '^3, box ' + scr + ', h=' + (scr/gridN));
+})();
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function () {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
