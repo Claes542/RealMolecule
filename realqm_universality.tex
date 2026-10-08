@@ -236,10 +236,35 @@ numerical parameter does not change answers qualitatively, and this one does. On
 fragment, with the oxygen valence split and the boundaries free, $r_c=0$ gives a dipole of
 $1.98$~D with the oxygen negative, against a measured $1.66$~D; at $r_c=0.5$ the same
 configuration gives $0.34$~D \emph{with the polarity inverted}. A mesh spacing that reversed the
-sign of a dipole would be called a broken discretisation, and the same standard applies here. Nor
-has the $r_c \rightarrow 0$ limit been taken for a molecule, because that is precisely the
-calculation $r_c$ exists to avoid. So the honest position is that RealQM has no model parameters at
-any scale, and one numerical device whose convergence has not been demonstrated where it is used.
+sign of a dipole would be called a broken discretisation, and the same standard applies here.
+
+It is worth being quantitative about what $r_c$ actually buys, because the usual phrase --- that
+all-electron molecules are too expensive --- turns out to name the wrong cost. For a protein built
+from hydrogen, carbon, nitrogen and oxygen the \emph{electron count} barely moves: per residue the
+reduced description carries about $35$ electrons against $59$ all-electron, and for a
+$153$-residue chain $5340$ against $9042$, a factor $1.7$. That is not what makes the calculation
+hard. The cost is the \emph{mesh}. The run above uses $200^3$ cells on a $100$~bohr box, so
+$h = 0.5$~bohr, while resolving an oxygen $1s$ --- $r_{1s}\approx 4.3/Z \approx 0.54$~bohr, spanned
+by some ten cells --- requires $h \approx 0.054$. That is a factor $9.3$ in each direction and
+therefore some $800$ in cells, a $200^3$ grid against roughly $1860^3$; with cost going as
+electrons times mesh points the product is of order $10^{3}$.
+
+But that factor is only needed within about a bohr of each heavy nucleus. With roughly twelve
+hundred carbon, nitrogen and oxygen atoms, core-refined patches of radius one bohr at
+$h = 0.054$ come to some $6\times10^{7}$ cells in total, against $6.4\times10^{9}$ for refining
+everywhere, which places an all-electron calculation of the same chain at something like fifteen
+times the present cost rather than a thousand. So $r_c$ is not required by the physics, as the
+all-electron atomic results show, and it is not required by the cost either. It is required by the
+use of a \emph{uniform} grid. On a mesh with local refinement it would disappear rather than be
+calibrated --- which, given that it reverses a dipole, is the better outcome. Two details make the
+present situation less comfortable still: at $h = 0.5$ the oxygen core radius of $0.8$~bohr spans
+one and a half cells, so the exclusion sphere is represented by a cell or two and the polarity
+inversion may itself be a resolution artefact; and the $r_c \rightarrow 0$ limit has never been
+taken for a molecule, that being precisely the calculation $r_c$ exists to avoid.
+
+So the honest position is that RealQM has no model parameters at any scale, and one numerical
+device which is an artefact of uniform meshing and whose convergence has not been demonstrated
+where it is used.
 
 \paragraph{The clean regimes coincide, and neither model is tested outside them by its own
 successes.} For atoms and small molecules both models can be run with no constant fitted to the
