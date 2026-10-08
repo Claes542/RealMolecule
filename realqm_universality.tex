@@ -198,8 +198,9 @@ small molecules
  & \textbf{none fitted} in the CCSD(T) near-basis-set-limit window \\
 \addlinespace
 larger molecules, materials
- & \textbf{one}, the core radius $r_c$ per element --- taken from the ionisation energy, or from
-   the all-electron valence sector, and in either case \emph{not} from the quantity predicted
+ & \textbf{none in the model}, which is defined all-electron on the bare kernel. In practice a
+   core radius $r_c$ avoids resolving the $1s$ on a molecular mesh --- a numerical device, like the
+   mesh itself, and not a component. But it is not demonstrably benign: see below
  & a choice of exchange--correlation functional, several of them \textbf{fitted to benchmark
    sets} of the properties later computed \\
 \addlinespace
@@ -219,6 +220,27 @@ biomolecules
 
 Three things follow, and the second is not favourable to the argument of this article.
 
+\paragraph{$r_c$ is a numerical device, not a component --- but it is not a clean one.}
+The core radius deserves separating from the other entries, because it is a different kind of
+object. The model needs no $r_c$: every atom in Section~\ref{sec:realqm} is computed all-electron
+on the bare kernel $-Z/r$, hydrogen to krypton, which settles that $r_c$ is not part of the
+formulation. What it does is numerical. A molecule needs a box spanning the whole molecule, while
+the innermost shell contracts as $r_{1s}\approx 4.3/Z$, and a single uniform mesh cannot do both;
+replacing the resolved core by a reduced kernel and an exclusion radius buys the molecular
+calculation at the cost of a length. In that respect $r_c$ belongs with the mesh spacing rather
+than with a fitted constant, and a model carrying only numerical parameters carries none that
+matter for the present argument.
+
+That is the favourable reading and we should not take it without the qualification. A benign
+numerical parameter does not change answers qualitatively, and this one does. On the hydroxyl
+fragment, with the oxygen valence split and the boundaries free, $r_c=0$ gives a dipole of
+$1.98$~D with the oxygen negative, against a measured $1.66$~D; at $r_c=0.5$ the same
+configuration gives $0.34$~D \emph{with the polarity inverted}. A mesh spacing that reversed the
+sign of a dipole would be called a broken discretisation, and the same standard applies here. Nor
+has the $r_c \rightarrow 0$ limit been taken for a molecule, because that is precisely the
+calculation $r_c$ exists to avoid. So the honest position is that RealQM has no model parameters at
+any scale, and one numerical device whose convergence has not been demonstrated where it is used.
+
 \paragraph{The clean regimes coincide, and neither model is tested outside them by its own
 successes.} For atoms and small molecules both models can be run with no constant fitted to the
 predicted quantity, and both should be believed there. RealQM's advantage in that band is
@@ -227,7 +249,8 @@ per cent, where the standard formalism's clean window is a few tens of atoms at 
 precision. That is a genuine trade and not a defeat either way.
 
 \paragraph{RealQM's parameters become circular at exactly the scale where its scope claim is
-most striking.} At the protein scale the secondary structure is supplied --- which segments are helical, which
+most striking.} The core radius is numerical, as just discussed. At the protein scale the secondary structure is
+supplied --- which segments are helical, which
 then drives a hydrogen-bond bias --- together with a two-parameter surface term standing in for
 the hydrophobic effect. The tertiary packing is not biased and is computed, so what those runs
 cannot be offered as is evidence that the model predicts secondary structure. The honest reading is that RealQM's parameter count rises from zero to one to three as the
