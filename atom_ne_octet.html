@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Ne octet — dSCF ionization energy</title></head>
+<body style="margin:0;background:#000;color:#eee;font-family:monospace">
+<div id="log" style="padding:16px;font-size:14px;line-height:1.7"></div>
+<script>
+// 3D Ne octet ionization energy by dSCF, in the 3D solver (molecule.js).
+//   IE = E(Ne+, 7 valence e-, +8 kernel) - E(Ne, 8 valence e-, +8 kernel)
+//
+// THE TEST: does the 3D ANGULAR octet land inside the 1D bracket?
+// The 1D radial solver has no angular coordinate, so it cannot represent the octet as the
+// model describes it -- 4+4 at ONE radius, two dual tetrahedra angularly separated. It can
+// represent only two alternatives, and for every noble gas Ne->Rn the measured IE falls
+// BETWEEN them: radial 4+4 (outer tetrahedron too far out) gives ~half, a single 8-shell
+// (too close to the kernel) gives 2-3x. MEASURED 2026-10-09 on the 1D radial solver by the SAME
+// dSCF route used here, so the comparison is like for like (solveAtomPure + cationCfg, Z=10):
+//     radial 4+4  (2+4+4)  E(Ne)=-131.8325  E(Ne+)=-131.3428  IE_dSCF = 13.33 eV
+//     single 8    (2+8)    E(Ne)=-146.5595  E(Ne+)=-145.2924  IE_dSCF = 34.48 eV
+//     NIST 21.56 eV lies inside 13.33 - 34.48, a factor 1.6 either side.
+// (Koopmans eigenvalues on the same runs give 8.81 and 34.76. An earlier comment in this file
+// quoted the bracket as 11.3-58; neither route reproduces those, so they are withdrawn.)
+// If the 3D angular octet gives ~21.6 eV, the IE failure is a reduction artefact and not a
+// model failure. If it falls outside the bracket, the attribution is wrong.
+//
+// CONSTRUCTION (corrected 2026-10-09). The previous version of this file built ONE atom entry
+// with Z = nelec, i.e. a single charge-8 domain: no angular structure at all, and on molecule.js
+// a multi-occupancy domain carries no internal electron-electron repulsion. That error does NOT
+// cancel in the dSCF difference -- 28 pairs for the neutral against 21 for the cation leaves
+// seven pairs missing from the IE itself. Rebuilt here on the pattern already working in
+// atom_octet_cube_vs_nested.html, atom_octet_cube_vs_antiprism.html and atom_tetra_test.html:
+//   - EIGHT CO-LOCATED unit domains, Z=1 each, all at the box centre
+//   - USER_Z_NUC = 1 on each, summed by molecule.js to a +8 kernel at that cell
+//   - USER_SPLIT_TYPE 'cube' (splitType 7): eight angular sectors at cube-corner directions
+//   - the cation is the SAME eight sectors with one emptied (Z=0) and Znuc unchanged, so the
+//     kernel and the partition are identical between the two and the core error cancels
+//     (the noval construction: outside a spherical core the potential is fixed by Gauss
+//     whatever the mesh does inside)
+(function () {
+  var q = new URLSearchParams(location.search);
+  var N = parseInt(q.get('n') || '200', 10);
+  var scr = parseFloat(q.get('box') || '10');
+  var ci = Math.round(N / 2);
+  var Zaxis = [0, 0, 1];
+
+  // r_c values: 0.4 is nearest the 1D core radius for Ne (r_core = 0.4025 au)
+  var jobs = [
+    { name: 'Ne_rc0.30',  nelec: 8, rc: 0.30 },
+    { name: 'Ne+_rc0.30', nelec: 7, rc: 0.30 },
+    { name: 'Ne_rc0.40',  nelec: 8, rc: 0.40 },
+    { name: 'Ne+_rc0.40', nelec: 7, rc: 0.40 },
+    { name: 'Ne_rc0.50',  nelec: 8, rc: 0.50 },
+    { name: 'Ne+_rc0.50', nelec: 7, rc: 0.50 }
+  ];
+  var ji = parseInt(q.get('job') || '0', 10);
+  if (ji >= jobs.length) {
+    document.getElementById('log').innerHTML = '<b style="color:#0f0">all jobs done</b>';
+    document.title = 'NEOCTET ALL DONE';
+    return;
+  }
+  var j = jobs[ji];
+
+  // Eight sectors always exist; in the cation one of them holds no charge.
+  var Zel  = [], Znuc = [], rcA = [], stype = [], sidx = [], saxis = [], srot = [];
+  for (var m = 0; m < 8; m++) {
+    Zel.push(m < j.nelec ? 1 : 0);   // 8 -> all occupied; 7 -> last sector bare
+    Znuc.push(1);                    // sums to +8 for BOTH charge states
+    rcA.push(j.rc);
+    stype.push('cube');
+    sidx.push(m);
+    saxis.push(Zaxis);
+    srot.push(0);
+  }
+
+  window.USER_NN         = N;
+  window.USER_SCREEN     = scr;
+  window.USER_ATOMS      = Zel.map(function () { return { i: ci, j: ci, k: ci, Z: 1, el: 'Ne' }; });
+  window.USER_Z          = Zel;
+  window.USER_Z_NUC      = Znuc;
+  window.USER_RC         = rcA;
+  window.USER_SPLIT_TYPE = stype;
+  window.USER_SPLIT_IDX  = sidx;
+  window.USER_SPLIT_AXIS = saxis;
+  window.USER_SPLIT_ROT  = srot;
+  window.USER_STEPS      = 200000;
+  window.USER_DYNAMICS   = false;
+  window.NO_AUTO_DYNAMICS = true;
+  window.NO_NUC_REPULSION = true;    // all eight kernel contributions on one cell
+  window.CONVERGENCE_THRESHOLD = parseFloat(q.get('conv') || '0.0005');
+
+  function show(extra) {
+    var st = {};
+    try { st = JSON.parse(localStorage.getItem('ne_octet') || '{}'); } catch (e) {}
+    var h = '<b style="color:#0cf">Ne octet &mdash; &Delta;SCF ionization energy</b><br>'
+          + 'grid ' + N + '&sup3;, box ' + scr + ' au (h=' + (scr / N).toFixed(4) + '), '
+          + '8 angular sectors (cube), kernel +8 in both charge states<br>'
+          + 'job ' + (ji + 1) + '/' + jobs.length + ': <b>' + j.name + '</b> &mdash; '
+          + j.nelec + ' electrons, r_c=' + j.rc + (extra ? ' &mdash; ' + extra : '') + '<br><br>'
+          + '<table style="border-collapse:collapse"><tr style="color:#0cf">'
+          + '<th style="padding:3px 10px;text-align:left">r_c</th><th>E(Ne)</th><th>E(Ne+)</th>'
+          + '<th>IE (eV)</th><th>real</th><th>1D bracket</th></tr>';
+    [0.30, 0.40, 0.50].forEach(function (rc) {
+      var a = st['Ne_rc' + rc.toFixed(2)], b = st['Ne+_rc' + rc.toFixed(2)];
+      var ie = (a !== undefined && b !== undefined) ? ((b - a) * 27.2114) : null;
+      var col = (ie === null) ? '#888' : (ie > 13.33 && ie < 34.48 ? '#0f0' : '#f66');
+      h += '<tr><td style="padding:3px 10px">' + rc.toFixed(2) + '</td>'
+         + '<td>' + (a !== undefined ? a.toFixed(4) : '&mdash;') + '</td>'
+         + '<td>' + (b !== undefined ? b.toFixed(4) : '&mdash;') + '</td>'
+         + '<td style="color:' + col + '"><b>' + (ie !== null ? ie.toFixed(2) : '&mdash;') + '</b></td>'
+         + '<td style="color:#888">21.56</td><td style="color:#888">13.33&ndash;34.48</td></tr>';
+    });
+    document.getElementById('log').innerHTML = h + '</table>';
+  }
+  show('running&hellip;');
+
+  window.onSweepDone = function (E) {
+    var st = {};
+    try { st = JSON.parse(localStorage.getItem('ne_octet') || '{}'); } catch (e) {}
+    st[j.name] = Number(E);
+    try { localStorage.setItem('ne_octet', JSON.stringify(st)); } catch (e) {}
+    show('converged E=' + Number(E).toFixed(5));
+    document.title = 'NEOCTET DONE ' + j.name + ' E=' + Number(E).toFixed(5);
+    console.log('NEOCTET ' + j.name + ' E=' + Number(E).toFixed(6));
+  };
+  console.log('Ne octet job ' + ji + ': ' + j.name + ' nelec=' + j.nelec + ' rc=' + j.rc);
+})();
+</script>
+<script>
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function () {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

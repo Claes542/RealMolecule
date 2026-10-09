@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Ne: spherical core + 3D outer tetrahedron — dSCF IE</title></head>
+<body style="margin:0;background:#000;color:#eee;font-family:monospace">
+<div id="log" style="padding:16px;font-size:14px;line-height:1.7"></div>
+<script>
+// Ne ionization energy with the INNER shells spherically symmetric and the OUTER shell in 3D,
+// the core/valence interface a FREE BOUNDARY. No r_c anywhere; Z=10 is the only input.
+//
+// WHY THIS AND NOT THE OCTET. The 8-sector angular octet (atom_ne_octet.html) was run
+// 2026-10-09 and FAILED: 89-108 eV against NIST 21.56, above the whole 1D bracket, with no
+// r_c rescuing it (the trend decelerates to an asymptote near 67 eV). The over-binding is what
+// an imposed hard wall at r_c produces -- the valence may approach to r_c of a +8 kernel, where
+// -8/r_c is enormously deep. Here the core electrons are EXPLICIT and spherically averaged, so
+// the valence is excluded by non-overlap rather than by a guessed radius, and r_c disappears.
+//
+// CONSTRUCTION. Ne is 2+4+4 under balanced cap-4 filling, so the outer shell holds FOUR.
+//   domain 0      : charge 6 (the 2+4 inner shells, homogenised, spherically symmetric)
+//   domains 1..4  : unit charges, the outer tetrahedron, in 3D
+//   kernel        : +10 on domain 0's cell, full nuclear charge, no pseudopotential
+//   interface     : FREE -- R0 below is only a seed; the boundary moves to where the energy puts it
+//   IE            : E(outer 3) - E(outer 4), same core and same partition in both
+//
+// WHY THE dSCF IS TRUSTWORTHY DESPITE THE CHARGE-6 CORE. A multi-occupancy domain on
+// molecule.js carries no internal pair repulsion (15 pairs missing for charge 6). That defect is
+// IDENTICAL in Ne and Ne+, so it cancels exactly in the difference. And by Gauss the outer
+// electrons see -(10-6)/r = -4/r outside the core whatever its radial profile.
+// BUT: the missing core repulsion makes the core too compact, so the free boundary settles too
+// small and the outer shell sits closer in than it should. That biases toward over-binding, and
+// the settled R0 must NOT be quoted as a prediction of a shell radius.
+//
+// Reference: NIST Ne first IE = 21.56 eV.
+// 1D dSCF, same route, measured 2026-10-09: 2+4+4 -> 2+4+3 gives 13.33 eV; single 8-shell 34.48.
+(function () {
+  var q = new URLSearchParams(location.search);
+  var N   = parseInt(q.get('n') || '200', 10);
+  var scr = parseFloat(q.get('box') || '12');
+  var R0  = parseFloat(q.get('R0') || '1.00');     // SEED for the free core/valence interface, au
+  var ci  = Math.round(N / 2);
+  var h   = scr / N;
+
+  var jobs = [
+    { name: 'Ne_outer4',  nout: 4 },
+    { name: 'Ne+_outer3', nout: 3 }
+  ];
+  var ji = parseInt(q.get('job') || '0', 10);
+  if (ji >= jobs.length) {
+    document.getElementById('log').innerHTML = '<b style="color:#0f0">both jobs done</b>';
+    document.title = 'NECORE ALL DONE'; return;
+  }
+  var j = jobs[ji];
+
+  // domain 0 = core (charge 6, kernel +10); domains 1..4 = outer tetrahedron, unit charges
+  var Zel  = [6], Znuc = [10], rcA = [0];
+  for (var m = 0; m < 4; m++) { Zel.push(m < j.nout ? 1 : 0); Znuc.push(0); rcA.push(0); }
+
+  window.USER_NN      = N;
+  window.USER_SCREEN  = scr;
+  window.USER_ATOMS   = Zel.map(function () { return { i: ci, j: ci, k: ci, Z: 1, el: 'Ne' }; });
+  window.USER_Z       = Zel;
+  window.USER_Z_NUC   = Znuc;
+  window.USER_RC      = rcA;                 // no core radius anywhere
+  window.NO_NUC_REPULSION = true;
+  window.USER_DYNAMICS    = false;
+  window.NO_AUTO_DYNAMICS = true;
+  window.FREEZE_BOUNDARY  = (q.get('freeze') === '1');   // default FREE
+  window.USER_STEPS = 400000;
+  window.CONVERGENCE_THRESHOLD = parseFloat(q.get('conv') || '0.002');
+
+  // Radial carve for the core, tetrahedral sectors outside it. Done entirely in the label field,
+  // following the split=shell precedent in polarisability.html -- not via splitType.
+  window.CUSTOM_LABEL_INIT = function (S, hGrid) {
+    var lab = new Uint32Array(S * S * S), S2 = S * S, c = (S - 1) / 2;
+    var rg = R0 / hGrid;
+    // four cube-corner directions forming a tetrahedron
+    var T = [[1,1,1], [1,-1,-1], [-1,1,-1], [-1,-1,1]];
+    for (var i = 0; i < S; i++) for (var jj = 0; jj < S; jj++) {
+      var di = i - c, dj = jj - c, base = i * S2 + jj * S;
+      for (var k = 0; k < S; k++) {
+        var dk = k - c, r2 = di*di + dj*dj + dk*dk;
+        if (r2 < rg * rg) { lab[base + k] = 0; continue; }   // core
+        var best = 0, bd = -1e30;
+        for (var t = 0; t < 4; t++) {
+          var d = di*T[t][0] + dj*T[t][1] + dk*T[t][2];
+          if (d > bd) { bd = d; best = t; }
+        }
+        lab[base + k] = 1 + best;                            // outer sector
+      }
+    }
+    return lab;
+  };
+
+  function show(extra) {
+    var st = {}; try { st = JSON.parse(localStorage.getItem('ne_core_tetra') || '{}'); } catch (e) {}
+    var a = st['Ne_outer4'], b = st['Ne+_outer3'];
+    var ie = (a !== undefined && b !== undefined) ? (b - a) * 27.2114 : null;
+    var h2 = '<b style="color:#0cf">Ne &mdash; spherical core (charge 6) + 3D outer tetrahedron</b><br>'
+      + 'grid ' + N + '&sup3;, box ' + scr + ' au (h=' + h.toFixed(4) + '), interface '
+      + (window.FREEZE_BOUNDARY ? 'FROZEN' : 'FREE') + ', seed R0=' + R0 + ' au, <b>no r_c</b><br>'
+      + 'job ' + (ji + 1) + '/2: <b>' + j.name + '</b>, outer shell holds ' + j.nout
+      + (extra ? ' &mdash; ' + extra : '') + '<br><br>'
+      + 'E(Ne, outer 4) = ' + (a !== undefined ? a.toFixed(4) : '&mdash;') + ' Ha<br>'
+      + 'E(Ne+, outer 3) = ' + (b !== undefined ? b.toFixed(4) : '&mdash;') + ' Ha<br>'
+      + '<b style="color:' + (ie === null ? '#888' : (Math.abs(ie - 21.56) < 8 ? '#0f0' : '#f66')) + '">'
+      + 'IE = ' + (ie !== null ? ie.toFixed(2) + ' eV' : '&mdash;') + '</b>'
+      + ' &nbsp;<span style="color:#888">(NIST 21.56 | 1D dSCF 2+4+4 = 13.33 | 8-sector 3D octet FAILED at 89&ndash;108)</span>';
+    document.getElementById('log').innerHTML = h2;
+  }
+  show('running&hellip;');
+
+  window.onSweepDone = function (E) {
+    var st = {}; try { st = JSON.parse(localStorage.getItem('ne_core_tetra') || '{}'); } catch (e) {}
+    st[j.name] = Number(E);
+    if (typeof window.readWallPositions === 'function') {
+      window.readWallPositions().then(function (w) {
+        st[j.name + '_walls'] = w;
+        try { localStorage.setItem('ne_core_tetra', JSON.stringify(st)); } catch (e) {}
+      }).catch(function () {});
+    }
+    try { localStorage.setItem('ne_core_tetra', JSON.stringify(st)); } catch (e) {}
+    show('converged E=' + Number(E).toFixed(5));
+    document.title = 'NECORE DONE ' + j.name + ' E=' + Number(E).toFixed(5);
+    console.log('NECORE ' + j.name + ' E=' + Number(E).toFixed(6));
+  };
+  console.log('Ne core+tetra job ' + ji + ': ' + j.name + ' outer=' + j.nout + ' R0seed=' + R0);
+})();
+</script>
+<script>
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function () {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
