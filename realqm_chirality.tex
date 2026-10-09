@@ -4,6 +4,7 @@
 \usepackage{amsmath,amssymb}
 \usepackage[margin=1.15in]{geometry}
 \usepackage{booktabs}
+\usepackage{tikz}
 \usepackage{authblk}
 \usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
 
@@ -46,6 +47,32 @@ groups is tetrahedral; if the four groups differ, there are exactly two ways to 
 the two are mirror images that cannot be brought into coincidence by any rotation. Everything
 else --- optical rotation, enantiomeric excess, the handedness of sugars and amino acids --- is
 built on that.
+
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[scale=1.0]
+\foreach \dx/\lab/\sa/\sb in {0/{}/a/b, 5.4/{}/b/a} {
+  \begin{scope}[shift={(\dx,0)}]
+    \filldraw (0,0) circle (1.8pt);
+    \draw[thick] (0,0) -- (-1.05,0.78) node[above left]{\small $\sa$};
+    \draw[thick] (0,0) -- (1.05,0.78)  node[above right]{\small $\sb$};
+    \filldraw[black] (0,0) -- (0.74,-0.74) -- (0.94,-0.54) -- cycle;
+    \node at (1.12,-0.78) {\small $c$};
+    \draw[dashed] (0,0) -- (-0.88,-0.62);
+    \node at (-1.08,-0.78) {\small $d$};
+  \end{scope}
+}
+\draw[dash pattern=on 3pt off 2pt,gray] (2.7,-1.5) -- (2.7,1.5);
+\node[gray] at (2.7,1.75) {\small mirror};
+\end{tikzpicture}
+\caption{The whole of carbon chirality in one picture. A four-coordinate centre is
+tetrahedral; with four distinct substituents there are exactly two arrangements, related by
+reflection and not superimposable by any rotation. Bold wedge toward the reader, dashed
+away. Everything downstream --- optical rotation, enantiomeric excess, the handedness of
+sugars and amino acids --- rests on this.}
+\label{fig:enantiomers}
+\end{figure}
 
 The historical order is worth keeping in view, because it is the reverse of the usual telling.
 Van't Hoff and Le Bel proposed the tetrahedral carbon in 1874 \emph{in order to explain optical
@@ -105,6 +132,67 @@ the shell costs $6.000/R$ --- a factor $1.63$. The tetrahedron is not imposed to
 shape; it is what four mutually repelling non-overlapping densities do. The same rule gives the
 shell capacities of the periodic table, where the closed octet appears as $8 = 4{+}4$, two dual
 tetrahedra, and where there is no $s$, $p$ or $d$ anywhere in the construction.
+
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[scale=0.95]
+% ---------- (a) orbital route ----------
+\begin{scope}[shift={(0,0)}]
+  \node at (0,2.35) {\small\textbf{(a) orbital route: a repair}};
+  % three orthogonal p axes
+  \draw[->,thick] (0,0) -- (0,1.5)   node[above]{\scriptsize $p_z$};
+  \draw[->,thick] (0,0) -- (1.4,0)   node[right]{\scriptsize $p_x$};
+  \draw[->,thick] (0,0) -- (-0.85,-0.85) node[below left]{\scriptsize $p_y$};
+  \draw (0.33,0) arc (0:90:0.33);
+  \node at (0.52,0.52) {\scriptsize $90^\circ$};
+  \node[below] at (0.1,-1.35) {\scriptsize mutually orthogonal};
+\end{scope}
+\node at (2.5,0.2) {\large $\xrightarrow{\ \ sp^3\ \ }$};
+\node[align=center] at (2.5,-0.75) {\scriptsize hybridise\\[-2pt]\scriptsize $s$ with $p_x,p_y,p_z$};
+% target tetrahedron (wedge/dash convention)
+\begin{scope}[shift={(5.1,0)}]
+  \filldraw (0,0) circle (1.6pt);
+  \draw[thick] (0,0) -- (-1.0,0.75);
+  \draw[thick] (0,0) -- (1.0,0.75);
+  \filldraw[black] (0,0) -- (0.72,-0.70) -- (0.90,-0.52) -- cycle;
+  \draw[dashed] (0,0) -- (-0.85,-0.60);
+  \draw (0.28,0.21) arc (37:143:0.35);
+  \node at (0,0.72) {\scriptsize $109.47^\circ$};
+\end{scope}
+% ---------- (b) packing route ----------
+\begin{scope}[shift={(0,-4.0)}]
+  \node at (0,2.35) {\small\textbf{(b) packing route: direct}};
+  \draw[gray] (0,0) circle (1.25);
+  \foreach \a in {65,155,245,335} { \filldraw (\a:1.25) circle (2.6pt); }
+  \foreach \a in {65,155,245,335} {
+     \draw[->,gray] (\a:1.25) ++(\a+32:0.05) arc (\a+32:\a+58:0.22);
+     \draw[->,gray] (\a:1.25) ++(\a-32:0.05) arc (\a-32:\a-58:0.22);
+  }
+  \node[below] at (0,-1.75) {\scriptsize four unit charges, non-overlapping};
+  \node[below] at (0,-2.18) {\scriptsize $6.000/R$ smeared $\;\to\;$ $\mathbf{3.674/R}$ packed};
+\end{scope}
+\node at (2.5,-3.8) {\large $\xrightarrow{\ \ \ \ \ \ }$};
+\node[align=center] at (2.5,-4.6) {\scriptsize minimise Coulomb\\[-2pt]\scriptsize repulsion};
+\begin{scope}[shift={(5.1,-4.0)}]
+  \filldraw (0,0) circle (1.6pt);
+  \draw[thick] (0,0) -- (-1.0,0.75);
+  \draw[thick] (0,0) -- (1.0,0.75);
+  \filldraw[black] (0,0) -- (0.72,-0.70) -- (0.90,-0.52) -- cycle;
+  \draw[dashed] (0,0) -- (-0.85,-0.60);
+  \draw (0.28,0.21) arc (37:143:0.35);
+  \node at (0,0.72) {\scriptsize $109.47^\circ$};
+\end{scope}
+\end{tikzpicture}
+\caption{Two routes to the same tetrahedron. \textbf{(a)} The orbital account begins with
+three mutually orthogonal $p$ lobes at $90^\circ$ --- not a tetrahedron --- and recovers
+$109.47^\circ$ by hybridising them with $s$. The shape is restored after an angular
+decomposition removed it. \textbf{(b)} RealQM takes no such decomposition: four
+non-overlapping unit charges on a shell minimise their mutual repulsion by sitting
+tetrahedrally, $3.674/R$ against $6.000/R$ for the same charge smeared over the shell.
+The tetrahedron is the result, not the target.}
+\label{fig:routes}
+\end{figure}
 
 \paragraph{So the stereocentre is a packing result.} Chirality exists because four unit charges
 pack tetrahedrally around a kernel, and a tetrahedron with four distinct corners is chiral. No
