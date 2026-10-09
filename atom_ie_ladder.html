@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>IE as a one-electron dissociation curve</title></head>
+<body style="margin:0;background:#000;color:#eee;font-family:monospace">
+<div id="log" style="padding:16px;font-size:13px;line-height:1.7"></div>
+<script>
+window.onerror = function (m, u, l) {
+  var d = document.getElementById('log');
+  if (d) d.innerHTML = '<b style="color:#f66">ERROR line ' + l + ': ' + m + '</b>';
+  window._pageError = m + ' @' + l; return false;
+};
+</script>
+<script>
+// IONIZATION ENERGY AS A ONE-ELECTRON DISSOCIATION CURVE, at FIXED electron count.
+//
+// WHY. The dSCF route -- E(cation) - E(atom) from two separate solves -- is a difference ACROSS
+// compositions, and this project's own rule is that differences cancel their errors within one
+// composition but NOT across one. Measured dSCF ionization energies bear that out: C gives 0.26x
+// experiment, Ne 2+4+4 gives 0.62x, the 3D angular octet 4-5x. It also forces a choice of two
+// configurations, and at carbon the model's build-up and its energy functional disagree about the
+// configuration by 21.77 Ha.
+//
+// The EXPERIMENT does not work that way. An atomic IE is measured spectroscopically, as the
+// convergence limit of a Rydberg series -- transitions within ONE atom, extrapolated to where the
+// outermost electron is free. Same composition throughout.
+//
+// SO MIMIC THE MEASUREMENT. Keep the electron count fixed and push the outermost electron AWAY.
+//
+// R IS THE CORE DOMAIN'S OUTER RADIUS, i.e. the core/valence interface, swept OUTWARD. The
+// valence electron is excluded from r < R, so as R grows it is forced further from the kernel,
+// its binding weakens, and E(R) rises monotonically from the neutral value to a PLATEAU where
+// that electron is effectively free and the others have relaxed to the cation. Then
+//
+//     IE = E(plateau) - E(R_core)
+//
+// Sweeping the valence electron's OUTER edge instead would not work, and the first version of
+// this file made that mistake: enlarging a domain only relaxes a constraint, so E would be
+// monotonically non-increasing and would simply settle at the neutral ground state -- the
+// electron stays where it is bound and never leaves. It is the INNER boundary that ionizes.
+//
+// This also fits atom.js's structure, where shells are consecutive intervals with
+// Rmin[m] = Rmax[m-1]: growing the core's Rmax IS growing the valence's Rmin, so no empty shell
+// is needed. The core's density barely moves, being tightly bound near the nucleus, while its
+// nominal territory expands and squeezes the valence out.
+//
+// No second configuration, no change in domain count, and every systematic error -- coarse-grid
+// over-binding, the softening, the normalisation -- appears at BOTH ends of the difference and
+// cancels, which is the mechanism that makes E_bind = 2E(H) - E(H2) give 94% of D0 while the
+// absolute energies are 2-6% off.
+//
+// VALIDATION FIRST. Li (2+1, three shells) before C (2+2+2, six), because the record puts Li's
+// dSCF IE at +1.3% -- a case where the answer is known, so the METHOD can be checked rather than
+// trusted. Li IE = 5.3917 eV. Then carbon, where dSCF fails at 0.26x and C's configuration is
+// the last the build-up derives (configSource(Z<=6) = 'build-up').
+(function () {
+  var q = new URLSearchParams(location.search);
+  var el   = q.get('el') || 'Li';
+  var N    = parseInt(q.get('n') || '70', 10);
+  var scr  = parseFloat(q.get('box') || '16');
+  var R    = parseFloat(q.get('R') || '3.0');     // outer-electron confinement radius, au
+  var steps= parseInt(q.get('steps') || '4000', 10);
+
+  // Each atom.js shell carries ONE unit charge (it normalises to 1 regardless of `ne`), so a
+  // "2" is realised as two halfspace shells at the same radial extent -- the construction used
+  // in atom_Hminus_sph.html. Li = 2+1 -> 3 shells. C = 2+2+2 -> 6 shells.
+  // Rcore0 = the physical core radius (the R at which E should equal the neutral atom).
+  // Zeff values are only initial guesses for the relaxation.
+  var SYS = {
+    Li: { Z: 3, Rcore0: 0.90, nInnerPairs: 1, zIn: [3.0], zOut: 1.0, IE: 5.3917 },
+    C:  { Z: 6, Rcore0: 1.10, nInnerPairs: 2, zIn: [6.0, 4.0], zOut: 1.6, IE: 11.2603 }
+  }[el];
+  if (!SYS) { document.getElementById('log').innerHTML = 'unknown el'; return; }
+
+  // The inner pairs are packed inside r < R, sharing it; the LAST shell holds the electron being
+  // ionized and occupies [R, box/2]. R is swept.
+  var shells = [];
+  for (var p = 0; p < SYS.nInnerPairs; p++) {
+    var rp = R * (p + 1) / SYS.nInnerPairs;        // inner pairs subdivide the core region
+    shells.push({ ne: 1, Rmax: rp, Zeff: SYS.zIn[p], split: 'halfspace', halfIndex: 0, fixedW: true });
+    shells.push({ ne: 1, Rmax: rp, Zeff: SYS.zIn[p], split: 'halfspace', halfIndex: 1, fixedW: true });
+  }
+  shells.push({ ne: 1, Rmax: scr / 2, Zeff: SYS.zOut, fixedW: true });  // the ionizing electron, [R, box/2]
+
+  window.USER_Z_KERNEL = SYS.Z;
+  window.USER_SHELLS   = shells;
+  window.USER_NN       = N;
+  window.USER_SCREEN   = scr;
+  window.USER_STEPS    = steps;
+
+  window._ieCfg = { el: el, R: R, IE: SYS.IE, N: N, scr: scr, steps: steps,
+                    nsh: shells.length, Z: SYS.Z, KEY: 'ie_ladder_' + el };
+  console.log('IE ladder: ' + el + ' Z=' + SYS.Z + ' shells=' + shells.length + ' R=' + R);
+})();
+</script>
+
+<!-- atom.js must load AFTER the config and is driven by the page: it exposes
+     window._atom = { ..., physicsStep, ... } and publishes no energy global.
+     Same pattern as atom_Hminus.html. -->
+<script src="atom.js"></script>
+<script>
+(function () {
+  var c = window._ieCfg, a = window._atom;
+  var logEl = document.getElementById('log');
+  if (!a || typeof a.physicsStep !== 'function') {
+    logEl.innerHTML = '<b style="color:#f66">atom.js did not expose _atom.physicsStep</b>'; return;
+  }
+  function table(extra) {
+    var st = {}; try { st = JSON.parse(localStorage.getItem(c.KEY) || '{}'); } catch (e) {}
+    var rs = Object.keys(st).map(parseFloat).sort(function (x, y) { return x - y; });
+    var h = '<b style="color:#0cf">' + c.el + ' &mdash; IE as a one-electron dissociation curve</b><br>'
+      + 'Z=' + c.Z + ', ' + c.nsh + ' unit-charge shells, grid ' + c.N + '&sup3;, box ' + c.scr
+      + ' au (h=' + (c.scr / c.N).toFixed(4) + ')<br>'
+      + 'valence excluded from r &lt; R; R = core outer radius, swept OUT; electron count FIXED<br>'
+      + '<span style="color:#888">interface is a smoothed jump: W ramps over 2h and is floored at '
+      + '0.01, so neither density terminates at R &mdash; no continuity condition is imposed</span>'
+      + (extra ? '<br>' + extra : '') + '<br><br>'
+      + '<table style="border-collapse:collapse"><tr style="color:#0cf">'
+      + '<th style="padding:3px 10px;text-align:left">R (au)</th><th>E (Ha)</th></tr>';
+    rs.forEach(function (r) {
+      h += '<tr><td style="padding:3px 10px">' + r.toFixed(2) + '</td><td>'
+         + st[r.toFixed(2)].toFixed(5) + '</td></tr>'; });
+    h += '</table>';
+    if (rs.length >= 3) {
+      var Es = rs.map(function (r) { return st[r.toFixed(2)]; });
+      var E0 = Es[0], Ep = Es[Es.length - 1], ie = (Ep - E0) * 27.2114;
+      var flat = Math.abs(Es[Es.length - 1] - Es[Es.length - 2]);
+      h += '<br>E(R_core=' + rs[0].toFixed(2) + ') = ' + E0.toFixed(5)
+        + ' &nbsp; E(R=' + rs[rs.length - 1].toFixed(2) + ') = ' + Ep.toFixed(5)
+        + '<br><b style="color:' + (Math.abs(ie - c.IE) < 0.25 * c.IE ? '#0f0' : '#f66') + '">IE = '
+        + ie.toFixed(2) + ' eV</b> <span style="color:#888">(exp ' + c.IE + ', ratio '
+        + (ie / c.IE).toFixed(2) + 'x)</span><br><span style="color:'
+        + (flat < 2e-3 ? '#888' : '#fa0') + '">plateau check: last two differ by '
+        + flat.toFixed(5) + ' Ha' + (flat < 2e-3 ? '' : ' &mdash; NOT flat, R too small') + '</span>';
+    }
+    logEl.innerHTML = h;
+  }
+  table('starting R=' + c.R.toFixed(2) + '&hellip;');
+
+  var step = 0, prevE = 0, conv = 0, lastE = 0;
+  function iterate() {
+    for (var k = 0; k < 25; k++) { lastE = a.physicsStep().E; step++; }
+    if (step % 200 < 25) {
+      table('R=' + c.R.toFixed(2) + ' step ' + step + ' E=' + lastE.toFixed(5)
+            + ' (conv ' + conv + '/3)');
+      if (Math.abs(lastE - prevE) < 5e-4) conv++; else conv = 0;
+      prevE = lastE;
+      if (conv >= 3) return done('converged');
+    }
+    if (step < c.steps) requestAnimationFrame(iterate); else done('step cap');
+  }
+  function done(why) {
+    var st = {}; try { st = JSON.parse(localStorage.getItem(c.KEY) || '{}'); } catch (e) {}
+    st[c.R.toFixed(2)] = lastE;
+    try { localStorage.setItem(c.KEY, JSON.stringify(st)); } catch (e) {}
+    table('<b style="color:#0f0">R=' + c.R.toFixed(2) + ' ' + why + ': E=' + lastE.toFixed(5) + '</b>');
+    document.title = 'IELADDER DONE ' + c.el + ' R=' + c.R.toFixed(2) + ' E=' + lastE.toFixed(5);
+    console.log('IELADDER ' + c.el + ' R=' + c.R.toFixed(2) + ' E=' + lastE.toFixed(6) + ' (' + why + ')');
+  }
+  requestAnimationFrame(iterate);
+})();
+</script>
+</body></html>

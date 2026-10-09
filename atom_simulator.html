@@ -2120,6 +2120,10 @@ function initArrays() {
   if (ref) { D = ref.D; }
   else { D = Z > 12 ? 12 : (Z > 5 ? 7 : 5); }
   if (PK_MODE) { D = PK_rc + 12; }            // valence sits outside the soft core
+  // window.USER_D_BOX, if set, overrides every branch above -- including the observed[] table,
+  // which supplies D=5 for Li and clamped the ionization ladder before any plateau. Placed LAST
+  // deliberately: an explicit override must win over the config lookup, not sit in its else.
+  if (window.USER_D_BOX !== undefined) D = window.USER_D_BOX;
   cuspZ = PK_MODE ? 0 : Z;                     // no nuclear cusp in soft pseudo-kernel
 
   h = D / N;
