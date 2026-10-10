@@ -32,10 +32,30 @@
       return { i: Math.round(ci + dx*bond/h), j: Math.round(cj + dy*bond/h), k: Math.round(ck + dz*bond/h) };
     }
     var s2 = Math.sqrt(2), s6 = Math.sqrt(6);
-    var h1 = shift( 1,       0,       0      );                    // +x
-    var h2 = shift(-1/3,     2*s2/3,  0      );                    // xy-plane, +y
-    var h3 = shift(-1/3,    -s2/3,    s6/3   );                    // +z
-    var h4 = shift(-1/3,    -s2/3,   -s6/3   );                    // -z
+    // ?perturb=<deg>  SEED THE HYDROGENS OFF TETRAHEDRAL.
+    // Starting at 109.47 and staying there demonstrates nothing -- the answer is then the
+    // initial condition, and a symmetric seed is preserved by symmetry. To show the tetrahedron
+    // is a RESULT, displace the H's and let the nuclear dynamics relax them back. perturb=0
+    // recovers the original exact-tetrahedral seed.
+    var pert = parseFloat(new URLSearchParams(location.search).get('perturb'));
+    if (!isFinite(pert)) pert = 0;
+    var pr = pert * Math.PI / 180;
+    // squash two H's toward each other and splay the other two, preserving the C-H length:
+    // a pure angular perturbation, so any recovery is angular and not a bond-length artefact.
+    function rot(v, a) {   // rotate in the plane spanned by v and the squash axis
+      var n = Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
+      var cx = Math.cos(a), sx = Math.sin(a);
+      return [ (v[0]*cx - v[1]*sx), (v[0]*sx + v[1]*cx), v[2] ];
+    }
+    var d1 = rot([ 1,       0,      0    ],  pr);
+    var d2 = rot([-1/3,  2*s2/3,    0    ], -pr);
+    var d3 = rot([-1/3,   -s2/3,  s6/3   ],  pr);
+    var d4 = rot([-1/3,   -s2/3, -s6/3   ], -pr);
+    var h1 = shift(d1[0], d1[1], d1[2]);
+    var h2 = shift(d2[0], d2[1], d2[2]);
+    var h3 = shift(d3[0], d3[1], d3[2]);
+    var h4 = shift(d4[0], d4[1], d4[2]);
+    window._ch4seed = { perturb: pert, bond: bond, h: h };
 
     window.USER_NN = N;
     window.USER_SCREEN = scr;
@@ -67,5 +87,44 @@
   };
   s.onerror = function() { status.textContent += '\nFAILED to load mol_fast.js'; status.style.color = '#f44'; };
   document.body.appendChild(s);
+</script>
+
+<script>
+// Six H-C-H angles from the LIVE nuclear positions, so the tetrahedral angle is measured
+// as an output rather than read back from the seed. Exact tetrahedral = 109.4712 deg.
+(function () {
+  var q = new URLSearchParams(location.search);
+  if (q.get('angles') !== '1') return;
+  var seed = window._ch4seed || {};
+  function angles() {
+    // mol_fast.js publishes window._nuclei (objects with grid indices i,j,k) -- there is no
+    // nucPos array. Angles are scale-free so grid units need no conversion.
+    var P = window._nuclei;
+    if (!P || P.length < 5) return null;
+    var c = P[0], out = [];
+    function v(a) { return [P[a].i-c.i, P[a].j-c.j, P[a].k-c.k]; }
+    for (var a = 1; a <= 4; a++) for (var b = a+1; b <= 4; b++) {
+      var u = v(a), w = v(b);
+      var d = u[0]*w[0]+u[1]*w[1]+u[2]*w[2];
+      var nu = Math.sqrt(u[0]*u[0]+u[1]*u[1]+u[2]*u[2]);
+      var nw = Math.sqrt(w[0]*w[0]+w[1]*w[1]+w[2]*w[2]);
+      out.push(Math.acos(Math.max(-1, Math.min(1, d/(nu*nw)))) * 180/Math.PI);
+    }
+    return out;
+  }
+  setInterval(function () {
+    var a = angles(); if (!a) return;
+    var mean = a.reduce(function(x,y){return x+y;},0)/a.length;
+    var dev  = Math.max.apply(null, a.map(function(x){return Math.abs(x-109.4712);}));
+    var rec = { perturb: seed.perturb, angles: a.map(function(x){return +x.toFixed(2);}),
+                mean: +mean.toFixed(3), maxDev: +dev.toFixed(3), E: window._E,
+                step: window._tStep,
+                pos: window._nuclei.slice(0,5).map(function(n){
+                       return [+n.i.toFixed(2), +n.j.toFixed(2), +n.k.toFixed(2)]; }) };
+    try { localStorage.setItem('ch4_angles_p' + seed.perturb, JSON.stringify(rec)); } catch (e) {}
+    document.title = 'CH4 p=' + seed.perturb + ' mean=' + mean.toFixed(2)
+                   + ' maxdev=' + dev.toFixed(2);
+  }, 2000);
+})();
 </script>
 </body></html>
