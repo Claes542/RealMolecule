@@ -3285,6 +3285,54 @@ async function initGPU() {
       }
       return out;
     };
+    // DENSITY-WEIGHTED per-domain centroid. readDomainCentroids above returns the centroid of
+    // the CELLS carrying each label, unweighted -- the partition's geometry. For a domain shaped
+    // as a wedge from r_c out to the box face, that centroid is dominated by the far-field vacuum:
+    // measured at 4.1-4.6 au for a 12 au box while the charge itself sat at 1-2 au. Reading
+    // partition geometry as charge arrangement is then badly wrong, and it is wrong in a way that
+    // looks plausible -- angles come out near 109.5 because four directions summing to zero force
+    // a mean cosine of -1/3 whatever the arrangement.
+    //
+    // This returns, per domain, the centroid of its CHARGE: sum over cells of label d of
+    // psi^2 * r, divided by sum of psi^2. psi comes from U_buf[cur], which holds it on every
+    // path (rhoTotalBuf does not -- computeRho sits in the else branch of the direct-Poisson
+    // switch and so never runs on the verified USER_DIRECT_POTHER path). `q` is returned per
+    // domain as the check: each should come out at its USER_Z.
+    window.readDomainChargeCentroids = async function () {
+      const rbL = device.createBuffer({ size: bs, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+      const rbU = device.createBuffer({ size: bs, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+      const enc = device.createCommandEncoder();
+      enc.copyBufferToBuffer(labelBuf,   0, rbL, 0, bs);
+      enc.copyBufferToBuffer(U_buf[cur], 0, rbU, 0, bs);
+      device.queue.submit([enc.finish()]);
+      await rbL.mapAsync(GPUMapMode.READ);
+      await rbU.mapAsync(GPUMapMode.READ);
+      const lab = new Uint32Array(rbL.getMappedRange().slice(0));
+      const psi = new Float32Array(rbU.getMappedRange().slice(0));
+      rbL.unmap(); rbL.destroy(); rbU.unmap(); rbU.destroy();
+      const sx = new Float64Array(NELEC), sy = new Float64Array(NELEC),
+            sz = new Float64Array(NELEC), sw = new Float64Array(NELEC);
+      const S2 = S * S, c = (S - 1) / 2, h3 = hGrid * hGrid * hGrid;
+      for (let i = 0; i < S; i++) for (let j = 0; j < S; j++) {
+        const base = i * S2 + j * S;
+        for (let k = 0; k < S; k++) {
+          const id = base + k, d = lab[id];
+          if (d >= NELEC) continue;
+          const w = psi[id] * psi[id];
+          if (!(w > 0)) continue;
+          sx[d] += w * (i - c); sy[d] += w * (j - c); sz[d] += w * (k - c); sw[d] += w;
+        }
+      }
+      const out = [];
+      for (let d = 0; d < NELEC; d++) {
+        out.push(sw[d] > 0 ? { d: d, q: sw[d] * h3,
+                               x: sx[d] / sw[d] * hGrid,
+                               y: sy[d] / sw[d] * hGrid,
+                               z: sz[d] / sw[d] * hGrid }
+                           : { d: d, q: 0, x: NaN, y: NaN, z: NaN });
+      }
+      return out;
+    };
     W_buf = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     PotherBuf = device.createBuffer({ size: bs, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     PselfScratchBuf = device.createBuffer({ size: bs, usage });

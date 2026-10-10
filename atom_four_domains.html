@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Four unit domains on a +4 kernel — tetrahedral or square?</title></head>
+<body style="margin:0;background:#000;color:#eee;font-family:monospace">
+<div id="log" style="padding:16px;font-size:13px;line-height:1.7"></div>
+<script>
+window.onerror = function (m, u, l) {
+  var d = document.getElementById('log');
+  if (d) d.innerHTML = '<b style="color:#f66">ERROR line ' + l + ': ' + m + '</b>';
+  window._pageError = m + ' @' + l; return false;
+};
+</script>
+<script>
+// DO FOUR NON-OVERLAPPING UNIT DENSITIES SETTLE TETRAHEDRALLY?
+//
+// WHY THIS EXISTS. The chirality argument rests on four charges packing tetrahedrally rather than
+// square-planar. The energies usually quoted for that -- 3.674/R against 3.828/R -- are six
+// pairwise Coulomb terms between four POINT charges at fixed radius: the N=4 Thomson problem,
+// available since 1904, identical in any theory containing Coulomb repulsion, and precisely
+// VSEPR's argument made quantitative. They are NOT a result of this model. What would be a result
+// of this model is four EXTENDED non-overlapping densities, carrying kinetic energy, with FREE
+// interfaces and no angular structure imposed, settling tetrahedrally from a seed that is neither
+// tetrahedral nor square. That is what this page runs.
+//
+// THE SEED MUST BE NEITHER. A tetrahedral seed is preserved by symmetry and demonstrates nothing;
+// a square seed likewise. ?skew= rotates the four directions away from tetrahedral by that many
+// degrees in alternating senses, giving a lopsided start with no symmetry to preserve. The test is
+// whether the partition migrates to 109.47 on its own.
+//
+// WHAT IS AND IS NOT CONSTRAINED. r_c is common to all four domains and therefore cannot bias the
+// ANGLES -- it fixes how close the charge may come to the kernel, radially, identically for each.
+// The angular arrangement is unconstrained: the boundaries are free (no FREEZE_BOUNDARY) and
+// molecule.js can relocate a domain, unlike mol_fast.
+//
+// READOUT. window.readDomainChargeCentroids (added to molecule.js for this) returns, per domain,
+// the centroid of its CHARGE -- sum psi^2 r over the cells of that label, divided by sum psi^2.
+// The unweighted cell centroid of readDomainCentroids will not do: each domain is a wedge running
+// from r_c to the box face, so its cell centroid sits in the far-field vacuum (4.1-4.6 au on a
+// 12 au box, against charge at 1-2 au) and reports wedge geometry, not charge arrangement.
+// The six mutual angles between the four CHARGE centroid directions are the answer:
+//     tetrahedral   all six at 109.47
+//     square planar four at 90, two at 180
+(function () {
+  var q = new URLSearchParams(location.search);
+  var N    = parseInt(q.get('n') || '120', 10);
+  var scr  = parseFloat(q.get('box') || '12');
+  var rc   = parseFloat(q.get('rc') || '0.5');
+  var skew = parseFloat(q.get('skew') || '25');   // degrees off tetrahedral, alternating
+  var R0   = parseFloat(q.get('R0') || '1.6');    // seed radius of the four domain centres, au
+  var ci   = Math.round(N / 2), h = scr / N;
+
+  // four tetrahedral directions, then skewed so the seed has no symmetry left
+  var s2 = Math.sqrt(2), s6 = Math.sqrt(6);
+  var T = [[ 1,      0,      0    ],
+           [-1/3, 2*s2/3,    0    ],
+           [-1/3,  -s2/3,  s6/3   ],
+           [-1/3,  -s2/3, -s6/3   ]];
+  var sk = skew * Math.PI / 180;
+  function rotz(v, a) { var c = Math.cos(a), s = Math.sin(a);
+    return [v[0]*c - v[1]*s, v[0]*s + v[1]*c, v[2]]; }
+  function roty(v, a) { var c = Math.cos(a), s = Math.sin(a);
+    return [v[0]*c + v[2]*s, v[1], -v[0]*s + v[2]*c]; }
+  var D = [ rotz(T[0],  sk), roty(T[1], -sk), rotz(T[2], -sk*0.6), roty(T[3], sk*1.4) ];
+  // normalise
+  D = D.map(function (v) { var n = Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
+                           return [v[0]/n, v[1]/n, v[2]/n]; });
+
+  window.USER_NN      = N;
+  window.USER_SCREEN  = scr;
+  window.USER_ATOMS   = [0,1,2,3].map(function () { return { i: ci, j: ci, k: ci, Z: 1, el: 'C' }; });
+  window.USER_Z       = [1,1,1,1];
+  window.USER_Z_NUC   = [1,1,1,1];        // sums to the +4 pseudo-kernel at the centre cell
+  window.USER_RC      = [rc,rc,rc,rc];    // common, radial only -- cannot bias angles
+  window.NO_NUC_REPULSION = true;
+  window.USER_DYNAMICS    = false;
+  window.NO_AUTO_DYNAMICS = true;
+  window.FREEZE_BOUNDARY  = (q.get('freeze') === '1');   // default FREE
+  window.USER_STEPS = 300000;
+  window.CONVERGENCE_THRESHOLD = parseFloat(q.get('conv') || '0.0005');
+
+  // Label by nearest SKEWED direction -- no splitType, so nothing imposes a symmetric partition.
+  window.CUSTOM_LABEL_INIT = function (S, hGrid) {
+    var lab = new Uint32Array(S*S*S), S2 = S*S, c = (S-1)/2;
+    for (var i = 0; i < S; i++) for (var j = 0; j < S; j++) {
+      var di = i-c, dj = j-c, base = i*S2 + j*S;
+      for (var k = 0; k < S; k++) {
+        var dk = k-c, best = 0, bd = -1e30;
+        for (var t = 0; t < 4; t++) {
+          var d = di*D[t][0] + dj*D[t][1] + dk*D[t][2];
+          if (d > bd) { bd = d; best = t; }
+        }
+        lab[base+k] = best;
+      }
+    }
+    // cell census: an empty label gives a 0/0 centroid, i.e. NaN, which is how the first
+    // attempt failed silently. Record the counts so the cause is visible.
+    var cnt = [0,0,0,0];
+    for (var m = 0; m < lab.length; m++) cnt[lab[m]]++;
+    window._fdCells = cnt;
+    console.log('label census: ' + cnt.join(' / ') + '  (all four must be non-zero)');
+    return lab;
+  };
+
+  // readDomainCentroids returns one OBJECT per domain, {d, n, x, y, z} -- not an [x,y,z]
+  // array. Indexing it as an array gives undefined on every component, which is how the
+  // second attempt mistook good data for a degenerate read.
+  function vec(e) { return (e && e.x !== undefined) ? [e.x, e.y, e.z] : e; }
+  function sixAngles(cent) {
+    var out = [];
+    for (var a = 0; a < 4; a++) for (var b = a+1; b < 4; b++) {
+      var u = vec(cent[a]), w = vec(cent[b]);
+      var d = u[0]*w[0]+u[1]*w[1]+u[2]*w[2];
+      var nu = Math.hypot(u[0],u[1],u[2]), nw = Math.hypot(w[0],w[1],w[2]);
+      if (nu < 1e-9 || nw < 1e-9) return null;
+      out.push(Math.acos(Math.max(-1,Math.min(1,d/(nu*nw)))) * 180/Math.PI);
+    }
+    return out;
+  }
+  var seedAng = sixAngles(D);
+
+  window._fdCfg = { N:N, scr:scr, rc:rc, skew:skew, R0:R0, seedAng:seedAng,
+                    KEY:'four_domains_s'+skew };
+  console.log('four domains: N=' + N + ' rc=' + rc + ' skew=' + skew
+              + ' seed angles ' + seedAng.map(function(x){return x.toFixed(1);}).join(','));
+
+  function show(extra, ang) {
+    var c = window._fdCfg;
+    var h2 = '<b style="color:#0cf">Four unit domains on a +4 kernel &mdash; tetrahedral or square?</b><br>'
+      + 'grid ' + c.N + '&sup3;, box ' + c.scr + ' au, r_c=' + c.rc
+      + ' (common, radial only), interface <b>FREE</b><br>'
+      + 'seed skewed ' + c.skew + '&deg; off tetrahedral &mdash; no symmetry to preserve<br>'
+      + '<span style="color:#888">seed angles: ' + c.seedAng.map(function(x){return x.toFixed(1);}).join(', ')
+      + '</span><br>'
+      + '<span style="color:#888">tetrahedral = six &times; 109.47 &nbsp;|&nbsp; square planar = four &times; 90, two &times; 180</span>'
+      + (extra ? '<br>' + extra : '');
+    if (ang) {
+      var mean = ang.reduce(function(a,b){return a+b;},0)/6;
+      var devT = Math.max.apply(null, ang.map(function(x){return Math.abs(x-109.4712);}));
+      h2 += '<br><br>measured angles: <b>' + ang.map(function(x){return x.toFixed(2);}).join(', ')
+         + '</b><br>mean ' + mean.toFixed(3) + '&deg;, max deviation from tetrahedral '
+         + '<b style="color:' + (devT < 8 ? '#0f0' : '#f66') + '">' + devT.toFixed(2) + '&deg;</b>';
+    }
+    document.getElementById('log').innerHTML = h2;
+  }
+  show('initialising&hellip;');
+
+  var poll = setInterval(function () {
+    // Prefer the CHARGE centroid: the cell centroid is dominated by far-field vacuum (measured
+    // at 4.1-4.6 au on a 12 au box while the charge sat at 1-2 au), so it reports wedge geometry
+    // rather than where the electrons are.
+    var fn = window.readDomainChargeCentroids || window.readDomainCentroids;
+    if (typeof fn !== 'function') return;
+    fn().then(function (cent) {
+      if (!cent || cent.length < 4) return;
+      var bad = cent.slice(0,4).some(function (e) {
+        var v = vec(e);
+        return !v || !isFinite(v[0]) || !isFinite(v[1]) || !isFinite(v[2])
+               || Math.hypot(v[0],v[1],v[2]) < 1e-6; });
+      if (bad) {
+        window._fdDiag = { centroids: cent, cells: window._fdCells };
+        show('<b style="color:#f66">centroid read is degenerate</b> &mdash; cells per label: '
+             + (window._fdCells || ['?']).join(' / ')
+             + '<br><span style="color:#888">raw: ' + JSON.stringify(cent).slice(0,160)
+             + '</span>');
+        document.title = 'FOURDOM DEGENERATE';
+        return;
+      }
+      var ang = sixAngles(cent);
+      if (!ang || ang.some(function (x) { return !isFinite(x); })) return;
+      var mean = ang.reduce(function(a,b){return a+b;},0)/6;
+      var devT = Math.max.apply(null, ang.map(function(x){return Math.abs(x-109.4712);}));
+      var rec = { skew: window._fdCfg.skew, seedAng: window._fdCfg.seedAng,
+                  angles: ang.map(function(x){return +x.toFixed(3);}),
+                  mean: +mean.toFixed(3), devTet: +devT.toFixed(3),
+                  centroids: cent, E: window._E };
+      try { localStorage.setItem(window._fdCfg.KEY, JSON.stringify(rec)); } catch (e) {}
+      show('E = ' + (window._E !== undefined ? Number(window._E).toFixed(5) : '--'), ang);
+      document.title = 'FOURDOM skew=' + window._fdCfg.skew + ' devTet=' + devT.toFixed(2);
+    }).catch(function () {});
+  }, 20000);
+})();
+</script>
+<script>
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function () {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
