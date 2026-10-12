@@ -501,7 +501,8 @@ than borrowing it.
 
 \paragraph{Spectra and valence quantities.} Excited-state spectra are computed for the alkalis,
 the alkaline earths and helium, including the helium ground-state-to-orthohelium excitation, and
-ionization energies for lithium and fluorine with their ions. Electronegativity comes out
+first ionization energies for the first ten elements, correct in sign throughout and to a mean
+$18\%$ in magnitude (Section~\ref{sec:attrib}). Electronegativity comes out
 natively: Allen's configuration energy~\cite{Allen1989} reproduces the ordering across period 2 exactly.
 
 \subsection{Molecules}
@@ -615,10 +616,11 @@ this, as Section~\ref{sec:cannot} argued: a discrepancy is charged to the functi
 because no computation of the equation exists to charge it to. What follows is the opposite case,
 carried through to its conclusion, and the conclusion went against us.
 
-\paragraph{The discrepancy, and a bracket.} Ionization energies come out badly in the radial
-solver. Beyond lithium the valence charge is too weakly bound, and by $Z \approx 14$ it is unbound
-altogether; the material was withdrawn from the companion article on atoms for that reason. Whether
-this indicts the model or a reduction of it is decided by a measurement rather than by argument. The
+\paragraph{The discrepancy, and a bracket.} Ionization energies come out badly \emph{in the
+radial solver}. Beyond lithium the valence charge is too weakly bound, and by $Z \approx 14$ it is
+unbound altogether; the material was withdrawn from the companion article on atoms for that reason.
+Whether this indicts the model or a reduction of it is decided by a measurement rather than by
+argument --- and, as the next paragraph shows, the reduction is where it belongs. The
 radial solver has no angular coordinate, so it cannot represent the octet as the model describes
 it --- $4{+}4$ at one radius, two dual tetrahedra angularly separated --- and can represent only
 two alternatives. Computed for neon by the same $\Delta$SCF route throughout, so that the
@@ -632,9 +634,79 @@ comparison is like for like:
 \]
 The measured value lies inside, a factor $1.6$ either side, and the same bracketing holds for every
 noble gas from neon to radon. Two cross-checks confirm the solver rather than the arithmetic: the
-radial $4{+}4$ total of $-131.83$~Ha reproduces Table~\ref{tab:atoms}'s $-131.731$, and the single
+radial $4{+}4$ total of $-131.83$~Ha reproduces the $-131.731$ tabulated in the companion article on atoms~\cite{Johnson-atoms}, and the single
 eight-shell over-binds by $11\%$, inside the $9$--$22\%$ range recorded for compacting an octet onto
 one shell.
+
+\paragraph{The same difference with the valence free in three dimensions.} The radial reduction is
+not the model. Give the valence angular freedom on a three-dimensional grid over homogenised inner
+shells --- with the configurations the model itself supplies and the same $\Delta$SCF difference
+throughout --- and the first ionization energies of the first ten elements come out with the correct
+sign everywhere and a mean absolute error of $18\%$ (Hartree):
+
+\begin{center}
+\begin{tabular}{llrrr}
+\toprule
+ & neutral $\to$ cation & 3D $\Delta$SCF & measured & ratio \\
+\midrule
+He & $2 \to 1$                      & 0.90  & 0.9036 & 1.00 \\
+Li & $2{+}1 \to 2$                  & 0.198 & 0.1981 & 1.00 \\
+Be & $2{+}2 \to 2{+}1$              & 0.43  & 0.3425 & 1.26 \\
+B  & $2{+}2{+}1 \to 2{+}2$          & 0.20  & 0.3049 & 0.66 \\
+C  & $2{+}4 \to 2{+}2{+}1$          & 0.40  & 0.4138 & 0.97 \\
+N  & $2{+}2{+}3 \to 2{+}4$          & 0.67  & 0.5341 & 1.25 \\
+O  & $2{+}4{+}2 \to 2{+}4{+}1$      & 0.53  & 0.5001 & 1.06 \\
+F  & $2{+}4{+}3 \to 2{+}4{+}2$      & 0.84  & 0.6403 & 1.31 \\
+Ne & $2{+}4{+}4 \to 2{+}4{+}3$      & 1.20  & 0.7925 & 1.51 \\
+Na & $2{+}4{+}4{+}1 \to 2{+}4{+}4$  & 0.19  & 0.1886 & 1.01 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Lithium, sodium, carbon, oxygen and helium land within a few per cent; the error grows across the
+row and is worst at fluorine and neon, where the model over-binds the valence by half. That is a
+graded, locatable failure rather than a collapse, and it places the radial solver's unbinding where
+it belongs: in the loss of the \emph{valence}'s angular freedom. The core may be homogenised with
+little cost --- it must be, since a uniform grid cannot resolve a $1s$ shell at $a_0/Z$ and a
+valence shell at $8$~a.u.\ simultaneously --- but the outermost shell may not. A second construction avoids the difference altogether. Screen the core to its net
+charge, give the valence its own domain outside a radius $R$, and the ionization energy is
+$E_{\mathrm{val}}(n) - E_{\mathrm{val}}(n-1)$ with the core energy cancelling identically rather
+than numerically; at $R=0$ and kernel $+2$ this returns helium's $0.903$ against a measured
+$0.9036$, with nothing supplied. Its limitation is the converse of a parameter: $R$ must be given,
+and there is no quantity inside the radial model that supplies it. The core--valence interface of a
+space-filling radial partition is not the screening radius --- the first is a property of
+homogenising each shell onto a sphere, the second is where the enclosed charge leaves the valence
+seeing net $+1$ --- and the two do not track. Taken from the interface, $R$ gives lithium
+$0.1968$ against $0.1981$ but sodium only half its value, the interface having grown to $5.38$~a.u.\
+where the screening radius must be near $2.1$. The interfaces grow by roughly $2$~a.u.\ per shell
+($1.90$, $4.01$, $5.38$, $9.18$, $9.42$ for one through five core shells) where physical core radii
+saturate near $2$--$3$: a partition that gives every shell a nearly fixed radial width, rather than
+contracting it with the charge that shell sees, misplaces every interface past the first. So $R$ is
+properly fitted in this construction, and the parameter-free route to an ionization energy is not to
+predict $R$ but to dispense with the pseudo-kernel altogether, as the table above does.
+
+\paragraph{What a fitted length can still be held to.} Not every fitted parameter carries the same
+weight, and the distinction is worth making precisely because this article turns on it. A parameter
+is uninformative when it is fitted to the same observable it is then said to predict: five radii
+chosen to reproduce five ionization energies assert nothing. The construction above can be put in a
+stronger position. Remove the outer cutoff --- solved on $R<r<\infty$ the problem is well posed and
+$R$ is the \emph{only} length in it --- and ask not for a radius per atom but for one constant
+across a column. Against Shannon's six-coordinate crystal radii~\cite{Shannon1976}, the $R$ that
+reproduces each measured first ionization energy is a fixed fraction of the ion's measured radius:
+\[
+R = 0.439\,r_{\mathrm{ion}} \quad\Longrightarrow\quad
+\mathrm{Li}\ 1.04,\quad \mathrm{Na}\ 0.97,\quad \mathrm{K}\ 1.01,\quad
+\mathrm{Rb}\ 1.00,\quad \mathrm{Cs}\ 1.02
+\]
+as ratios of computed to measured, all five alkalis within $4\%$ and four within $2\%$ from a single
+number. On Shannon's effective scale the constant becomes $0.484$ and the agreement is comparable,
+so the result does not depend on the radius convention --- only the constant moves with it. One
+parameter standing against five observables is a claim that can fail, and it is the form in which
+this construction is worth reporting: the model supplies the function $\mathrm{IE}(R)$, and given a
+measured ionic radius that function returns the ionization energy. What it does not do is produce
+the radius, so this is a correlation between two measured quantities mediated by the model rather
+than a prediction from $Z$ alone --- which is exactly why the all-electron route of the preceding
+table, needing no $R$ at all, carries the parameter-free claim and this one does not.
 
 \paragraph{The prediction.} The physical arrangement is geometrically intermediate between the two
 the reduction admits, so a three-dimensional angular octet should land inside the bracket, near
@@ -654,20 +726,27 @@ $-41.8$~Ha where it should be about $-35$.
 \paragraph{So the attribution fails, and one escape route closes with it.} The bracket survives as
 a measured fact; the inference drawn from it does not. It might be supposed that the three
 configurations involved were simply chosen badly --- and at neon they are supplied, by the balanced
-filling rule rather than derived. But the same $\Delta$SCF route gives carbon's ionization energy as
-$0.26\times$ the measured value, and carbon is the last element whose configuration the model's own
-build-up \emph{derives}. There is no hand-chosen configuration to blame there.
+filling rule rather than derived. But the octet construction's failure is not a configuration
+artefact: the $+8$ pseudo-kernel over-binds the valence sector to $-55.7$, $-47.5$ and $-41.8$~Ha
+where it should be about $-35$, at every $r_c$ tried. What the three-dimensional all-electron result
+above does show is that the \emph{radial} solver's unbinding is a property of that reduction: carbon,
+the last element whose configuration the model's own build-up \emph{derives}, comes out at
+$0.26\times$ the measured value radially and $0.97\times$ in three dimensions, with the same
+$\Delta$SCF difference and the same derived configuration in both.
 
-\paragraph{What this costs, and what it shows.} The claim that this model's failures are
-attributable survives only in a weakened form: this failure is attributable, but to the model rather
-than to a reduction of it. A likely seat for it emerged in the course of the test and is worth
-recording as the open problem it is. At carbon the build-up derives $2{+}2{+}2$ while the energy
-functional, minimised over configurations, prefers a single six-shell $21.77$~Ha lower and $56\%$
-wrong. An ionization energy is a difference of two quantities that each ought to be a minimum over
-configurations; if the minimisation points elsewhere, no difference built from that functional can
-be trusted. Total energies survive precisely because the configuration is supplied --- they are
-evaluations at a given point, not minimisations --- so good totals and bad differences are one
-defect seen from two sides.
+\paragraph{What this costs, and what it shows.} Two attributions were at issue and they come apart.
+The specific one --- that a three-dimensional angular octet would land inside the bracket --- is
+refuted, and no reading of the result rescues it. The general one, that a failure of this model can
+be charged to a reduction rather than to the model, survives and is now demonstrated rather than
+asserted: the radial solver's unbinding is the reduction's, since the same difference computed in
+three dimensions with the same derived configuration recovers carbon to $3\%$. What remains
+genuinely open is narrower and sharper than either. At carbon the build-up derives $2{+}2{+}2$ while
+the energy functional, minimised over configurations, prefers a single six-shell $21.77$~Ha lower
+and $56\%$ wrong. An ionization energy is a difference of two quantities that each ought to be a
+minimum over configurations; if the minimisation points elsewhere, no difference built from that
+functional can be trusted. Total energies survive precisely because the configuration is supplied
+--- they are evaluations at a given point, not minimisations --- so good totals and bad differences
+are one defect seen from two sides.
 
 We report this at length, rather than removing it, because it is what the argument of this article
 looks like when it runs. A prediction was stated, a reference value not in dispute was chosen, the
@@ -783,9 +862,11 @@ here, each with a reference value not in dispute and each capable of going again
 first has already been run and the model lost it; the other two are open.
 
 \paragraph{Neon's ionization energy --- run, and lost.} This test is no longer outstanding. It is
-reported in Section~\ref{sec:attrib}: the three-dimensional angular octet gives $89$--$108$~eV
-against a measured $21.56$ and a bracket of $13.33$--$34.48$, so the attribution it was meant to
-confirm is refuted. It is listed here because the sequence matters more than the outcome --- a
+reported in Section~\ref{sec:attrib}: the three-dimensional angular octet on a $+8$ pseudo-kernel
+gives $89$--$108$~eV against a measured $21.56$ and a bracket of $13.33$--$34.48$, so the
+attribution it was meant to confirm is refuted. The all-electron difference in three dimensions is a
+separate construction and does not fail this way --- it gives neon $1.51\times$ the measured value,
+the worst of the first ten elements but the right sign and order. It is listed here because the sequence matters more than the outcome --- a
 prediction stated, a reference not in dispute, a calculation performed, a verdict accepted. The two
 tests below remain open, and nothing about them is more certain than this one was.
 
@@ -906,6 +987,10 @@ one thing the claim examined in Section~\ref{sec:cannot} cannot offer.
 
 \bibitem{Jumper2021} J.~Jumper \emph{et al.}, \emph{Highly accurate protein structure prediction
   with AlphaFold}, Nature \textbf{596} (2021) 583--589.
+
+\bibitem{Shannon1976} R.~D.~Shannon, \emph{Revised effective ionic radii and systematic
+studies of interatomic distances in halides and chalcogenides}, Acta Crystallogr.\ A
+\textbf{32} (1976) 751--767.
 
 \bibitem{Johnson-RealQM} C.~Johnson, \emph{Real Quantum Mechanics}, submitted to
   \emph{Annales de la Fondation Louis de Broglie} (2026).
