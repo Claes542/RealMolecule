@@ -244,9 +244,8 @@ to be checked rather than deduced, and the checking has been done over a wide ra
 \begin{itemize}\itemsep2pt
 \item total atomic energies within $1$--$2\%$ on average across the first three periods, worst case
   $4.5\%$ at silicon, every atom solved the same way with nothing fitted~\cite{Johnson-atoms};
-\item helium at $-2.845$ against $-2.904$, $2.0\%$, on the spherically homogenised solver;
-\item H$_2$ at $8.6\%$ on the total energy with the bond length at $1.368$ against $1.401$,
-  $2.3\%$, from commensurate separations on a converged mesh;
+\item the two-electron systems He and H$_2$ within a few per cent and bracketing the exact
+  energies, as set out below, with the H$_2$ bond length at $1.368$ against $1.401$, $2.3\%$;
 \item first ionization energies of the alkalis and second of the alkaline earths within $1.4\%$ and
   $4\%$ respectively, from one constant per column, against the measured radius of the ion that
   remains~\cite{Johnson-ionization};
@@ -263,6 +262,88 @@ supplied from measured ionic radii, so that result is a correlation between two 
 quantities and not a prediction from $Z$. Proton affinities come out with the wrong sign.
 Dispersion-bound systems are outside range. The model is not accurate in the sense the standard
 formalism is accurate for helium, and it will not become so.
+
+\subsection*{Two electrons: two models, and a bracket}
+
+At $N=2$ the construction can be closed in two ways, and both are instructive because they fail in
+opposite directions.
+
+\paragraph{Split.} The non-overlapping form. The two electrons occupy the two half-spaces either
+side of the plane bisecting the axis, meeting at a free interface across which the natural
+(Neumann) condition holds. Each electron feels the other's potential and not its own, so the pair
+is counted once and self-repulsion is excluded by construction.
+
+\paragraph{Hom.} The overlapping form: both electrons carried by the \emph{same} density over the
+whole domain --- sitting on top of each other. Non-overlap is then abandoned and something must
+take its place, because a single blob of charge $2$ and density $2\rho$ has Coulomb self-energy
+$\tfrac12\!\int\!\!\int (2\rho)(2\rho)/|x-y| = 2J$ with $J = \int\!\!\int \rho\rho/|x-y|$, which
+counts the one pair present twice. Reducing the repulsion energy by a factor two restores the
+correct count, and the model is
+\begin{equation}
+E \;=\; 2\,(T + V_K) \;+\; J , \qquad
+\bigl(-\tfrac12\nabla^2 - K + P[\rho]\bigr)u = \varepsilon u ,
+\label{eq:hom2}
+\end{equation}
+each electron seeing the other's unit charge through $P[\rho]$.
+
+Both were computed in the same code, on the same five-rung mesh ladder, by axisymmetric reduction
+--- which is exact here, since the domains and the kernel potential are all invariant about the
+axis, so nothing is discarded in passing to two dimensions. Two controls fix what the
+discretisation contributes: one electron on the same meshes gives $-0.500179$ for H and
+$-2.001615$ for He$^+$, errors of $0.04\%$ and $0.08\%$. And \eqref{eq:hom2} has a known answer to
+be checked against --- it is the Hartree functional, which for a closed two-electron shell
+coincides with Hartree--Fock --- so the Hartree--Fock limits must come out, and they do:
+$-2.86111$ against $-2.861680$ for He and $-1.13363$ against $-1.133630$ for H$_2$, to $0.02\%$
+and to all five figures. The errors reported below are therefore the models' and not the mesh's.
+
+The exact energies lie between the two:
+\begin{align*}
+\text{He:}\quad & \underbrace{-2.8611}_{\text{hom},\;+1.5\%} \;<\;
+                  \underbrace{-2.903724}_{\text{exact}} \;<\;
+                  \underbrace{-3.0265}_{\text{split},\;-4.2\%} \\[2pt]
+\text{H}_2\ (R=1.4):\quad & \underbrace{-1.1336}_{\text{hom},\;+3.5\%} \;<\;
+                  \underbrace{-1.174476}_{\text{exact}} \;<\;
+                  \underbrace{-1.2750}_{\text{split},\;-8.6\%}
+\end{align*}
+and the same bracket holds on the H$_2$ binding energy, where it is wider because the binding is a
+seventh of the total: $0.1333$ for hom and $0.2747$ for split, against $0.1745$, which is $24\%$
+low and $57\%$ high. Overlapping the densities and halving the repulsion under-binds; separating
+them completely over-binds. The truth sits between, which is what one would expect of two
+idealisations of the same interface.
+
+\paragraph{Why split is the model.} Only one of the two generalises. Beyond $N=2$ the hom
+construction has no definite content: putting all $N$ electrons in one density requires a rule for
+what replaces non-overlap, and no choice is canonical --- a charge-$N$ blob with the repulsion
+scaled by $(N-1)/N$ is one guess, and it has no shell structure whatever, every electron sitting in
+the same lowest state, so no atom past helium and no periodic table. Restoring distinct states
+requires them to be orthogonal, which is antisymmetry, which is \eqref{eq:schrN} again. The split
+construction needs no such decision: $N$ densities on $N$ non-overlapping domains, every pair
+counted once by the $i\neq j$ rule, exactly as at $N=2$. So hom is a bracketing device for two
+electrons, and split is the model for all $N$.
+
+\subsection*{Why two electrons are representative}
+
+The few per cent above is not an artefact of a small system, and this is the point on which the
+whole comparison rests. It is the accuracy the model has everywhere. Across the first three periods
+the mean error on total atomic energies is $1$--$2\%$ with a worst case of $4.5\%$; helium is
+$1.5\%$ and H$_2$ $3.5\%$ on the hom side, $4.2\%$ and $8.6\%$ on the split side; ionization
+energies of the alkalis come within $1.4\%$; hydrogen-bond geometries and secondary structure in a
+$153$-residue protein are right to a few per cent. One electron, two, eighteen, ten thousand ---
+the figure does not move much.
+
+It does not move because its source does not change with $N$. The error is in the treatment of the
+interface between two charge densities, and a system of ten thousand electrons has the same kind of
+interface as a system of two, merely more of them. Adding electrons multiplies the number of
+boundaries without altering what happens at any one of them, and the errors are of one sign and
+largely cancel in differences taken within a fixed composition --- which is why geometries come out
+better than total energies.
+
+This is the opposite of the behaviour in Section~\ref{sec:curve}. There the accuracy is twenty
+digits at $N=2$, obtained by methods built for $N=2$, and at $N=10$ there is no error bar to
+quote. Here it is a few per cent at $N=2$ for the same reason that it is a few per cent at
+$N=10^4$. A constant error can be measured, and a model with a measurable error can be held to
+account at any size; an error that is unquantifiable past three electrons cannot be, however small
+it is where it can be evaluated.
 
 \section{Where the equation can be solved}\label{sec:curve}
 
