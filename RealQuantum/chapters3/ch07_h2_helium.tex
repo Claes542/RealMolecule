@@ -18,27 +18,157 @@ This chapter works through the H$_2$ result, identifies the mechanism by which t
 
 H$_2$ at Level 1 is two unit electron densities that do not overlap (Bernoulli partition), distributed around two H$^+$ point kernels at separation $R$. The two electrons occupy opposite halves of the inter-nuclear region --- the natural minimum-energy partition for two electrons in a symmetric two-kernel field. Each electron is attracted to both nuclei and repelled by the other electron through Coulomb interactions only. There is no exchange term, no antisymmetric wave function on $\mathbb{R}^6$, no orbital basis. The setup is the H$_2$ analogue of Chapter~\ref{ch:atoms}'s atomic model: nuclei, electrons, Coulomb energy, non-overlap constraint, variational minimum.
 
-At a proton separation in the equilibrium range, the parameter-free Level-1 calculation gives a total energy
+At $R = 1.40$~a.u.\ the converged parameter-free Level-1 calculation gives a total energy
 \[
-E_{\rm RealQM}(R \in [1.4, 1.6]\ \text{a.u.}) \;\approx\; -1.18 \text{ Ha},
+E_{\rm RealQM}(1.40) \;=\; -1.2750 \text{ Ha},
 \]
 to be compared with the Kolos--Wolniewicz exact value
 \[
-E_{\rm KW}(R = 1.40\ \text{a.u.}) \;=\; -1.1745 \text{ Ha}.
+E_{\rm KW}(1.40) \;=\; -1.174476 \text{ Ha},
 \]
-The two agree to within $\sim 0.5\%$ on total energy. The corresponding binding energy is
+an over-binding of $8.6\%$ --- an ordinary total energy for this model, in the same range as
+helium at $4.2\%$ and the atomic totals of Chapter~\ref{ch:atoms} at $1.6$--$4.5\%$. The
+corresponding binding energy is
 \[
-\Delta E_{\rm bind} \;=\; E_{\rm H_2}(R_{\rm eq}) - 2 E_{\rm H} \;\approx\; -112 \text{ kcal/mol},
+\Delta E_{\rm bind} \;=\; 2 E_{\rm H} - E_{\rm H_2}(1.40) \;=\; 0.2747 \text{ Ha}
+\;=\; 172 \text{ kcal/mol},
 \]
-versus the experimental dissociation energy of $-109$~kcal/mol --- \textbf{within 3\%, with no fitted parameters}.
+against the measured dissociation energy of $109.5$~kcal/mol: \textbf{$57\%$ too high}.
 
-\paragraph{The minimum is very shallow.}
-The H$_2$ total-energy curve near equilibrium is exceptionally flat: the energy varies by less than $1$~kcal/mol across the range $R \in [1.4, 1.6]$~a.u., which is a substantial $0.2$~a.u.\ window of bond length. Within that window the curve is so close to horizontal that the location of its precise minimum is sensitive to discretisation, grid resolution, and the choice of partition convergence criterion at the few-per-mille level. The RealQM solver locates a stationary point in this range, and the corresponding total energy is reported above; we do not claim the equilibrium bond length to better precision than the shallow-minimum window allows. The experimental $R_{\rm eq} = 1.40$~a.u.\ lies inside the RealQM-located range, and the energetic comparison with Kolos--Wolniewicz is what is taken as the validation. A higher-resolution determination of $R_{\rm eq}$ from RealQM, distinguishing $1.4$ from $1.5$ from $1.6$, would require a finer grid and tighter convergence than the Level-1 model uses; the present chapter reports the energy and the binding energy at the few-percent level, and leaves the sub-percent geometry to follow-up.
+\paragraph{Why these two figures differ so much, and which one to read.}
+Nothing extra has gone wrong at the bond. The binding energy is $E_{\rm bind}/E_{\rm total} =
+0.1745/1.1745 = 14.9\%$ of the total, so a per-cent error on the total is necessarily amplified by
+its reciprocal when the difference is formed: $8.6\%/0.149 = 57\%$, which is the whole of the
+discrepancy. The total is the figure that characterises the model; the binding energy is a
+difference one seventh the size of the quantity whose error it inherits. The amplification is the
+same structural fact that governs the ionization energies of Chapter~\ref{ch:atoms}, and it is why
+``$+57\%$'' must never be quoted without it --- read alone it invites the conclusion that the model
+cannot bond, which is not what the number says.
+
+The error also fails to cancel in this particular difference, and for a specific reason: two
+separated H atoms carry no shared electron interface, while H$_2$ carries one. The interface error
+therefore lands on one side of the subtraction only. Differences taken within a \emph{fixed}
+composition --- the same atoms rearranged --- do cancel it, which is why geometries and forces come
+out so much better than energies.
+
+\paragraph{An earlier figure withdrawn.} Previous drafts of this chapter reported
+$E \approx -1.18$~Ha, $\sim\!0.5\%$ against Kolos--Wolniewicz, and a binding energy of
+$-112$~kcal/mol within $3\%$ of measurement. Those values came from runs stopped before
+convergence. The relaxation passes through the exact value on its way to the construction's own
+minimum, so an under-converged run can land near $-1.17$ by accident, and three of them did. The
+figures above are converged on a five-rung mesh ladder with the kernel positions held commensurate
+with the grid, and they are what this construction actually gives.
+
+\paragraph{The bond length, and the artefact that hid it.}
+The minimum is genuinely shallow --- the energy varies by about $1$~kcal/mol over
+$R \in [1.4, 1.6]$~a.u. --- but shallowness was not what obstructed the determination of $R_{\rm
+eq}$. The obstruction was grid commensuration. A point kernel sits at $\pm R/2$ on a fixed mesh, so
+as $R$ varies the kernels move \emph{relative to the cells} and the discretisation error
+oscillates. The amplitude of that oscillation is about $0.07$~Ha/bohr, the same size as the force
+itself near equilibrium, while the energy differences between neighbouring $R$ are smaller still.
+Every bond length read off such a scan lies inside the noise, and the apparent non-monotonicity of
+the force --- which no real diatomic curve shows --- was its signature.
+
+The fix is specific and cheap: scan only separations commensurate with the mesh, so the kernels land
+exactly on cell centres and the error is constant instead of oscillating. The force is then monotone
+in $R$ at every mesh, and the two independent determinations of the minimum agree ---
+$R_{\rm min} = 1.3682$ from the energy and $1.3702$ from the vanishing of the electrostatic force,
+$0.15\%$ apart. Against the measured $1.401$~a.u.:
+\[
+R_{\rm eq}^{\rm RealQM} \;=\; 1.368 \text{ a.u.}, \qquad \textbf{2.3\% short},
+\]
+stable across meshes. The force constant comes out $0.37$--$0.44$~Ha/bohr$^2$ against the exact
+$0.370$: it brackets the right value but moved $19\%$ between meshes, so it is not converged and
+the agreement should not be quoted as a figure. \emph{The general lesson applies to every
+derivative with respect to a nuclear position:} a point kernel on a fixed mesh contaminates all of
+them, and the scan must be commensurate before any geometry is read from it.
+
+So the geometry is right to a few per cent and the energy is over-bound by a few per cent, the two
+errors being unrelated in size because the second is amplified by the differencing.
 
 \paragraph{A note on the variational comparison.}
-RealQM and the Kolos--Wolniewicz treatment solve different mathematical problems: Kolos--Wolniewicz minimises an antisymmetric two-electron wave function on $\mathbb{R}^6$ over the standard Coulomb Hamiltonian, while RealQM minimises a sum of two unit-density wave functions on non-overlapping spatial supports in $\mathbb{R}^3$ over the multiphase variational principle (Chapter~\ref{ch:equation}). The two are different mathematical objects and the standard ``variational lower bound'' relation between them does not strictly apply --- one is not a restricted variational space of the other. The numerical agreement at $\sim 0.5\%$ on total energy and $3\%$ on binding energy is therefore a comparison between two independently-computed predictions for the same physical system, not a statement that one bounds the other.
+RealQM and the Kolos--Wolniewicz treatment solve different mathematical problems: Kolos--Wolniewicz minimises an antisymmetric two-electron wave function on $\mathbb{R}^6$ over the standard Coulomb Hamiltonian, while RealQM minimises a sum of two unit-density wave functions on non-overlapping spatial supports in $\mathbb{R}^3$ over the multiphase variational principle (Chapter~\ref{ch:equation}). The two are different mathematical objects and the standard ``variational lower bound'' relation between them does not strictly apply --- one is not a restricted variational space of the other. The numerical comparison above is therefore between two independently-computed predictions for the same physical system, not a statement that one bounds the other. This also disposes of an objection that would otherwise be fatal: RealQM's split construction returns $-1.2750$, \emph{below} the exact $-1.174476$, and a variational approximation to the Schr\"odinger Hamiltonian cannot go below the true ground state. RealQM is not one --- different functional, no antisymmetry, per-domain kinetic energy --- so going below is what a different functional does, not a numerical failure.
 
 The bond emerges from the same variational principle that organises the atomic shells of Chapter~\ref{ch:atoms}: the electrons reorganise their territories to minimise the total Coulomb energy, and at the equilibrium $R$ the two-kernel two-electron configuration is energetically preferred over two isolated H atoms. There is no separate ``bond'' machinery; the bond is what the variational principle does when more than one nucleus is present.
+
+\section{Two constructions at $N=2$, and a bracket on the exact energy}\label{sec:h2-bracket}
+
+At two electrons --- and only there --- the multiphase construction can be closed in two different
+ways. Both are worth computing, because they fail in opposite directions and together they say
+something the single number above cannot.
+
+\paragraph{Split: the non-overlapping form.} The construction used throughout this book. The two
+electrons occupy the half-spaces either side of the plane bisecting the internuclear axis, meeting
+at a free boundary with the Bernoulli condition of Chapter~\ref{ch:equation}. Each electron feels
+the other's potential and not its own, so the pair is counted once and self-repulsion is excluded
+by construction.
+
+\paragraph{Hom: the overlapping form.} Both electrons carried by the \emph{same} density over the
+whole domain --- sitting on top of each other. Non-overlap is then abandoned, and something must
+replace it, because a single blob of charge $2$ and density $2\rho$ has Coulomb self-energy
+$\tfrac12\!\int\!\!\int(2\rho)(2\rho)/|x-y| = 2J$ where only one pair is present. Reducing the
+repulsion energy by a factor two restores the correct count, giving
+\begin{equation}
+E \;=\; 2\,(T + V_K) \;+\; J, \qquad
+\bigl(-\tfrac12\nabla^2 - K + P[\rho]\bigr)u \;=\; \varepsilon u ,
+\label{eq:hom2}
+\end{equation}
+each electron seeing the other's unit charge through the potential $P[\rho]$.
+
+Both were computed in one code on one five-rung mesh ladder, by axisymmetric reduction --- which is
+exact here, since the domains and the kernel potential are all invariant about the internuclear
+axis, so nothing is discarded in passing to two dimensions. Two controls fix what the
+discretisation contributes. One electron on the same meshes gives $-0.500179$ for H and
+$-2.001615$ for He$^+$, errors of $0.04\%$ and $0.08\%$. And \eqref{eq:hom2} has a known answer to
+be checked against: it is the Hartree functional, which for a closed two-electron shell coincides
+with Hartree--Fock. The Hartree--Fock limits must therefore come out, and they do --- $-2.86111$
+against $-2.861680$ for He, and $-1.13363$ against $-1.133630$ for H$_2$, to $0.02\%$ and to all
+five figures. The errors below are the models' and not the mesh's.
+
+The exact energies lie between the two constructions:
+\begin{align*}
+\text{He:}\quad & \underbrace{-2.8611}_{\text{hom},\;+1.5\%} \;<\;
+                  \underbrace{-2.903724}_{\text{exact}} \;<\;
+                  \underbrace{-3.0265}_{\text{split},\;-4.2\%} \\[2pt]
+\text{H}_2\ (R=1.4):\quad & \underbrace{-1.1336}_{\text{hom},\;+3.5\%} \;<\;
+                  \underbrace{-1.174476}_{\text{exact}} \;<\;
+                  \underbrace{-1.2750}_{\text{split},\;-8.6\%}
+\end{align*}
+and the same bracket holds on the binding energy, more widely because the binding is a seventh of
+the total: $0.1333$~Ha for hom and $0.2747$ for split against the exact $0.1745$, which is $24\%$
+low and $57\%$ high.
+
+Overlapping the densities completely and halving the repulsion \emph{under}-binds; separating them
+completely \emph{over}-binds. The truth sits between, which is what one would expect of two
+idealisations of the same interface: a shared density gives no mutual avoidance beyond the mean
+field, disjoint domains give complete and permanent avoidance, and the real state avoids partially.
+Non-overlap is in effect a dial between no avoidance and total avoidance, and the exact energies of
+both systems lie inside the range the model's own two treatments span. That is a more informative
+account of the discrepancy than ``the model over-binds''.
+
+\paragraph{Why split is the model.}
+Only one of the two generalises, and this decides which is the model and which is a diagnostic.
+Beyond $N=2$ the hom construction has no definite content: putting all $N$ electrons into one
+density requires a rule for what replaces non-overlap, and no choice is canonical. A charge-$N$
+blob with the repulsion scaled by $(N-1)/N$ is one guess, and it has no shell structure whatever
+--- every electron sits in the same lowest state, so there is no atom past helium and no periodic
+table. Restoring distinct states requires them to be mutually orthogonal, which is antisymmetry,
+which is the $3N$-dimensional formulation again. The split construction needs no such decision at
+any $N$: $N$ densities on $N$ non-overlapping domains, every pair counted once by the $i \neq j$
+rule, exactly as at $N=2$. \emph{Hom is a bracketing device for two electrons; split is the model
+for all $N$.}
+
+\paragraph{Why two electrons are representative.}
+The few per cent found here is not an artefact of a small system; it is the accuracy the model has
+everywhere, and that is the point on which Chapter~\ref{ch:precision}'s comparison rests. Across
+the first three periods the mean error on atomic totals is $1$--$2\%$ with a worst case of $4.5\%$;
+He and H$_2$ sit at $1.5$--$8.6\%$ depending on the construction; alkali ionization energies come
+within $1.4\%$; hydrogen-bond geometries and the secondary structure of a $153$-residue polypeptide
+are right to a few per cent. One electron, two, eighteen, ten thousand --- the figure does not move
+much, because its source does not change with $N$. The error lives in the treatment of the
+interface between two charge densities, and a system of ten thousand electrons has the same kind of
+interface as a system of two, merely more of them. Adding electrons multiplies the boundaries
+without altering what happens at any one of them.
 
 \section{Bonding mechanism: density accumulation at the free boundary}\label{sec:bonding-mechanism}
 
@@ -82,7 +212,7 @@ The unification clarifies why a single architecture handles both atoms and molec
 
 The parameter-free Level-1 H$_2$ result fixes several things that the rest of Part~III depends on.
 
-\paragraph{Variational adequacy at Level 1.} The covalent bond is recovered at parameter-free Level 1 to $\sim 0.5\%$ on total energy against Kolos--Wolniewicz and to 3\% on dissociation energy against experiment. This rules out the concern that Level 1 might be adequate for atoms but require extension for bonding. It is not: the same Level-1 architecture handles both.
+\paragraph{Variational adequacy at Level 1.} The covalent bond is recovered at parameter-free Level 1 with the total energy over-bound by $8.6\%$, the bond length short by $2.3\%$, and the force constant bracketing the exact value --- the same accuracy the architecture delivers for atoms, by the same mechanism and with the same error. This rules out the concern that Level 1 might be adequate for atoms but require extension for bonding. It is not: the architecture handles both, and handles them equally well, which is the relevant point.
 
 \paragraph{The Bernoulli condition does the bonding work.} The mechanism is the non-zero meeting of densities at the free boundary, made energetically favourable by the homogeneous Neumann condition. The bond is not a separately added ingredient; it follows from the free-boundary structure of the multiphase formulation. The same Bernoulli condition that closes the equation in Chapter~\ref{ch:equation} is what makes covalent bonding possible.
 
@@ -92,6 +222,6 @@ The parameter-free Level-1 H$_2$ result fixes several things that the rest of Pa
 
 \section{The H$_2$ result as a foundation}\label{sec:h2-foundation}
 
-A theory of bonding is worth taking seriously to the extent that its simplest case is solid. The H$_2$ result is the simplest case: two atoms, one bond, no inner shells, no fitted parameters, $\sim 0.5\%$ on total energy. Everything in Chapters~\ref{ch:hydrides} through~\ref{ch:condensed} is built on this foundation. If the H$_2$ result did not survive a parameter-free Level-1 test, the higher-level architectures would have no claim to be calibrated reductions of the same equation. They are calibrated reductions; the H$_2$ result is the evidence that the underlying equation is right.
+A theory of bonding is worth taking seriously to the extent that its simplest case is solid, and to the extent that the case is honestly reported. The H$_2$ result is the simplest case: two atoms, one bond, no inner shells, no fitted parameters, a total energy over-bound by $8.6\%$, a bond length short by $2.3\%$, and an exact energy bracketed by the model's own two constructions at $N=2$. Everything in Chapters~\ref{ch:hydrides} through~\ref{ch:condensed} is built on this foundation. If the H$_2$ result did not survive a parameter-free Level-1 test, the higher-level architectures would have no claim to be calibrated reductions of the same equation. They are calibrated reductions; the H$_2$ result is the evidence that the underlying equation is right.
 
 % --- End of Chapter 7 ---
