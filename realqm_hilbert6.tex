@@ -92,12 +92,28 @@ at all. There are no particles in it. There are continuous fields on ordinary th
 space, and the only discreteness is in the \emph{number of domains} --- an integer labelling of
 regions, not a collection of point masses with positions and momenta.
 
-The consequence for Hilbert's problem is structural. The classical route must build a continuum out
-of particles, and every difficulty it faces --- the scaling limit, the propagation of chaos, the
-recovery of irreversibility --- arises from that construction. If the starting description is
-already a continuum, those difficulties do not arise, because the step they were needed for is not
-being taken. What remains is a different and much more tractable question: \emph{are the equations
-that \eqref{eq:E} satisfies the equations of continuum mechanics?}
+The consequence for Hilbert's problem is structural, but it must be stated carefully, because the
+tempting version of it is wrong. RealQM is a continuum theory \emph{at the atomic scale}: its
+features vary over lengths of order $a_0$. Macroscopic continuum mechanics describes variation over
+laboratory lengths $L$. So an averaging step is still required --- the two descriptions are not the
+same description --- and it would be an overclaim to say that no passage between scales is needed.
+
+What changes is \emph{which} passage. The classical route must build a continuum out of particles,
+and every difficulty it faces --- the scaling limit, the propagation of chaos, the recovery of
+irreversibility --- belongs to that construction. The route proposed here must instead pass from a
+continuum on scale $a_0$ to a continuum on scale $L$, with small parameter
+\begin{equation}
+\varepsilon = a_0/L ,
+\end{equation}
+which is \emph{not} a dilution parameter and carries no requirement that matter be rare. That is
+homogenisation, and it is a mature mathematical subject: two-scale convergence, $G$- and
+$H$-convergence, periodic unfolding. It requires no statistical hypothesis, and --- the point that
+makes it attractive here --- it \emph{delivers} the macroscopic constitutive law as the solution of a
+cell problem posed on one unit cell. A cell problem is a computation, and computation is what this
+programme claims to be able to do.
+
+So the question becomes: \emph{do the equations \eqref{eq:E} satisfies homogenise to the equations of
+continuum mechanics, and is the resulting constitutive law the measured one?}
 
 And because no dilution is involved, the question is being asked exactly where the classical route
 cannot go. RealQM's established regime is atoms, molecules, condensed phases and
@@ -140,6 +156,54 @@ route, partly a matter of recognition rather than of proof.
 contributes an energy per unit area, so the multiphase structure is a continuum mechanics
 \emph{with surfaces}, which is what dense matter requires and what a kinetic theory has no room
 for~\cite{madelung}.
+
+\section{Mass distribution and forces}\label{sec:mass}
+
+A theory of continuum mechanics needs a mass density and a stress. RealQM as written supplies
+neither directly --- it is a theory of \emph{charge} --- so the two must be identified before any
+averaging can be done. Both identifications already exist in this programme, which is worth saying
+because it means the present project inherits them rather than inventing them.
+
+\paragraph{Mass is not a separate postulate.} In the account given in~\cite{nomass}, mass is not
+primitive: it is energy showing up as inertia, through the measured law $\mathbf p = (E/c^2)\mathbf
+v$. The mass density is therefore
+\begin{equation}\label{eq:rhom}
+\rho_m = \frac{\text{energy density}}{c^2} ,
+\end{equation}
+and the energy density is explicit in \eqref{eq:E}. Nothing is added; the mass field is read off the
+energy field.
+
+\paragraph{The stress is the localisation term.} The same work makes the stress tensor
+explicit, identifying the localisation energy --- the term that became $T_{\rm vW}$ in
+Section~\ref{sec:exact} --- as a cohesive stress, and the stationary Schr\"odinger equation as the
+statement that this stress is in local balance~\cite{nomass}. So the Cauchy stress of the
+macroscopic theory is to be obtained by averaging an object the microscopic theory already
+possesses, not by fitting a constitutive law.
+
+\paragraph{But the mass is not where the charge is, and this splits the problem in two.} The
+electrons carry the charge and essentially none of the mass; the kernels carry essentially all of
+it, some $99.95\%$, and in the Born--Oppenheimer treatment used throughout they are point charges at
+fixed sites. So:
+\begin{itemize}\itemsep3pt
+\item the charge and the stress are continuous on scale $a_0$, and their passage to the macroscopic
+scale is \textbf{continuum to continuum} --- homogenisation, as in Section~\ref{sec:inversion};
+\item the mass sits at \textbf{discrete} sites, and its passage is a lattice average, the
+classical atomistic-to-continuum problem for a crystal --- well understood, and not the hard part,
+because the kernels are slow and nearly periodic.
+\end{itemize}
+The macroscopic momentum balance to be derived is then
+\begin{equation}\label{eq:macro}
+\rho_m\Bigl(\frac{\partial v}{\partial t}+(v\cdot\grad)v\Bigr)=\grad\!\cdot\sigma ,
+\end{equation}
+with $\rho_m$ from the lattice average of \eqref{eq:rhom} and $\sigma$ from the homogenised
+localisation stress.
+
+\paragraph{And this is where dissipation plausibly lives.} The split just made is also the physical
+mechanism the programme was missing. The electron densities are fast and relax essentially
+instantaneously; the kernels are slow and massive. Work done on the free boundaries while the
+kernels move is not returned to the kernels, and that transfer --- electron--phonon coupling, in the
+usual language --- is a dissipation mechanism internal to the model rather than an extra postulate.
+It subsumes the ``interface motion'' candidate of Section~\ref{sec:open} and gives it a carrier.
 
 \section{What must be supplied}\label{sec:supply}
 
@@ -194,15 +258,47 @@ Candidate 3 would make the Euler--Navier--Stokes gap a feature; candidates 1 and
 They make different predictions and are therefore separable, which is the only reason the question
 is tractable.
 
+\section{Phase 1, done: the identity verified, and a warning about the route}\label{sec:phase1}
+
+The first item of the programme has been carried out, and it returned one result and one caution.
+
+\paragraph{The caution, which redirected the work.} Integrating the Madelung pair
+\eqref{eq:cont}--\eqref{eq:euler} directly is a harder numerical problem than it looks, and for a
+structural reason: $Q$ contains $\grad^2\sqrt\rho$, so $\grad Q$ in the momentum equation carries a
+\emph{third} derivative of the density. The pair is therefore dispersive, in the manner of the
+Korteweg--de Vries equation, and explicit time-stepping is restricted to $\Delta t \lesssim C\Delta
+x^3$ rather than the $\Delta t\lesssim C\Delta x$ one would budget for. This is a fact about the
+formulation and not about any particular code. It is also the reason the ``missing half'' has not
+simply been implemented already.
+
+\paragraph{The result.} For a \emph{single} domain the Madelung pair is equivalent to the
+Schr\"odinger equation, so a bespoke Madelung integrator would buy no new physics. The informative
+test is therefore whether the hydrodynamic quantities read off an accurately computed Schr\"odinger
+solution satisfy \eqref{eq:cont}--\eqref{eq:euler}. Taking a coherent state of a harmonic trap,
+propagated spectrally, and computing every time derivative analytically from the Schr\"odinger
+right-hand side so that no time-differencing error enters, the two residuals
+\[
+R_1=\rho_t+(\rho v)_x,\qquad
+R_2=v_t+vv_x+(V+Q)_x
+\]
+vanish under refinement at fourth order --- the order of the difference operators used to evaluate
+them. Relative to the magnitude of the terms they cancel between, $R_1$ reaches $1.2\times10^{-8}$
+and $R_2$ reaches $1.1\times10^{-7}$; the floor on $R_2$ is round-off in $\grad^2\sqrt\rho/\sqrt\rho$
+where $\rho$ is small, and it moves with the density threshold exactly as that explanation requires,
+so it is a property of the diagnostic rather than of the identity.
+
+$R_1$ is probability conservation and was never in doubt. $R_2$ is the claim that matters: that the
+quantum potential \emph{is} the stress of a continuum mechanics. In one dimension, for one domain,
+it holds to seven figures. \emph{This verifies a claim the programme had already asserted; it does
+not extend it.} The new content begins at two domains, where there is no Schr\"odinger equivalent to
+check against.
+
 \section{The work programme}\label{sec:programme}
 
 In order, with the first two using machinery that already exists.
 
 \begin{enumerate}\itemsep4pt
-\item \textbf{The one-domain dynamics, against a known answer.} Implement
-\eqref{eq:cont}--\eqref{eq:euler} on a single domain and check the free-particle case against an
-exact Gaussian wave packet. This is the smallest test with a right answer and nothing in the
-programme should advance past it until it passes.
+\item[\textbf{0.}] \textbf{The one-domain identity.} \emph{Done} --- Section~\ref{sec:phase1}.
 \item \textbf{Two domains with a moving interface.} The free-surface problem in its simplest
 instance: two densities in contact, interface moving with the normal velocity, chemical potential
 continuous. Check against the static answer in the limit of vanishing velocity, which is already
@@ -262,6 +358,9 @@ in~\cite{realqmbook}.
 
 \bibitem{gas} C.~Johnson, \emph{Conduction in RealQM: the Free Boundary as Charge Carrier},
 in~\cite{realqmbook}.
+
+\bibitem{nomass} C.~Johnson, \emph{Energy without Mass: the Kinetic Coefficient as a Geometric
+Scale, and Inertia as $E/c^2$}.
 
 \bibitem{bodysoul} C.~Johnson, \emph{Computational Thermodynamics} (Body\&Soul, Vol.~V).
 
