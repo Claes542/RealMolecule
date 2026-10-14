@@ -70,37 +70,41 @@ def x2R(R, D, Lz=16.0, Lr=16.0, h=0.14, soft=0.0, iters=120, tol=1e-9):
 
 if __name__ == '__main__':
     import sys, time
-    h, Lz = 0.14, 16.0
-    # measured dimers, D_e in eV and R_e in bohr, with the atomic IE in eV, for matching.
+    h, L = 0.175, 14.0
+    # measured dimers: atomic IE (eV), D_e (eV), R_e (bohr).
     # REFERENCE VALUES FROM MODEL KNOWLEDGE -- verify before any print use.
     MEAS = [("H2", 13.598, 4.748, 1.401), ("Li2",  5.392, 1.050, 5.051),
             ("Na2", 5.139, 0.747, 5.818), ("K2",   4.341, 0.551, 7.416),
             ("Rb2", 4.177, 0.495, 7.955), ("Cs2",  3.894, 0.452, 8.783)]
-    print("X2 WITH A PSEUDO-KERNEL OF RADIUS R.  h=%.2f, L=%.0f, commensurate D=(2i+1)h, soft=0" % (h, Lz))
-    print("one valence electron per +1 kernel, excluded from r<R of both cores; D>2R enforced")
-    print("measured, for matching (reference knowledge, unverified):")
+    print("X2 WITH A PSEUDO-KERNEL OF RADIUS R.  h=%.3f, L=%.0f, commensurate D=(2i+1)h, soft=0" % (h, L))
+    print("one valence electron per +1 kernel, excluded from r<R of BOTH cores; D>2R+2h enforced")
+    print("E(X) and E(X2) from the same code on the same mesh, so the difference cancels discretisation")
+    print("D located by coarse scan then refinement; granularity 2h = %.3f au\n" % (2*h))
+    print("measured, for matching (reference knowledge, UNVERIFIED):")
     for n, ie, de, re in MEAS:
         print("   %-4s IE %6.3f eV   D_e %5.3f eV   R_e %5.3f au" % (n, ie, de, re))
     print()
-    print("%5s %9s %9s | %7s %9s %9s %8s | %s" %
-          ("R", "E(X)", "IE eV", "D_min", "E(X2)", "Ebind eV", "Ebind Ha", "nearest by IE"))
-    for R in [0.0, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 2.8]:
+    print("%5s %9s %8s | %7s %7s | %9s %8s %8s | %s" %
+          ("R", "E(X)", "IE eV", "D_min", "R_e exp", "E(X2)", "Eb eV", "De exp", "match by IE"))
+    for R in [0.0, 0.8, 1.6, 2.0, 2.4]:
         t0 = time.time()
-        eX = atomX(R, Lz, Lz, h)
+        eX = atomX(R, L, L, h)
         ie = -eX*HA_EV
-        # commensurate D, wide enough to hold any alkali minimum, and D > 2R
-        Ds = [(2*i+1)*h for i in range(2, 60)]
-        Ds = [D for D in Ds if D > 2*R + 2*h and D <= 13.0]
-        best = (1e9, None)
-        curve = []
-        for D in Ds:
-            E = x2R(R, D, Lz, Lz, h)
-            curve.append((D, E))
-            if E < best[0]: best = (E, D)
-        E2, Dm = best
+        name, ie_m, de_m, re_m = min(MEAS, key=lambda m: abs(m[1] - ie))
+        allD = [(2*i+1)*h for i in range(1, 40)]
+        allD = [D for D in allD if D > 2*R + 2*h and D <= 12.0]
+        # coarse scan, stride 3, then refine around the best
+        idx = list(range(0, len(allD), 3))
+        vals = {}
+        for k in idx:
+            vals[k] = x2R(R, allD[k], L, L, h)
+        kb = min(vals, key=vals.get)
+        for k in range(max(0, kb-3), min(len(allD), kb+4)):
+            if k not in vals: vals[k] = x2R(R, allD[k], L, L, h)
+        kb = min(vals, key=vals.get)
+        Dm, E2 = allD[kb], vals[kb]
         eb = 2*eX - E2
-        name = min(MEAS, key=lambda m: abs(m[1] - ie))[0]
-        print("%5.2f %9.5f %9.3f | %7.3f %9.5f %9.3f %8.4f | %s  [%.0fs]" %
-              (R, eX, ie, Dm, E2, eb*HA_EV, eb, name, time.time()-t0))
+        edge = "  <-- at scan edge" if kb in (0, len(allD)-1) else ""
+        print("%5.2f %9.5f %8.3f | %7.3f %7.3f | %9.5f %8.3f %8.3f | %s%s  [%.0fs, %d pts]" %
+              (R, eX, ie, Dm, re_m, E2, eb*HA_EV, de_m, name, edge, time.time()-t0, len(vals)))
         sys.stdout.flush()
-        np.save('/private/tmp/claude-501/-Users-cgjoh-Development-H2O/b8b3b078-08a8-4d27-be88-172e049921b0/scratchpad/curve_R%.2f.npy' % R, np.array(curve))
