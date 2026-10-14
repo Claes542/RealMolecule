@@ -14,6 +14,25 @@ Both E(X) and E(X2) are computed in THIS code on THE SAME mesh, so the discretis
 cancels in E_bind = 2E(X) - E(X2) -- the house rule that differences within one composition cancel
 their errors.  D is scanned only over COMMENSURATE values D = (2i+1)h, which put the kernels exactly
 on cell centres of the half grid; otherwise the egg-crate noise is the size of the binding itself.
+
+THE TABLE (2026-10-14).  R BISECTED so the pseudo-atom reproduces each MEASURED IE, so everything
+right of the IE column is a prediction; Shannon r(M+) is an INDEPENDENT check -- nothing was fitted
+to it.  H2 is the R=0 row (a +1 kernel with no core IS X with r_ion=0) and gets its own mesh,
+because its bond is 6x shorter than Cs2's.
+   sp      R  r_ion     IE  IE exp |   D_min  Re exp    err |   Eb eV  De exp    err |     h
+   H2  0.000  0.000 13.608  13.598 |   1.350   1.401  -3.6% |   7.486   4.748   +58% | 0.050
+  Li2  1.999  1.436  5.417   5.392 |   5.425   5.051  +7.4% |   1.430   1.050   +36% | 0.175
+  Na2  2.161  1.928  5.110   5.139 |   5.425   5.818  -6.8% |   1.470   0.747   +97% | 0.175
+   K2  2.792  2.608  4.350   4.341 |   6.825   7.416  -8.0% |   1.078   0.551   +96% | 0.175
+  Rb2  2.972  2.873  4.172   4.177 |   7.175   7.955  -9.8% |   0.995   0.495  +101% | 0.175
+  Cs2  3.295  3.156  3.891   3.894 |   7.875   8.783 -10.3% |   0.884   0.452   +95% | 0.175
+mean |bond error| 7.7%;  binding +36..+101%, i.e. about a FACTOR 2 over.
+R - r_ion = 0.000 / +0.563 / +0.233 / +0.184 / +0.099 / +0.139 -- from Na on, R sits within ~0.2 au
+of the measured ionic radius, with Li the outlier.
+LIMITATION, stated: the five alkali rows share one mesh whose commensurate-D step is 0.35 au, and
+Li2/Na2 both land on D=5.425 although their measured bond lengths differ by 0.77 au.  So ADJACENT
+SPECIES ARE NOT RESOLVED, and the Na2 > Li2 binding is unphysical ordering from that, not physics.
+Finer h per row is what would fix it.
 """
 import numpy as np, scipy.sparse as sp
 from scipy.sparse.linalg import eigsh
