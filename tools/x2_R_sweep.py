@@ -36,35 +36,10 @@ Finer h per row is what would fix it.
 """
 import numpy as np, scipy.sparse as sp
 from scipy.sparse.linalg import eigsh
-from axisym_realqm import Grid, stiffness, kernel_potential
+from axisym_realqm import Grid, stiffness, kernel_potential, masked_stiffness
 from axisym_hom2 import _poisson_setup
 
 HA_EV = 27.211386
-
-
-def masked_stiffness(g, keep):
-    """0.5*int |grad u|^2 assembled ONLY over faces joining two KEPT cells.
-
-    THIS IS THE WHOLE POINT.  Taking a submatrix A[keep][:,keep] of the FULL stiffness keeps the
-    diagonal contributions of the faces leading into the removed core, which is a DIRICHLET
-    condition (u=0 inside) -- it pushes density off the core edge and UNDER-binds.  Omitting those
-    faces at assembly is no-flux, i.e. the homogeneous NEUMANN condition on the core sphere, which
-    is the model's own free-boundary condition.  The two differ by 36% on the one-electron IE, and
-    only the Neumann version reproduces the 1D radial solve (R=1.6/1.8/2.0: 6.177/5.727/5.385 eV
-    here against 6.027/5.642/5.299 radial, ~2%).
-    """
-    h, nz, nr = g.h, g.nz, g.nr
-    rows, cols, vals = [], [], []
-    def add(a, b, c):
-        if not (keep[a] and keep[b]): return
-        rows.extend([a, b, a, b]); cols.extend([a, b, b, a]); vals.extend([c, c, -c, -c])
-    for j in range(nr):
-        c = np.pi*g.r[j]
-        for i in range(nz-1): add(g.idx(i, j), g.idx(i+1, j), c)
-    for j in range(nr-1):
-        c = np.pi*(j+1)*h
-        for i in range(nz): add(g.idx(i, j), g.idx(i, j+1), c)
-    return sp.coo_matrix((vals, (rows, cols)), shape=(g.N, g.N)).tocsr()
 
 
 def atomX(R, Lz=16.0, Lr=16.0, h=0.14, soft=0.0):

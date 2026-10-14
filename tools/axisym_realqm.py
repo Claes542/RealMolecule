@@ -55,6 +55,34 @@ def stiffness(g):
             add(g.idx(i, j), g.idx(i, j+1), c)
     return sp.coo_matrix((vals, (rows, cols)), shape=(g.N, g.N)).tocsr()
 
+
+def masked_stiffness(g, keep):
+    """0.5*int |grad u|^2 assembled ONLY over faces joining two KEPT cells -- TRUE NEUMANN.
+
+    Use this, NOT a submatrix of stiffness(), whenever a region is excluded (a pseudo-kernel core,
+    an inner cutoff r_c).  Taking A[keep][:,keep] of the FULL stiffness retains the diagonal
+    contributions of the faces leading into the removed region, which imposes DIRICHLET (u=0
+    inside): density is pushed off the boundary and the state under-binds.  Omitting those faces
+    at assembly is no-flux, the model's own free-boundary condition.
+    Measured difference on the one-electron IE outside a core of radius R, h=0.175:
+        R        1.6     1.8     2.0
+        submatrix 3.977  3.697   3.484   eV   <- Dirichlet, WRONG
+        masked    6.177  5.727   5.385   eV   <- Neumann, matches the 1D radial solve to ~2%
+    This was the cause of the long-unexplained 36% axisym-vs-radial one-electron discrepancy.
+    """
+    h, nz, nr = g.h, g.nz, g.nr
+    rows, cols, vals = [], [], []
+    def add(a, b, c):
+        if not (keep[a] and keep[b]): return
+        rows.extend([a, b, a, b]); cols.extend([a, b, b, a]); vals.extend([c, c, -c, -c])
+    for j in range(nr):
+        c = np.pi*g.r[j]
+        for i in range(nz-1): add(g.idx(i, j), g.idx(i+1, j), c)
+    for j in range(nr-1):
+        c = np.pi*(j+1)*h
+        for i in range(nz): add(g.idx(i, j), g.idx(i, j+1), c)
+    return sp.coo_matrix((vals, (rows, cols)), shape=(g.N, g.N)).tocsr()
+
 def laplacian(g):
     """-Laplacian as a sparse matrix in the FLUX (volume-integrated) form, for the Poisson solve."""
     h, nz, nr = g.h, g.nz, g.nr

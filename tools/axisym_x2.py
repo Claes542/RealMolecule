@@ -1,7 +1,7 @@
 """X2 with one electron per kernel: midplane split, Neumann at the plane, partner by reflection."""
 import numpy as np, scipy.sparse as sp
 from scipy.sparse.linalg import eigsh, factorized
-from axisym_realqm import Grid, stiffness, laplacian, kernel_potential
+from axisym_realqm import Grid, stiffness, laplacian, kernel_potential, masked_stiffness
 
 def x2(D, Zk=1.0, Lz=12.0, Lr=12.0, h=0.12, soft=0.0, rc=0.0, iters=40, tol=1e-7, verbose=False):
     """E_tot for two kernels of charge Zk at z=+-D/2 with one electron each.
@@ -10,13 +10,16 @@ def x2(D, Zk=1.0, Lz=12.0, Lr=12.0, h=0.12, soft=0.0, rc=0.0, iters=40, tol=1e-7
     gf = Grid(Lz, Lr, h, zmin=-Lz)            # full domain, for the Poisson solve
     nzh = gh.nz
     assert gf.nz == 2*nzh
-    S  = stiffness(gh)
     K  = kernel_potential(gh, [(-D/2, Zk), (D/2, Zk)], soft)
-    # optional inner cutoff about the near kernel (support excluded inside rc)
+    # optional inner cutoff about the near kernel (support excluded inside rc).
+    # NOTE: the stiffness must be ASSEMBLED on the kept cells -- a submatrix of the full
+    # stiffness would impose Dirichlet at r=rc, not the model's free Neumann condition, and
+    # that error was worth 36% on the one-electron energy.  See masked_stiffness().
     mask = np.ones(gh.N, bool)
     if rc > 0:
         rr = np.sqrt((gh.Z - D/2)**2 + gh.R**2).ravel()
         mask = rr > rc
+    S  = masked_stiffness(gh, mask) if rc > 0 else stiffness(gh)
     # Poisson matrix on the full grid, Dirichlet P=q/|x| outside -- factorise ONCE
     L = laplacian(gf).tolil()
     rrf = np.sqrt(gf.Z**2 + gf.R**2).ravel()
