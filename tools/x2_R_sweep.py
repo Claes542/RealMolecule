@@ -23,11 +23,38 @@ from axisym_hom2 import _poisson_setup
 HA_EV = 27.211386
 
 
+def masked_stiffness(g, keep):
+    """0.5*int |grad u|^2 assembled ONLY over faces joining two KEPT cells.
+
+    THIS IS THE WHOLE POINT.  Taking a submatrix A[keep][:,keep] of the FULL stiffness keeps the
+    diagonal contributions of the faces leading into the removed core, which is a DIRICHLET
+    condition (u=0 inside) -- it pushes density off the core edge and UNDER-binds.  Omitting those
+    faces at assembly is no-flux, i.e. the homogeneous NEUMANN condition on the core sphere, which
+    is the model's own free-boundary condition.  The two differ by 36% on the one-electron IE, and
+    only the Neumann version reproduces the 1D radial solve (R=1.6/1.8/2.0: 6.177/5.727/5.385 eV
+    here against 6.027/5.642/5.299 radial, ~2%).
+    """
+    h, nz, nr = g.h, g.nz, g.nr
+    rows, cols, vals = [], [], []
+    def add(a, b, c):
+        if not (keep[a] and keep[b]): return
+        rows.extend([a, b, a, b]); cols.extend([a, b, b, a]); vals.extend([c, c, -c, -c])
+    for j in range(nr):
+        c = np.pi*g.r[j]
+        for i in range(nz-1): add(g.idx(i, j), g.idx(i+1, j), c)
+    for j in range(nr-1):
+        c = np.pi*(j+1)*h
+        for i in range(nz): add(g.idx(i, j), g.idx(i, j+1), c)
+    return sp.coo_matrix((vals, (rows, cols)), shape=(g.N, g.N)).tocsr()
+
+
 def atomX(R, Lz=16.0, Lr=16.0, h=0.14, soft=0.0):
     """One electron outside r=R on a +1 kernel.  Returns E(X); IE = -E(X)."""
     g = Grid(Lz, Lr, h, zmin=-Lz)
-    S = stiffness(g); K = kernel_potential(g, [(0.0, 1.0)], soft)
-    keep = np.where(np.sqrt(g.Z**2 + g.R**2).ravel() > R)[0]
+    K = kernel_potential(g, [(0.0, 1.0)], soft)
+    m = np.sqrt(g.Z**2 + g.R**2).ravel() > R
+    S = masked_stiffness(g, m) if R > 0 else stiffness(g)
+    keep = np.where(m)[0]
     w = 1.0/np.sqrt(g.V); W = sp.diags(w)
     A = (W @ (S + sp.diags(-K*g.V)).tocsr() @ W).tocsr()[keep][:, keep]
     val, _ = eigsh(A, k=1, which='SA', tol=1e-11, maxiter=200000)
@@ -40,11 +67,12 @@ def x2R(R, D, Lz=16.0, Lr=16.0, h=0.14, soft=0.0, iters=120, tol=1e-9):
     gf = Grid(Lz, Lr, h, zmin=-Lz)
     nzh = gh.nz
     assert gf.nz == 2*nzh
-    S = stiffness(gh)
     K = kernel_potential(gh, [(-D/2, 1.0), (D/2, 1.0)], soft)
     rr_near = np.sqrt((gh.Z - D/2)**2 + gh.R**2).ravel()
     rr_far  = np.sqrt((gh.Z + D/2)**2 + gh.R**2).ravel()
-    keep = np.where((rr_near > R) & (rr_far > R))[0]          # excluded from BOTH cores
+    m = (rr_near > R) & (rr_far > R)
+    S = masked_stiffness(gh, m) if R > 0 else stiffness(gh)
+    keep = np.where(m)[0]          # excluded from BOTH cores
     solveP, bnd, rrf = _poisson_setup(gf)
     w = 1.0/np.sqrt(gh.V); W = sp.diags(w)
     mir = np.arange(nzh)[::-1]
