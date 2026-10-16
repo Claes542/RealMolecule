@@ -43,8 +43,11 @@ band-filling term. We set out what is already exact, what this direct route reac
 does not. Exact and by the chain rule alone: RealQM's localisation energy
 \emph{is} the von Weizs\"acker functional, its variation \emph{is} Bohm's quantum potential, and the
 theory as used is precisely the zero-velocity equilibrium of a Madelung pair --- continuity plus a
-momentum balance whose stress is that potential. To be supplied: the dynamics of that pair per
-domain, with the interfaces moving as free surfaces. And the direct route stops at a sharp boundary, which is the useful thing it tells us: it reaches
+momentum balance whose stress is that potential. That balance has now been verified numerically at
+\emph{two} domains, where no Schr\"odinger equivalent stands behind it, and the measurement locates
+the accuracy-limiting feature of the construction at the free interface --- fourth-order convergence
+in the bulk against first order there, which is the surface on which dissipation is being sought. To
+be supplied: the dynamics of that pair per domain, with the interfaces moving as free surfaces. And the direct route stops at a sharp boundary, which is the useful thing it tells us: it reaches
 every coefficient that is a derivative of an energy, and no coefficient that is not. Genuinely
 open, and now the \emph{sole} open problem: \textbf{dissipation}. Madelung--Euler is non-dissipative, Navier--Stokes is not, and
 RealQM has no statistical ensemble from which an $H$-theorem could extract irreversibility. Where
@@ -537,9 +540,71 @@ it holds to seven figures. \emph{This verifies a claim the programme had already
 not extend it.} The new content begins at two domains, where there is no Schr\"odinger equivalent to
 check against.
 
+\section{Phase 2, done: the momentum balance is an identity at two domains}\label{sec:phase2}
+
+Programme item~2 below has been carried out, and it passes. It is the first test with two domains
+and a free interface between them, and --- unlike Phase~1 --- it has no Schr\"odinger equivalent
+standing behind it.
+
+\paragraph{The stress, written down.} With $u=\sqrt\rho$ and $Q=-\tfrac12\grad^2u/u$, the chain rule
+alone gives
+\begin{equation}\label{eq:stress}
+\rho\,\grad Q \;=\; \grad\cdot T,\qquad
+T_{ij} \;=\; -\tfrac12\big[\,u\,\partial_i\partial_j u - \partial_i u\,\partial_j u\,\big]
+\;=\; -\tfrac14\partial_i\partial_j\rho + \frac{\partial_i\rho\,\partial_j\rho}{4\rho},
+\end{equation}
+with no $\delta_{ij}$ term; in one dimension this is $\sigma=\tfrac14[(\rho')^2/\rho-\rho'']$. The
+static Euler--Lagrange equation of the model is $Q+V=\lambda$ with $V=-K+P_{\rm other}$, so the
+$v=0$ momentum balance is the statement
+\begin{equation}\label{eq:divT}
+\grad\cdot T \;=\; -\rho\,\grad V ,
+\end{equation}
+and integrating its $z$-component over a half space $\{z>z_{\rm cut}\}$ turns it into a statement
+about forces: the flux of quantum stress through the cut equals the net electrostatic force on the
+charge beyond it. The left-hand side is a surface integral of a quantity carrying a \emph{third}
+derivative of the density; the right-hand side is a volume integral of Coulomb forces. Nothing makes
+them equal except the identity.
+
+\paragraph{What was measured.} On the two-kernel system of Section~\ref{sec:exact} --- unit charges
+at $z=\pm D/2$, one electron each, split at the midplane, the partner by reflection --- with every
+derivative taken by independent fourth-order differences rather than by the solver's own operator:
+\begin{itemize}\itemsep2pt
+\item $Q+V=\lambda$ holds pointwise to $1.4\times10^{-3}$ of the size of $Q$.
+\item The integrated balance converges at \emph{fourth} order in the smooth interior --- the order
+of the difference operators --- reaching a relative residual of $8.5\times10^{-5}$.
+\item At the \emph{free interface} it converges at only \emph{first} order, reaching
+$1.7\times10^{-3}$. A control surface cut through the kernel cusp is worse, at about $1\%$.
+\item The Hellmann--Feynman force on a kernel and $-dE/dD$ taken from the same code's energies agree
+to $5.7\times10^{-4}$ at fourth order, once the finite-difference truncation is removed.
+\end{itemize}
+
+\paragraph{The informative part is the rate, not the pass.} That the identity holds was expected ---
+\eqref{eq:stress} is the chain rule. What was not known in advance is \emph{where} the discretisation
+of this model loses its accuracy, and the answer is unambiguous: fourth order in the bulk, first
+order at the free interface. The interface is the accuracy-limiting feature of the whole
+construction. This matters beyond bookkeeping, because interface motion is exactly where
+Section~\ref{sec:open} looks for dissipation: the dissipative degree of freedom, if candidate~1 is
+right, lives on the surface which is also the least accurately resolved part of the computation. Any
+measurement of a viscous stress will therefore have to contend with a first-order error in the same
+place, and that is worth knowing before the measurement rather than after.
+
+\paragraph{Two cautions about the test itself, which generalise.} The kernel softening used
+throughout this work is $\epsilon = 0.285\,h$, tied to the mesh. That is a calibration and not a
+discretisation: it sharpens the kernel as the mesh refines, so the continuum problem moves with $h$
+and a mesh ladder measures two things at once. For an identity test $\epsilon$ must be held fixed,
+and was. Second, the energy differences in the force test must be taken on \emph{commensurate}
+separations $D=(2i+1)h$, which put the kernels on cell centres; off-commensurate differencing
+produces egg-crate noise the size of the quantity being measured. But commensurability forces the
+difference width to be at least $2h$, so the narrowest admissible difference still carries an
+$O(h^2)$ truncation error --- which is what the raw $14$--$36\%$ discrepancy in the force comparison
+turned out to be, the ratio of the errors at widths $2h$ and $4h$ coming out at $0.19$--$0.24$,
+i.e.\ the $1/4$ of a squared width. Richardson extrapolation over the two widths removes it and the
+agreement above is what remains. A force comparison on a fixed mesh is not a test of anything until
+those two effects are separated.
+
 \section{The work programme}\label{sec:programme}
 
-In order, with the first two using machinery that already exists.
+In order, with the first two using machinery that already exists. Items~0 and~2 are done.
 
 \begin{enumerate}\itemsep4pt
 \item[\textbf{0.}] \textbf{The one-domain identity.} \emph{Done} --- Section~\ref{sec:phase1}.
@@ -547,10 +612,10 @@ In order, with the first two using machinery that already exists.
 instance: two densities in contact, interface moving with the normal velocity, chemical potential
 continuous. Check against the static answer in the limit of vanishing velocity, which is already
 computed.
-\item \textbf{The momentum balance as an identity, verified numerically.} Confirm that the stress
-in \eqref{eq:euler} integrates to the forces the static solver already reports --- a consistency
-check between the hydrodynamic and variational forms of the same theory, and a genuine test because
-the two are computed by different code.
+\item \textbf{The momentum balance as an identity, verified numerically.} \emph{Done} ---
+Section~\ref{sec:phase2}. The stress of \eqref{eq:euler} integrates to the forces the variational
+solver reports, computed by different code, and the free interface is identified as the
+accuracy-limiting feature.
 \item \textbf{The dissipation question}, which after Section~\ref{sec:direct} is the only part of
 the problem not already answered in principle. Measure whether interface motion against moving
 kernels produces a viscous stress; whether its magnitude scales with interface area as candidate~1
