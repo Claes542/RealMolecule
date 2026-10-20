@@ -1,4 +1,19 @@
 """
+CORRECTION 2026-10-20, read this before the diagnosis below.  THE COLLAPSE IS THIS FILE'S BUG, NOT
+THE MODEL'S.  RealQM requires the densities to be CONTINUOUS ACROSS the free boundary, imposed as
+Psi in H^1(R^3) -- stated explicitly in RealQM_method.tex:101 and FoundChem.tex:715: "the psi_i
+being continuous across joint boundaries Gamma_i ^ Gamma_j as imposed by Psi in H^1(R^3), and the
+boundary location determined by the energy minimisation".  This code does NOT impose it: each shell
+carries natural conditions on both of its own faces, so the density may JUMP at an interface.  The
+collapse mode needs precisely such a jump -- a constant psi inside, dropping to the outer shell's
+value at R1 -- and in H^1 that jump costs INFINITE energy.  So the uniform-blob collapse is outside
+the model's admissible class and the conclusion drawn from it was wrong.
+Consequences: (a) the inner cutoff r_c is NOT shown to be a necessity of the construction; (b)
+atom.js avoids the collapse legitimately, by ramping its level-set weights over ~2 cells, which is
+the discrete form of the continuity condition; (c) to run this test properly the shells must be
+coupled by continuity at the interfaces, not solved independently.  The hydrogen self-test is
+unaffected (one domain, no interface).
+
 ALL-ELECTRON LITHIUM IN A WIGNER-SEITZ CELL: the first macroscopic coefficient from Z alone.
 
 WHY.  The alkali table in the Hilbert-6 paper is honest that it is NOT parameter-free: each element
