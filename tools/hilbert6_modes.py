@@ -133,15 +133,33 @@ PROGRESS 2026-10-20 -- THE OBSTRUCTION IS NOW PRECISE. Three things settled, one
             int ftilde g  -  Wtilde(0) g(0)/u0(0)  =  2 Omega^2 int Wtilde W / rho0 ,
     and with Wtilde(0) = -rho0(0) d_stilde / 2 the boundary term is +(u0(0)/2) d_stilde g(0).
 
-    WHAT IS STILL MISSING, and it is one term.  That boundary term is the interface, and symmetry of
-    the left-hand side REQUIRES g(0) proportional to d_s -- so the interface condition is not an
-    extra row to impose but a CONSEQUENCE of self-adjointness, which is the resolution of the
-    tension in (b).  It is not yet in the discrete A.  Measured without it: Omega^2 comes out real
-    as predicted, but one eigenvalue is negative and DIVERGES with n (-66, -102, -138 at
-    n=200,300,400), the spectrum does not converge, and the known translation gives a Rayleigh
-    quotient of 3.72 w instead of w with residual 1.0.  The admissible class also still needs its
-    constraint projected out (f proportional to u0 is pure normalisation).  So: the structure is
-    settled, the discrete realisation is not, and the missing piece is identified exactly.
+    RESOLVED, and the discrete realisation now works.  Two errors had to be removed.
+
+    (i) THE HESSIAN NEEDS BOTH CROSS TERMS.  The joint second variation in (du, ds) has the form
+        <f,A0 f> + 2 ds <b,f> + c ds^2, so eliminating ds by ds = w.f leaves
+        A_eff = A0 + b w^T + w b^T + ..., with BOTH cross terms.  The verified "g" of (c) carried
+        only one of them, which is why the form came out asymmetric.  Symmetrising is not a fudge;
+        it is what the joint variation gives.
+
+    (ii) AN h-WEIGHT INCONSISTENCY, which was the whole of the remaining error.  The bulk bilinear
+        form carries the measure, a(f,f) = h f^T A f, while a boundary term is a POINT value and
+        carries none.  Mixing the two left the Rayleigh quotient short by exactly one power of h.
+        Diagnosed unambiguously: the quotient on the known translation came out at 12.509, 25.001,
+        50.000, 100.000 for h = 0.08, 0.04, 0.02, 0.01, i.e. Omega^2 * h = 1.00068, 1.00006,
+        1.00000, 1.00000.  With the weight corrected the translation gives Omega^2 = 1.00000 = w^2,
+        converging as 6.8e-4 -> 1e-5.  So the Kohn mode is exact in this formulation.
+
+    AND THE INTERFACE TERMS ARE WHAT MAKE IT STABLE.  With the cross terms included the spectrum has
+    NO negative Omega^2 at n = 200, 400, 800 (min Omega^2 = 0.880, 0.873, 0.869, converging), so the
+    linearised free boundary is well posed.  Drop them and a converged NEGATIVE eigenvalue appears,
+    Omega^2 = -2.882 at every n -- a spurious instability.  The interface coupling is therefore not
+    a correction to the spectrum but the thing that stabilises it.
+
+    ONE THING UNEXPLAINED, so do not read the lowest eigenvalue as physical.  The smallest computed
+    Omega/w is 0.932 and converging, which lies BELOW the translation's exact 1.000 -- so a mode
+    about 7 per cent soft is present that a harmonic trap should not have (its spectrum is n*w).
+    Most likely the Dirichlet truncation of the tail at -L or the midpoint rule in B; it does not
+    affect the sign of the spectrum, which is what well-posedness turns on.
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
