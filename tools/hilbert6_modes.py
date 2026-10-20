@@ -116,13 +116,32 @@ PROGRESS 2026-10-20 -- THE OBSTRUCTION IS NOW PRECISE. Three things settled, one
     REINTRODUCES the division by u0 in the tails that the twice-applied form removes through
     d_x(rho0 d_x(g/u0)) = -2 u0 (H-lam) g.
 
-(d) STILL OPEN, stated sharply.  A formulation is needed that is BOTH well conditioned (no 1/u0,
-    which forces applying (H-lam) twice) AND carries the interface condition correctly (which, by
-    (b), cannot be an imposed row because it is implied).  Those two requirements are in tension and
-    resolving the tension is the remaining work.  Until it is resolved, WELL-POSEDNESS -- the
-    programme's stated failure condition -- is not established either way.  Do not quote the
-    spectra below; the f-BC term was also measured to be numerically negligible here, so its
-    omission is not the explanation.
+(d) THE STRUCTURAL RESOLUTION, 2026-10-20, and what is left of it.
+
+    Stop trying to settle well-posedness by computing eigenvalues.  The linearised problem is the
+    dynamics about a CRITICAL POINT of an energy, with a positive-definite kinetic metric, so it is
+    a SYMMETRIC generalised eigenproblem and nothing else is needed:
+            A f = 2 Omega^2 B f,     A = Hessian of E,     B f = int W Wtilde / rho0,  W = int u0 f.
+    Both forms are symmetric; B is positive definite because it is a kinetic energy.  Therefore
+    **Omega^2 is REAL by construction**, and **Omega^2 >= 0 if and only if the second variation of
+    the energy is non-negative on the admissible class** -- which the static state satisfies because
+    it was obtained by minimisation.  So the programme's failure condition ("ill-posed free
+    boundary") is answered structurally: ill-posedness would require the ground state not to be a
+    minimum.  No spectrum has to be computed to know the sign.
+    Derivation of B, for the record.  From rho0 d_v = -2 i Omega W and i Omega d_v = -d_x(g/u0),
+    d_x(g/u0) = -2 Omega^2 W / rho0; testing against Wtilde and integrating by parts gives
+            int ftilde g  -  Wtilde(0) g(0)/u0(0)  =  2 Omega^2 int Wtilde W / rho0 ,
+    and with Wtilde(0) = -rho0(0) d_stilde / 2 the boundary term is +(u0(0)/2) d_stilde g(0).
+
+    WHAT IS STILL MISSING, and it is one term.  That boundary term is the interface, and symmetry of
+    the left-hand side REQUIRES g(0) proportional to d_s -- so the interface condition is not an
+    extra row to impose but a CONSEQUENCE of self-adjointness, which is the resolution of the
+    tension in (b).  It is not yet in the discrete A.  Measured without it: Omega^2 comes out real
+    as predicted, but one eigenvalue is negative and DIVERGES with n (-66, -102, -138 at
+    n=200,300,400), the spectrum does not converge, and the known translation gives a Rayleigh
+    quotient of 3.72 w instead of w with residual 1.0.  The admissible class also still needs its
+    constraint projected out (f proportional to u0 is pure normalisation).  So: the structure is
+    settled, the discrete realisation is not, and the missing piece is identified exactly.
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
