@@ -89,12 +89,40 @@ interface rows by up to 4e3, and no computed eigenvalue sits anywhere near w (th
 unchanged whether the free-boundary terms are on or off).  The "no negative, no complex eigenvalues"
 readout therefore proves nothing yet.
 
-THE DIAGNOSIS, for whoever picks this up.  A = (H-lam)[(H-lam) + coupling] applies the operator
-TWICE, and the second application acts not on f but on g = (H-lam) f + u0 d_V.  The moving-Neumann
-condition was imposed on f only; g has its OWN interface condition, which follows from the momentum
-equation at the boundary and has not been derived.  Until it is, the factorised form cannot carry
-the right boundary behaviour, which is why a one-row correction to H changes nothing.  That
-derivation -- the boundary condition for the second factor -- is the next step, not a finer mesh.
+PROGRESS 2026-10-20 -- THE OBSTRUCTION IS NOW PRECISE. Three things settled, one still open.
+
+(a) THE INTERFACE'S OWN EQUATION OF MOTION, derived.  Differentiating the material condition
+    s_t = v(s) once more gives s_tt = v_t(0) = -d_x(g/u0)|_0, so in the frequency domain
+            d_x(g/u0)|_0 = Omega^2 d_s ,
+    which is the boundary condition the second (H-lam) factor needs.  It depends on OMEGA, so the
+    free-boundary linearisation is a GENERALISED eigenproblem, not a standard one -- which is why
+    no correction to a single matrix could ever have worked.
+
+(b) BUT THAT CONDITION IS REDUNDANT, and the redundancy is exact.  Imposing it makes the mass
+    matrix M = I + (u0(0)/2h) e w_int^T, whose determinant is 1 + (u0(0)/2h)*w_int[-1], and
+            w_int[-1] = -2 h / u0(0)   =>   (u0(0)/2h)*w_int[-1] = -1   exactly,
+    so det M = 0 IDENTICALLY, not as a numerical accident.  The acceleration condition is already
+    implied by charge conservation (which is the material condition integrated once), so the
+    interface is NOT an independent degree of freedom at linear order and its condition cannot be
+    imposed as an extra row.  Measured: the generalised solve returns complex eigenvalues and a
+    non-converging spectrum, as a singular pencil must.
+
+(c) THE FIRST-ORDER SYSTEM in (d_rho, d_v, d_s) confirms the physics and fails on conditioning.
+    Built with each condition applied exactly once, it satisfies CONTINUITY exactly for the known
+    Kohn mode (residual 0.0), and the interface SURFACE TERM improves the momentum residual by a
+    factor 3.8 -- 0.316 volume-only against 0.084 with it -- which is independent confirmation,
+    from a different formulation, that the surface term is required.  But 0.084 is far worse than
+    the 2.2e-3 the twice-applied form achieves, and the reason is identified: mu = g/u0
+    REINTRODUCES the division by u0 in the tails that the twice-applied form removes through
+    d_x(rho0 d_x(g/u0)) = -2 u0 (H-lam) g.
+
+(d) STILL OPEN, stated sharply.  A formulation is needed that is BOTH well conditioned (no 1/u0,
+    which forces applying (H-lam) twice) AND carries the interface condition correctly (which, by
+    (b), cannot be an imposed row because it is implied).  Those two requirements are in tension and
+    resolving the tension is the remaining work.  Until it is resolved, WELL-POSEDNESS -- the
+    programme's stated failure condition -- is not established either way.  Do not quote the
+    spectra below; the f-BC term was also measured to be numerically negligible here, so its
+    omission is not the explanation.
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
