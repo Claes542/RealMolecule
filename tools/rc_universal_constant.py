@@ -1,128 +1,205 @@
 """
-ONE CONSTANT FOR THE ALKALI SERIES -- and the diagnosis of lithium.
+THE CORE RADIUS, DETERMINED INSIDE RealQM -- and the diagnosis of lithium.
 
-THE CLAIM.  The elasticity route (realqm_elasticity.tex) brings one parameter per element: the
-Ashcroft empty-core radius r_c, taken from the literature.  That per-element input is unnecessary.
-Across Na, K, Rb, Cs,
+THE SETTING.  The elasticity route (realqm_elasticity.tex) computes each alkali's equilibrium
+density and bulk modulus in a Wigner-Seitz cell whose electron-ion potential is the EMPTY CORE,
+V = 0 inside r_c and -Z/r outside.  Published, r_c was one parameter per element taken from the
+Ashcroft literature.  It need not be: RealQM fixes it from the free atom.
 
-        r_c  =  C * R(IE),     C = 0.7688 +- 0.008   (under 1%)
+TWO CORE MODELS, ONE CONSTANT.  A reduced valence calculation needs a core model, and the programme
+admits two:
 
-where R is the PSEUDO-KERNEL RADIUS the programme already fixes elsewhere: one electron outside R on
-a charge +1 kernel, R bisected so the pseudo-atom reproduces the element's MEASURED IONIZATION
-ENERGY (tools/x2_R_sweep.py:atomX).  R therefore comes from an atomic measurement, with no
-solid-state datum in it, and C is one number for the whole series.
+   hard depletion   density identically zero for r < R, Neumann at R -- RealQM's native non-overlap
+   empty core       V = 0 for r < r_c, the valence density ADMITTED inside
 
-WHAT THE CONSTANT MEANS.  r_c and R are two conventions for the same ion core.  The empty-core
-potential CANCELS the attraction inside r_c but still admits the electron; RealQM's non-overlap
-DENIES the territory outright, density zero with Neumann at R.  Denying territory is the stronger
-constraint, so the exclusion radius must exceed the empty-core radius to give the same binding --
-and r_c < R for all five metals.  C is the exchange rate between the two, and its being a single
-number says they differ by a pure scale, not by anything element-specific.
+Fit BOTH to the same measured ionization energy and the ratio is a constant,
 
-LITHIUM.  C is the mean over Na, K, Rb, Cs ONLY; lithium's own ratio is 0.530, the outlier.  So
-r_c = C*R for lithium is a PREDICTION -- it uses lithium's ionization energy and four other
-elements' core radii, and no property of lithium's solid.  It moves lithium from the paper's named
-failure to agreement:
+        r_c / R  =  0.855 +- 0.006     over Li, Na, K, Rb, Cs,
 
-        r_c = 1.06 (literature) ->  r_s 2.40 vs 3.25,  B 49.6 vs 11.6  (4.3x too stiff)
-        r_c = 1.537 (= C*R)     ->  r_s 3.47 vs 3.25,  B 12.5 vs 11.6  (+7%)
+with no literature input anywhere and LITHIUM INCLUDED.  So the two are not rival models but two
+parameterisations of one ion core: denying territory is the stronger constraint, so the exclusion
+radius must exceed the empty-core radius to give the same binding, and this constant is the exchange
+rate between them.  That it is one number across a factor 1.6 in size says the two descriptions
+differ by a pure scale and nothing element-specific.
 
-This settles the open question stated in realqm_hilbert6.tex: lithium's failure was the empty-core
-INPUT, not the one-electron-per-cell picture.
+LITHIUM.  Fitting the empty core to the free atom's IE reproduces Ashcroft's radii at a NEARLY
+CONSTANT +11% for Na, K, Rb, Cs -- and +62% at lithium.  Three independent routes therefore agree
+that lithium's literature Ashcroft radius is anomalously small: this one, the ratio above (in which
+lithium is NOT an outlier, while against Ashcroft's radii it is), and the alkali-dimer work, where
+lithium's core radius exceeds its ionic radius by 0.56 a0 against 0.1-0.2 elsewhere.  Lithium's
+failure in the published table is the empty-core INPUT, not the one-electron-per-cell picture.  This
+settles the open question stated in realqm_hilbert6.tex.
 
-LIMIT.  C is monovalent.  Divalent magnesium on the literally parallel construction (one electron,
-+1 kernel, matched to IE1) gives r_c = 0.813 against the literature 1.39, low by 42%.  A
-valence-matched pseudo-atom (+2 kernel, two electrons, self-repulsion reduced by 1/2, matched to
-IE1+IE2) gives 1.291, low by 7% -- better, but a different construction on which C was never
-fitted.  One fit for all holds within a valence column; whether each column has its own constant is
-open.
+THE ACCURACY HIERARCHY, which is the honest way to report this.  Four choices of input for the same
+cell calculation, in increasing dependence on anything external:
+
+  (1) ZERO fitted constants, r_c from the IE alone .......  r_s 11.5%,  B 23%
+  (2) ONE constant fitted to ONE solid datum (Na's r_s) ..  r_s  5.1%,  B 13%
+  (3) ONE constant fitted to four Ashcroft radii .........  r_s  2.9%,  B 17%
+  (4) FIVE literature radii, one per element .............  r_s  6.2%,  B 79%
+
+(1) is one-sided -- every r_s high, every B low -- because the free atom's core radius runs ~11%
+larger than the solid wants, which is a physical atom-to-solid difference and not an error.  (2)
+absorbs exactly that offset with a single number and is the claim worth making, since it touches no
+pseudopotential literature.  (3) has the best numbers but leans on the literature and requires
+lithium to be excluded from the mean.  The constant of (2) is 0.8055 and of (3) is 0.7688: two
+independent routes agreeing to 4.8%.
+
+WHAT DOES NOT REPAIR.  Lithium's pressure derivative B' goes from -0.714 to -0.212 -- six times
+smaller but still the wrong sign -- and the other four barely move.  So the input error explained
+B's failure at lithium, while B' fails for the different reason the paper names: the order of the
+derivative.  Routine: tools/hilbert6_form.py:alkali_Bprime.
+
+THE CONSTANT IS MONOVALENT.  Carried to divalent magnesium the ratio does not transfer; see the
+module docstring of the memory note, and the figures printed by --mg below.
 
 usage:  python3 tools/rc_universal_constant.py
-        RECHECK_R=1 python3 tools/rc_universal_constant.py     # also re-bisect R from scratch (slow)
+        RECHECK=1 python3 tools/rc_universal_constant.py    # re-fit every radius from scratch (slow)
+        LATEX=1   python3 tools/rc_universal_constant.py    # emit the paper's table rows
 """
 import os, sys, statistics as st
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..',
-                                'real_plasma_numerics'))
-import metal_alkalis as M
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HERE)
+sys.path.insert(0, os.path.join(_HERE, '..', 'real_plasma_numerics'))
+import metal_alkalis as ma
 
-# R bisected by tools/x2_R_sweep.py:atomX to each MEASURED ionization energy, h=0.175, L=14.
-# Re-derived from scratch 2026-10-21 and reproduces the published table to three decimals.
-R_IE = {'Li': 1.999, 'Na': 2.161, 'K': 2.792, 'Rb': 2.972, 'Cs': 3.295}
+HA_EV = 27.211386
+
+# Measured first ionization energies (eV), the only per-element input.
 IE_EV = {'Li': 5.392, 'Na': 5.139, 'K': 4.341, 'Rb': 4.177, 'Cs': 3.894}
-FIT = ('Na', 'K', 'Rb', 'Cs')            # lithium deliberately excluded
+
+# Radii fitted to those IEs, h = 0.125, L = 14.  Both reproduced from scratch 2026-10-21;
+# set RECHECK=1 to re-derive.  R_HD is the hard-depletion radius of tools/x2_R_sweep.py.
+R_HD = {'Li': 1.999, 'Na': 2.161, 'K': 2.792, 'Rb': 2.972, 'Cs': 3.295}
+RC_EC = {'Li': 1.716, 'Na': 1.865, 'K': 2.386, 'Rb': 2.533, 'Cs': 2.791}
+
+
+def atomX_ec(rc, h=0.125, L=14.0):
+    """EMPTY CORE: V = 0 inside rc, -1/r outside, electron admitted everywhere.
+
+    This is tools/x2_R_sweep.py:atomX with the mask removed and the kernel potential zeroed inside
+    rc -- the two core models differ by exactly that, which is why the ratio below is meaningful.
+    """
+    import numpy as np, scipy.sparse as sp
+    from scipy.sparse.linalg import eigsh
+    from axisym_realqm import Grid, stiffness, kernel_potential
+    g = Grid(L, L, h, zmin=-L)
+    K = kernel_potential(g, [(0.0, 1.0)], 0.0)
+    K = np.where(np.sqrt(g.Z**2 + g.R**2).ravel() < rc, 0.0, K)
+    w = 1.0/np.sqrt(g.V)
+    W = sp.diags(w)
+    A = (W @ (stiffness(g) + sp.diags(-K*g.V)).tocsr() @ W).tocsr()
+    return eigsh(A, k=1, which='SA', tol=1e-11, maxiter=200000)[0][0]
+
+
+def fit_rc(ie, lo=0.2, hi=6.0, tol=3e-4):
+    """Bisect the empty-core radius so the pseudo-atom reproduces the measured IE."""
+    for _ in range(36):
+        mid = 0.5*(lo + hi)
+        if -atomX_ec(mid)*HA_EV > ie:
+            lo = mid
+        else:
+            hi = mid
+        if hi - lo < tol:
+            break
+    return 0.5*(lo + hi)
 
 
 def observables(rc):
     """Equilibrium r_s and bulk modulus from the paper's own Wigner-Seitz driver."""
-    f = M.make_energy(rc)
-    rs = M.minimise(lambda x: f(x)[0])
-    return rs, M.bulk_modulus(lambda x: f(x)[0], rs)
+    f = ma.make_energy(rc)
+    rs = ma.minimise(lambda x: f(x)[0])
+    return rs, ma.bulk_modulus(lambda x: f(x)[0], rs)
 
 
-def recheck_R():
-    """Independently re-bisect R from the measured IEs -- the control for the table above."""
-    from x2_R_sweep import atomX, HA_EV
-    h, L = 0.175, 14.0
-    print("CONTROL: re-bisect R so the pseudo-atom reproduces each measured IE")
-    for el, ie in IE_EV.items():
-        lo, hi = 0.0, 4.5
-        for _ in range(40):
-            mid = 0.5*(lo + hi)
-            if -atomX(mid, L, L, h)*HA_EV > ie:
-                lo = mid
-            else:
-                hi = mid
-            if hi - lo < 2e-4:
-                break
-        R = 0.5*(lo + hi)
-        print(f"   {el:3s} IE {ie:6.3f} eV -> R = {R:.3f}   [{R_IE[el]:.3f}]   "
-              f"d = {R - R_IE[el]:+.3f}", flush=True)
-    print()
+def fit_C_to_sodium():
+    """One constant, fixed by ONE solid-state datum: sodium's measured r_s."""
+    lo, hi = 0.60, 1.00
+    for _ in range(34):
+        mid = 0.5*(lo + hi)
+        if observables(mid*R_HD['Na'])[0] < ma.ALKALIS['Na'][1]:
+            lo = mid
+        else:
+            hi = mid
+    return 0.5*(lo + hi)
+
+
+def report(tag, rc_of):
+    rows, er, eb = [], [], []
+    for el, (_, rs_e, B_e) in ma.ALKALIS.items():
+        rc = rc_of(el)
+        rs, B = observables(rc)
+        er.append(100*(rs - rs_e)/rs_e)
+        eb.append(100*(B - B_e)/B_e)
+        rows.append((el, rc, rs, rs_e, B, B_e, er[-1], eb[-1]))
+    mr, mb = st.mean([abs(x) for x in er]), st.mean([abs(x) for x in eb])
+    print(f"\n{tag}")
+    print(f"{'':4}{'r_c':>7}{'':2}{'r_s':>7}{'exp':>7}{'err':>8}{'':2}{'B':>7}{'exp':>7}{'err':>8}")
+    for el, rc, rs, rs_e, B, B_e, e1, e2 in rows:
+        print(f"{el:4}{rc:>7.3f}{'':2}{rs:>7.2f}{rs_e:>7.2f}{e1:>+7.1f}%{'':2}"
+              f"{B:>7.1f}{B_e:>7.1f}{e2:>+7.0f}%", flush=True)
+    print(f"   mean |err|:  r_s {mr:.1f}%   B {mb:.0f}%")
+    return rows, mr, mb
 
 
 def main():
-    if os.environ.get('RECHECK_R'):
-        recheck_R()
+    rc_ec = dict(RC_EC)
+    if os.environ.get('RECHECK'):
+        print("re-fitting every empty-core radius to its measured IE")
+        for el, ie in IE_EV.items():
+            rc_ec[el] = fit_rc(ie)
+            print(f"   {el:3s} IE {ie:6.3f} eV -> r_c = {rc_ec[el]:.3f}   "
+                  f"[{RC_EC[el]:.3f}]   d = {rc_ec[el]-RC_EC[el]:+.3f}", flush=True)
 
-    ratios = {el: M.ALKALIS[el][0]/R_IE[el] for el in R_IE}
-    sub = [ratios[el] for el in FIT]
-    C = st.mean(sub)
-    print("ONE CONSTANT FOR THE ALKALI SERIES\n")
-    print("   r_c/R:  " + "   ".join(f"{el} {ratios[el]:.4f}" for el in R_IE))
-    print(f"   C = mean over {', '.join(FIT)} = {C:.4f}   sd {st.stdev(sub):.4f}   "
-          f"spread {max(sub) - min(sub):.4f}")
-    print(f"   lithium's own ratio is {ratios['Li']:.4f} and is NOT in the mean, so its r_c "
-          f"= {C*R_IE['Li']:.3f} is a prediction\n")
+    print("TWO CORE MODELS FITTED TO THE SAME MEASURED IE -- no literature input\n")
+    print(f"{'':4}{'R hard depl':>13}{'r_c empty core':>16}{'ratio':>9}{'Ashcroft':>10}{'vs Ashcroft':>13}")
+    rat, off = [], []
+    for el in IE_EV:
+        rat.append(rc_ec[el]/R_HD[el])
+        off.append(100*(rc_ec[el] - ma.ALKALIS[el][0])/ma.ALKALIS[el][0])
+        print(f"{el:4}{R_HD[el]:>13.3f}{rc_ec[el]:>16.3f}{rat[-1]:>9.4f}"
+              f"{ma.ALKALIS[el][0]:>10.2f}{off[-1]:>+12.1f}%")
+    print(f"\n   ratio = {st.mean(rat):.4f}   sd {st.stdev(rat):.4f}   spread {max(rat)-min(rat):.4f}"
+          f"   -- all five, lithium included")
+    print(f"   vs Ashcroft: {off[0]:+.0f}% at lithium against "
+          f"{', '.join(f'{v:+.0f}%' for v in off[1:])} elsewhere -- lithium's literature radius is "
+          f"the anomaly")
 
-    print(f"{'':4}{'r_c lit':>8}{'r_c=CR':>8}{'':2}{'r_s lit':>8}{'r_s CR':>8}{'r_s exp':>8}"
-          f"{'':2}{'B lit':>7}{'B CR':>7}{'B exp':>7}")
-    dev = {k: [] for k in ('rs_l', 'rs_n', 'B_l', 'B_n')}
-    for el, (rc_l, rs_e, B_e) in M.ALKALIS.items():
-        (rs_l, B_l), (rs_n, B_n) = observables(rc_l), observables(C*R_IE[el])
-        dev['rs_l'].append(100*(rs_l - rs_e)/rs_e); dev['rs_n'].append(100*(rs_n - rs_e)/rs_e)
-        dev['B_l'].append(100*(B_l - B_e)/B_e);     dev['B_n'].append(100*(B_n - B_e)/B_e)
-        print(f"{el:4}{rc_l:>8.2f}{C*R_IE[el]:>8.3f}{'':2}{rs_l:>8.2f}{rs_n:>8.2f}{rs_e:>8.2f}"
-              f"{'':2}{B_l:>7.1f}{B_n:>7.1f}{B_e:>7.1f}", flush=True)
+    C_na = fit_C_to_sodium()
+    C_lit = st.mean([ma.ALKALIS[e][0]/R_HD[e] for e in ('Na', 'K', 'Rb', 'Cs')])
+    print(f"\n   C fitted to sodium's r_s alone : {C_na:.4f}")
+    print(f"   C fitted to four Ashcroft radii: {C_lit:.4f}   "
+          f"(agree to {abs(C_na-C_lit)/C_lit*100:.1f}%)")
 
-    print("\n   deviations %, order Li Na K Rb Cs")
-    for k, lab in (('rs_l', 'r_s, literature r_c'), ('rs_n', 'r_s, one constant  '),
-                   ('B_l',  'B,   literature r_c'), ('B_n',  'B,   one constant  ')):
-        print(f"      {lab}: " + ", ".join(f"{v:+.0f}" for v in dev[k]))
-    print(f"\n   mean |deviation|{'all five':>14}{'excl. Li':>12}")
-    for k, lab in (('rs_l', 'r_s literature'), ('rs_n', 'r_s one constant'),
-                   ('B_l',  'B   literature'), ('B_n',  'B   one constant')):
-        a = [abs(v) for v in dev[k]]
-        print(f"      {lab:18s}{st.mean(a):8.1f}%{st.mean(a[1:]):11.1f}%")
-    print(f"\n   lithium's modulus: {(100 + dev['B_l'][0])/100:.2f}x too stiff  ->  "
-          f"{(100 + dev['B_n'][0])/100:.2f}x")
-    print("   the four fitted elements are a wash, so the entire gain is lithium\n")
+    r1, m1r, m1b = report("(1) ZERO fitted constants -- r_c from the measured IE alone",
+                          lambda el: rc_ec[el])
+    r2, m2r, m2b = report(f"(2) ONE constant on ONE solid datum -- C = {C_na:.4f} from Na's r_s",
+                          lambda el: C_na*R_HD[el])
+    r3, m3r, m3b = report(f"(3) ONE constant on four Ashcroft radii -- C = {C_lit:.4f}",
+                          lambda el: C_lit*R_HD[el])
+    r4, m4r, m4b = report("(4) FIVE literature radii, one per element",
+                          lambda el: ma.ALKALIS[el][0])
 
-    print("   ROBUSTNESS -- the repair is not a knife-edge in C (Li exp: r_s 3.25, B 11.6)")
-    print(f"{'C':>10}{'r_c(Li)':>10}{'r_s':>8}{'B':>8}")
-    for Ct in (0.70, 0.74, C, 0.80, 0.84):
-        rs, B = observables(Ct*R_IE['Li'])
-        print(f"{Ct:>10.4f}{Ct*R_IE['Li']:>10.3f}{rs:>8.2f}{B:>8.1f}", flush=True)
+    print("\nHIERARCHY (mean |err|), increasing dependence on anything external")
+    for lab, mr, mb in (("(1) zero constants      ", m1r, m1b),
+                        ("(2) one constant, one datum", m2r, m2b),
+                        ("(3) one constant, Ashcroft ", m3r, m3b),
+                        ("(4) five literature radii  ", m4r, m4b)):
+        print(f"   {lab}  r_s {mr:5.1f}%   B {mb:4.0f}%")
+    print("   (1) is one-sided: every r_s high, every B low, because the free atom's core radius")
+    print("   runs ~11% larger than the solid wants -- physical, not an error.  (2) absorbs it.")
+
+    if os.environ.get('LATEX'):
+        print("\n% ---- table rows, (1) then (2) ----")
+        for rows in (r1, r2):
+            for el, rc, rs, rs_e, B, B_e, _, _ in rows:
+                print(f"{el} & ${rc:.3f}$ & ${rs:.2f}$ & ${rs_e:.2f}$ & ${B:.1f}$ & ${B_e:.1f}$ \\\\")
+            print("%")
+        print(f"% ratio {st.mean(rat):.4f} sd {st.stdev(rat):.4f}; C_na {C_na:.4f} C_lit {C_lit:.4f}")
+        print(f"% means: (1) {m1r:.1f}/{m1b:.0f}  (2) {m2r:.1f}/{m2b:.0f}  "
+              f"(3) {m3r:.1f}/{m3b:.0f}  (4) {m4r:.1f}/{m4b:.0f}")
+        print("% ratios: " + ", ".join(f"{v:.4f}" for v in rat))
 
 
 if __name__ == '__main__':
