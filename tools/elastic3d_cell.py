@@ -65,6 +65,35 @@ NaCl shear attempts, and it is now here and validated against an exact number.  
 step and needs only the cell to become non-cubic: the Laplacian and the FFT wavevectors acquire the
 metric of the strained lattice vectors, and C_44 follows from the same energy difference.
 
+TWO ELECTRONS, AND THE PARTITION MATTERS -- 2026-10-21.  cell2() puts two one-electron domains in
+one cell so that NON-OVERLAP finally does work (with one electron per cell the single domain fills
+it and the constraint is vacuous).  Magnesium, r_c = 1.39 as an input.  Three things came out, and
+the second withdraws a number.
+
+  * IT BINDS, AND THE LOCALISATION COST IS REAL.  T = 0.30 to 0.48 Ha against 0.03 for the
+    overlapping blob -- a factor of ten.  That cost is what the standard treatment gets from
+    band filling, and here it comes from non-overlap alone.
+
+  * THE CHOICE OF DIVIDING SURFACE CHANGES THE ANSWER, and the first choice was the worst.  At
+    a = 5.46, E = -0.558 for a (001) plane through the ion, -0.611 for (011), -0.638 for (111), and
+    POSITIVE (+0.86 to +2.09, with T = 1.4 to 2.0) for a sphere around the ion against the rest.
+    So the sphere topology is hopeless -- confining one electron to a ball costs far more than it
+    gains -- and (111) is lower than (001) by 0.080 Ha.  A modulus computed on (001), as the first
+    run did, is computed on a partition the energy rejects.  On (111) the cell has a clean minimum
+    at r_s = 2.69 with P = -6e-5 there, against MEASURED 2.65 -- within 1.5 per cent -- and
+    B = 26 GPa against 35.4 measured.
+
+  * B IS STILL ONLY GOOD TO A FACTOR OF ABOUT TWO.  Holding h fixed quantises the strain at
+    da = 2h = 0.42 a_0, and across adjacent points B reads 60, 26, 10 GPa.  The EQUILIBRIUM is far
+    better determined than the curvature, because P crosses zero sharply.  Quote r_s; do not quote B
+    without a finer h.
+
+AND THE COMPARISON WITH THE BLOB IS NOT A VARIATIONAL ONE.  cell_blob() reaches -0.783, below every
+split partition, but that is a comparison ACROSS MODELS and not within one: the blob's (N-1)/N
+reduction is a weaker constraint than non-overlap, and a weaker constraint always reaches a lower
+minimum.  What discriminates them is an observable, not an energy -- and there the split binds while
+the blob does not, its energy rising monotonically with r_s across the whole range scanned.
+
 THE DISCIPLINE CARRIED FROM EVERY EARLIER PHASE: h held FIXED with the strain carried by n (so the
 mesh and the core surface are identical at every strain), ONE PARITY of n only (n even puts the ion
 at a corner of eight cells, n odd at a cell centre, and mixing them alternates the answer), and the
@@ -97,7 +126,7 @@ def phi_periodic(rho, G, h):
     return np.real(np.fft.ifftn(G*np.fft.fftn(rho)))
 
 
-def self_energy_bg(rho, n, h, a):
+def self_energy_bg(rho, n, h, a, q=1.0):
     """Self-interaction to remove in a periodic cell: the ISOLATED energy of the NEUTRAL difference
     rho - rho_uniform.
 
@@ -109,7 +138,7 @@ def self_energy_bg(rho, n, h, a):
     MEASURED AGAINST THAT BACKGROUND, i.e. the isolated energy of rho - rho_u.  It vanishes
     identically for a uniform density, which is the test.
     """
-    rho_u = np.full_like(rho, 1.0/a**3)
+    rho_u = np.full_like(rho, q/a**3)      # background must carry the SAME charge as rho
     d = rho - rho_u
     return 0.5*float(np.sum(d*phi_isolated(d, n, h)))*h**3
 
@@ -178,6 +207,121 @@ def cell(n, h, rc=1.67, sig_cells=1.2, smooth=2.0, iters=60, tol=1e-12, mix=0.4)
             break
         E = Enew
     return dict(E=Enew, T=T, U_eI=U_eI, U_ee=U_ee, U_II=U_II, a=a, rs=rs, it=it+1)
+
+
+
+# ------------------------------------------------------------ TWO DOMAINS: non-overlap does work
+def cell2(n, h, Z=2.0, rc=1.39, sig_cells=1.2, smooth=2.0, iters=60, tol=1e-12, mix=0.4):
+    """Two electron domains in one periodic cell, split by the plane through the ion.
+
+    This is the first calculation in this line where NON-OVERLAP does any work.  With one electron
+    per cell the single domain fills it and the constraint is vacuous; with two, each carries unit
+    charge on half the cell and they meet at a FREE INTERFACE -- the plane z=0 through the ion, held
+    there by symmetry -- and again at the cell face, which by periodicity is where this cell's upper
+    domain meets the next cell's lower one.  So each domain is a slab with a free interface on both
+    faces, and the i!=j rule now excludes two self-interactions rather than one.
+
+    Magnesium is the cheapest genuine test: divalent, so two domains, and the ion is a +2 Ashcroft
+    core.  r_c is an INPUT here as everywhere in this family, and it is not tuned to the answer.
+    """
+    a, r, G = grids(n, h)
+    sig = sig_cells*h
+    rho_i = Z*np.exp(-r*r/(2*sig*sig))/(np.exp(-r*r/(2*sig*sig)).sum()*h**3)
+    w = np.clip((r - rc)/(smooth*h) + 0.5, 0.0, 1.0)
+    core_fix = Z*(1.0 - w)/np.maximum(r, 1e-300)
+    A = laplacian(n, h)
+    half = n//2
+    masks = [np.zeros((n, n, n), bool), np.zeros((n, n, n), bool)]
+    masks[0][:, :, :half] = True                  # z < 0 slab
+    masks[1][:, :, half:] = True                  # z > 0 slab
+    rho = [m/(m.sum()*h**3) for m in (masks[0].astype(float), masks[1].astype(float))]
+    E = None
+    for it in range(iters):
+        rho_tot = rho[0] + rho[1]
+        phi_tot = phi_periodic(rho_i - rho_tot, G, h)
+        new = []
+        for s_ in (0, 1):
+            rho_u = np.full_like(rho[s_], 1.0/a**3)
+            # this domain feels all ions and the OTHER domain, never itself
+            Vo = (-phi_tot - phi_isolated(rho[s_] - rho_u, n, h) + core_fix)
+            keep = np.where(masks[s_].ravel())[0]
+            Asub = A[keep][:, keep] + sp.diags(Vo.ravel()[keep])
+            val, vec = eigsh(Asub.tocsr(), k=1, which='SA', tol=1e-11, maxiter=200000)
+            u = vec[:, 0]; u = u/np.sqrt(np.sum(u*u)*h**3)
+            q = np.zeros(n**3); q[keep] = u*u
+            new.append(q.reshape(n, n, n))
+        rho = [(1-mix)*o + mix*nn for o, nn in zip(rho, new)]
+        rho = [q/(q.sum()*h**3) for q in rho]
+        # ---- energy per cell, pairs once ------------------------------------------------------
+        rho_tot = rho[0] + rho[1]
+        T = 0.0
+        for s_ in (0, 1):
+            keep = np.where(masks[s_].ravel())[0]
+            uu = np.sqrt(rho[s_].ravel()[keep])
+            T += float(uu @ (A[keep][:, keep] @ uu))*h**3
+        U_eI = float(np.sum(rho_tot*(-phi_periodic(rho_i, G, h) + core_fix)))*h**3
+        U_ee = (0.5*float(np.sum(rho_tot*phi_periodic(rho_tot, G, h)))*h**3
+                - self_energy_bg(rho[0], n, h, a) - self_energy_bg(rho[1], n, h, a))
+        rs_ion = (3.0/(4*np.pi))**(1.0/3.0)*a
+        U_II = -ALPHA_SC*Z*Z/rs_ion
+        Enew = T + U_eI + U_ee + U_II
+        if E is not None and abs(Enew - E) < tol:
+            break
+        E = Enew
+    rs_e = (3.0/(4*np.pi))**(1.0/3.0)*a/Z**(1.0/3.0)
+    return dict(E=Enew, T=T, U_eI=U_eI, U_ee=U_ee, U_II=U_II, a=a, rs=rs_e, it=it+1)
+
+
+def cell_blob(n, h, Z=2.0, rc=1.39, sig_cells=1.2, smooth=2.0, iters=60, tol=1e-12, mix=0.4):
+    """The OVERLAPPING alternative: N electrons sharing one domain, with REDUCED self-repulsion.
+
+    CLAUDE.md's house rule is that splitting a -Z valence into Z one-electron domains is exact --
+    n unit charges give n(n-1)/2 pairs, each counted once, with no (Z-1)/Z factor and no kinetic
+    fudge -- and that "a -Z multi-occupancy blob is the exception and needs justifying".  This
+    function is that exception, computed so the two can be compared on the same grid.
+
+    The bookkeeping.  If all N electrons share one orbital psi with rho_tot = N psi^2, the pair
+    count is N(N-1)/2 rather than the N^2/2 the naive Hartree of rho_tot would give, so the
+    SAME-CELL part must be scaled by (N-1)/N.  The images are genuinely other electrons and are not
+    reduced.  Splitting the periodic Hartree into (cell with images and background) plus (within
+    cell) gives
+        U_ee = (1/2) int rho phi^per  -  (1/N) * self_bg(rho_tot),
+    which reduces to the one-electron case at N=1, where it removes the self-interaction entirely.
+    And the localisation energy of N electrons in one orbital is just the von Weizsaecker term of
+    the TOTAL density, T = (1/2) int |grad sqrt(rho_tot)|^2, so a uniform blob has T = 0 exactly --
+    which is the "sea" limit that metal_alkalis.py computes in one dimension.
+    """
+    a, r, G = grids(n, h)
+    sig = sig_cells*h
+    rho_i = Z*np.exp(-r*r/(2*sig*sig))/(np.exp(-r*r/(2*sig*sig)).sum()*h**3)
+    w = np.clip((r - rc)/(smooth*h) + 0.5, 0.0, 1.0)
+    core_fix = Z*(1.0 - w)/np.maximum(r, 1e-300)
+    A = laplacian(n, h)
+    rho_t = np.full((n, n, n), Z/a**3)
+    E = None
+    for it in range(iters):
+        phi_tot = phi_periodic(rho_i - rho_t, G, h)
+        rho_u = np.full_like(rho_t, Z/a**3)
+        # the reduced self-repulsion: only 1/N of the same-cell self-interaction is removed
+        Veff = (-phi_tot - (1.0/Z)*phi_isolated(rho_t - rho_u, n, h) + core_fix).ravel()
+        val, vec = eigsh((A + sp.diags(Veff)).tocsr(), k=1, which='SA', tol=1e-11, maxiter=200000)
+        u = vec[:, 0]; u = u/np.sqrt(np.sum(u*u)*h**3)
+        new = Z*(u*u).reshape(n, n, n)
+        rho_t = (1-mix)*rho_t + mix*new
+        rho_t *= Z/(rho_t.sum()*h**3)
+        uu = np.sqrt(rho_t).ravel()
+        T = float(uu @ (A @ uu))*h**3                  # von Weizsaecker of the total
+        U_eI = float(np.sum(rho_t*(-phi_periodic(rho_i, G, h) + core_fix)))*h**3
+        U_ee = (0.5*float(np.sum(rho_t*phi_periodic(rho_t, G, h)))*h**3
+                - (1.0/Z)*self_energy_bg(rho_t, n, h, a, q=Z))
+        rs_ion = (3.0/(4*np.pi))**(1.0/3.0)*a
+        U_II = -ALPHA_SC*Z*Z/rs_ion
+        Enew = T + U_eI + U_ee + U_II
+        if E is not None and abs(Enew - E) < tol:
+            break
+        E = Enew
+    return dict(E=Enew, T=T, U_eI=U_eI, U_ee=U_ee, U_II=U_II, a=a,
+                rs=(3.0/(4*np.pi))**(1.0/3.0)*a/Z**(1.0/3.0), it=it+1)
 
 
 if __name__ == '__main__':
