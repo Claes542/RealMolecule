@@ -121,36 +121,29 @@ def solve_finite_chain(N, a, ncell=41, eps=0.35, vac=6.0, iters=300, tol=1e-11):
 
 if __name__ == '__main__':
     a = float(os.environ.get('A', 3.0))
-    ncell = int(os.environ.get('N', 41))
     eps = float(os.environ.get('EPS', 0.35))
-    Ns = [int(x) for x in os.environ.get('NS', '3,4,5,6,7,8').split(',')]
-
-    print("HILBERT-6 -- surface energy from the free boundary (no Cauchy-Born needed)")
-    print(f"1D chain, a={a}, {ncell} mesh cells per period, eps={eps} fixed\n")
-
-    print("PERIODIC reference (tools/hilbert6_elastic.py, different code path)")
-    Sp = solve_chain(a, n=ncell, eps=eps, M=30)
-    print(f"   e_bulk per cell = {Sp['E']:.8f}\n")
-
-    print("FINITE CHAINS: E(N) = N e_bulk + 2 gamma")
-    print("     N      E(N)        E(N)/N      E(N)-E(N-1)    2 gamma = E - N e_bulk")
-    prev = None
-    rows = []
-    for N in Ns:
-        S = solve_finite_chain(N, a, ncell=ncell, eps=eps)
-        inc = (S['E'] - prev) if prev is not None else float('nan')
-        rows.append((N, S['E']))
-        print(f"  {N:4d} {S['E']:12.7f} {S['E']/N:12.7f} {inc:14.7f} {S['E']-N*Sp['E']:14.7f}",
+    HA_EV = 27.211386
+    print("SURFACE ENERGY from the free boundary (no Cauchy-Born needed)")
+    print(f"1D chain, a={a}, eps={eps} fixed\n")
+    print("gamma is extracted with the chain's OWN bulk energy -- the increment E(N)-E(N-1) -- and")
+    print("NOT with the periodic e_bulk.  Mixing the two discretisations leaves an O(h^2) slope")
+    print("mismatch which shows up as a linear DRIFT down the 2*gamma column and reads exactly like")
+    print("a failure of N-independence.  The published number is the Richardson extrapolation in")
+    print("h^2 of the three meshes below, so running this file reproduces it.\n")
+    print("   ncell   e_bulk(increment)     gamma (Ha)    spread over N=5..8")
+    g = {}
+    for nc in (17, 25, 41):
+        E = {N: solve_finite_chain(N, a, ncell=nc, eps=eps)['E'] for N in (5, 6, 7, 8)}
+        eb = E[8] - E[7]
+        vals = {N: (E[N] - N*eb)/2 for N in E}
+        g[nc] = vals[8]
+        print(f"   {nc:5d} {eb:18.8f} {vals[8]:14.6f}      {max(vals.values())-min(vals.values()):.2e}",
               flush=True)
-        prev = S['E']
-
-    Nn = np.array([r[0] for r in rows], float)
-    En = np.array([r[1] for r in rows])
-    A = np.vstack([Nn, np.ones_like(Nn)]).T
-    slope, icept = np.linalg.lstsq(A, En, rcond=None)[0]
-    print(f"\n  least squares over N={Ns}:")
-    print(f"     slope (e_bulk from the finite chains) = {slope:.8f}")
-    print(f"     periodic e_bulk                       = {Sp['E']:.8f}")
-    print(f"     relative difference                   = {abs(slope-Sp['E'])/abs(Sp['E']):.3e}")
-    print(f"     intercept = 2 gamma                   = {icept:.8f}")
-    print(f"     surface energy gamma                  = {icept/2:.8f}  Ha per end")
+    ks = sorted(g)
+    print()
+    for i in range(len(ks)-1):
+        n1, n2 = ks[i], ks[i+1]
+        ge = g[n2] + (g[n2]-g[n1])/((n2/n1)**2 - 1)
+        print(f"   Richardson from ncell={n1},{n2}:  gamma = {ge:.6f} Ha = {ge*HA_EV:.4f} eV per end")
+    print("\n   N-independence is the test that makes this a surface property rather than a fitted")
+    print("   intercept; the spread column above is it.")

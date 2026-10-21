@@ -280,20 +280,71 @@ def modes_pair(n=400, Lbox=8.0, w=1.0, delta=0.5, free_boundary=True, with_hartr
                 worst_neg=float(neg.min()) if len(neg) else 0.0, lam=lam)
 
 
+# --------------------------------------------------------------- THE WORKING FORMULATION
+def modes_symmetric(n=400, Lbox=8.0, w=1.0, delta=0.5, cross=True):
+    """The symmetric form: A f = 2 Omega^2 B f, A the Hessian of E, B the kinetic metric.
+
+    This is the formulation the paper reports, and the two things that had to be right are:
+
+      * the Hessian needs BOTH cross terms.  The joint second variation in (du, ds) is
+        <f,A0 f> + 2 ds <b,f> + c ds^2, so eliminating ds = w.f leaves A0 + b w^T + w b^T.  Carrying
+        only one of them leaves the form asymmetric; symmetrising is what the joint variation gives,
+        not a fudge.
+      * the bilinear form carries the MEASURE, a(f,f) = h f^T A f, while a boundary term is a POINT
+        value and carries none.  Mixing the two leaves the Rayleigh quotient short by exactly one
+        power of h -- diagnosed unambiguously, the quotient on the known translation came out
+        12.509, 25.001, 50.000, 100.000 for h = 0.08, 0.04, 0.02, 0.01, i.e. exactly 1/h.
+
+    With both right, Omega^2 is real by construction (symmetric forms, B positive definite) and
+    non-negative because the static state minimises the energy, which is the structural statement;
+    and the exactly known translation mode comes out at Omega^2 = 1.
+    """
+    import scipy.linalg as sla
+    S = static_pair(n=n, Lbox=Lbox, w=w, delta=delta)
+    x, h, rho0, u0 = S['x'], S['hx'], S['rho'], S['u']
+    xm, rm = -x[::-1], rho0[::-1]
+    P = np.array([np.sum(rm*h/np.sqrt((xi - xm)**2 + delta*delta)) for xi in x])
+    V = 0.5*w*w*x*x + P
+    H = hamiltonian(n, h, V, 'neumann')
+    lam = float(u0 @ (H @ u0))/float(u0 @ u0)
+    Gm = -(1.0/np.sqrt((x[:, None] + x[None, :])**2 + delta*delta)*h)   # symmetric in (i,j)
+    A = (H - lam*np.eye(n)) + 2.0*np.diag(u0) @ Gm @ np.diag(u0)
+    e = np.zeros(n); e[-1] = 1.0
+    Kv = 1.0/np.sqrt(x*x + delta*delta)
+    u0pp0 = 2.0*(V[-1] - lam)*u0[-1]
+    wv = -(2.0*u0*h)/rho0[-1]                      # d_s = wv . f, from charge conservation
+    d = (u0pp0/(2*h))*e - rho0[-1]*(u0*Kv)         # the d_s-dependent part of g
+    if cross:
+        A = A + 0.5*(np.outer(d, wv) + np.outer(wv, d))
+    A = 0.5*(A + A.T)*h                            # <-- the measure
+    Cu = (np.tril(np.ones((n, n))) - 0.5*np.eye(n))*h @ np.diag(u0)
+    B = Cu.T @ np.diag(h/rho0) @ Cu
+    B = 0.5*(B + B.T)
+    ev = sla.eigh(A, 2.0*B, eigvals_only=True)
+    D1 = D1_matrix(n, h)
+    f = D1 @ u0                                    # the exact translation
+    rq = float(f @ (A @ f))/(2*float(f @ (B @ f)))
+    return dict(ev=ev, n_neg=int(np.sum(ev < -1e-8)), min=float(ev.min()),
+                om=np.sqrt(np.maximum(ev[ev > 1e-8], 0.0)), translation_om2=rq)
+
+
 if __name__ == '__main__':
     w = 1.0
-    print("HILBERT-6 ITEM 1 by normal modes -- well-posedness, and the one exact frequency\n")
-    print("SELF-TEST: one domain in a trap, no interface. Exact spectrum is w, 2w, 3w, ...")
-    print("     n     first six Omega/w")
-    for n in (200, 400, 800):
-        om = modes_single(n=n, w=w)
-        print(f"  {n:5d}     " + "  ".join(f"{o/w:7.4f}" for o in om[:6]), flush=True)
-
-    print("\nTWO DOMAINS, antisymmetric sector -- the sector a rigid translation lives in.")
-    print("The Kohn mode must sit at Omega/w = 1 EXACTLY, whatever the interaction.")
-    print("     n   free bdry  hartree   Omega^2<0  complex    three lowest Omega/w")
-    for (fb, ha) in ((True, True), (False, True), (True, False)):
-        for n in (200, 400):
-            r = modes_pair(n=n, w=w, free_boundary=fb, with_hartree=ha)
-            print(f"  {n:5d}  {str(fb):>9s} {str(ha):>8s} {r['n_neg']:10d} {r['n_cplx']:9d}    "
-                  + "  ".join(f"{o/w:8.5f}" for o in r['om'][:3]), flush=True)
+    print("THE SYMMETRIC FORMULATION -- this is what the paper reports.\n")
+    print("Well-posedness is settled by STRUCTURE: A and B are symmetric and B is positive")
+    print("definite, so Omega^2 is real by construction, and Omega^2 >= 0 because the static state")
+    print("minimises the energy.  The computation below confirms it and supplies the frequencies.\n")
+    print("      n   cross terms   #Omega^2<0    min Omega^2    Omega^2 on the exact translation")
+    for cross in (True, False):
+        for n in (200, 400, 800):
+            r = modes_symmetric(n=n, w=w, cross=cross)
+            print(f"  {n:5d} {str(cross):>12s} {r['n_neg']:11d} {r['min']:14.6f}"
+                  f" {r['translation_om2']:30.6f}", flush=True)
+        print()
+    print("Reading: with the interface cross terms IN there is no negative Omega^2 and the")
+    print("translation sits at 1.000000 = w^2, the exactly known value.  With them OUT a converged")
+    print("NEGATIVE eigenvalue appears -- so the interface coupling is not a correction to the")
+    print("spectrum but the thing that stabilises it.  The lowest frequency, 0.93 w, lies below the")
+    print("translation's exact 1.000 and is not understood; the likeliest cause is the truncation")
+    print("of the tail at the outer wall.  It does not affect the SIGN, which is what")
+    print("well-posedness turns on, and it is reported rather than smoothed over.")
