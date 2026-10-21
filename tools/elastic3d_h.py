@@ -72,6 +72,40 @@ The viable 3D routes are a graded or adaptive mesh around the kernels, a pseudop
 is what the alkali table uses), or a radial treatment of the core with 3D only for the valence.
 The curvature result above is the encouraging part: whatever treats the cusp need only do so
 CONSISTENTLY across the strain, not accurately.
+
+PSEUDOKERNEL FOLLOW-UP, same day.  Claes asked the obvious next question: use a pseudokernel with
+r_c > 0 and there is no cusp.  That is right and necessary, and it is not sufficient.  Four steps,
+each removing one obstacle and exposing the next, with sodium's r_c = 1.67 and the radial
+Wigner-Seitz answer (r_s = 3.77, B = 9.1 GPa) as the target:
+
+  1. HARD empty core, V = 0 inside r_c.  The cusp is gone and the mesh spread falls from 7e-3 to
+     ~1e-3 Ha.  But B comes out -881, -743, +354, -249, +270, -8 GPa across neighbouring a: the
+     hard core is a DISCONTINUOUS SURFACE, and the sphere r = r_c cuts the cubic grid differently at
+     every a, giving steps of order (1/r_c) h^3 ~ 4e-3 Ha -- an egg-box on the core boundary, two
+     orders above the 1e-5 elastic signal.
+  2. SMOOTH the core edge over 1-3 cells.  B falls to +-10 to 20 GPa -- the right order at last --
+     but still flips sign between neighbouring a.
+  3. HOLD h FIXED and carry the strain in n, so every point has the same mesh and the core surface
+     cuts the grid identically (the commensurability discipline of tools/x2_R_sweep.py).  E and P
+     become smooth and monotone and the flipping stops.  B is then stable in magnitude but
+     ALTERNATES between adjacent n -- an even/odd parity artefact, since n even puts the kernel at a
+     corner of eight cells and n odd at a cell centre.  Use one parity only, spacing 2 in n.
+  4. AND THE SIGN IS STILL WRONG, -4 to -6 GPa against +9.1, for a reason that has nothing to do
+     with the grid: THE EIGENVALUE IS NOT THE CELL ENERGY.  What this script differentiates is the
+     BAND BOTTOM, which carries the electron's attraction to its own ion and none of the lattice
+     electrostatics.  real_plasma_numerics/metal_alkalis.py computes instead
+         E_cell = <T> + (-0.9/r_s + 1.5 r_c^2/r_s^3),
+     the cell state's kinetic energy plus the lattice electrostatic energy.  The spherical cell gets
+     that second term analytically, because a neutral sphere has an exact self-energy; a CUBIC cell
+     does not, and computing it needs the Hartree energy of the actual density against the
+     neutralising ion lattice -- i.e. a PERIODIC POISSON SOLVE.
+
+SO THE CONCLUSION, which is sharper than where this file started.  The pseudokernel removes the cusp
+blocker completely.  What remains is periodic electrostatics -- exactly what the Gallery card
+identified as missing after the NaCl shear attempts -- but needed now for the ENERGY rather than for
+the potential, and that is a smaller and better-defined job: an FFT Poisson solve on the cell with
+the k=0 mode dropped, plus the self-interaction of the electron with its own cell removed by the
+i!=j rule.  With that, and one parity of n at fixed h, the 3D route is reachable, and shear with it.
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -83,7 +117,7 @@ np.seterr(all='ignore')
 HA_GPA = 29421.0158
 
 
-def cell_operator(n, a):
+def cell_operator(n, a, rc=0.0):
     """-(1/2)Laplacian with homogeneous Neumann on all six faces, plus -1/r, on an n^3 cell.
 
     Cell-centred grid, so the cell centre falls at a corner of eight grid cells and the nearest
@@ -95,7 +129,10 @@ def cell_operator(n, a):
     c = (np.arange(n) + 0.5)*h - a/2
     X, Y, Z = np.meshgrid(c, c, c, indexing='ij')
     r = np.sqrt(X*X + Y*Y + Z*Z).ravel()
-    V = -1.0/r
+    # rc > 0 is the Ashcroft EMPTY CORE: V = 0 inside, -Z/r outside.  It removes the cusp entirely,
+    # so the potential is BOUNDED by -1/rc (-0.6 Ha at sodium's rc=1.67, against -31 for a bare
+    # kernel on this grid) and a uniform mesh resolves it.  The price is a parameter.
+    V = np.where(r < rc, 0.0, -1.0/np.maximum(r, 1e-300)) if rc > 0 else -1.0/r
 
     N = n**3
     idx = np.arange(N).reshape(n, n, n)
@@ -112,9 +149,9 @@ def cell_operator(n, a):
     return (A + sp.diags(V)).tocsr(), V, h
 
 
-def solve_cell(n, a, v0=None):
+def solve_cell(n, a, v0=None, rc=0.0):
     """Ground state in the cubic cell; returns E, T, V and the eigenvector."""
-    H, V, h = cell_operator(n, a)
+    H, V, h = cell_operator(n, a, rc=rc)
     val, vec = eigsh(H, k=1, which='SA', tol=1e-11, maxiter=200000, v0=v0)
     u = vec[:, 0]
     u = u/np.sqrt(np.sum(u*u))                   # discrete normalisation; h^3 cancels in ratios
