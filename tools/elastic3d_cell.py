@@ -324,6 +324,85 @@ def cell_blob(n, h, Z=2.0, rc=1.39, sig_cells=1.2, smooth=2.0, iters=60, tol=1e-
                 rs=(3.0/(4*np.pi))**(1.0/3.0)*a/Z**(1.0/3.0), it=it+1)
 
 
+def masked_laplacian(keep3d, h):
+    """-(1/2)Laplacian assembled over faces joining two KEPT cells ONLY -- true no-flux (Neumann).
+
+    THIS IS NOT A SUBMATRIX.  Taking A[keep][:,keep] of the full operator retains the diagonal
+    contributions of faces leading OUT of the region, which imposes DIRICHLET (u=0 outside): the
+    density is pushed off the boundary and the state under-binds.  axisym_realqm.masked_stiffness
+    records 36% on a one-electron IE from exactly this, and it cost 0.22 Ha here -- a third of the
+    binding -- plus a spurious factor of EIGHT in the localisation energy, which was briefly
+    mistaken for the cost of non-overlap.  Omitting the outward faces at assembly is the model's
+    own free-interface condition.
+    """
+    n = keep3d.shape[0]
+    idx = -np.ones(keep3d.shape, int)
+    ids = np.where(keep3d.ravel())[0]
+    idx.ravel()[ids] = np.arange(ids.size)
+    R, C, V = [], [], []
+    for ax in range(3):
+        k0 = np.moveaxis(keep3d, ax, 0)[:-1]; k1 = np.moveaxis(keep3d, ax, 0)[1:]
+        i0 = np.moveaxis(idx, ax, 0)[:-1];    i1 = np.moveaxis(idx, ax, 0)[1:]
+        m = k0 & k1; a0 = i0[m]; a1 = i1[m]
+        R += [a0, a1, a0, a1]; C += [a1, a0, a0, a1]
+        V += [np.full(a0.size, -0.5/h**2)]*2 + [np.full(a0.size, 0.5/h**2)]*2
+    return sp.coo_matrix((np.concatenate(V), (np.concatenate(R), np.concatenate(C))),
+                         shape=(ids.size, ids.size)).tocsr(), ids
+
+
+def cell2_free(n, h, Z=2.0, rc=1.39, normal=(1, 1, 1), sig_cells=1.2, iters=40, tol=1e-12, mix=0.4):
+    """Two domains, FREE interfaces, and a HARD inner cutoff -- the house construction.
+
+    CLAUDE.md: "Molecules impose only the INNER cutoff r_c.  Outer boundaries are free, found by
+    non-overlap."  So the valence electrons are EXCLUDED from the core ball r < r_c (hard
+    depletion, density exactly zero there), as x2_R_sweep.py does, and the interfaces -- between the
+    two domains, and at the core surface -- carry the free no-flux condition via masked_laplacian.
+    No empty-core POTENTIAL is used: that is standard pseudopotential theory, where the electron may
+    enter the core and feel nothing, and it is a different model.
+    """
+    a, r, G = grids(n, h)
+    sig = sig_cells*h
+    g = np.exp(-r*r/(2*sig*sig)); rho_i = Z*g/(g.sum()*h**3)
+    c = (np.arange(n) + 0.5)*h - a/2
+    X, Y, Zc = np.meshgrid(c, c, c, indexing='ij')
+    nx, ny, nz = normal
+    plane = (nx*X + ny*Y + nz*Zc) < 0
+    outside = r >= rc
+    masks = [plane & outside, (~plane) & outside]
+    ops = [masked_laplacian(m, h) for m in masks]
+    rho = [m.astype(float)/(m.sum()*h**3) for m in masks]
+    E = None
+    for it in range(iters):
+        rt = rho[0] + rho[1]
+        pt = phi_periodic(rho_i - rt, G, h)
+        new = []
+        for s_ in (0, 1):
+            ru = np.full_like(rho[s_], 1.0/a**3)
+            Vo = (-pt - phi_isolated(rho[s_] - ru, n, h)).ravel()
+            M, keep = ops[s_]
+            val, vec = eigsh((M + sp.diags(Vo[keep])).tocsr(), k=1, which='SA', tol=1e-11)
+            v = vec[:, 0]; v = v/np.sqrt(np.sum(v*v)*h**3)
+            q = np.zeros(n**3); q[keep] = v*v
+            new.append(q.reshape(n, n, n))
+        rho = [(1-mix)*o + mix*nn for o, nn in zip(rho, new)]
+        rho = [q/(q.sum()*h**3) for q in rho]
+        rt = rho[0] + rho[1]
+        T = 0.0
+        for s_ in (0, 1):
+            M, keep = ops[s_]
+            uu = np.sqrt(rho[s_].ravel()[keep]); T += float(uu @ (M @ uu))*h**3
+        U_eI = float(np.sum(rt*(-phi_periodic(rho_i, G, h))))*h**3
+        U_ee = (0.5*float(np.sum(rt*phi_periodic(rt, G, h)))*h**3
+                - self_energy_bg(rho[0], n, h, a) - self_energy_bg(rho[1], n, h, a))
+        U_II = -ALPHA_SC*Z*Z/((3/(4*np.pi))**(1/3)*a)
+        En = T + U_eI + U_ee + U_II
+        if E is not None and abs(En - E) < tol:
+            break
+        E = En
+    return dict(E=En, T=T, a=a, rs=(3/(4*np.pi))**(1/3)*a/Z**(1/3), it=it+1,
+                rho_ion_ratio=float(rt[n//2, n//2, n//2]/rt.mean()))
+
+
 if __name__ == '__main__':
     h = float(os.environ.get('H', 0.21))
     rc = float(os.environ.get('RC', 1.67))
