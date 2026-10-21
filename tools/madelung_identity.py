@@ -37,6 +37,18 @@ The physics was never involved.  Residual derivatives are therefore taken with L
 finite differences, and the residual is evaluated on the mask ERODED by the stencil half-width, so
 no stencil ever straddles the edge.  The Schrodinger propagation itself is still spectral, which is
 legitimate: it acts on psi, which is smooth and decays.
+
+REPRODUCIBILITY, settled 2026-10-21.  The numbers quoted in the paper are obtained on a FIXED
+PHYSICAL WINDOW |x - x_c| < 2, not on the density-threshold mask that used to be the default.  The
+distinction matters: a threshold mask MOVES WITH THE MESH -- refining pulls more low-density points
+in, 216/436/875 bulk points at tol=1e-8 for N=512/1024/2048 -- so the residual is measured on a
+larger and worse-conditioned set at every refinement and cannot converge.  On the fixed window it
+does, at the order of the operators:
+    rel R2 = 1.10e-5, 8.08e-7, 8.05e-8 at N = 256, 512, 1024   (ratios 13.6 and 10.0, i.e. 4th order)
+and then RISES to 2.45e-7 at N=2048, which is the round-off floor in grad^2 sqrt(rho)/sqrt(rho)
+being reached.  Wider windows reach that floor earlier and higher -- 1.9e-5 at |x-x_c|<4 -- exactly
+as the round-off explanation requires.  The default below is now the window the paper quotes, so
+running this file reproduces the published numbers.
 """
 import numpy as np
 
@@ -49,7 +61,7 @@ def psi_coherent(x, t, w=1.0, x0=2.0):
     return (w/np.pi)**0.25*np.exp(-0.5*w*(x-xt)**2)*np.exp(1j*ph)
 
 
-def run(N=1024, L=20.0, w=1.0, x0=2.0, T=0.7, dt=1e-4, tol=1e-8, verbose=False):
+def run(N=1024, L=20.0, w=1.0, x0=2.0, T=0.7, dt=1e-4, tol=1e-8, verbose=False, xwin=None):
     x = -L/2 + (L/N)*np.arange(N)
     k = 2*np.pi*np.fft.fftfreq(N, d=L/N)
     V = 0.5*w*w*x*x
@@ -91,7 +103,15 @@ def run(N=1024, L=20.0, w=1.0, x0=2.0, T=0.7, dt=1e-4, tol=1e-8, verbose=False):
     rho_t = 2*np.real(np.conj(psi)*psit)
     J_t   = np.imag(np.conj(psit)*px + np.conj(psi)*psixt)
 
-    msk  = rho > tol*rho.max()
+    # xwin: a FIXED PHYSICAL window about the packet centre.  Needed because a mask defined by a
+    # density threshold MOVES WITH THE MESH -- refining pulls more low-density points in (bulk
+    # points 216/436/875 at tol=1e-8 for N=512/1024/2048), so the residual is measured on a larger,
+    # worse-conditioned set each time and cannot converge.  With xwin the set is fixed and the
+    # refinement measures the identity rather than the mask.
+    if xwin is not None:
+        msk = np.abs(x - x0*np.cos(w*t)) < xwin
+    else:
+        msk  = rho > tol*rho.max()
     flo  = np.where(msk, rho, 1.0)              # floor only to avoid 0/0; no zeroing of v or Q
     v    = J/flo
     v_t  = (J_t*rho - J*rho_t)/(flo*flo)
@@ -132,7 +152,7 @@ if __name__ == '__main__':
     print("%6s %12s %12s %10s | %12s %12s %10s | %7s" %
           ("N","|R1|","terms","rel","|R2|","terms","rel","bulk pts"))
     for N in [256, 512, 1024, 2048]:
-        r = run(N=N, T=0.7, dt=1e-4)
+        r = run(N=N, T=0.7, dt=1e-4, xwin=2.0)
         print("%6d %12.3e %12.3e %10.2e | %12.3e %12.3e %10.2e | %7d"
               % (N, r['R1'], r['s1'], r['rel1'], r['R2'], r['s2'], r['rel2'], r['bulk']))
         sys.stdout.flush()
