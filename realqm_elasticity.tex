@@ -1,0 +1,428 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage[margin=1.1in]{geometry}
+\usepackage{authblk}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+
+\newcommand{\half}{\tfrac12}
+\newcommand{\grad}{\nabla}
+
+\title{Elastic Coefficients from RealQM without Homogenisation}
+
+\author[1]{Claes Johnson}
+\affil[1]{KTH Royal Institute of Technology, SE-100 44 Stockholm, Sweden \\
+\small\texttt{claesjohnson@gmail.com}}
+
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+A macroscopic elastic constant is conventionally obtained from a microscopic theory by
+homogenisation: pose a two-scale expansion, solve a cell problem, average a stress field, and take a
+limit in which the microscale vanishes. This paper makes the point that for \emph{equilibrium}
+coefficients none of that is necessary. An elastic modulus is a second derivative of the
+ground-state energy with respect to a macroscopic deformation; the deformation can be imposed
+exactly on a periodic cell as a boundary condition; and the energy is then a single number. No field
+is averaged and no limit is taken --- a scalar is computed and differentiated.
+We carry this out in RealQM, a continuum formulation of quantum mechanics in which an $N$-electron
+system is $N$ non-overlapping unit charge densities on ordinary three-dimensional space with free
+interfaces, so that the microscopic theory is itself a continuum theory and there are no particles
+to coarse-grain. Equilibrium densities and bulk moduli are computed for the five alkali metals;
+the error falls monotonically down the group and reaches zero at caesium, while the standard
+treatment's does not, and lithium fails outright. The route is then checked against the mechanics it
+bypasses: the pressure and the modulus obtained from the stress balance
+$\grad\cdot T=-\rho\,\grad V$ agree with those obtained by differentiating the energy, to
+$2\times10^{-4}$ and $5\times10^{-4}$ after extrapolation. The \emph{form} of the macroscopic law is
+verified rather than assumed --- the energy is observed to be quadratic in the strain out to a few
+per cent --- and that same test locates the method's accuracy limit at the \emph{order} of the
+derivative taken: energies to a few per cent, equilibrium densities to one, moduli to ten or twenty,
+and the first anharmonic coefficient not at all. Finally the surface energy is computed, as the one
+elastic-body quantity requiring no scale-separation assumption, since in this formulation a surface
+is a free boundary rather than a truncated lattice. What the route does not reach is any dissipative
+coefficient, and the reason is sharp: it reaches a coefficient if and only if that coefficient is a
+derivative of an energy.
+\end{abstract}
+
+\section{The problem, and why averaging is not needed for it}\label{sec:intro}
+
+Deriving the equations of continuous media from a microscopic description of matter is the content of
+the part of Hilbert's sixth problem that Hilbert attributed to Boltzmann, and the classical route to
+it --- particles, then a kinetic equation, then Euler and Navier--Stokes --- was carried through for
+hard spheres by Deng, Hani and Ma in 2025~\cite{DHM2025}. That route reaches a \emph{dilute gas} by
+construction, since the Boltzmann--Grad scaling sends the volume fraction to zero~\cite{Comment2025},
+so solids lie outside it. The wider programme of which this paper is a part takes the complementary
+route and is set out elsewhere~\cite{hilbert6}; the present paper isolates the part of it that is
+finished, namely the equilibrium coefficients, and reports what they do and do not deliver.
+
+The starting point is that the usual machinery is aimed at a harder problem than the one at hand.
+Homogenisation exists to extract a macroscopic law from a microstructure whose fields oscillate, and
+it earns its two-scale expansion, its corrector problem and its limit. An \emph{equilibrium}
+coefficient asks for less. It is a derivative of a scalar --- the ground-state energy --- with
+respect to a parameter which is already macroscopic, and a derivative of a scalar needs no averaging
+of anything. The whole content of this paper is that taking the derivative directly is both
+available and checkable, and that its limits are then visible rather than hidden in an asymptotic
+estimate.
+
+The microscopic theory used here is RealQM~\cite{realqm,realqmbook}, in which an $N$-electron system
+is represented by $N$ non-negative densities $\psi_i$, each carrying unit charge on its own domain
+$\Omega_i$, the domains non-overlapping and their interfaces free to move to where the energy is
+least. The energy is Coulomb's,
+\begin{equation}\label{eq:E}
+E[\{\psi_i\},\{\Omega_i\}]=\sum_i\int_{\Omega_i}\Bigl(\half|\grad\psi_i|^2
+-\sum_a\frac{Z_a}{|x-x_a|}\psi_i^2\Bigr)dx
++\half\sum_{i\neq j}\iint\frac{\psi_i^2(x)\psi_j^2(y)}{|x-y|}\,dx\,dy ,
+\end{equation}
+subject to $\int_{\Omega_i}\psi_i^2=1$, and the ground state minimises it. The passage made below is
+from a continuum on the atomic scale $a_0$ to a continuum on the laboratory scale $L$, with small
+parameter
+\begin{equation}\label{eq:eps}
+\varepsilon = a_0/L ,
+\end{equation}
+which is carried throughout as an \emph{assumption} --- that the macroscopic state is uniform across
+a cell --- rather than as an asymptotic analysis. That is the one place where a scale separation
+enters, and it is stated here so that it is not mistaken for a derivation. Two features matter for what follows. It is already a continuum theory on ordinary
+three-dimensional space, so there are no particles to coarse-grain and no statistical ensemble
+anywhere in the construction. And its stationarity conditions are a stress balance, which is what
+makes the check of Section~\ref{sec:direct} possible at all.
+
+\section{The static stress balance}\label{sec:balance}
+
+The check performed later needs the mechanics the direct route bypasses, so it is written down
+first. Two identities do the work, and both are the chain rule.
+
+\paragraph{The localisation energy is the von Weizs\"acker functional.} Writing
+$\rho_i=\psi_i^2$ with $\psi_i\ge0$, the chain rule gives $\grad\rho_i = 2\psi_i\grad\psi_i$, hence
+\begin{equation}\label{eq:vW}
+\half\int|\grad\psi_i|^2\,dx \;=\; \frac18\int\frac{|\grad\rho_i|^2}{\rho_i}\,dx
+\;=\; T_{\rm vW}[\rho_i] ,
+\end{equation}
+in units $\hbar=m=1$. An identity, not a model.
+
+\paragraph{Its variation is the quantum potential.} With $u=\sqrt{\rho}$,
+\begin{equation}\label{eq:Q}
+\frac{\delta T_{\rm vW}}{\delta\rho} \;=\; -\half\frac{\grad^2\sqrt{\rho}}{\sqrt{\rho}} \;=\; Q ,
+\end{equation}
+Bohm's quantum potential --- obtained here not by analogy but as the variation of a term
+\eqref{eq:E} writes down for an unrelated reason, namely the cost of confining a charge to a region.
+
+\paragraph{The theory as used is a hydrostatics.} Stationarity of \eqref{eq:E} is the statement that
+$V+Q$ is constant on each domain, which is the $v=0$ case of the Madelung pair
+\begin{align}
+\frac{\partial\rho}{\partial t}+\grad\!\cdot(\rho v)&=0 ,\label{eq:cont}\\
+\frac{\partial v}{\partial t}+(v\cdot\grad)v&=-\grad\bigl(V+Q\bigr) .\label{eq:euler}
+\end{align}
+Equation~\eqref{eq:cont} is conservation of charge and \eqref{eq:euler} is a momentum balance whose
+stress is supplied by \eqref{eq:Q}. \emph{RealQM is therefore already the equilibrium of a continuum
+mechanics, and the constitutive law is not postulated --- it is the variation of the energy the
+theory was written with.} This is the sense in which the derivation asked for by Hilbert is, on this
+route, partly a matter of recognition rather than of proof.
+
+\paragraph{And the interfaces carry a surface tension.} The free boundary between two domains
+contributes an energy per unit area, so the multiphase structure is a continuum mechanics
+\emph{with surfaces}, which is what dense matter requires and what a kinetic theory has no room
+for~\cite{madelung}.
+
+
+\paragraph{The stress, written down.} With $u=\sqrt\rho$ and $Q=-\tfrac12\grad^2u/u$, the chain rule
+alone gives
+\begin{equation}\label{eq:stress}
+\rho\,\grad Q \;=\; \grad\cdot T,\qquad
+T_{ij} \;=\; -\tfrac12\big[\,u\,\partial_i\partial_j u - \partial_i u\,\partial_j u\,\big]
+\;=\; -\tfrac14\partial_i\partial_j\rho + \frac{\partial_i\rho\,\partial_j\rho}{4\rho},
+\end{equation}
+with no $\delta_{ij}$ term; in one dimension this is $\sigma=\tfrac14[(\rho')^2/\rho-\rho'']$. The
+static Euler--Lagrange equation of the model is $Q+V=\lambda$ with $V=-K+P_{\rm other}$, so the
+$v=0$ momentum balance is the statement
+\begin{equation}\label{eq:divT}
+\grad\cdot T \;=\; -\rho\,\grad V ,
+\end{equation}
+and integrating its $z$-component over a half space $\{z>z_{\rm cut}\}$ turns it into a statement
+about forces: the flux of quantum stress through the cut equals the net electrostatic force on the
+charge beyond it. The left-hand side is a surface integral of a quantity carrying a \emph{third}
+derivative of the density; the right-hand side is a volume integral of Coulomb forces. Nothing makes
+them equal except the identity.
+
+
+Equation~\eqref{eq:divT} is the statement to be checked against: a stress balance which the model
+satisfies pointwise, with no averaging and no approximation beyond the chain rule.
+
+\section{Direct upscaling: no averaging required}\label{sec:direct}
+
+Consider what an elastic modulus actually is. It is a second derivative of the ground-state energy
+with respect to a macroscopic deformation,
+\begin{equation}\label{eq:modulus}
+C_{ijkl}=\frac{1}{V}\frac{\partial^2 E}{\partial\epsilon_{ij}\,\partial\epsilon_{kl}},
+\qquad
+B = V\frac{\partial^2 E}{\partial V^2} ,
+\end{equation}
+and the deformation $\epsilon$ is a \emph{macroscopic} quantity that can be imposed on a periodic
+cell exactly, as a boundary condition: one changes the shape or the volume of the cell. RealQM then
+computes the ground state in that cell and returns a single number, its energy. The modulus is the
+curvature of that number as a function of the imposed deformation.
+
+\emph{Nothing has been averaged over the microscale.} No stress field is integrated, no two-scale
+expansion is posed, no corrector problem is solved. A scalar is computed exactly and differentiated
+with respect to a macroscopic parameter. The only use made of the cell is that the macroscopic state
+is uniform across it --- which is the content of $\varepsilon\ll1$ in \eqref{eq:eps}, carried as an
+assumption rather than as an asymptotic analysis.
+
+\paragraph{What this reaches.} Every coefficient of continuum mechanics that is a derivative of the
+ground-state energy with respect to a macroscopic control parameter:
+\begin{itemize}\itemsep2pt
+\item the full elastic tensor and the bulk, shear and Young moduli;
+\item the equation of state $P(V)=-\partial E/\partial V$, and with it the speed of sound;
+\item the force constants $\partial^2E/\partial u_a\partial u_b$ and hence the phonon spectrum,
+  and through it the thermal expansion in the quasi-harmonic treatment;
+\item the dielectric and piezoelectric response, as derivatives with respect to an applied field;
+\item surface and interface energies, as differences of computed energies.
+\end{itemize}
+That is the whole of equilibrium continuum mechanics. It requires no new machinery --- only the
+ground-state solver the programme already has.
+
+\paragraph{A worked example that already exists, across five materials.} The alkali metals have
+been computed this way on a Wigner--Seitz cell, one domain per ion filling the cell with the normal
+derivative vanishing at the face by symmetry --- which is RealQM's own prescription and coincides
+with a construction in use since 1933. Here $r_s$ is the \emph{Wigner--Seitz radius}, the radius of
+the sphere whose volume is the volume per valence electron,
+\[
+\tfrac{4}{3}\pi r_s^3=\frac{V}{N},\qquad\text{so}\qquad n=\Bigl(\tfrac{4}{3}\pi r_s^3\Bigr)^{-1},
+\]
+quoted in Bohr radii: with one valence electron per ion, each ion sits at the centre of a neutral
+sphere of radius $r_s$ holding exactly one electron, and $\psi'(r_s)=0$ on its face --- which is
+where RealQM's free interface and the 1933 condition coincide. Compressing the metal is decreasing
+$r_s$, so $E(r_s)$ \emph{is} the equation of state: it is minimised for the equilibrium density and
+differentiated twice for the modulus, with $V=\tfrac43\pi r_s^3$ converting the $r_s$ derivatives
+into the volume derivatives of \eqref{eq:modulus}. It should not be confused with the lattice
+constant, which for sodium is about twice as large, nor with the empty-core radius $r_c$ below,
+which is the pseudopotential parameter and roughly half as large. Each element brings one parameter, its Ashcroft
+empty-core radius, taken from the literature and not fitted here; across the series $r_s$ varies by
+$70\%$ and $B$ by a factor of six, so what is being tested is a trend and not a single match.
+
+\begin{center}
+\begin{tabular}{lrrrrrr}
+\toprule
+ & \multicolumn{3}{c}{equilibrium $r_s$ ($a_0$)} & \multicolumn{3}{c}{bulk modulus (GPa)} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+ & RealQM & standard & measured & RealQM & standard & measured \\
+\midrule
+Li & $2.40$ & $2.86$ & $3.25$ & $49.6$ & $23.9$ & $11.6$ \\
+Na & $3.77$ & $3.87$ & $3.93$ & $9.1$  & $8.0$  & $6.3$  \\
+K  & $4.82$ & $4.67$ & $4.86$ & $3.6$  & $4.0$  & $3.1$  \\
+Rb & $5.20$ & $4.95$ & $5.20$ & $2.7$  & $3.2$  & $2.5$  \\
+Cs & $5.62$ & $5.28$ & $5.62$ & $2.0$  & $2.5$  & $2.0$  \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent The RealQM column keeps the same electrostatics as the standard one and differs only in
+the kinetic energy --- the cell state's own $\langle T\rangle$ in place of a band-filling term, and
+no exchange. Macroscopic material constants, from Coulomb geometry.
+
+\paragraph{The shape of the error is the result, not its size.} RealQM's error falls
+\emph{monotonically down the group} and reaches zero at caesium, on both quantities: the deviation
+in $r_s$ runs $-26\%,\,-4.1\%,\,-0.8\%,\,0\%,\,0\%$ and in $B$ runs
+$+328\%,\,+44\%,\,+16\%,\,+8\%,\,0\%$. The standard column does nothing of the kind --- its $r_s$
+error \emph{worsens} down the group, from $-1.5\%$ at sodium to $-6.0\%$ at caesium, and its bulk
+modulus sits at a nearly constant $+25$ to $+29\%$. A model that merely happened to fit would not
+produce a sequence ordered by atomic number. Setting lithium aside, RealQM is the more accurate of
+the two columns on both quantities: $1.2\%$ against $4.1\%$ on $r_s$, and $17\%$ against $27\%$
+on $B$.
+
+\emph{Lithium is a failure and should be named as one}: its modulus comes out $4.3$ times too
+stiff. It is also the element that stands outside the pattern in this model's alkali-dimer work,
+where the fitted core radius exceeds the ionic radius by $0.56\,a_0$ against $0.1$--$0.2$ for every
+other alkali. The same element falling outside two independent calculations is a fact about lithium
+here, not scatter.
+
+Three things should be kept attached to the table. The calculation is not parameter-free: one
+empty-core radius per element is an input, even though it is taken from the literature rather than
+tuned. A bulk modulus is a second derivative, so it amplifies the model's error in the way
+H$_2$'s binding energy amplifies the error on its total --- which is why the percentages are large
+where they are large. And the zeros at rubidium and caesium mean agreement to the two or three
+significant figures the measured values carry, not exactness. The point of the example is not that
+the numbers are good. It is that they exist, were obtained without averaging, required no
+ingredient the theory did not already have, and vary with the element in a way the theory did not
+get to choose.
+
+\paragraph{The route is checked against the stress balance it replaces.} The objection to
+\eqref{eq:modulus} is not that the energy is hard to compute but that differentiating it
+\emph{bypasses} the mechanics: no stress is ever formed, so nothing guarantees that the number
+differentiated is the number a force balance would have produced. That is now checked, and it had
+to be, because the two are the same physics.
+
+Take the one-dimensional analogue of the Wigner--Seitz construction above: a chain of period $a$,
+one kernel of charge $+1$ and one electron per cell, each electron on its own cell with the free
+interfaces at the cell faces by symmetry --- RealQM's non-overlap, and the same prescription the
+sodium calculation uses. In equilibrium the total momentum flux through any plane is the same
+number, and that number is the pressure. So the pressure and the modulus can each be computed twice,
+once by differentiating the energy and once from the stress,
+\[
+\sigma \;=\; \underbrace{T_{zz}(\text{face})}_{\text{localisation stress}}
+ \;+\; \underbrace{F_{\rm Coul}(\text{face})}_{\substack{\text{electrostatic force of everything left}\\ \text{of the face on everything right}}}
+\quad\text{against}\quad -\frac{dE}{da},
+\qquad
+a\frac{d\sigma}{da}\quad\text{against}\quad a\frac{d^2E}{da^2},
+\]
+with no ingredient shared between the two sides beyond the converged ground state. They agree, and
+the agreement improves under refinement:
+\begin{center}
+\begin{tabular}{lrrrrr}
+\toprule
+relative difference & $n=41$ & $n=61$ & $n=81$ & $n=101$ & extrapolated \\
+\midrule
+pressure, $\sigma$ against $-dE/da$        & $2.3\%$ & $1.6\%$ & $1.2\%$ & $0.96\%$ & $2.2\times10^{-4}$ \\
+modulus, $a\,d\sigma/da$ against $a\,d^2E/da^2$ & $3.3\%$ & $2.2\%$ & $1.6\%$ & $1.3\%$ & $4.5\times10^{-4}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Two features of the convergence are worth recording. It is \emph{first order} in the mesh, and the
+reason is the one Section~\ref{sec:balance} identified: the stress is evaluated \emph{at} the free
+interface, where this construction is first-order accurate although it is fourth-order in the bulk.
+The free boundary is again the accuracy-limiting feature. And neither lattice sum is responsible ---
+the Coulomb flux is converged by the sixth neighbour and the lattice energy by the tenth, because
+both are summed as \emph{neutral} cells, each of which is inversion symmetric about its kernel and
+therefore carries no dipole, leaving a quadrupolar $1/d^3$ tail. Summed term by term the
+one-dimensional Coulomb sums diverge logarithmically; summed as neutral units they converge at once.
+
+What this establishes is modest and worth having: the scalar that \eqref{eq:modulus} differentiates
+is the scalar a stress balance returns. The direct route is a shortcut through the mechanics, not a
+detour around it.
+
+\paragraph{The form, verified, and where the route's accuracy actually runs out.} The objection
+to \eqref{eq:modulus} that cannot be answered by computing more coefficients is that it presupposes
+the \emph{form}: $E$ quadratic in the strain, which is Hooke's law put in rather than derived. The
+programme's answer is to establish the form computationally, and that has now been done, with a
+result sharper than expected in one direction and worse in another.
+
+On the periodic chain, straining the cell about a reference state and fitting a quadratic on
+$|\epsilon|\le0.05$ alone, the energy then \emph{extrapolates} as a quadratic out to about
+$|\epsilon|\approx0.06$ within $5\%$ of the quadratic term, with the cubic contribution rising
+smoothly to $10\%$ at $|\epsilon|=0.10$ and $20\%$ at $0.22$. So the quadratic form is not assumed
+but observed, over a range of strain, with the departure appearing where anharmonicity should.
+
+The quantitative version of the same test is less kind, and it bounds the direct route in a way
+worth stating. The cubic coefficient is not a free shape parameter: it fixes $B'=dB/dP$, the
+pressure derivative of the bulk modulus, which is measured and which for the alkalis is close
+to~$4$. Computed from the same energy curves that gave the table above, by finite differences and
+with no equation of state fitted, the model returns
+\[
+B' \;=\; -0.71,\; 0.10,\; 1.35,\; 1.92,\; 2.63 \qquad\text{for Li, Na, K, Rb, Cs,}
+\]
+against a measured value near $4$ throughout. The familiar monotone improvement down the group is
+there again, and caesium is again the best, but even caesium is a third low and lithium comes out
+with the wrong sign --- a bulk modulus that \emph{falls} under pressure, which no alkali does.
+
+The lesson is not that the route fails but that its accuracy is bounded by the \emph{order of the
+derivative} rather than by the kind of coefficient. The energy of these cells is good to a few per
+cent, the first derivative gives equilibrium densities to about one per cent for the heavy alkalis,
+the second gives bulk moduli to ten or twenty per cent, and the third is gone. The claim above, that this route reaches
+every coefficient which is a derivative of an energy, should be read with that ladder attached, because each differentiation spends accuracy the model does not have to spare.
+
+\paragraph{Reaching a body, and the one quantity that needs no scale separation.} Coefficients are
+not yet the statics of an elastic body. For that one needs a macroscopic stress field $\sigma(x)$
+over the body, hence that the material at each point behaves like a uniformly strained cell --- the
+\emph{Cauchy--Born} hypothesis. Granted it, elastostatics follows in the ordinary way: minimise
+$\int_\Omega W(\epsilon(u))\,dx$ less the work of the loads, with $W$ the cell energy computed above,
+and the Euler--Lagrange equation of that functional is $\grad\cdot\sigma=f$ with the given boundary
+conditions. Nothing further is required of RealQM. But Cauchy--Born is assumed here, exactly as
+$\varepsilon\ll1$ is assumed in \eqref{eq:eps}, and it is known to fail at surfaces, defects and
+crack tips --- which is to say at most of the problems elasticity is wanted for.
+
+That failure is where this formulation has an advantage rather than a handicap. In a lattice model a
+surface can only be made by truncating the lattice. Here a surface \emph{is} a free boundary, the
+object the theory is built on, and a surface energy is therefore a difference of computed energies
+needing no scale separation at all. On the finite chain, with the interior interfaces at the cell
+midpoints and the two end domains left to run out into vacuum and find their own extent,
+$E(N)=N\,e_{\rm bulk}+2\gamma$ gives
+\[
+\gamma = 0.0416~\text{Ha} = 1.13~\text{eV per end},
+\]
+and the test that makes this a surface property rather than a fitted intercept is that $\gamma$ is
+\emph{independent of} $N$ --- flat to $3\times10^{-7}$ from $N=5$ onwards. It converges at second
+order in the mesh, and the bulk energy read off the finite chains agrees with the periodic
+calculation, computed by different code, also at second order. So the free boundary carries a
+surface energy, it is stable against the size of the system, and it was obtained without the
+hypothesis that the rest of the elastic programme rests on.
+
+\section{Where the direct route stops}\label{sec:stops}
+
+\paragraph{And where it stops, which is the informative part.} The direct route reaches a
+coefficient if and only if that coefficient is a derivative of an energy. \emph{Viscosity is not.} A
+viscous stress is dissipative: the work done against it is not stored, so there is no
+$E(\text{strain rate})$ to differentiate, and no variational principle whose minimiser contains
+$\eta$. This is exactly why the standard treatment reaches for Green--Kubo, which extracts a
+transport coefficient from equilibrium fluctuations and therefore needs an ensemble.
+
+So the division of the problem is sharp, and it is not an artefact of the method chosen:
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+ & conservative coefficients & dissipative coefficients \\
+\midrule
+examples    & elastic tensor, $P(V)$, phonons & viscosity, thermal conductivity \\
+nature      & derivative of ground-state energy & transport, no energy functional \\
+this route  & \textbf{direct, no averaging} & \textbf{not reached} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Equilibrium continuum mechanics follows from RealQM by differentiating computed energies.
+Dissipation does not follow at all, and is the whole of what remains open
+(Section~\ref{sec:stops}).
+
+\paragraph{What is given up, stated plainly.} The direct route delivers the \emph{coefficients} of
+the macroscopic laws, not their \emph{form}. Writing \eqref{eq:modulus} presupposes that $E$ is
+quadratic in the strain near equilibrium --- that is, it assumes Hooke's law rather than deriving
+it. Homogenisation would instead produce linear elasticity as the macroscopic limit, form and
+coefficient together, and that is a genuine advantage of the formal route which should not be
+waved away.
+
+Two things reduce the force of the objection. The form can be established computationally: compute
+$E(\epsilon)$ across a range and verify that it is quadratic, and that the departure from quadratic
+sets in where nonlinear elasticity is observed to set in. That is a demonstration and not a theorem.
+And a demonstration is the kind of evidence this programme is built to give --- its standing claim is
+that its assertions are testable \emph{because} computable, and reaching instead for an asymptotic
+theorem would borrow precisely the sort of authority it declines to grant to the standard formalism
+elsewhere. The formal route remains worth having; it is not what the next computation should wait
+for.
+
+\begin{thebibliography}{9}
+
+\bibitem{DHM2025} Y.~Deng, Z.~Hani and X.~Ma, \emph{Hilbert's sixth problem: derivation of fluid
+equations via Boltzmann's kinetic theory}, arXiv:2503.01800 (2025).
+
+\bibitem{Comment2025} \emph{Comment on ``Hilbert's Sixth Problem: Derivation of Fluid Equations via
+Boltzmann's Kinetic Theory'' by Deng, Hani and Ma}, arXiv:2504.06297 (2025).
+
+\bibitem{madelung} C.~Johnson, \emph{The Hydrodynamic Form of RealQM: Madelung Hydrostatics, a
+Surface Tension, and the Missing Half}.
+
+\bibitem{realqm} C.~Johnson, \emph{RealQM: Quantum Mechanics as Multiphase 3D Continuum Mechanics},
+in~\cite{realqmbook}.
+
+\bibitem{realqmbook} C.~Johnson, \emph{Real Quantum Mechanics} (Body\&Soul, Vol.~VI),
+\url{https://claes542.github.io/RealMolecule/realquantum3.pdf}.
+
+\bibitem{gas} C.~Johnson, \emph{Conduction in RealQM: the Free Boundary as Charge Carrier},
+in~\cite{realqmbook}.
+
+\bibitem{nomass} C.~Johnson, \emph{Energy without Mass: the Kinetic Coefficient as a Geometric
+Scale, and Inertia as $E/c^2$}.
+
+\bibitem{bodysoul} C.~Johnson, \emph{Computational Thermodynamics} (Body\&Soul, Vol.~V).
+
+\bibitem{hilbert6} C.~Johnson, \emph{Upscaling of RealQM towards
+Hilbert's Sixth Problem}, companion paper.
+
+\bibitem{clay} C.~Johnson, \emph{The Clay Navier--Stokes Problem and Computational
+Well-Posedness}.
+
+\end{thebibliography}
+
+\end{document}
