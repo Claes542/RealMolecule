@@ -44,6 +44,20 @@ THREE CONSEQUENCES.
     the degenerate configuration in which RealQM's distinguishing mechanism is switched off.  An
     all-electron treatment partitions the cell with its core electrons and should behave differently.
 
+MESH CONVERGENCE -- THE QUALITATIVE RESULT IS ROBUST, THE NUMBERS ARE NOT.  Located properly by a
+cubic fit and checked on two meshes, the two-electron minimum moves:
+
+        a_min   2.858 (h=0.20)   3.161 (h=0.15)    +10.6%
+        B     103.3 GPa          89.1 GPa          -13.8%
+
+and the energies differ by 0.031 Ha between meshes where the ONE-electron cell differed by 0.0004.
+So the a = 3.20 quoted in the table above is a coarse-scan value lying between the two mesh results
+and should NOT be cited.  What survives the ladder is what the file is about: a minimum EXISTS for
+two electrons and does not for one, and T rises as ~1/a^2 in the first case and falls in the second.
+The likely cause of the poor convergence is that cell2 splits by a plane passing THROUGH the ion, so
+the kernel's Gaussian straddles a hard mask boundary -- a far harsher configuration than the single
+filled cell.  A partition that does not cut the kernel is the obvious next thing to try.
+
 DISCIPLINE.  sigma is HELD FIXED in absolute units (0.30 a0), not tied to 1.2h.  Letting it scale
 with the mesh changes the ion's size as the mesh refines, so it is not a mesh ladder at all -- with
 sigma fixed the discretisation error drifts by 0.9% of the signal where it was 49% before, and B
