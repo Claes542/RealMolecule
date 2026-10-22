@@ -33,7 +33,23 @@ is averaged and no limit is taken --- a scalar is computed and differentiated.
 We carry this out in RealQM, a continuum formulation of quantum mechanics in which an $N$-electron
 system is $N$ non-overlapping unit charge densities on ordinary three-dimensional space with free
 interfaces, so that the microscopic theory is itself a continuum theory and there are no particles
-to coarse-grain. Equilibrium densities and bulk moduli are computed for the five alkali metals,
+to coarse-grain. We then ask what holds a metal up against its own electrostatic attraction, given that this theory
+has no antisymmetry to appeal to, and answer it by computation in the cleanest geometry available: a
+simple cubic lattice whose electron domains are cubes, which is that lattice's exact Wigner--Seitz
+cell, so the domains tile space with no shape approximation and the condition at their faces follows
+from crystal symmetry rather than being imposed. With \emph{one} electron per cell there is no
+equilibrium --- a domain free on every boundary admits the constant density, which costs no
+localisation energy, so nothing resists compression --- while with \emph{two} the energy has a
+minimum and the kinetic energy rises under compression as $1/a^2$. \emph{Non-overlap therefore
+produces a Fermi pressure, by geometry alone, and the condition for it is that there be something to
+partition.} The same holds with explicit core electrons: lithium in a cubic cell with its core and
+valence as concentric free-boundary domains resists compression at every size tested, with no core
+radius anywhere, and the interface locates itself at $2.06\,a_0$ against $2.00$ from an unrelated
+radial all-electron code. This identifies what an empty-core term is for: a monovalent metal has one
+valence electron per site, the degenerate case, so a pressure must be inserted by hand ---
+and an inserted excluded volume stiffens as $r_s^{-3}$ where a partition pressure goes as
+$r_s^{-2}$, which is where the two part company.
+Equilibrium densities and bulk moduli are then computed for the five alkali metals,
 with the core radius \emph{determined inside the theory} from the measured ionization energy rather
 than imported: that needs no fitted constant at all and costs a one-sided $11\%$ in equilibrium
 radius, and absorbing that offset --- the free atom's core runs larger than the solid wants --- with
@@ -137,6 +153,84 @@ ground-state energy with respect to a macroscopic control parameter:
 \end{itemize}
 That is the whole of equilibrium continuum mechanics. It requires no new machinery --- only the
 ground-state solver the programme already has.
+
+\section{Where the pressure comes from}\label{sec:pressure}
+
+A metal is held up against its own electrostatic attraction by something. In the standard account
+that something is the Fermi pressure, a consequence of antisymmetry: electrons cannot share a state,
+so confining them costs kinetic energy. This theory has no antisymmetry. It has non-overlap --- $N$
+densities occupying disjoint regions --- and the question of whether that geometric statement does
+the same work is not rhetorical. It is answerable by computation, and this section answers it.
+
+\paragraph{The cleanest geometry available.} Take a simple cubic lattice and give each electron a
+\emph{cubic} domain. The cube is the exact Wigner--Seitz cell of that lattice, so the domains tile
+space with no shape approximation, non-overlap is exact rather than approximate, and the vanishing
+normal derivative at the cell faces is a consequence of crystal symmetry rather than an imposed
+condition. Nothing is fitted. Then vary one thing: the number of electrons sharing a cell.
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+ & \multicolumn{2}{c}{one electron per cell} & \multicolumn{2}{c}{two electrons per cell} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+$a$ ($a_0$) & $\langle T\rangle$ & $E$ (Ha) & $\langle T\rangle$ & $E$ (Ha) \\
+\midrule
+$2.40$ & $0.022$ & $-0.610$ & $1.545$ & $-0.835$ \\
+$3.20$ & $0.038$ & $-0.474$ & $0.971$ & $-0.855$ \\
+$4.00$ & $0.055$ & $-0.396$ & $0.702$ & $-0.816$ \\
+$6.40$ & $0.140$ & $-0.298$ & $0.471$ & $-0.688$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent With \emph{one} electron per cell there is no equilibrium at all. The energy falls
+monotonically under compression, and the kinetic energy falls with it, $0.140\to0.022$. The reason is
+exact: a domain carrying a vanishing normal derivative on every one of its boundaries admits the
+constant density, which costs no localisation energy whatever, so the kinetic term offers no
+resistance while the lattice term diverges as $-1/a$. Measured directly on the radial analogue, the
+lowest eigenvalue of the kinetic operator on such a domain is $4\times10^{-10}$ against $1.69$ for
+the next, and the zero survives refinement from $500$ to $8000$ points; imposing the free atom's
+outer condition instead on the same geometry gives $0.617$ and a positive definite operator.
+
+With \emph{two} the energy has a minimum, and the kinetic energy \emph{rises} under compression,
+$0.471\to1.545$, at close to $1/a^2$ --- the measured ratio between the two tightest cells is $1.59$
+against $1.78$ for exact $1/a^2$ scaling. \emph{That is a Fermi pressure, and it has been produced by
+geometry alone.} Two densities forced to share a cell must each take half of it, and the localisation
+cost of that partition is what holds the lattice up. Nothing was antisymmetrised and nothing was
+fitted.
+
+\paragraph{The same thing with real core electrons.} The two-electron cell above divides one atom's
+charge; the sharper test is whether a core does it. Lithium in the same cubic cell, $Z=3$, with two
+concentric domains --- two core electrons inside a radius $R$ and one valence electron outside, $R$
+itself located by minimising the energy, so it is a free boundary and not an input --- gives
+$dE/da = -0.772,\,-0.429,\,-0.251,\,-0.161$ across $a = 4.0$ to $7.2$. Every one is negative:
+compressing the cell costs energy at every size tested. The core electrons supply the resistance, and
+\emph{no $r_c$ appears anywhere in the calculation.} The located interface is $R=2.06\,a_0$, against
+$2.00$ obtained for the free lithium atom by an unrelated radial all-electron code --- two
+discretisations with nothing in common agreeing to three per cent on a quantity neither was given.
+
+\paragraph{What the empty-core term was doing.} This identifies the role of the $1.5\,r_c^2/r_s^3$
+term used in the next section. A monovalent metal has exactly one valence electron per site, which
+is the degenerate case above: there is nothing to partition, so the construction supplies no pressure
+and one must be put in by hand. \emph{The empty-core term is a stand-in for a pressure the theory can
+generate itself.} The two are not the same function of density --- an inserted excluded volume
+stiffens as $r_s^{-3}$, a partition pressure as $r_s^{-2}$ --- so they can be made to agree at the
+equilibrium that fixes $r_c$ and must part company in its derivative, which is where $B'$ lives and
+where $B'$ fails.
+
+\paragraph{What is not yet established.} The \emph{contrast} above is robust: both meshes tested
+agree that a minimum exists for two electrons and not for one, and that $\langle T\rangle$ rises in
+the first case and falls in the second. The \emph{numbers} are not. The two-electron minimum moves
+from $a=2.86$ to $3.16$ and its modulus from $103$ to $89$~GPa between $h=0.20$ and $h=0.15$, because
+the partition used there is a plane through the ion and the kernel is cut by a mask boundary; that
+mesh error carries genuine curvature in $a$ and no fitting repairs it. A partition that does not cut
+the kernel is the remedy, and the concentric geometry above is one. Nor does the all-electron cell
+yet \emph{cohere}: $dE/da$ never crosses zero, so that lattice prefers to dissociate. Three defects
+stand in front of that verdict --- an interface located on too coarse a grid, a mesh that cannot
+resolve a $Z=3$ core, and a kernel softening that under-binds the atom by half --- and lithium
+coheres by $0.06$~Ha where these energies are wrong by several, so everything there rests on an
+atom-to-solid cancellation that has not been demonstrated. The mechanism is established; the
+coefficient is not.
 
 \section{The alkali series}\label{sec:alkalis}
 
