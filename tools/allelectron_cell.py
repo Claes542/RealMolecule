@@ -1,4 +1,20 @@
 """
+RETRACTED 2026-10-22 -- THE RESULT IN THIS FILE IS A DIRICHLET ARTEFACT.  See the note below.
+
+RETRACTION.  ae_cell builds its domain operator as A[keep][:,keep], a submatrix, which imposes
+DIRICHLET at the core/valence interface and at the cell face rather than the model's free-interface
+condition -- see elastic3d_cell.masked_laplacian, which exists to avoid exactly this and warns that
+the submatrix was "briefly mistaken for the cost of non-overlap".
+
+The reported finding -- that compression costs energy at every cell size, so the core electrons
+supply the repulsion with no r_c -- therefore cannot stand: the repulsion may be the hard walls.
+The companion result in tools/fermi_pressure_partition.py failed exactly this test when redone with
+masked_laplacian.  This file must be rerun with masked_laplacian before anything in it is used.
+
+NOT affected: the interface radius R = 2.06 a0 at a = 5.6 against 2.00 from the radial all-electron
+code is a comparison of two independently computed geometries, but it too was obtained under the
+wrong boundary condition and should be recomputed before being relied on.
+
 ALL-ELECTRON CELL: the core electrons do the partitioning, so the repulsion is the construction's.
 
 THE PREDICTION BEING TESTED (tools/fermi_pressure_partition.py).  Non-overlap supplies Fermi

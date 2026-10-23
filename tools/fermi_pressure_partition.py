@@ -1,4 +1,32 @@
 """
+RETRACTED 2026-10-22 -- THE RESULT IN THIS FILE IS A DIRICHLET ARTEFACT.  See the note below.
+
+RETRACTION.  The two-electron cell here is run through elastic3d_cell.cell2, which builds its
+domain operator as A[keep][:,keep].  That is a SUBMATRIX of the full Laplacian, and it retains the
+diagonal contributions of faces leading out of the domain -- which imposes DIRICHLET, u=0 outside,
+not the free interface the model asks for.  elastic3d_cell.masked_laplacian exists precisely to do
+it correctly and warns in its own docstring that the submatrix gives "a spurious factor of EIGHT in
+the localisation energy, which was briefly mistaken for the cost of non-overlap".  That is exactly
+the mistake made here.
+
+The one-electron cell (elastic3d_cell.cell) uses the FULL operator and therefore has true Neumann
+faces, so the comparison below was between two different boundary conditions, not between one and
+two electrons.  Redone with masked_laplacian on both sides:
+
+      a      DIRICHLET T        E    |   TRUE NEUMANN T        E
+   2.40         1.5467   -0.83678    |         0.1976   -2.70349
+   3.20         0.9720   -0.85564    |         0.3697   -2.18214
+   6.40         0.4717   -0.68804    |         1.1809   -1.76794
+
+With the correct condition the TWO-electron cell behaves exactly like the one-electron cell: T FALLS
+under compression and the energy falls monotonically as the cell is squeezed.  It collapses.  The
+rising T and the minimum were the hard walls.
+
+SO THE CLAIM "non-overlap supplies Fermi pressure through the partition" IS WITHDRAWN.  On this
+evidence non-overlap supplies no Fermi pressure in this geometry at either occupancy.  What survives
+is only the one-electron null mode itself, which was computed with the full operator and is
+unaffected.
+
 WHERE RealQM's FERMI PRESSURE COMES FROM: the partition, and only the partition.
 
 THE QUESTION.  RealQM replaces antisymmetry with geometry -- N non-overlapping densities.  Does that
