@@ -1,5 +1,25 @@
 """
-RETRACTED 2026-10-22 -- THE RESULT IN THIS FILE IS A DIRICHLET ARTEFACT.  See the note below.
+RETRACTED 2026-10-22, AND THE REDONE VERSION FAILS TOO -- BOTH BOUNDARY CONDITIONS ARE WRONG.
+
+Rerun with masked_laplacian (true Neumann per domain) the core does not sit at R = 2.06; it
+COLLAPSES, E falling monotonically as R shrinks with no interior minimum (at a = 5.60: E =
+-4.09, -4.17, -4.31, -4.46, -4.68, -5.26, -6.09 for R = 2.8 down to 1.2).  The Dirichlet walls were
+holding it up; remove them and nothing does.
+
+NEITHER CONDITION IS THE MODEL'S.  RealQM requires the densities to be CONTINUOUS across a free
+boundary -- Psi in H^1(R^3), stated at RealQM_method.tex:101 -- so the object is ONE GLOBAL FIELD
+partitioned by labels, not N independent eigenproblems.  This file solves each domain separately,
+which permits a JUMP at the interface, and the collapse mode is exactly such a jump: constant inside,
+dropping to the outer domain's value at R.  In H^1 that costs infinite energy, so the collapse is
+outside the admissible class.  tools/hilbert6_li_allelectron.py records the same error and the same
+correction; tools/ionization_NZ_H1.py implements the fix in 1D -- one global u cut into intervals,
+one unit-charge constraint per domain, solved by augmented Lagrangian.
+
+SCOPE.  Every MULTI-DOMAIN result from elastic3d_cell.py inherits this: cell2, cell_blob, ae_cell.
+The single-domain cell() is unaffected -- one domain filling the cell, no interface, no jump
+possible -- which is why the one-electron null mode and the sigma-fixed drift diagnostic stand.
+
+See the note below.
 
 RETRACTION.  ae_cell builds its domain operator as A[keep][:,keep], a submatrix, which imposes
 DIRICHLET at the core/valence interface and at the cell face rather than the model's free-interface
