@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gravitational Model: Laplace u = f</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<style>
+  /* sized for an iframe: no full-viewport centring, no scrollbars at 400x400 */
+  html, body { margin: 0; padding: 0; background: #fff; }
+  body { display: flex; justify-content: center; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script>
+//Gravitational Model: Laplace u = f
+//Laplace u = d^2u/dx^2 + d^2u/dy^2 (2 dimensions)
+//u gravitational potential
+//f mass distribution
+//-(du/dx,du/dy) gravitational force
+//One-line code
+//  u[i][j]=u[i][j]+dt*(u[i+1][j]-4*u[i][j]+u[i-1][j]+u[i][j+1]+u[i][j-1])/pow(h,2)-dt*f[i][j];
+let u = [];
+let f = [];
+let x=[];
+let y=[];
+let N=100;
+let dt;
+let h;
+let t=0;
+
+function setup() {
+  createCanvas(400, 400);
+  for (var i=0;i<N;i++){
+    u[i]=[];
+    f[i]=[];
+    x[i]=[];
+    y[i]=[];
+  for (var j=0;j<N;j++){
+    u[i][j]=0;
+    f[i][j]=0;
+    x[i][j]=400*i/(N-1);
+    y[i][j]=400*j/(N-1);
+    }
+  }
+  for (var i=1;i<10;i++){
+  f[floor(random(1,100))][floor(random(1,100))]=10000*random(1,5);
+  }
+
+  h=1/N;
+  dt=0.3*pow(h,2);
+}
+
+function draw() {
+  background(255,255,255,20);
+  t=t+1;
+  if (t>5){
+  for (var i=0;i<N;i++){
+  for (var j=0;j<N;j++){
+    x[i][j]=400*i/(N-1);
+    y[i][j]=400*j/(N-1);
+    }
+  }
+  t=0;
+  }
+//Solve Laplace u = f by time stepping
+//One-line code
+  for (var i=1;i<N-1;i++){
+  for (var j=1;j<N-1;j++){
+  u[i][j]=u[i][j]+dt*(u[i+1][j]-4*u[i][j]+u[i-1][j]+u[i][j+1]+u[i][j-1])/pow(h,2)-dt*f[i][j];
+//compute flow from gravitational forces as -(du/dx,du/dy)
+    x[i][j]=x[i][j]-0.1*(u[i+1][j]-u[i][j])/h;
+    y[i][j]=y[i][j]-0.1*(u[i][j+1]-u[i][j])/h;
+  }
+  }
+//Plot flow
+  noStroke();
+  for (var i=0;i<N;i++){
+  for (var j=0;j<N;j++){
+  fill(0,0,255,255);
+  ellipse(x[i][j],y[i][j],1,1);
+  }
+  }
+  fill(255,0,0,255);
+  for (var i=0;i<N;i++){
+  ellipse(4*i,200-50*u[i][50],2);
+  }
+  stroke(0);
+  line(0,200,400,200);
+  noStroke();
+  fill(0);
+  text("World Model: Gravitational Force from Collection of Point Masses",10,40);
+  text("model: Laplace u = f",50,80);
+  text("sum of point masses: f",50,100);
+  text("gravitational potential: u (red mid crosscut)",50,120);
+  text("gravitational force: -(du/dx,du/dy) (blue)",50,140);
+  text("The traditional view on the World model Laplace u = f is that",30,300);
+  text("the mass distribution f generates the gravitational potential u",30,320);
+  text("by action at distance. It possible to turn this around and view",30,340);
+  text("the gravitational potential u as given which generates mass",30,360);
+  text("f = Laplace u by the local operation of derivation. Mind boggling!!",30,380)
+}
+</script>
+</body>
+</html>
