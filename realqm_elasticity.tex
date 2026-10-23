@@ -33,9 +33,22 @@ is averaged and no limit is taken --- a scalar is computed and differentiated.
 We carry this out in RealQM, a continuum formulation of quantum mechanics in which an $N$-electron
 system is $N$ non-overlapping unit charge densities on ordinary three-dimensional space with free
 interfaces, so that the microscopic theory is itself a continuum theory and there are no particles
-to coarse-grain. Equilibrium densities and bulk moduli are computed for the five alkali metals,
-with the core radius \emph{determined inside the theory} from the measured ionization energy rather
-than imported: that needs no fitted constant at all and costs a one-sided $11\%$ in equilibrium
+to coarse-grain. The claim is not accuracy --- density-functional theory is better here by roughly an order of
+magnitude --- but what a calculation contains. Standard quantum mechanics is unavailable at this
+scale, the $N$-electron wavefunction living on $\mathbb{R}^{3N}$, so every result about a solid from
+that starting point is a result about some computable model standing in for it; and the model
+normally used must \emph{select} an exchange--correlation functional from a family with no ordering
+and no route to the exact member, a choice that moves the answer by about as much as the error
+reported. The construction used here has no such ingredient: once $Z$ and the structure are given
+the energy is fully specified, a localisation term plus the Coulomb energy of the charge
+configuration with pairs counted once, and there is nothing left to choose. The upscaling adds
+nothing either, and neither does the passage from atom to solid: the atom is solved all-electron
+from $Z$ alone, and the one number the cell calculation needs from it --- where the core ends --- is
+fixed either by the element's measured ionization energy or, for lithium, by the all-electron atom's
+own free interface, which lands at $2.00\,a_0$ against the $1.99$ the solid requires. \emph{Nothing
+anywhere is fitted to an elastic quantity.}
+Equilibrium densities and bulk moduli are then computed for the five alkali metals,
+with the core radius determined this way rather than imported: that needs no fitted constant at all and costs a one-sided $11\%$ in equilibrium
 radius, and absorbing that offset --- the free atom's core runs larger than the solid wants --- with
 a single constant fixed by one measured solid-state number brings the series to $5\%$ in equilibrium
 radius and $13\%$ in modulus. On equal input the two treatments are level, RealQM slightly better on
@@ -104,6 +117,36 @@ a cell --- rather than as an asymptotic analysis. That is the one place where a 
 enters, and it is stated here so that it is not mistaken for a derivation. One feature matters for what follows: it is already a continuum theory on ordinary
 three-dimensional space, so there are no particles to coarse-grain and no statistical ensemble
 anywhere in the construction.
+
+\paragraph{What kind of claim this is.} A hundred years of atomic models of solids stand behind
+this subject, and it should be said at once in what sense anything here is new. It is not accuracy:
+on the quantities computed below, density-functional theory is better by roughly an order of
+magnitude. The claim is about what a calculation \emph{contains}.
+
+Standard quantum mechanics is not available at this scale. The $N$-electron wavefunction lives on
+$\mathbb{R}^{3N}$, and beyond a few hundred electrons it can be neither computed nor stored ---
+Kohn's exponential wall, which is why he argued the many-electron wavefunction ceases to be a
+legitimate scientific concept there. So \emph{every} result about a solid obtained from that
+starting point is a result about some computable model standing in for it, and the question is what
+each model requires you to supply.
+
+Density-functional theory is exact as a theorem and non-constructive: Hohenberg--Kohn proves that a
+universal functional exists and says nothing about what it is, and Kohn--Sham moves the ignorance
+into $E_{\rm xc}$ without reducing it. In practice one must \emph{select} a functional --- LDA, PBE,
+PBEsol, SCAN --- from a family with no ordering and no systematic route to the exact member. The
+choice is not a convergence parameter: for the metals below it moves the equilibrium density and the
+modulus by about as much as the error being reported, which is why a functional was constructed
+specifically for solids. A plane-wave cutoff or a $k$-point mesh must merely be converged; the
+functional must be chosen, and the answer is an answer about the chosen one.
+
+The construction used here has no such ingredient. Once $Z$ and the structure are given the energy
+\eqref{eq:E} is fully specified --- a localisation term and the Coulomb energy of the charge
+configuration, pairs counted once --- with no exchange, no correlation, and nothing to select. That
+is the whole of the claim: not a better number, but a calculation in which there is nothing left to
+choose. Its cost is stated plainly below, and it is large: doing without a correlation term is also
+why the numbers are what they are. And it carries one obligation, which the rest of this paper is
+partly an attempt to discharge --- a theory with nothing to select is only worth the name if it is
+\emph{computable as stated}, and the free-boundary problem is where that is tested.
 
 \section{Direct upscaling: no averaging required}\label{sec:direct}
 
@@ -190,12 +233,32 @@ where a partition pressure goes as $r_s^{-2}$, so they agree at the equilibrium 
 part company in its derivative. It also explains why a radius fitted to the atom cannot simply be
 carried into the cell: the two are different problems.
 
-\paragraph{The core radius comes from the free atom.}\label{sec:core} Requiring that one valence
+\paragraph{From the atom to the solid, with nothing fitted to the solid.}\label{sec:core} This is
+the whole of the construction, and it is worth setting out as a chain.
+
+\emph{The atom carries no parameter at all.} In this theory an atom is solved all-electron, with the
+nuclear term the bare $-Z/r$ throughout, no core radius, no screened kernel and no fitted length
+anywhere; the only input is $Z$, and total energies come out to about $1.7\%$ through
+argon~\cite{atoms}. That is the starting point, and it is parameter-free in the strict sense.
+
+\emph{The solid needs one number from it:} where the core ends, since the cell calculation treats
+the core as an empty region rather than resolving it. Two routes supply that number and neither is
+fitted to the solid. The first is the \emph{measured ionization energy}: requiring that one valence
 electron on a charge $+1$ kernel, feeling the same empty-core potential, reproduce the element's
-\emph{measured first ionization energy} fixes $r_c$ with no solid-state datum and no fitted constant.
-The series then has no adjustable quantity whatever: its inputs are $Z$ and five measured atomic
-energies. Both columns below are given that same $r_c$, so they differ only in the kinetic energy ---
-the cell state's own $\langle T\rangle$ against a band-filling term, with no exchange on either side.
+first ionization energy fixes $r_c$ using one atomic datum per element and no solid-state quantity.
+The second is the all-electron atom itself, whose core and valence meet at a free interface that the
+energy minimisation locates --- no datum at all, only $Z$. For lithium the second route works: the
+interface sits at $2.00\,a_0$ against the $1.99$ the cell calculation needs, agreeing to $5\%$ with
+nothing supplied from outside. Beyond lithium it does not, and the reason is specific rather than
+mysterious --- in a multi-shell atom the outermost core shell has no intrinsic radius, its outer
+boundary expanding to fill whatever box it is given while the energy converges regardless, so there
+is no radius to read off. Lithium is the one alkali whose core is a single compact $1s$ shell.
+
+So the chain runs from $Z$ alone for lithium, and from $Z$ plus one measured atomic energy for the
+rest. \emph{Nothing anywhere is fitted to an elastic quantity}, which is what matters: the
+equilibrium radii and moduli below are outputs. Both columns are given the same $r_c$, so they
+differ only in the kinetic energy --- the cell state's own $\langle T\rangle$ against a band-filling
+term, with no exchange on either side.
 
 \begin{center}
 \begin{tabular}{lrrrrrrr}
@@ -238,8 +301,12 @@ Cs & $2.654$ & $5.96$ & $5.54$ & $5.62$ & $1.5$ & $2.1$ & $2.0$ \\
 \end{center}
 
 \noindent --- $5.1\%$ in $r_s$ and $13\%$ in $B$, against $4.3\%$ and $14\%$ for the standard
-treatment. This is the level we claim: one constant, one measured solid-state number, no
-pseudopotential literature anywhere, and the four remaining metals predicted.
+treatment. We record that but do \emph{not} claim it, because the constant was fixed by a measured
+\emph{solid-state} number and the point of the construction is that no such number is used. The
+claim is the first table: $11.5\%$ and $23\%$, with the core radius taken from the atom and nothing
+fitted to a solid. The second table is worth having only for what it isolates --- that the entire
+gap between the two is one multiplicative constant close to unity, i.e. the atom-to-solid core
+contraction and nothing else.
 
 \paragraph{What the cell state looks like, and what the series therefore tests.} The computed
 density is not structureless. It is depleted to between a half and a third of uniform inside the
@@ -549,6 +616,8 @@ Scale, and Inertia as $E/c^2$}.
 
 \bibitem{hilbert6} C.~Johnson, \emph{Upscaling of RealQM towards
 Hilbert's Sixth Problem}, companion paper.
+
+\bibitem{atoms} C.~Johnson, \emph{RealQM for Atoms and the Periodic Table}.
 
 \bibitem{clay} C.~Johnson, \emph{The Clay Navier--Stokes Problem and Computational
 Well-Posedness}.
