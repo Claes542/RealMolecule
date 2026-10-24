@@ -15,26 +15,26 @@
   var gridN = 160, scr = 12, N2 = 80, h = scr / gridN;
   var q = new URLSearchParams(location.search);
   var R  = parseFloat(q.get('R'))  || 1.5;    // half-separation of the two cores
-  var s  = parseFloat(q.get('s'))  || 0.70;   // proton +/-x offset (halfspace split along x)
+  var s  = parseFloat(q.get('s'))  || 0.70;   // proton transverse split offset
   var sr = parseFloat(q.get('sr')) || 0.55;   // electron core radius
   function ix(x){ return Math.round(N2 + x / h); }
 
-  // each deuteron: central e core with its two protons split along X into a
-  // LEFT (x<core) and RIGHT (x>core) halfspace, divided by the plane through
-  // the core perpendicular to x.
+  // each deuteron: central e core surrounded by 2 protons split TRANSVERSELY in
+  // +/-y (perpendicular to the x fusion axis) into two halfspaces. BOTH
+  // deuterons split in +/-y (mirror-symmetric across x=0).
   var atoms = [
-    { i: ix(-R),   j: ix(0), k: ix(0), Z:1, el:'e' },   // 0 e_L core
-    { i: ix(-R-s), j: ix(0), k: ix(0), Z:1, el:'P' },   // 1 pL left halfspace
-    { i: ix(-R+s), j: ix(0), k: ix(0), Z:1, el:'P' },   // 2 pL right halfspace
-    { i: ix( R),   j: ix(0), k: ix(0), Z:1, el:'e' },   // 3 e_R core
-    { i: ix( R-s), j: ix(0), k: ix(0), Z:1, el:'P' },   // 4 pR left halfspace
-    { i: ix( R+s), j: ix(0), k: ix(0), Z:1, el:'P' },   // 5 pR right halfspace
+    { i: ix(-R), j: ix(0),  k: ix(0), Z:1, el:'e' },   // 0 e_L core
+    { i: ix(-R), j: ix( s), k: ix(0), Z:1, el:'P' },   // 1 pL +y halfspace
+    { i: ix(-R), j: ix(-s), k: ix(0), Z:1, el:'P' },   // 2 pL -y halfspace
+    { i: ix( R), j: ix(0),  k: ix(0), Z:1, el:'e' },   // 3 e_R core
+    { i: ix( R), j: ix( s), k: ix(0), Z:1, el:'P' },   // 4 pR +y halfspace
+    { i: ix( R), j: ix(-s), k: ix(0), Z:1, el:'P' },   // 5 pR -y halfspace
   ];
   window.USER_NUCLEUS_MODE = true;
   window.USER_NN = gridN;
   window.USER_ATOMS = atoms;
   window.USER_SCREEN = scr;
-  window.USER_STEPS = 120000;
+  window.USER_STEPS = parseInt(q.get('steps')) || 120000;  // cap to stop at the minimum
   window.USER_DYNAMICS = false;
   window.USER_Z = [1,1,1,1,1,1];
   window.USER_Z_NUC = [0,0,0,0,0,0];

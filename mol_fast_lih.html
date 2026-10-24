@@ -2,56 +2,134 @@
 <html><head>
   <meta charset="utf-8">
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
-  <title>LiH — mol_fast (Li+1 pseudo / H+1)</title>
-  <style>body { margin: 0; background: #000; }</style>
+  <title>LiH on mol_fast — binding energy and polarity, cross-check</title>
+  <style>body{margin:0;background:#000;color:#ddd;font-family:monospace}
+    #out{padding:14px;font-size:12px;white-space:pre;line-height:1.45}
+    #dbg{padding:10px;font-size:11px;color:#fa6;white-space:pre-wrap}</style>
 </head><body>
-<div id="loadStatus" style="color:#ff0;font-family:monospace;padding:20px;font-size:14px">HTML loaded, fetching solver…</div>
+<div id="loadStatus" style="color:#ff0;padding:16px;font-size:13px">loading…</div>
+<div id="out"></div>
+<div id="dbg"></div>
 <script>
-  window.onerror = function(msg, url, line, col, err) {
-    var pre = document.createElement('pre');
-    pre.style.cssText = 'color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
-    pre.textContent = 'ERROR: ' + msg + '\n  at ' + url + ':' + line + ':' + col +
-      (err && err.stack ? '\n\n' + err.stack : '');
-    document.body.insertBefore(pre, document.body.firstChild);
-  };
-  (function() {
-    var N = 200;
-    var urlScr = parseFloat(new URLSearchParams(location.search).get('scr'));
-    var scr = isFinite(urlScr) ? urlScr : 14;  // larger box — LiH bond is 3 au
-    var h = scr / N;
-    var N2 = Math.round(N / 2);
+  window.onerror=function(m,u,l,c,e){var p=document.createElement('pre');
+    p.style.cssText='color:#f66;background:#200;padding:12px;white-space:pre-wrap';
+    p.textContent='ERROR: '+m+' at '+u+':'+l+':'+c+(e&&e.stack?'\n\n'+e.stack:'');
+    document.body.insertBefore(p,document.body.firstChild);};
+  (function(){var d=document.getElementById('dbg'),ow=console.warn,oe=console.error;
+    console.warn=function(){d.textContent+='WARN '+[].join.call(arguments,' ')+'\n';ow.apply(console,arguments);};
+    console.error=function(){d.textContent+='ERR '+[].join.call(arguments,' ')+'\n';oe.apply(console,arguments);};})();
+  (function(){
+    // LiH ON mol_fast -- an INDEPENDENT cross-check of the molecule.js calculation.
+    // Different discretisation, different partition mechanism (occupancy front vs hard cell
+    // labels), different relaxation (imaginary time vs LOBPCG). Agreement between the two is
+    // worth more than either alone, which matters here because today produced three separate
+    // core collapses and a string of harness failures.
+    //
+    // ALL-ELECTRON Li: +3 kernel with a 2-electron core and a 1-electron valence, plus H.
+    // Four electrons, NO r_c anywhere, so the result carries no calibrated parameter. Under the
+    // bond-count map Li would be a +1 kernel with one electron -- which IS hydrogen, making LiH
+    // into H2 with zero dipole. The core is what distinguishes the element.
+    //
+    // Two settings are today's fixes and both matter here:
+    //   USER_SOFT=2          eps = 2h. mol_fast ships eps = 2h already, but state it explicitly:
+    //                        at Z=3 and h=0.04 the collapse ratio Z*h/c is 0.06, safely under the
+    //                        ~0.1 threshold. (molecule.js ships eps = h -> 0.12, which collapsed.)
+    //   USER_WEIGHTED_DENSITY  density is u^2*w in EVERY integral. Without it mol_fast gates only
+    //                        the kinetic term by w while the norm, V_eK and the dipole integrate
+    //                        u^2 over all space, counting each domain's frozen tail through its
+    //                        neighbour's territory as real charge.
+    //
+    //   ?frag=mol|Li|H   same box, same kernel positions, same mesh in all three, so the
+    //                    discretisation error cancels in E_bind = E(Li) + E(H) - E(LiH).
+    //   ?R=              bond length in Angstrom (default 1.60, experimental)
+    //   ?soft= ?diff= ?wd=0   as in the other mol_fast drivers
+    var qs=new URLSearchParams(location.search);
+    var N=parseInt(qs.get('nn')||'250',10);
+    var scr=parseFloat(qs.get('box')||'10');
+    var h=scr/N, N2=Math.round(N/2), A=1.8897259886;
+    var Rang=parseFloat(qs.get('R')); if(!isFinite(Rang)) Rang=1.60;
+    var sep=Rang*A, dC=(sep/2)/h;            // half-separation in CELLS, fractional (no rounding)
+    var FRAG=(qs.get('frag')||'mol');
 
-    // LiH diatomic: Li-H bond = 1.60 Å = 3.02 au
-    var urlBond = parseFloat(new URLSearchParams(location.search).get('bond'));
-    var bond = isFinite(urlBond) ? urlBond : 3.02;
-    var di = Math.round(bond / h / 2);  // atoms symmetric about center
+    window.USER_NN=N; window.USER_SCREEN=scr;
+    window.USER_STEPS=parseInt(qs.get('steps')||'120000',10);
+    window.USER_DYNAMICS=false; window.USER_SHELL_MODE=true;
+    window.USER_SOFT=parseFloat(qs.get('soft')||'2');
+    window.USER_W_DIFF=parseFloat(qs.get('diff')||'0.01');
+    window.USER_WEIGHTED_DENSITY=(qs.get('wd')!=='0');
 
-    window.USER_NN = N;
-    window.USER_SCREEN = scr;
-    window.USER_STEPS = 50000;
-    // Mode switch: ?mode=ionic (default, Li⁺ 2e / H⁻ 2e) or ?mode=neutral (Li⁰ 3e / H⁰ 1e)
-    var mode = new URLSearchParams(location.search).get('mode') || 'ionic';
-    var liTarget = (mode === 'neutral') ? 3 : 2;
-    var hTarget  = (mode === 'neutral') ? 1 : 2;
-    window.USER_NUCLEI = [
-      { i: N2 - di, j: N2, k: N2, Z: 3, rc: 0.0 },  // Li: +3 kernel
-      { i: N2 + di, j: N2, k: N2, Z: 1, rc: 0.0 },  // H: +1 kernel
-    ];
-    window.USER_NORM_TARGETS = [liTarget, hTarget];
+    // Li at -sep/2 (core carries the +3 kernel, valence has none), H at +sep/2.
+    var Lic={i:N2-dC,j:N2,k:N2, Z:3, rc:0.0, z_init:3.0, fixed:true, r_out:1.9};
+    var Liv={i:N2-dC,j:N2,k:N2, Z:0, rc:0.0, z_init:1.0, fixed:true};
+    var Hy ={i:N2+dC,j:N2,k:N2, Z:1, rc:0.0, z_init:1.0, fixed:true};
+    var nuc, targ;
+    if(FRAG==='Li'){ nuc=[Lic,Liv];      targ=[2,1]; }
+    else if(FRAG==='H'){ nuc=[Hy];       targ=[1];   }
+    else { nuc=[Lic,Liv,Hy]; targ=[2,1,1]; FRAG='mol'; }
+    window.USER_NUCLEI=nuc; window.USER_NORM_TARGETS=targ;
+    // NUCLEAR dipole about the box centre: 3*(-R/2) + 1*(+R/2) for the molecule, and the single
+    // fragment's own term otherwise. Needed because the kernels are unequal -- with two +1
+    // kernels it would vanish, here it does not.
+    var muN=0; for(var a=0;a<nuc.length;a++) muN += nuc[a].Z*((nuc[a].i-N2)*h);
+    window._cfg={N2:N2,h:h,R:Rang,sep:sep,frag:FRAG,muN:muN,
+                 nelec:targ.reduce(function(a,b){return a+b;},0),
+                 soft:window.USER_SOFT,wd:window.USER_WEIGHTED_DENSITY};
   })();
 
-  var status = document.getElementById('loadStatus');
-  var s = document.createElement('script');
-  s.src = 'mol_fast.js?t=' + Date.now();
-  s.onload = function() {
-    status.textContent += '\nmol_fast.js loaded';
-    var p = document.createElement('script');
-    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
-    p.onload = function() { status.textContent += '\np5.js loaded — simulation should start'; };
-    p.onerror = function() { status.textContent += '\nFAILED to load p5.js'; status.style.color = '#f44'; };
-    document.body.appendChild(p);
-  };
-  s.onerror = function() { status.textContent += '\nFAILED to load mol_fast.js'; status.style.color = '#f44'; };
+  async function sample(){
+    var c=window._cfg;
+    var prof=await window.readDomainProfiles(c.N2,c.N2,c.N2);
+    var cen=await window.readDomainCentroids();
+    // electron dipole about the box centre; mu = sum Z_a x_a - integral(rho x)
+    var ex=0, qt=0;
+    cen.forEach(function(d,idx){
+      if(!d.centroid_au) return;
+      var qq=(prof[idx]&&prof[idx].q_uw!==undefined)?prof[idx].q_uw:d.q;
+      ex += qq*(d.centroid_au[0]-c.N2*c.h); qt += qq;
+    });
+    var mu=c.muN-ex;
+    return { frag:c.frag, R_A:c.R, E:window._E, steps:window._tStep,
+             soft:c.soft, weighted:c.wd,
+             electrons:Number(qt.toPrecision(6)), nelec_target:c.nelec,
+             mu_nuc_au:Number(c.muN.toPrecision(5)),
+             mu_au:Number(mu.toPrecision(5)), mu_D:Number((mu*2.541746).toPrecision(5)),
+             polarity:(c.frag!=='mol')?'-':(mu<0?'H negative (CORRECT)':'Li negative (inverted)'),
+             domains:prof.map(function(d){return {n:d.n,q_u:d.q_u,q_uw:d.q_uw,r50_u:d.r50_u};}) };
+  }
+
+  (function reporter(){
+    var qs=new URLSearchParams(location.search);
+    var KEY='mflih_'+(qs.get('frag')||'mol')+'_R'+(qs.get('R')||'1.60')+'_s'+(qs.get('soft')||'2');
+    try{localStorage.removeItem(KEY);}catch(e){}
+    var t0=Date.now(),hist=[],published=false;
+    setInterval(function(){
+      if(published||window._E===undefined) return;
+      var el=(Date.now()-t0)/1000, st=document.getElementById('loadStatus');
+      if(st) st.textContent='['+window._cfg.frag+'] R='+window._cfg.R+' A  '+Math.round(el)+'s  step='
+                            +(window._tStep||0)+'  E='+window._E.toFixed(6);
+      hist.push(window._E); if(hist.length>25) hist.shift();
+      if(hist.length<25 || el<90) return;
+      var spread=Math.max.apply(null,hist)-Math.min.apply(null,hist);
+      // hard cap as well as the stall test -- three r_c-scan runs converged today and never
+      // published because the stall test alone never fired, and the results were lost.
+      if(spread>1e-6 && (window._tStep||0) < (window.USER_STEPS-10) && el<1200) return;
+      published=true;
+      sample().then(function(r){ r.why=(spread<=1e-6?'stalled':'cap');
+        try{localStorage.setItem(KEY,JSON.stringify(r));}catch(e){}
+        document.getElementById('out').textContent=JSON.stringify(r,null,1);
+        document.title='MFLIH DONE '+r.frag+' E='+r.E.toFixed(5);
+      }).catch(function(e){document.getElementById('out').textContent='sample failed: '+e;
+        document.title='MFLIH DONE (sample failed)';});
+    },2000);
+  })();
+
+  var status=document.getElementById('loadStatus');
+  var s=document.createElement('script'); s.src='mol_fast.js?t='+Date.now();
+  s.onload=function(){var p=document.createElement('script');
+    p.src='https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    p.onerror=function(){status.textContent+='\np5 failed';};document.body.appendChild(p);};
+  s.onerror=function(){status.textContent+='\nmol_fast.js failed';};
   document.body.appendChild(s);
 </script>
-</body></html>
+</body>
+</html>

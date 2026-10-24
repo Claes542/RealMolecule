@@ -22,8 +22,9 @@
     <label>γ (p = γe): <input id="rngGamma" type="range" min="0.05" max="1.0" step="0.05" value="0.20" /><span id="lblGamma">0.20</span></label>
     <label>art visc ν (×h): <input id="rngNu" type="range" min="0.05" max="2.0" step="0.05" value="0.30" /><span id="lblNu">0.30</span></label>
     <label>body force K: <input id="rngK" type="range" min="0" max="2000" step="50" value="500" /><span id="lblK">500</span></label>
-    <label>fluid substeps/frame: <input id="rngSubsteps" type="range" min="1" max="40" step="1" value="10" /><span id="lblSubsteps">10</span></label>
-    <label>seed every (frames): <input id="rngSeedFreq" type="range" min="5" max="200" step="5" value="30" /><span id="lblSeedFreq">30</span></label>
+    <label>fluid substeps/frame: <input id="rngSubsteps" type="range" min="1" max="40" step="1" value="5" /><span id="lblSubsteps">5</span></label>
+    <label>seed every (frames): <input id="rngSeedFreq" type="range" min="1" max="500" step="1" value="50" /><span id="lblSeedFreq">50</span></label>
+    <label>trace speed (×): <input id="rngAdvect" type="range" min="0" max="40000" step="500" value="15000" /><span id="lblAdvect">15000</span></label>
     <button id="btnPause">Pause</button>
     <button id="btnReset">Reset</button>
   </div>
@@ -58,7 +59,7 @@
 // nested arrays), live sliders, polyline cross-cuts, D_cum diagnostic.
 // ============================================================================
 
-const N = 200;                                  // p5 source uses N=400; we run at 200 for CPU
+const N = 400;                                  // matches the p5 source N exactly (slower per frame but full-fidelity)
 const NC = N * N;
 const idx = (i, j) => i + N * j;
 
@@ -72,7 +73,7 @@ const JMID    = Math.floor(N / 2);
 const canvas = document.getElementById('cv');
 const ctx = canvas.getContext('2d');
 const W = canvas.width;                          // 600
-const PX = W / N;                                // 3 px per cell at N = 200
+const PX = W / N;                                // 1.5 px per cell at N = 400 (canvas 600)
 
 const rho = new Float32Array(NC);
 const e   = new Float32Array(NC);
@@ -87,7 +88,9 @@ let dt = 0.1 * h;                                // matches the p5 source dt = 0
 
 // Live params
 let u0 = 1.0, gammaVal = 0.20, nuMul = 0.30, bodyK = 500;
-let substeps = 10, seedFreq = 30;
+let substeps = 5, seedFreq = 50;    // long trails — 50-frame accumulation
+let advectMag = 15000;              // velocity magnification for particle advection (live slider);
+                                    // larger = particles move faster on screen per step
 let D_cum = 0, simTime = 0, paused = false, frameCnt = 0;
 
 function initState() {
@@ -121,6 +124,8 @@ rngNu.addEventListener('input', () => { nuMul = parseFloat(rngNu.value); lblNu.t
 rngK.addEventListener('input', () => { bodyK = parseFloat(rngK.value); lblK.textContent = bodyK.toFixed(0); });
 rngSubsteps.addEventListener('input', () => { substeps = parseInt(rngSubsteps.value); lblSubsteps.textContent = substeps; });
 rngSeedFreq.addEventListener('input', () => { seedFreq = parseInt(rngSeedFreq.value); lblSeedFreq.textContent = seedFreq; });
+const rngAdvect = document.getElementById('rngAdvect'), lblAdvect = document.getElementById('lblAdvect');
+rngAdvect.addEventListener('input', () => { advectMag = parseFloat(rngAdvect.value); lblAdvect.textContent = advectMag.toFixed(0); });
 btnPause.addEventListener('click', () => { paused = !paused; btnPause.textContent = paused ? 'Play' : 'Pause'; });
 btnReset.addEventListener('click', () => { initState(); });
 
@@ -226,11 +231,12 @@ function render() {
   ctx.fillStyle = 'rgba(255,210,0,0.65)';
   ctx.fillRect(PX*BODY_I0, PX*BODY_J0, PX*(BODY_I1-BODY_I0), PX*(BODY_J1-BODY_J0));
 
-  // Particle traces (red)
-  ctx.fillStyle = 'rgba(220,0,0,0.55)';
+  // Particle traces (red) — semi-transparent for cleaner look at N=400
+  ctx.fillStyle = 'rgba(220,0,0,0.45)';
+  const dotSize = Math.max(1.2, PX);
   for (let q = 0; q < NC; q++) {
     if (px[q] > 0 && px[q] < N && py[q] > 0 && py[q] < N) {
-      ctx.fillRect(PX*px[q], PX*py[q], 1.2, 1.2);
+      ctx.fillRect(PX*px[q], PX*py[q], dotSize, dotSize);
     }
   }
 
@@ -263,7 +269,7 @@ function render() {
   ctx.fillStyle = '#000';
   ctx.font = '11px sans-serif';
   ctx.textBaseline = 'top';
-  ctx.fillText('Compressible Bluff-Body Mach 2 (CPU, N=200) — RealThermo translation', 10, 8);
+  ctx.fillText('Compressible Bluff-Body Mach 2 (CPU, N=400) — RealThermo translation', 10, 8);
   ctx.fillText(`p = γe, γ = ${gammaVal.toFixed(2)}, ν = ${nuMul.toFixed(2)}·h, inflow u₀ = ${u0.toFixed(2)}, body K = ${bodyK.toFixed(0)}`, 10, 24);
   ctx.fillText('Blue: ρ−1   Green: uₓ−1   Yellow: bluff body   Red: particle trace', 10, W - 60);
   ctx.fillText(`t = ${simTime.toFixed(3)}    D_cum = ${D_cum.toExponential(2)}`, 10, W - 44);
@@ -271,7 +277,7 @@ function render() {
 }
 
 function advectParticles() {
-  const ADV = 5000;
+  const ADV = advectMag;     // velocity magnification — live via slider
   const dtSub = dt * substeps;
   for (let q = 0; q < NC; q++) {
     const i = Math.max(0, Math.min(N-1, Math.floor(px[q])));
@@ -288,9 +294,13 @@ initState();
 function frame() {
   if (!paused) {
     for (let s = 0; s < substeps; s++) step();
-    advectParticles();
+    // Re-seed particles BEFORE advection so the render shows fresh motion.
+    // With seedFreq=1 the particles reset every frame and the render shows
+    // their one-step-advected positions; with larger seedFreq the trace
+    // accumulates more displacement before re-seeding.
     frameCnt++;
     if (frameCnt >= seedFreq) { resetParticles(); frameCnt = 0; }
+    advectParticles();
   }
   render();
   requestAnimationFrame(frame);

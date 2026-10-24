@@ -2,11 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Cosmology 3D on GPU — Two-Valued Poisson (±mass, dark energy)</title>
+<title>Cosmology 3D on GPU — ±mass compressible flow (Route A: positive inertia, symmetric web)</title>
 <style>
   body { margin: 0; background: #fff; font-family: sans-serif; color: #000; }
   #wrap { display: flex; flex-direction: column; align-items: center; padding: 8px; }
+  #canvases { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
   canvas { display: block; border: 1px solid #888; background: #fff; }
+  #cv3d { background: #000; cursor: grab; }
+  #cv3d:active { cursor: grabbing; }
   #info { width: 720px; font-size: 11px; line-height: 1.35; margin-top: 8px; }
   code { font-size: 11px; background: #eee; padding: 1px 3px; }
   #status { font-weight: bold; }
@@ -18,37 +21,67 @@
 </head>
 <body>
 <div id="wrap">
-  <canvas id="cv" width="400" height="400"></canvas>
+  <div id="canvases">
+    <canvas id="cv3d" width="520" height="520" title="drag to rotate, scroll to zoom"></canvas>
+    <canvas id="cv" width="400" height="400"></canvas>
+  </div>
   <div id="controls">
-    <label>γ (p = γe = ρT): <input id="rngGamma" type="range" min="0" max="2" step="0.05" value="1" /><span id="lblGamma">1.00</span></label>
-    <label>shock visc C (ν += C·h·|∇·u|): <input id="rngCvisc" type="range" min="0" max="20" step="0.5" value="1" /><span id="lblCvisc">1.0</span></label>
-    <label>gravity G: <input id="rngG" type="range" min="0" max="40" step="1" value="12" /><span id="lblG">12</span></label>
-    <label>base ν (×h): <input id="rngNu" type="range" min="0" max="0.6" step="0.01" value="0.15" /><span id="lblNu">0.15</span></label>
+    <label>3D threshold (show densest % of cells): <input id="rngThresh" type="range" min="1" max="300" step="1" value="30" /><span id="lblThresh">3.0%</span></label>
+    <label>3D opacity: <input id="rngGain" type="range" min="1" max="200" step="1" value="40" /><span id="lblGain">40</span></label>
+    <label>expansion H₀: <input id="rngH0" type="range" min="0" max="300" step="1" value="0" /><span id="lblH0">0 (static)</span></label>
+    <label>a(t): <select id="selExp">
+      <option value="coasting" selected>coasting a∝t (ρ̄=0, self-consistent)</option>
+      <option value="constH">constant H (de Sitter)</option>
+      <option value="matter">matter-dominated a∝t^(2/3)</option>
+      <option value="none">none (static box)</option>
+    </select></label>
+    <label>3D show: <select id="selSign">
+      <option value="both" selected>both ±</option>
+      <option value="pos">+mass web only</option>
+      <option value="neg">−mass voids only</option>
+    </select></label>
+    <br />
+    <label>γ (γ_ad = 1+γ; &lt;1/3 fine web, &gt;1/3 arrests coarse): <input id="rngGamma" type="range" min="0" max="2" step="0.05" value="0.2" /><span id="lblGamma">0.20</span></label>
+    <label>shock visc C (ν += C·h·|∇·u|) — 0 = off, destroys the web: <input id="rngCvisc" type="range" min="0" max="20" step="0.5" value="0" /><span id="lblCvisc">0.0</span></label>
+    <label>gravity G (sets λ_J): <input id="rngG" type="range" min="0" max="120" step="1" value="18" /><span id="lblG">18</span></label>
+    <label>base ν (×h, momentum only): <input id="rngNu" type="range" min="0" max="1.2" step="0.01" value="0.02" /><span id="lblNu">0.02</span></label>
     <button id="btnPause">Pause</button>
     <button id="btnReset">Reset</button>
-    <label>fluid substeps/frame: <input id="rngSubsteps" type="range" min="1" max="20" step="1" value="8" /><span id="lblSubsteps">8</span></label>
-    <label>Poisson iters/fluid step: <input id="rngPoisson" type="range" min="1" max="100" step="1" value="1" /><span id="lblPoisson">1</span></label>
+    <label>view: <select id="selView"><option value="proj" selected>projection (all z)</option><option value="slice">mid-slice</option></select></label>
+    <label>display smooth: <input id="rngSmooth" type="range" min="0" max="4" step="1" value="1" /><span id="lblSmooth">1</span></label>
+    <label>web scale (seed coarsening F): <input id="rngWeb" type="range" min="2" max="24" step="1" value="7" /><span id="lblWeb">F=7</span></label>
+    <label>fluid substeps/frame: <input id="rngSubsteps" type="range" min="1" max="40" step="1" value="5" /><span id="lblSubsteps">5</span></label>
+    <label>Poisson iters/fluid step: <input id="rngPoisson" type="range" min="1" max="100" step="1" value="6" /><span id="lblPoisson">6</span></label>
+    <button id="btnAnalyze">Analyze structure</button>
     <span id="lblTime">t = 0.000</span>
   </div>
   <div id="info">
     <div id="status">Initializing WebGPU…</div>
+    <pre id="analysis" style="font-size:11px;color:#036;background:#f4f4f4;padding:6px;white-space:pre-wrap;margin:6px 0"></pre>
     <p>
-      <b>Cosmology 3D on GPU.</b> N = 100 cubic grid (1 000 000 cells). Compressible
-      Navier–Stokes with self-gravity Poisson <code>Δφ + G·ρ = 0</code> (G = 10,
-      red-black Gauss-Seidel, 1000 sweeps in the initial settle then 1 sweep per
-      fluid step by default), body force <code>ρ∇φ</code> on momentum. Ideal-gas
-      pressure <code>p = γe = ρT</code> (e = ρT), γ adjustable by the slider
-      (default 1, giving effective adiabatic index 1+γ = 2). Artificial
-      viscosity <code>ν = h</code> in proper form <code>dt·ν·Δh/h²</code>.
-      Initial state: <b>one central Gaussian mass concentration at rest</b>
-      (ρ = e bump, peak +4, σ = 0.04N, so T = 1), all velocities/momenta/φ = 0.
-      Base artificial viscosity ν = 0.3h, plus a <b>shock-capturing term</b>
-      <code>ν += C·h·|∇·u|</code> that activates in compression: as the lump
-      starts to collapse, the rising velocity gradient ramps the viscosity up,
-      dissipating the inflow and (via the heating term <code>+C·h·|∇·u|·(∇·u)²</code>
-      added to e) converting kinetic energy irreversibly into heat. That heating
-      raises the pressure and halts the collapse even for a soft (small-γ) gas —
-      the 2nd-law / entropy-production mechanism. Outer-box BC frozen; φ Dirichlet-zero.
+      <b>Cosmology 3D on GPU.</b> N = 200 cubic grid (8 000 000 cells). Compressible
+      Euler with self-gravity Poisson <code>Δφ + G·ρ = 0</code> (red-black Gauss-Seidel,
+      settled at start then a few sweeps per fluid step), body force <code>ρ∇φ</code>,
+      ideal-gas pressure <code>p = γe</code> with <code>e = |ρ|T</code>.
+      <b>Initial state:</b> a signed ±mass fluctuation of zero mean (~50/50 by
+      construction, correlation length set by the "web scale" slider), cold at
+      <code>T₀ = 0.01</code>, at rest.
+      <b>Route A</b> — inertia is positive for both signs, <code>u = m/(|ρ|+ρ_min)</code>,
+      so the sign of ρ enters only the gravitational coupling; like mass attracts,
+      unlike repels, and the two phases are exact mirrors.
+      <b>Transport is upwind (donor-cell)</b> and the continuity equation is
+      <b>diffusion-free</b>: it carries the signed charge with flux <code>ρu</code> and
+      nothing else.
+      <b>What sets the web scale</b> is the Jeans length
+      <code>λ_J = 2π√(γT₀)/√(G|ρ|)</code> — a physical scale, not a tuning knob — and
+      what decides whether the web stays fine or smooths out is the adiabatic index
+      <code>γ_ad = 1+γ</code>: below 4/3 the Jeans mass falls under compression and
+      structure keeps fragmenting (fine persistent web); above 4/3 it rises and collapse
+      arrests early (coarse). The <b>shock-viscosity heating</b> term
+      <code>ν += C·h·|∇·u|</code> is retained but <b>off by default</b>: offline tests
+      showed it does not arrest collapse — it drives a heating runaway that erases the
+      web, and it gets worse, not better, under refinement.
+      Outer-box BC frozen; φ Dirichlet-zero.
     </p>
     <p>
       <b>Display</b>: red particle traces on the mid-plane (reset every t > 0.1);
@@ -69,28 +102,118 @@
 <script>
 "use strict";
 
-const N        = 100;   // dark-energy version: 100^3 for a fast +/- mass seed
+const N        = 200;   // 200^3 = 8,000,000 cells (heavy: ~128 MB/state buffer, big readback)
 const H        = 1 / N;
-const DT       = 0.04 * H;
+const DT       = 0.02 * H;      // Route A stable regime (verified in offline port)
 const PX       = 400 / N;       // canvas pixels per cell
-let   NU       = 0.15 * H;      // base viscosity (LIVE slider): low -> clumps, high -> diffuses
-// Poisson relaxation step, clamped for forward-Euler stability of the 3D
-// 7-point Laplacian (coeff·12 ≤ 2 ⇒ coeff ≤ h²/6). 0.05·dt is fine at N≤50
-// but unstable at N=100, so we cap at 0.4·h²/6.
-const POISSON_DT = Math.min(0.05 * DT, 0.4 * H * H / 6);
-let   gammaVal = 1;             // ideal gas p = γe = ρT; γ_ad = 1+γ; live via slider
+let   NU       = 0.02 * H;      // base viscosity (LIVE slider): momentum only now — it is NOT
+                                // the over-smoother (a 4x cut changed the offline web scale by
+                                // 36.5 vs 33.1 cells, i.e. nothing); the density diffusion was.
+// Red-black SOR over-relaxation factor. Optimal for the 7-point Laplacian on an N³ grid
+// with Dirichlet boundaries is 2/(1+sin(pi/N)) -> 1.969 at N=200. (Replaces the old
+// POISSON_DT pseudo-time step, which made the solver Jacobi and far too slow to track
+// the moving source; see the SOR note in the Poisson shader.)
+const SOR_OMEGA = 2 / (1 + Math.sin(Math.PI / N));
+// gamma_ad = 1 + gamma is THE knob for what the web looks like (offline, N=64, 3 sim times):
+//   gamma = 0.2  (gamma_ad = 1.20 < 4/3): FINE persistent web, L ~ 3-6 cells, |rho|max ~ 400
+//   gamma = 0.67 (gamma_ad = 1.67 > 4/3): collapse arrests but COARSENS, L ~ 33 cells
+// Below 4/3 the Jeans mass falls under compression (structure keeps fragmenting); above it
+// the Jeans mass rises (collapse halts early and the web smooths out). 0.2 = fine structure.
+let   gammaVal = 0.2;           // ideal gas p = γe = ρT; γ_ad = 1+γ; live via slider
 // Gravitational coupling: Δφ = −G·ρ (G plays the role of 4πG_Newton).
-let   G_GRAV   = 12;            // gravity strength (LIVE slider): high -> clumps faster (risk NaN)
+// G is now set by PHYSICS, not by hunting for stability: it fixes the Jeans length
+// lam_J = 2*pi*sqrt(gamma*T0)/sqrt(G*|rho|). G = 18 with gamma = 0.2, T0 = 0.01, |rho| ~ 0.3
+// gives lam_J ~ 0.12 box, i.e. ~8 structures across the box. Raise G -> finer web.
+let   G_GRAV   = 18;            // gravity strength (LIVE slider)
 const NCELL    = N * N * N;
 const KCUT     = (N / 2) | 0;   // mid-z slice for particle trace and cross-cut
 const JCUT     = (N / 2) | 0;
 
-let substepsPerFrame    = 8;
-let poissonItersPerStep = 1;
+let substepsPerFrame    = 5;    // sim-time per rendered frame
+// With red-black SOR, 4 sweeps per fluid step were enough offline to hold the Poisson
+// residual at 1-2% of the source for a whole run while filaments sharpened (the same test
+// with Jacobi reached 240% and killed the web). Raise if structure looks like it is being
+// pulled toward stale potential wells; lower for frame rate.
+let poissonItersPerStep = 4;
 let paused              = false;
 
 const cv        = document.getElementById('cv');
 const ctx2d     = cv.getContext('2d');
+const cv3d      = document.getElementById('cv3d');
+const ctxGpu    = cv3d.getContext('webgpu');
+const selSign   = document.getElementById('selSign');
+
+// ---- Expansion (comoving background) ----
+// RealUniv's background has ZERO net mass (equal + and - by construction), and the Friedmann
+// acceleration equation adot_dot/a = -(4*pi*G/3)*(rho_bar + 3 p_bar) then gives a_dotdot = 0.
+// So the self-consistent background is COASTING, a = 1 + H0*t, H = H0/a — not chosen, forced
+// by the +/- symmetry. (Coasting / R_h = ct cosmologies do reasonably on the SNe Ia Hubble
+// diagram and are in tension with BBN and the CMB acoustic scale — a definite, falsifiable
+// place to stand.) The other models are offered only for comparison; 'none' is the old
+// static box. NOTE: an imposed a(t) is NOT the same claim as the paper's emergent expansion
+// (-mass voids pushing +mass apart) — that one is measured in the box, not put in by hand.
+let expansionModel = 'coasting';   // 'none' | 'coasting' | 'constH' | 'matter'
+let H0 = 0.0;                      // 0 = no expansion regardless of model
+let aScale = 1.0, hubbleH = 0.0;
+function updateExpansion(t) {
+  if (expansionModel === 'none' || H0 === 0) { aScale = 1.0; hubbleH = 0.0; return; }
+  if (expansionModel === 'coasting') {         // a_dotdot = 0  (rho_bar = 0)
+    aScale  = 1 + H0 * t;
+    hubbleH = H0 / aScale;
+  } else if (expansionModel === 'constH') {    // de Sitter-like, a = exp(H0 t)
+    aScale  = Math.exp(H0 * t);
+    hubbleH = H0;
+  } else {                                     // matter-dominated, a = (1 + 1.5 H0 t)^(2/3)
+    aScale  = Math.pow(1 + 1.5 * H0 * t, 2 / 3);
+    hubbleH = H0 / Math.pow(aScale, 1.5);
+  }
+}
+
+// ---- 3D view state: orbit camera + volume-rendering controls ----
+let camYaw = 0.7, camPitch = 0.35, camDist = 1.9;
+// Threshold is set by VOLUME, not amplitude: show the densest volPct % of cells. Anchoring
+// it to a high quantile of |rho| instead (the first attempt) made the reference level chase
+// the growing tail — as |rho| ran 1 -> 10^3 the cut rose with it and the web appeared to
+// dissolve while it was in fact still sharpening. At fixed filling fraction the visible set
+// is comparable across time, so fading on screen means the STRUCTURE de-concentrated.
+let volPct     = 3.0;     // percent of cells shown (densest first)
+let volGain    = 40;      // opacity multiplier
+let volThreshAbs = 0.3;   // |rho| cut giving that percentage (recomputed from a sparse sample)
+let volNorm      = 1.0;   // dynamic range above the cut, so opacity stays stable as rho grows
+{
+  let dragging = false, lx = 0, ly = 0;
+  cv3d.addEventListener('pointerdown', (ev) => { dragging = true; lx = ev.clientX; ly = ev.clientY; cv3d.setPointerCapture(ev.pointerId); });
+  cv3d.addEventListener('pointerup',   (ev) => { dragging = false; cv3d.releasePointerCapture(ev.pointerId); });
+  cv3d.addEventListener('pointermove', (ev) => {
+    if (!dragging) return;
+    camYaw   -= (ev.clientX - lx) * 0.008;
+    camPitch  = Math.max(-1.5, Math.min(1.5, camPitch + (ev.clientY - ly) * 0.008));
+    lx = ev.clientX; ly = ev.clientY;
+  });
+  cv3d.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    camDist = Math.max(0.9, Math.min(4.0, camDist * (1 + Math.sign(ev.deltaY) * 0.08)));
+  }, { passive: false });
+  const rngThresh = document.getElementById('rngThresh'), lblThresh = document.getElementById('lblThresh');
+  rngThresh.addEventListener('input', () => {
+    volPct = parseInt(rngThresh.value, 10) / 10;
+    lblThresh.textContent = volPct.toFixed(1) + '%';
+  });
+  const rngGain = document.getElementById('rngGain'), lblGain = document.getElementById('lblGain');
+  rngGain.addEventListener('input', () => {
+    volGain = parseInt(rngGain.value, 10);
+    lblGain.textContent = rngGain.value;
+  });
+  // H0 in units where the gravitational time is ~1/sqrt(G|rho|) ~ 0.43, so H0 of order 1-3
+  // is expansion competing with collapse; the slider spans 0 (static) to 3.
+  const rngH0 = document.getElementById('rngH0'), lblH0 = document.getElementById('lblH0');
+  rngH0.addEventListener('input', () => {
+    H0 = parseInt(rngH0.value, 10) / 100;
+    lblH0.textContent = H0 === 0 ? '0 (static)' : H0.toFixed(2);
+  });
+  const selExp = document.getElementById('selExp');
+  selExp.addEventListener('change', () => { expansionModel = selExp.value; });
+}
 const status_el = document.getElementById('status');
 const btnPause  = document.getElementById('btnPause');
 const btnReset  = document.getElementById('btnReset');
@@ -103,8 +226,17 @@ const lblGamma  = document.getElementById('lblGamma');
 const rngCvisc  = document.getElementById('rngCvisc');
 const lblCvisc  = document.getElementById('lblCvisc');
 const lblTime   = document.getElementById('lblTime');
+const selView   = document.getElementById('selView');
+const rngSmooth = document.getElementById('rngSmooth');
+const lblSmooth = document.getElementById('lblSmooth');
+let   smoothPasses = 1;   // display-only 3x3 box smoothing passes (0 = raw physics field)
+rngSmooth.addEventListener('input', () => {
+  smoothPasses = parseInt(rngSmooth.value, 10);
+  lblSmooth.textContent = rngSmooth.value;
+});
 
-let cviscVal = 1;        // shock-viscosity coefficient C in ν += C·h·|∇·u|
+let cviscVal = 0;        // shock-viscosity coefficient C in ν += C·h·|∇·u| (OFF: it destroys
+                         // the web via runaway heating — see the shader comment)
 let gammaDirty = true;   // re-upload params when γ or C changes
 rngGamma.addEventListener('input', () => {
   gammaVal = parseFloat(rngGamma.value);
@@ -162,7 +294,14 @@ async function main() {
   }
   const adapter = await navigator.gpu.requestAdapter();
   if (!adapter) { status_el.textContent = 'No WebGPU adapter.'; return; }
-  const device = await adapter.requestDevice();
+  // 200^3 needs ~128 MB per state buffer — request the adapter's real maxima
+  // (the guaranteed default 128 MiB storage-binding cap is right at the edge).
+  const device = await adapter.requestDevice({
+    requiredLimits: {
+      maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
+      maxBufferSize: adapter.limits.maxBufferSize,
+    },
+  });
   device.addEventListener('uncapturederror', (e) => {
     console.error('WebGPU error:', e.error.message);
     window.__gpuError = e.error.message;
@@ -180,14 +319,15 @@ async function main() {
   const mzA    = device.createBuffer({ size: SCALAR_BYTES, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
   const mzB    = device.createBuffer({ size: SCALAR_BYTES, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
   const phiBuf = device.createBuffer({ size: SCALAR_BYTES, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
-  const paramsBuf = device.createBuffer({ size: 8 * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  const paramsBuf = device.createBuffer({ size: 12 * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   // Three small readback staging buffers (only the data we actually plot)
   const rbState = device.createBuffer({ size: STATE_BYTES,  usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
   const rbPhi   = device.createBuffer({ size: SCALAR_BYTES, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
 
   function writeParams() {
     device.queue.writeBuffer(paramsBuf, 0, new Float32Array([
-      N, H, DT, gammaVal, G_GRAV, NU, POISSON_DT, cviscVal,
+      N, H, DT, gammaVal, G_GRAV, NU, SOR_OMEGA, cviscVal,
+      aScale, hubbleH, 0, 0,
     ]));
   }
   writeParams();
@@ -202,28 +342,73 @@ async function main() {
   const initPhi   = new Float32Array(NCELL);
   // --- +/- mass (dark-energy) seed: smoothed signed random fluctuation, zero mean ---
   // (replaces the homogeneous rho=1 seed of the positive-mass version)
-  const seedR = new Float32Array(NCELL), seedT = new Float32Array(NCELL);
-  for (let q = 0; q < NCELL; q++) seedR[q] = Math.random() * 2 - 1;
-  const wrapN = (a) => ((a % N) + N) % N;
-  const at = (i, j, k) => wrapN(i) + N * (wrapN(j) + N * wrapN(k));
-  for (let pass = 0; pass < 6; pass++) {           // smoothing -> correlation length
-    for (let k = 0; k < N; k++) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-      seedT[at(i, j, k)] = (seedR[at(i+1,j,k)] + seedR[at(i-1,j,k)]
-        + seedR[at(i,j+1,k)] + seedR[at(i,j-1,k)]
-        + seedR[at(i,j,k+1)] + seedR[at(i,j,k-1)] + seedR[at(i,j,k)]) / 7;
+  // Web scale = seed correlation length, set by the "web scale" slider as a COARSENING
+  // FACTOR F: white noise is generated on a coarse (N/F)^3 grid, smoothed a few passes
+  // there, then trilinearly upsampled to N^3.
+  //
+  // This replaces repeated box-smoothing of the full N^3 field, which could NOT reach the
+  // scale required: it smoothed only the interior while the frozen boundary shell kept
+  // re-injecting white noise, so the correlation length SATURATED at ~10-16 cells however
+  // many passes were used. That mattered because the seed must sit ABOVE the Jeans length
+  // to collapse at all — with lam_J = 24 cells at N = 200 the old seed was entirely
+  // sub-Jeans, i.e. pressure-supported, so nothing could ever form.
+  // Measured calibration at N = 200: F = 4 -> L = 20 cells, F = 6 -> 28, F = 7 -> ~31,
+  // F = 8 -> 35, F = 12 -> 43. Default F = 7 gives L ~ 1.3*lam_J, the seed-to-Jeans ratio
+  // the offline runs were validated at. Cost is one pass over N^3 (the upsample).
+  let webScaleF = 7;
+  const seedR = new Float32Array(NCELL);
+  function buildSeed() {
+    const Nc = Math.max(4, Math.ceil(N / webScaleF));
+    let cA = new Float32Array(Nc * Nc * Nc), cB = new Float32Array(Nc * Nc * Nc);
+    for (let q = 0; q < cA.length; q++) cA[q] = Math.random() * 2 - 1;
+    for (let pass = 0; pass < 3; pass++) {          // smooth on the coarse grid (edge-clamped)
+      for (let k = 0; k < Nc; k++) for (let j = 0; j < Nc; j++) for (let i = 0; i < Nc; i++) {
+        const im = Math.max(0, i-1), ip = Math.min(Nc-1, i+1);
+        const jm = Math.max(0, j-1), jp = Math.min(Nc-1, j+1);
+        const km = Math.max(0, k-1), kp = Math.min(Nc-1, k+1);
+        cB[i + Nc*(j + Nc*k)] = (cA[im + Nc*(j + Nc*k)] + cA[ip + Nc*(j + Nc*k)]
+                               + cA[i + Nc*(jm + Nc*k)] + cA[i + Nc*(jp + Nc*k)]
+                               + cA[i + Nc*(j + Nc*km)] + cA[i + Nc*(j + Nc*kp)]
+                               + cA[i + Nc*(j + Nc*k)]) / 7;
+      }
+      const t = cA; cA = cB; cB = t;
     }
-    seedR.set(seedT);
+    for (let k = 0; k < N; k++) {                   // trilinear upsample to the fine grid
+      const kz = Math.min(k / webScaleF, Nc - 1.001), k0 = kz | 0, fk = kz - k0;
+      for (let j = 0; j < N; j++) {
+        const jy = Math.min(j / webScaleF, Nc - 1.001), j0 = jy | 0, fj = jy - j0;
+        for (let i = 0; i < N; i++) {
+          const ix = Math.min(i / webScaleF, Nc - 1.001), i0 = ix | 0, fi = ix - i0;
+          const c000 = cA[i0 + Nc*(j0 + Nc*k0)],       c100 = cA[i0+1 + Nc*(j0 + Nc*k0)];
+          const c010 = cA[i0 + Nc*(j0+1 + Nc*k0)],     c110 = cA[i0+1 + Nc*(j0+1 + Nc*k0)];
+          const c001 = cA[i0 + Nc*(j0 + Nc*(k0+1))],   c101 = cA[i0+1 + Nc*(j0 + Nc*(k0+1))];
+          const c011 = cA[i0 + Nc*(j0+1 + Nc*(k0+1))], c111 = cA[i0+1 + Nc*(j0+1 + Nc*(k0+1))];
+          const c00 = c000 + fi*(c100-c000), c10 = c010 + fi*(c110-c010);
+          const c01 = c001 + fi*(c101-c001), c11 = c011 + fi*(c111-c011);
+          const c0 = c00 + fj*(c10-c00),     c1 = c01 + fj*(c11-c01);
+          seedR[i + N*(j + N*k)] = c0 + fk*(c1-c0);
+        }
+      }
+    }
+    let sMean = 0; for (let q = 0; q < NCELL; q++) sMean += seedR[q]; sMean /= NCELL;
+    let sAbs = 0; for (let q = 0; q < NCELL; q++) { seedR[q] -= sMean; sAbs += Math.abs(seedR[q]); } sAbs /= NCELL;
+    const SEED_AMP = 0.3;                               // Route A: plain SIGNED zero-mean seed
+    // COLD start: e = |rho|*T0 with T0 = 0.01, replacing the old hot e = |rho| + 0.2.
+    // The sound speed c_s = sqrt(gamma*T0) sets the Jeans length lam_J = 2*pi*c_s/sqrt(G*rho),
+    // i.e. the scale of the web. Hot start gave lam_J of 2-9 BOX LENGTHS — the whole volume
+    // was below one Jeans length, so pressure supported everything and nothing could form
+    // (and the "clumping" seen then was shock-heating artefact, not gravity).
+    // At T0 = 0.01, gamma = 0.2, G = 18, |rho| ~ 0.3: lam_J ~ 0.12 box ~ 24 cells at N = 200.
+    const T0 = 0.01;
+    for (let q = 0; q < NCELL; q++) {                    // (no forced |rho|>=RMIN gap — positive
+      const b = SEED_AMP * seedR[q] / (sAbs + 1e-9);    //  inertia handles rho=0, no singularity)
+      initState[q * 4 + 0] = b;                          // signed +/- mass, ~50/50 by construction
+      initState[q * 4 + 1] = Math.abs(b) * T0 + 1e-4;   // e = |rho|·T0  (energy positive, cold)
+      initState[q * 4 + 2] = 0.0;                       // mx
+      initState[q * 4 + 3] = 0.0;                       // my
+    }
   }
-  let sMean = 0; for (let q = 0; q < NCELL; q++) sMean += seedR[q]; sMean /= NCELL;
-  let sAbs = 0; for (let q = 0; q < NCELL; q++) { seedR[q] -= sMean; sAbs += Math.abs(seedR[q]); } sAbs /= NCELL;
-  const SEED_AMP = 0.3;
-  for (let q = 0; q < NCELL; q++) {
-    const rho = SEED_AMP * seedR[q] / (sAbs + 1e-9);   // signed +/- mass
-    initState[q * 4 + 0] = rho;
-    initState[q * 4 + 1] = Math.abs(rho) + 0.05;       // e = |rho|*T  (energy is positive)
-    initState[q * 4 + 2] = 0.0;  // mx
-    initState[q * 4 + 3] = 0.0;  // my
-  }
+  buildSeed();
   device.queue.writeBuffer(stateA, 0, initState);
   device.queue.writeBuffer(stateB, 0, initState);
   device.queue.writeBuffer(mzA, 0, initMz);
@@ -232,7 +417,10 @@ async function main() {
 
   const paramsBlock = `
     struct Params {
-      N: f32, h: f32, dt: f32, gamma: f32, G: f32, nu: f32, pdt: f32, cvisc: f32,
+      N: f32, h: f32, dt: f32, gamma: f32, G: f32, nu: f32, omega: f32, cvisc: f32,
+      // Expansion (comoving formulation). a = scale factor, hub = H = adot/a.
+      // a = 1, hub = 0 reproduces the non-expanding box exactly.
+      a: f32, hub: f32, pad0: f32, pad1: f32,
     };
   `;
   // 3D index helpers: i + N·(j + N·k)
@@ -264,8 +452,19 @@ async function main() {
       let phi_zp = read_phi(i32(i),   i32(j),   i32(k)+1);
       let phi_zm = read_phi(i32(i),   i32(j),   i32(k)-1);
       let rho_c = state[id].x;
-      let lap_phi = phi_xp + phi_xm + phi_yp + phi_ym + phi_zp + phi_zm - 6.0*phi_c;
-      phi[id] = phi_c + P.pdt * (lap_phi / (P.h * P.h) + P.G * rho_c);
+      // RED-BLACK SOR. Was a pseudo-time step phi += pdt*(lap phi/h^2 + G rho) with pdt
+      // capped at 0.4h^2/6 for explicit stability — that is Jacobi, and its convergence
+      // rate for a mode k is pdt*k^2, so web-scale modes needed ~220 sweeps per e-fold and
+      // box-scale ones ~60000. Offline that left the potential lagging its source badly as
+      // filaments sharpened (residual reaching 240% of the source), gravity effectively
+      // switched off and the web died back to the seed. Solving each cell to its
+      // Gauss-Seidel value and over-relaxing converges in ~N/pi sweeps instead of ~N^2/pi^2
+      // (~60x at N=200): offline residual went 0.31 (4000 Jacobi sweeps) -> 0.00 (300 SOR).
+      // Comoving Poisson: the source carries a factor 1/a (G_eff = G/a), so gravity weakens
+      // as the box expands. a = 1 recovers the non-expanding case.
+      let tgt = (phi_xp + phi_xm + phi_yp + phi_ym + phi_zp + phi_zm
+                 + P.h * P.h * (P.G / P.a) * rho_c) / 6.0;
+      phi[id] = phi_c + P.omega * (tgt - phi_c);
     }
     @compute @workgroup_size(4, 4, 4)
     fn poisson_red(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -294,12 +493,31 @@ async function main() {
     @group(0) @binding(4) var<storage, read_write> state_out: array<vec4<f32>>;
     @group(0) @binding(5) var<storage, read_write> mz_out:    array<f32>;
     ${helpers}
-    // Regularized velocity: with signed mass the density crosses zero everywhere,
-    // so a bare m/rho diverges. Use a large floor and a hard clamp to keep the
-    // advection stable across the +/- interfaces.
-    fn vxof(c: vec4<f32>) -> f32 { return clamp(c.z / (abs(c.x) + 0.15), -5.0, 5.0); }
-    fn vyof(c: vec4<f32>) -> f32 { return clamp(c.w / (abs(c.x) + 0.15), -5.0, 5.0); }
-    fn vzof(c: vec4<f32>, mz: f32) -> f32 { return clamp(mz / (abs(c.x) + 0.15), -5.0, 5.0); }
+    // Route A — POSITIVE inertia: velocity from |rho| (not signed rho), so BOTH
+    // mass signs are ordinary positive-inertia gas (no negative-mass runaway).
+    // The sign of rho enters ONLY the gravitational coupling (Poisson source and
+    // the body force +rho*grad(phi)); the two phases are then exact mirrors and
+    // segregate into a symmetric +/- web (~50% voids) instead of one sign winning.
+    // (Verified in an offline finite-difference port: void stays ~50%, mass
+    // conserved, |rho| bounded, no NaN — vs the old signed-inertia scheme that
+    // ate the negative phase down to ~2%.)
+    fn den(r: f32) -> f32 { return abs(r) + 0.15; }   // positive inertia, RMIN=0.15
+    fn vxof(c: vec4<f32>) -> f32 { return clamp(c.z / den(c.x), -3.0, 3.0); }
+    fn vyof(c: vec4<f32>) -> f32 { return clamp(c.w / den(c.x), -3.0, 3.0); }
+    fn vzof(c: vec4<f32>, mz: f32) -> f32 { return clamp(mz / den(c.x), -3.0, 3.0); }
+    // Upwind (donor-cell) flux divergence of (u*q) along one axis: the face velocity is
+    // the average of the two adjacent cells and the transported value is taken from
+    // UPSTREAM. Monotone, hence stable without any artificial density diffusion — which
+    // is what lets continuity below run diffusion-free. (Replaces the centered stencil:
+    // centered advection needed nu*lap(rho) to stay stable, and that diffusion term was
+    // erasing the web on a timescale L^2/nu ~ a few, i.e. faster than it could form.)
+    fn upw(qm1: f32, q0: f32, qp1: f32, um1: f32, u0: f32, up1: f32, h: f32) -> f32 {
+      let uf_p = 0.5 * (u0 + up1);
+      let uf_m = 0.5 * (um1 + u0);
+      let q_p  = select(qp1, q0,  uf_p >= 0.0);
+      let q_m  = select(q0,  qm1, uf_m >= 0.0);
+      return (uf_p * q_p - uf_m * q_m) / h;
+    }
     @compute @workgroup_size(4, 4, 4)
     fn fluid(@builtin(global_invocation_id) gid: vec3<u32>) {
       let n = u32(P.N);
@@ -316,7 +534,6 @@ async function main() {
 
       let c = state_in[id];
       let mzc = mz_in[id];
-      let phc = phi_in[id];
 
       let cxp = state_in[idx3(i+1u, j,    k   )];
       let cxm = state_in[idx3(i-1u, j,    k   )];
@@ -355,12 +572,15 @@ async function main() {
       let vz_yp = vzof(cyp, mzyp); let vz_ym = vzof(cym, mzym);
       let vz_zp = vzof(czp, mzzp); let vz_zm = vzof(czm, mzzm);
 
-      // Shock-capturing (residual) artificial viscosity: where the flow
-      // compresses (∇·u < 0, incipient collapse) the viscosity ramps up,
-      // ν_local = ν + C·h·|∇·u|, dissipating the collapse and (via the heating
-      // term added to e below) converting the kinetic energy irreversibly into
-      // heat. This is the 2nd-law / entropy-production content — it lets even a
-      // soft (small-γ) gas resist gravitational collapse by shock-heating.
+      // Shock-capturing (residual) artificial viscosity: where the flow compresses
+      // (∇·u < 0, incipient collapse) the viscosity ramps up, ν_local = ν + C·h·|∇·u|,
+      // and the heating term added to e below turns kinetic energy into heat.
+      // DEFAULT IS NOW C = 0. Offline runs showed this term does NOT arrest collapse —
+      // it destroys the web: the heating goes as C·h·|∇·u|³, feeds on velocities that
+      // are railed at the clamp near ρ=0, and drove e from 0.5 to >10³ with 70-80% of
+      // cells railed; refining ρ_min and dt made it WORSE, not better. What actually
+      // arrests collapse is the adiabatic index (γ_ad = 1+γ > 4/3 ⇒ the Jeans mass
+      // rises under compression). Kept as a slider for experiment, off by default.
       let divu = ((vx_xp - vx_xm) + (vy_yp - vy_ym) + (vz_zp - vz_zm)) / (2.0 * P.h);
       let cmp = max(0.0, -divu);                 // compression rate (|∇·u| when collapsing)
       // ν + C·h·|∇·u|, clamped to the explicit-diffusion stability cap
@@ -369,59 +589,100 @@ async function main() {
       let nu_local = min(P.nu + P.cvisc * P.h * cmp, nu_max);
       let nu_shock = nu_local - P.nu;            // capped shock part (for heating)
 
+      // NOTE on the 1/(2h) factors below: a centered difference is (f(i+1)-f(i-1))/(2h).
+      // The pressure gradient, the gravitational force and the p∇·u work term previously
+      // divided by h alone, i.e. applied TWICE the intended force. Corrected here to match
+      // the offline scheme these settings were validated in.
+      //
+      // EXPANSION (comoving form). Every spatial derivative picks up 1/a; the momentum
+      // equation gains Hubble drag -H*m; the energy equation gains adiabatic cooling
+      // -3*H*gamma*e. With a = 1, H = 0 all of this reduces exactly to the static box.
+      // The cooling term is the one that matters for the web surviving: without expansion
+      // a self-gravitating box has nowhere to put the released binding energy, so it heats,
+      // c_s rises, lambda_J inflates past the structure scale and the web dissolves.
+      let ia  = 1.0 / P.a;
+      let ia2 = ia * ia;
+
       // ---- mx ----
       let lap_vx = vx_xp + vx_xm + vx_yp + vx_ym + vx_zp + vx_zm - 6.0*vx_c;
+      let adv_mx = upw(cxm.z, mx_c, cxp.z, vx_xm, vx_c, vx_xp, P.h)
+                 + upw(cym.z, mx_c, cyp.z, vy_ym, vy_c, vy_yp, P.h)
+                 + upw(czm.z, mx_c, czp.z, vz_zm, vz_c, vz_zp, P.h);
       let mx_new = mx_c
-        + P.dt * nu_local * lap_vx / (P.h*P.h)
-        - 0.5 * P.dt * (vx_xp * cxp.z - vx_xm * cxm.z) / P.h
-        - 0.5 * P.dt * (vy_yp * cyp.z - vy_ym * cym.z) / P.h
-        - 0.5 * P.dt * (vz_zp * czp.z - vz_zm * czm.z) / P.h
-        - P.dt * P.gamma * (cxp.y - cxm.y) / P.h
-        + P.dt * rho_c * (phxp - phxm) / P.h;
+        - P.dt * ia * adv_mx
+        + P.dt * ia2 * nu_local * lap_vx / (P.h*P.h)
+        - P.dt * ia * P.gamma * (cxp.y - cxm.y) / (2.0*P.h)
+        + P.dt * ia * rho_c * (phxp - phxm) / (2.0*P.h)
+        - P.dt * P.hub * mx_c;                       // Hubble drag
 
-      // ---- my (BUG FIX: full 3D 7-point Laplacian) ----
+      // ---- my ----
       let lap_vy = vy_xp + vy_xm + vy_yp + vy_ym + vy_zp + vy_zm - 6.0*vy_c;
+      let adv_my = upw(cxm.w, my_c, cxp.w, vx_xm, vx_c, vx_xp, P.h)
+                 + upw(cym.w, my_c, cyp.w, vy_ym, vy_c, vy_yp, P.h)
+                 + upw(czm.w, my_c, czp.w, vz_zm, vz_c, vz_zp, P.h);
       let my_new = my_c
-        + P.dt * nu_local * lap_vy / (P.h*P.h)
-        - 0.5 * P.dt * (vx_xp * cxp.w - vx_xm * cxm.w) / P.h
-        - 0.5 * P.dt * (vy_yp * cyp.w - vy_ym * cym.w) / P.h
-        - 0.5 * P.dt * (vz_zp * czp.w - vz_zm * czm.w) / P.h
-        - P.dt * P.gamma * (cyp.y - cym.y) / P.h
-        + P.dt * rho_c * (phyp - phym) / P.h;
+        - P.dt * ia * adv_my
+        + P.dt * ia2 * nu_local * lap_vy / (P.h*P.h)
+        - P.dt * ia * P.gamma * (cyp.y - cym.y) / (2.0*P.h)
+        + P.dt * ia * rho_c * (phyp - phym) / (2.0*P.h)
+        - P.dt * P.hub * my_c;                       // Hubble drag
 
-      // ---- mz (BUG FIX: 7-point) ----
+      // ---- mz ----
       let lap_vz = vz_xp + vz_xm + vz_yp + vz_ym + vz_zp + vz_zm - 6.0*vz_c;
+      let adv_mz = upw(mzxm, mzc, mzxp, vx_xm, vx_c, vx_xp, P.h)
+                 + upw(mzym, mzc, mzyp, vy_ym, vy_c, vy_yp, P.h)
+                 + upw(mzzm, mzc, mzzp, vz_zm, vz_c, vz_zp, P.h);
       let mz_new = mzc
-        + P.dt * nu_local * lap_vz / (P.h*P.h)
-        - 0.5 * P.dt * (vx_xp * mzxp - vx_xm * mzxm) / P.h
-        - 0.5 * P.dt * (vy_yp * mzyp - vy_ym * mzym) / P.h
-        - 0.5 * P.dt * (vz_zp * mzzp - vz_zm * mzzm) / P.h
-        - P.dt * P.gamma * (czp.y - czm.y) / P.h
-        + P.dt * rho_c * (phzp - phzm) / P.h;
+        - P.dt * ia * adv_mz
+        + P.dt * ia2 * nu_local * lap_vz / (P.h*P.h)
+        - P.dt * ia * P.gamma * (czp.y - czm.y) / (2.0*P.h)
+        + P.dt * ia * rho_c * (phzp - phzm) / (2.0*P.h)
+        - P.dt * P.hub * mzc;                        // Hubble drag
 
-      // ---- e (BUG FIX: reattach advection, pressure-work, energy-transfer) ----
+      // ---- e ----
+      // Adiabatic: advection + p∇·u work (this is what makes gamma_ad = 1+gamma, and with
+      // gamma_ad > 4/3 the Jeans mass RISES on compression, arresting collapse at a finite
+      // scale). Base nu only on lap(e); the gravitational phi*div(m) transfer term is
+      // dropped — the paper's own energy equation (edot + div(e u) + p div u = nu_sh(div u)^2)
+      // has no such term, and the validated offline scheme omits it.
       let lap_e = cxp.y + cxm.y + cyp.y + cym.y + czp.y + czm.y - 6.0*e_c;
-      let div_v = (vx_xp - vx_xm) + (vy_yp - vy_ym) + (vz_zp - vz_zm);
-      let div_m = (cxp.z - cxm.z) + (cyp.w - cym.w) + (mzzp - mzzm);
+      let adv_e = upw(cxm.y, e_c, cxp.y, vx_xm, vx_c, vx_xp, P.h)
+                + upw(cym.y, e_c, cyp.y, vy_ym, vy_c, vy_yp, P.h)
+                + upw(czm.y, e_c, czp.y, vz_zm, vz_c, vz_zp, P.h);
       let e_new = e_c
-        + P.dt * nu_local * lap_e / (P.h*P.h)
-        - 0.5 * P.dt * (vx_xp * cxp.y - vx_xm * cxm.y) / P.h
-        - 0.5 * P.dt * (vy_yp * cyp.y - vy_ym * cym.y) / P.h
-        - 0.5 * P.dt * (vz_zp * czp.y - vz_zm * czm.y) / P.h
-        - P.dt * P.gamma * e_c * div_v / P.h
-        + P.dt * phc * div_m / P.h
-        + P.dt * nu_shock * divu * divu;  // viscous (shock) heating: KE -> internal energy (bounded)
+        - P.dt * ia * adv_e
+        + P.dt * ia2 * P.nu * lap_e / (P.h*P.h)
+        - P.dt * ia * P.gamma * e_c * divu
+        + P.dt * ia2 * nu_shock * divu * divu        // shock heating (OFF at the default C = 0)
+        - P.dt * 3.0 * P.hub * P.gamma * e_c;        // adiabatic cooling by expansion
 
-      // ---- rho (BUG FIX: reattach d(my)/dy, d(mz)/dz; 0.5·dt centered) ----
-      let lap_rho = cxp.x + cxm.x + cyp.x + cym.x + czp.x + czm.x - 6.0*rho_c;
-      let rho_new = rho_c
-        + P.dt * nu_local * lap_rho / (P.h*P.h)
-        - 0.5 * P.dt * (cxp.z - cxm.z) / P.h
-        - 0.5 * P.dt * (cyp.w - cym.w) / P.h
-        - 0.5 * P.dt * (mzzp - mzzm) / P.h;
+      // ---- rho ----
+      // Continuity transports the SIGNED charge with flux rho*u (NOT the bare momentum m):
+      // with positive inertia u = m/|rho|, the mass-charge flux is rho*u = sign(rho)*m.
+      // NO diffusion term: upwind is stable on its own, and the nu*lap(rho) that used to be
+      // here was the dominant over-smoother (offline: structure peaked then evaporated back
+      // to a featureless field; with it removed the web persists).
+      let adv_rho = upw(cxm.x, rho_c, cxp.x, vx_xm, vx_c, vx_xp, P.h)
+                  + upw(cym.x, rho_c, cyp.x, vy_ym, vy_c, vy_yp, P.h)
+                  + upw(czm.x, rho_c, czp.x, vz_zm, vz_c, vz_zp, P.h);
+      // rho is the COMOVING density (a^3 * proper), so continuity has no explicit
+      // expansion term — dilution is carried by the coordinates themselves.
+      let rho_new = rho_c - P.dt * ia * adv_rho;
 
-      state_out[id] = vec4<f32>(max(rho_new, 0.05), max(e_new, 0.0), mx_new, my_new);
-      mz_out[id]    = mz_new;
+      // Route A saturation: NO signed rho cap (positive inertia already removes
+      // the runaway, and a signed clamp would bias one phase and break charge
+      // conservation). The symmetric guards below are widened to catch only
+      // pathological Inf: a resolved fine web reaches |rho| ~ 400 offline, so the
+      // old +/-30 rho guard and e <= 50 would have clipped the filaments themselves
+      // and silently flattened the result. Momentum is capped at VCAP*(|rho|+RMIN),
+      // consistent with |u| <= VCAP = 3, which does not touch charge conservation.
+      let rho_out = clamp(rho_new, -5000.0, 5000.0);
+      let mcap = 3.0 * (abs(rho_out) + 0.15);
+      state_out[id] = vec4<f32>(rho_out,
+                                clamp(e_new, 0.0, 1.0e4),
+                                clamp(mx_new, -mcap, mcap),
+                                clamp(my_new, -mcap, mcap));
+      mz_out[id]    = clamp(mz_new, -mcap, mcap);
     }
   `;
 
@@ -438,6 +699,142 @@ async function main() {
   // group from the red pipeline's inferred layout is NOT guaranteed compatible
   // with the black pipeline, and WebGPU silently rejects the dispatch — which
   // left φ = 0 and killed all gravity.)
+  // ---------------- 3D volume renderer (GPU ray-casting) ----------------
+  // Filaments are the structures a slice or a flat projection hides: a slice cuts most of
+  // them, a projection sums them into haze. Here each pixel marches a ray through the
+  // density field and accumulates emission, so connectivity in depth survives. Runs
+  // entirely on the GPU from the same state buffer the solver writes — no readback.
+  const volumeShader = /* wgsl */ `
+    struct Cam {
+      org:   vec4<f32>,   // xyz = eye position, in box units [0,1]^3
+      right: vec4<f32>,   // pre-scaled by aspect * tan(fov/2)
+      up:    vec4<f32>,   // pre-scaled by tan(fov/2)
+      fwd:   vec4<f32>,
+      misc:  vec4<f32>,   // x = N, y = threshold, z = gain, w = steps
+      res:   vec4<f32>,   // xy = canvas size, z = sign mode (0 both, 1 +only, 2 -only)
+    };
+    @group(0) @binding(0) var<uniform> C: Cam;
+    @group(0) @binding(1) var<storage, read> state: array<vec4<f32>>;
+
+    @vertex fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4<f32> {
+      var p = array<vec2<f32>, 3>(vec2<f32>(-1.0, -3.0), vec2<f32>(-1.0, 1.0), vec2<f32>(3.0, 1.0));
+      return vec4<f32>(p[vi], 0.0, 1.0);
+    }
+
+    fn sample_rho(p: vec3<f32>) -> f32 {
+      let n = i32(C.misc.x);
+      let f = clamp(p, vec3<f32>(0.0), vec3<f32>(0.999999)) * f32(n);
+      let i = i32(f.x); let j = i32(f.y); let k = i32(f.z);
+      return state[u32(i + n * (j + n * k))].x;
+    }
+
+    @fragment fn fs(@builtin(position) fc: vec4<f32>) -> @location(0) vec4<f32> {
+      let uv = (fc.xy / C.res.xy) * 2.0 - vec2<f32>(1.0, 1.0);
+      let dir = normalize(C.fwd.xyz + uv.x * C.right.xyz - uv.y * C.up.xyz);
+      // slab intersection with the unit box
+      let inv  = 1.0 / dir;
+      let ta   = (vec3<f32>(0.0) - C.org.xyz) * inv;
+      let tb   = (vec3<f32>(1.0) - C.org.xyz) * inv;
+      let tsm  = min(ta, tb);
+      let tbg  = max(ta, tb);
+      var tmin = max(max(tsm.x, tsm.y), max(tsm.z, 0.0));
+      let tmax = min(min(tbg.x, tbg.y), tbg.z);
+      if (tmax <= tmin) { return vec4<f32>(0.02, 0.02, 0.04, 1.0); }
+
+      let nsteps = i32(C.misc.w);
+      let dt     = (tmax - tmin) / f32(nsteps);
+      let thresh = C.misc.y;
+      let gain   = C.misc.z;
+      let mode   = i32(C.res.z);
+      var acc    = vec3<f32>(0.0);
+      var alpha  = 0.0;
+      var t      = tmin + dt * 0.5;
+      for (var s = 0; s < nsteps; s = s + 1) {
+        let r = sample_rho(C.org.xyz + dir * t);
+        let keep = (mode == 0) || (mode == 1 && r >= 0.0) || (mode == 2 && r < 0.0);
+        if (keep) {
+          // opacity per unit length from the excess over the threshold: below it the
+          // diffuse background contributes nothing, which is what makes filaments read
+          // as filaments instead of fog.
+          let sigma = max(abs(r) - thresh, 0.0) * gain;
+          let a = 1.0 - exp(-sigma * dt);
+          if (a > 0.0) {
+            let col = select(vec3<f32>(0.25, 0.45, 1.0), vec3<f32>(1.0, 0.30, 0.14), r >= 0.0);
+            acc   = acc + (1.0 - alpha) * a * col;
+            alpha = alpha + (1.0 - alpha) * a;
+            if (alpha > 0.995) { break; }
+          }
+        }
+        t = t + dt;
+      }
+      return vec4<f32>(acc + vec3<f32>(0.02, 0.02, 0.04) * (1.0 - alpha), 1.0);
+    }
+  `;
+  const volumeModule = device.createShaderModule({ code: volumeShader });
+  const camBuf = device.createBuffer({ size: 6 * 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  const volBGL = device.createBindGroupLayout({
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+      { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+    ],
+  });
+  const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
+  ctxGpu.configure({ device, format: canvasFormat, alphaMode: 'opaque' });
+  const volPipeline = device.createRenderPipeline({
+    layout: device.createPipelineLayout({ bindGroupLayouts: [volBGL] }),
+    vertex:   { module: volumeModule, entryPoint: 'vs' },
+    fragment: { module: volumeModule, entryPoint: 'fs', targets: [{ format: canvasFormat }] },
+    primitive: { topology: 'triangle-list' },
+  });
+  const mkVolBG = (state) => device.createBindGroup({
+    layout: volBGL,
+    entries: [
+      { binding: 0, resource: { buffer: camBuf } },
+      { binding: 1, resource: { buffer: state } },
+    ],
+  });
+  const volBGA = mkVolBG(stateA);
+  const volBGB = mkVolBG(stateB);
+
+  function renderVolume(curState) {
+    // camera orbit -> basis
+    const cx = 0.5, cy = 0.5, cz = 0.5;
+    const ex = cx + camDist * Math.cos(camPitch) * Math.sin(camYaw);
+    const ey = cy + camDist * Math.sin(camPitch);
+    const ez = cz + camDist * Math.cos(camPitch) * Math.cos(camYaw);
+    let fx = cx - ex, fy = cy - ey, fz = cz - ez;
+    const fl = Math.hypot(fx, fy, fz); fx /= fl; fy /= fl; fz /= fl;
+    // right = normalize(fwd x worldUp) with worldUp = (0,1,0)  ->  (-fz, 0, fx)
+    // up    = right x fwd  (comes out with +y, as it should)
+    let rx = -fz, ry = 0, rz = fx;
+    const rl = Math.hypot(rx, ry, rz) || 1; rx /= rl; ry /= rl; rz /= rl;
+    const ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
+    const tanHalf = Math.tan(0.5 * 0.9);             // ~52 deg vertical fov
+    const aspect  = cv3d.width / cv3d.height;
+    const signMode = selSign.value === 'pos' ? 1 : (selSign.value === 'neg' ? 2 : 0);
+    device.queue.writeBuffer(camBuf, 0, new Float32Array([
+      ex, ey, ez, 0,
+      rx * tanHalf * aspect, ry * tanHalf * aspect, rz * tanHalf * aspect, 0,
+      ux * tanHalf, uy * tanHalf, uz * tanHalf, 0,
+      fx, fy, fz, 0,
+      N, volThreshAbs, volGain / volNorm, 256,
+      cv3d.width, cv3d.height, signMode, 0,
+    ]));
+    const enc = device.createCommandEncoder();
+    const pass = enc.beginRenderPass({
+      colorAttachments: [{
+        view: ctxGpu.getCurrentTexture().createView(),
+        loadOp: 'clear', storeOp: 'store',
+        clearValue: { r: 0.02, g: 0.02, b: 0.04, a: 1 },
+      }],
+    });
+    pass.setPipeline(volPipeline);
+    pass.setBindGroup(0, curState === stateA ? volBGA : volBGB);
+    pass.draw(3);
+    pass.end();
+    device.queue.submit([enc.finish()]);
+  }
+
   const poissonBGL = device.createBindGroupLayout({
     entries: [
       { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
@@ -493,6 +890,23 @@ async function main() {
     queueInitialPoissonSettle();
   });
 
+  // Web-scale slider: rebuild the seed with the chosen correlation length, then
+  // restart. Use 'change' (fires on release) — 'input' would rebuild every tick.
+  const rngWeb = document.getElementById('rngWeb'), lblWeb = document.getElementById('lblWeb');
+  // Show the slider's PHYSICAL meaning: the seed scale it produces (calibrated L ~ 4.4*F
+  // cells) next to the Jeans length, since seed >~ lam_J is the condition for collapse.
+  const lamJcells = () => 2*Math.PI*Math.sqrt(Math.max(gammaVal,1e-9)*0.01)
+                          / Math.sqrt(Math.max(G_GRAV,1e-9)*0.3) * N;
+  const webLabel = (F) => `F=${F} → seed ≈ ${Math.round(4.4*F)} cells (λ_J ≈ ${lamJcells().toFixed(0)})`;
+  rngWeb.value = String(webScaleF); lblWeb.textContent = webLabel(webScaleF);
+  rngWeb.addEventListener('input',  () => { lblWeb.textContent = webLabel(parseInt(rngWeb.value, 10)); });
+  rngWeb.addEventListener('change', () => {
+    webScaleF = parseInt(rngWeb.value, 10);
+    lblWeb.textContent = webLabel(webScaleF);
+    buildSeed();
+    btnReset.click();     // re-upload the new initState and re-settle φ
+  });
+
   let statePing = 'A';
   let frameCount = 0;
   let lastState = null;
@@ -506,9 +920,10 @@ async function main() {
   function queueInitialPoissonSettle() {
     const encoder = device.createCommandEncoder();
     const bg = bgPoissonA;  // statePing === 'A' at start
-    // Relaxation iterations to converge scale ~N²; the 200³ grid needs more
-    // sweeps than the 100³ version (1000) for φ to settle across the box.
-    for (let s = 0; s < 4000; s++) {
+    // With SOR the sweeps needed scale as ~N/pi per e-fold (not ~N²/pi² as for the old
+    // Jacobi step), so 1500 at N=200 is ~23 e-folds — far past convergence. Offline, 300
+    // SOR sweeps already took the residual to 0.00 where 4000 Jacobi sweeps left it at 0.31.
+    for (let s = 0; s < 1500; s++) {
       {
         const pass = encoder.beginComputePass();
         pass.setPipeline(poissonRedPipeline);
@@ -527,6 +942,8 @@ async function main() {
     device.queue.submit([encoder.finish()]);
   }
   queueInitialPoissonSettle();
+
+  let curState3d = stateA;    // which ping-pong buffer the 3D view should read
 
   async function frame() {
     frameCount++;
@@ -564,53 +981,112 @@ async function main() {
         }
         simTime += DT;
       }
+      // Advance the background once per frame (a and H change on the expansion timescale,
+      // which is far longer than a substep) and push it to the GPU.
+      const aPrev = aScale;
+      updateExpansion(simTime);
+      if (aScale !== aPrev || hubbleH !== 0) writeParams();
       // Read back the current state + phi for host-side drawing
-      const curState = statePing === 'A' ? stateA : stateB;
-      if (rbState.mapState === 'unmapped') encoder.copyBufferToBuffer(curState, 0, rbState, 0, STATE_BYTES);
-      if (rbPhi.mapState   === 'unmapped') encoder.copyBufferToBuffer(phiBuf,   0, rbPhi,   0, SCALAR_BYTES);
+      curState3d = statePing === 'A' ? stateA : stateB;
+      const curState = curState3d;
+      // The readback is ~128 MB per copy at N=200 and is by far the most expensive thing
+      // in the frame. Only the 2D canvas and "Analyze structure" need it — the 3D volume
+      // view reads the state buffer directly on the GPU — so do it every 4th frame. The
+      // 3D view still updates every frame; the 2D panel just refreshes a little slower.
+      const doReadback = (frameCount % 4 === 1);
+      if (doReadback && rbState.mapState === 'unmapped') encoder.copyBufferToBuffer(curState, 0, rbState, 0, STATE_BYTES);
+      if (doReadback && rbPhi.mapState   === 'unmapped') encoder.copyBufferToBuffer(phiBuf,   0, rbPhi,   0, SCALAR_BYTES);
       device.queue.submit([encoder.finish()]);
 
-      if (rbState.mapState === 'unmapped') {
+      if (doReadback && rbState.mapState === 'unmapped') {
         await rbState.mapAsync(GPUMapMode.READ);
         lastState = new Float32Array(rbState.getMappedRange().slice(0));
         rbState.unmap();
       }
-      if (rbPhi.mapState === 'unmapped') {
+      if (doReadback && rbPhi.mapState === 'unmapped') {
         await rbPhi.mapAsync(GPUMapMode.READ);
         lastPhi = new Float32Array(rbPhi.getMappedRange().slice(0));
         rbPhi.unmap();
       }
     }
 
+    // Recompute the |rho| cut that shows the densest volPct % of cells, from a sparse
+    // sample (~40k cells, every ~30 frames). volNorm is the spread between that cut and the
+    // 99.9th percentile, so the opacity ramp keeps the same appearance while |rho| grows by
+    // orders of magnitude — brightness then reflects contrast, not absolute amplitude.
+    if (lastState && frameCount % 30 === 1) {
+      const stride = Math.max(1, Math.floor(NCELL / 40000));
+      const samp = [];
+      for (let q = 0; q < NCELL; q += stride) {
+        const v = lastState[q * 4];
+        if (isFinite(v)) samp.push(Math.abs(v));
+      }
+      if (samp.length > 100) {
+        samp.sort((a, b) => a - b);
+        const at = (f) => samp[Math.min(samp.length - 1, Math.max(0, Math.floor(samp.length * f)))];
+        volThreshAbs = at(1 - volPct / 100);
+        volNorm      = Math.max(at(0.999) - volThreshAbs, 1e-6);
+      }
+    }
+    renderVolume(curState3d);
+
     // Clear to black for the density map.
     ctx2d.fillStyle = 'rgb(0,0,0)';
     ctx2d.fillRect(0, 0, 400, 400);
 
     if (lastState) {
-      const kOff = N * N * KCUT;
-      // Direct density map on the k = KCUT plane (robust for signed mass):
-      // red = positive mass (web/nodes/filaments), blue = negative mass (voids);
-      // brightness ~ |rho|.
-      let rsum = 0, rn = 0, nBad = 0;
-      for (let q = 0; q < N * N; q++) {
-        const v = lastState[(q + kOff) * 4];
-        if (!isFinite(v)) { nBad++; continue; }
-        rsum += Math.abs(v); rn++;
-      }
-      const rscale = (rn > 0 ? rsum / rn : 1e-6) * 2.5 + 1e-9;  // ~2.5x mean|rho| (robust vs hot cells)
+      // Build +mass / -mass display fields, from either the mid-slice or a
+      // full line-of-sight projection through z (projection averages out the
+      // grid grain and shows the large-scale ±web clearly).
       const cell = Math.ceil(PX) + 1;
+      const pos = new Float32Array(N * N), neg = new Float32Array(N * N);
+      let nBad = 0;
+      if (selView.value === 'proj') {
+        for (let k = 1; k < N - 1; k++) {
+          const kOff = N * N * k;
+          for (let q = 0; q < N * N; q++) {
+            const v = lastState[(q + kOff) * 4];
+            if (!isFinite(v)) { nBad++; continue; }
+            if (v >= 0) pos[q] += v; else neg[q] -= v;
+          }
+        }
+      } else {
+        const kOff = N * N * KCUT;
+        for (let q = 0; q < N * N; q++) {
+          const v = lastState[(q + kOff) * 4];
+          if (!isFinite(v)) { nBad++; continue; }
+          if (v >= 0) pos[q] = v; else neg[q] = -v;
+        }
+      }
+      // light 3x3 box smoothing of the display fields (visual only, physics untouched)
+      const smooth2d = (a) => {
+        const b = new Float32Array(N * N);
+        for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+          let s = 0, m = 0;
+          for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+            const ii = i + di, jj = j + dj;
+            if (ii < 0 || ii >= N || jj < 0 || jj >= N) continue;
+            s += a[ii + N * jj]; m++;
+          }
+          b[i + N * j] = s / m;
+        }
+        return b;
+      };
+      let P2 = pos, NG = neg;                          // 0 passes = raw physics field
+      for (let s = 0; s < smoothPasses; s++) { P2 = smooth2d(P2); NG = smooth2d(NG); }
+      let msum = 0; for (let q = 0; q < N * N; q++) msum += P2[q] + NG[q];
+      const rscale = (msum / (N * N)) * 2.2 + 1e-9;   // mean-based contrast
       for (let j = 0; j < N; j++) {
         for (let i = 0; i < N; i++) {
-          const r = lastState[(i + N * j + kOff) * 4];
-          if (!isFinite(r)) { ctx2d.fillStyle = 'magenta'; ctx2d.fillRect(PX*i, PX*j, cell, cell); continue; }
-          const t = Math.pow(Math.min(1, Math.abs(r) / rscale), 0.5);
-          const c = Math.round(255 * t);
-          ctx2d.fillStyle = (r >= 0)
-            ? `rgb(${c},${Math.round(0.12 * c)},${Math.round(0.12 * c)})`
-            : `rgb(${Math.round(0.25 * c)},${Math.round(0.45 * c)},${c})`;
+          const p = i + N * j;
+          const tr = Math.pow(Math.min(1, P2[p] / rscale), 0.7);
+          const tb = Math.pow(Math.min(1, NG[p] / rscale), 0.7);
+          const R = Math.round(255 * tr), B = Math.round(255 * tb);
+          ctx2d.fillStyle = `rgb(${R},${Math.round(0.12 * (R + B))},${B})`;
           ctx2d.fillRect(PX * i, PX * j, cell, cell);
         }
       }
+      if (nBad > 0) { ctx2d.fillStyle = 'magenta'; ctx2d.fillText('NaN cells: ' + nBad, 260, 14); }
 
       // Auto-scale each trace to its own deviation so even a small-amplitude
       // response is visible. ρ and T are plotted as deviations from 1; φ from 0.
@@ -642,9 +1118,11 @@ async function main() {
       ctx2d.fillStyle = '#fff';
       ctx2d.font = '11px sans-serif';
       ctx2d.textBaseline = 'top';
-      ctx2d.fillText("Cosmology 3D: Two-Valued Poisson — ±mass, dark energy (GPU)",  10, 14);
-      ctx2d.fillText(`N = ${N}³ = ${(N*N*N).toLocaleString()} cells,  p = γe = ρT,  γ = ${gammaVal.toFixed(2)},  ν = h`, 10, 34);
-      ctx2d.fillText(`Initial: signed ±mass fluctuation (zero mean), e = |ρ|;  shock visc C = ${cviscVal.toFixed(1)}`, 10, 54);
+      ctx2d.fillText("Cosmology 3D: ±mass COMPRESSIBLE flow — Route A + upwind, diffusion-free continuity (GPU)",  10, 14);
+      ctx2d.fillText(`N = ${N}³ = ${(N*N*N).toLocaleString()} cells,  p = γe,  γ = ${gammaVal.toFixed(2)} (γ_ad = ${(1+gammaVal).toFixed(2)}),  G = ${G_GRAV},  ν = ${(NU/H).toFixed(2)}h`, 10, 34);
+      ctx2d.fillText(`Cold start e = |ρ|·T₀, T₀ = 0.01 → λ_J ≈ ${(2*Math.PI*Math.sqrt(Math.max(gammaVal,1e-6)*0.01)/Math.sqrt(Math.max(G_GRAV,1e-6)*0.3)).toFixed(2)} box;  shock visc C = ${cviscVal.toFixed(1)}`, 10, 54);
+      ctx2d.fillText(H0 === 0 ? 'expansion: none (static box)'
+        : `expansion: ${expansionModel}, H₀ = ${H0.toFixed(2)} → a = ${aScale.toFixed(3)}, H = ${hubbleH.toFixed(3)}`, 10, 74);
       ctx2d.fillText(`Density on the k = ${KCUT} plane — red = +mass web (nodes, filaments), blue = −mass voids (dark energy)`, 10, 330);
       ctx2d.fillText(`peak |φ| = ${phiMaxGlobal.toExponential(2)}   peak |ρ| = ${rhoMaxGlobal.toExponential(2)}   peak |v| = ${vMaxGlobal.toExponential(2)}`, 10, 388);
       window.__diag = { phi: phiMaxGlobal, drho: rhoMaxGlobal, v: vMaxGlobal, t: simTime };
@@ -658,6 +1136,112 @@ async function main() {
     }
     requestAnimationFrame(frame);
   }
+
+  // ---- Cosmic-web structure analysis (tidal/Hessian eigenvalue classification) ----
+  const analysisOut = document.getElementById('analysis');
+  const btnAnalyze  = document.getElementById('btnAnalyze');
+  // Closed-form eigenvalues of a symmetric 3x3 matrix [[a,d,e],[d,b,f],[e,f,c]]
+  // (ascending). Standard trigonometric (Cardano) formula.
+  function eig3sym(a, b, c, d, e, f) {
+    const p1 = d*d + e*e + f*f;
+    if (p1 === 0) { const s = [a, b, c]; s.sort((x, y) => x - y); return s; }
+    const q = (a + b + c) / 3;
+    const p2 = (a-q)*(a-q) + (b-q)*(b-q) + (c-q)*(c-q) + 2*p1;
+    const p = Math.sqrt(p2 / 6);
+    const ba=(a-q)/p, bb=(b-q)/p, bc=(c-q)/p, bd=d/p, be=e/p, bf=f/p;
+    let r = (ba*(bb*bc - bf*bf) - bd*(bd*bc - bf*be) + be*(bd*bf - bb*be)) / 2;
+    r = Math.max(-1, Math.min(1, r));
+    const phi = Math.acos(r) / 3;
+    const e1 = q + 2*p*Math.cos(phi);
+    const e3 = q + 2*p*Math.cos(phi + 2*Math.PI/3);
+    const e2 = 3*q - e1 - e3;
+    return [e3, e2, e1];  // ascending
+  }
+  function analyzeStructure() {
+    if (!lastState) { analysisOut.textContent = 'no data yet — let it run a moment.'; return; }
+    analysisOut.textContent = 'analyzing…';
+    setTimeout(() => {
+      const n = N, nn = n*n, ncell = nn*n;
+      // +mass density (the observable web), smoothed 2 box passes
+      const rp = new Float32Array(ncell);
+      for (let q = 0; q < ncell; q++) { const r = lastState[q*4]; rp[q] = (isFinite(r) && r > 0) ? r : 0; }
+      const tmp = new Float32Array(ncell);
+      for (let pass = 0; pass < 2; pass++) {
+        tmp.set(rp);
+        for (let k = 1; k < n-1; k++) for (let j = 1; j < n-1; j++) {
+          const base = n*(j + n*k);
+          for (let i = 1; i < n-1; i++) { const c = base + i;
+            tmp[c] = (rp[c-1]+rp[c+1]+rp[c-n]+rp[c+n]+rp[c-nn]+rp[c+nn]+rp[c]) / 7; }
+        }
+        rp.set(tmp);
+      }
+      let mean = 0; for (let q = 0; q < ncell; q++) mean += rp[q]; mean /= ncell;
+      // TRUE void fraction. Voids ARE the negative-mass regions, so measure the
+      // RAW signed density directly (not the smoothed +field). For a zero-mean
+      // ±seed this is ~50% at t=0 and GROWS as +mass clumps into thin filaments
+      // while −mass spreads into large voids — the dark-energy 'voids expand'
+      // signature. (The old 'ρ₊ < 0.3·mean' metric measured deep underdensity of
+      // the SMOOTHED +field only, which after box-smoothing survives in just the
+      // interiors of the biggest holes — hence the misleading 'few percent'.)
+      let nNeg = 0, nPos = 0, volNeg = 0, volPos = 0, nFin = 0;
+      for (let q = 0; q < ncell; q++) { const r = lastState[q*4]; if (!isFinite(r)) continue; nFin++;
+        if (r < 0) { nNeg++; volNeg += -r; } else { nPos++; volPos += r; } }
+      const negFrac = 100 * nNeg / Math.max(1, nFin);   // volume fraction of −mass (voids)
+      const stride = Math.max(1, Math.round(n / 100));   // ~1M samples regardless of N
+      const idx = (i,j,k) => i + n*(j + n*k);
+      // Hessian RMS -> curvature threshold
+      let hrms = 0, hn = 0;
+      for (let k = stride; k < n-stride; k += stride) for (let j = stride; j < n-stride; j += stride)
+        for (let i = stride; i < n-stride; i += stride) {
+          const c = idx(i,j,k);
+          const hxx = rp[c+1]-2*rp[c]+rp[c-1], hyy = rp[c+n]-2*rp[c]+rp[c-n], hzz = rp[c+nn]-2*rp[c]+rp[c-nn];
+          hrms += hxx*hxx + hyy*hyy + hzz*hzz; hn += 3;
+        }
+      hrms = Math.sqrt(hrms / Math.max(1, hn));
+      const eps = 0.15 * hrms;
+      let nVoidVol = 0, nSamp = 0, nOver = 0, cNode = 0, cFil = 0, cWall = 0, cClump = 0;
+      const sampVals = [];
+      for (let k = stride; k < n-stride; k += stride) for (let j = stride; j < n-stride; j += stride)
+        for (let i = stride; i < n-stride; i += stride) {
+          const c = idx(i,j,k); nSamp++;
+          const d = rp[c]; sampVals.push(d);
+          if (d < 0.3*mean) nVoidVol++;
+          if (d <= mean) continue;                        // classify overdense cells only
+          nOver++;
+          const hxx = rp[c+1]-2*d+rp[c-1];
+          const hyy = rp[c+n]-2*d+rp[c-n];
+          const hzz = rp[c+nn]-2*d+rp[c-nn];
+          const hxy = (rp[c+1+n]-rp[c+1-n]-rp[c-1+n]+rp[c-1-n]) / 4;
+          const hxz = (rp[c+1+nn]-rp[c+1-nn]-rp[c-1+nn]+rp[c-1-nn]) / 4;
+          const hyz = (rp[c+n+nn]-rp[c+n-nn]-rp[c-n+nn]+rp[c-n-nn]) / 4;
+          const ev = eig3sym(hxx, hyy, hzz, hxy, hxz, hyz);   // ridge = negative curvature
+          const nneg = (ev[0] < -eps ? 1:0) + (ev[1] < -eps ? 1:0) + (ev[2] < -eps ? 1:0);
+          if (nneg >= 3) cNode++; else if (nneg === 2) cFil++; else if (nneg === 1) cWall++; else cClump++;
+        }
+      // mass concentration: fraction of +mass in the densest 5% of sampled cells
+      sampVals.sort((a, b) => b - a);
+      const top5 = Math.max(1, Math.floor(0.05 * sampVals.length));
+      let mTop = 0, mAll = 0;
+      for (let q = 0; q < sampVals.length; q++) { mAll += sampVals[q]; if (q < top5) mTop += sampVals[q]; }
+      const peak = sampVals[0];
+      const pc = (x, tot) => (100 * x / Math.max(1, tot)).toFixed(1) + '%';
+      const voidF = 100 * nVoidVol / nSamp;
+      const massConc = 100 * mTop / Math.max(1e-9, mAll);
+      const webby = (negFrac > 40 && cFil/Math.max(1,nOver) > 0.15 && peak/mean > 3);
+      analysisOut.textContent =
+`STRUCTURE ANALYSIS  (t=${simTime.toFixed(2)}, ${nSamp.toLocaleString()} samples)
+ voids (−mass): ${negFrac.toFixed(1)}% of volume is negative mass  (+mass fills ${(100-negFrac).toFixed(1)}%)  ← physical void fraction; Route A (positive inertia + conservative charge flux) should HOLD this near ~50% (symmetric ±web), not let one sign win
+   [aux: ${voidF.toFixed(1)}% of the +field is deeply underdense, ρ₊ < 0.3·mean]
+ concentration: peak/mean = ${(peak/mean).toFixed(1)}× ,  top-5% cells hold ${massConc.toFixed(1)}% of +mass
+ morphology of OVERDENSE volume (Hessian eigenvalues, ε=0.15·H_rms):
+   nodes    (3D peaks)  : ${pc(cNode, nOver)}
+   filaments(2D ridges) : ${pc(cFil,  nOver)}
+   walls    (2D sheets) : ${pc(cWall, nOver)}
+   diffuse             : ${pc(cClump, nOver)}
+ verdict: ${webby ? 'WEB-LIKE — voids + filaments + concentrations all present' : 'not strongly web-like at these settings (try higher G / lower ν, or let it evolve)'}`;
+    }, 30);
+  }
+  btnAnalyze.addEventListener('click', analyzeStructure);
 
   status_el.textContent = `WebGPU ready — N = ${N}³, initial Poisson settle complete.`;
   requestAnimationFrame(frame);

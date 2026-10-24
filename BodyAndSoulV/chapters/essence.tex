@@ -1,4 +1,262 @@
-\chapter{Real ThermoDynamics as Model of Physics}\label{ch:essence}
+\chapter{From Classical to Real Thermodynamics}\label{ch:essence}
+
+\begin{quote}\small\itshape
+``Thermodynamics is a funny subject. The first time you go through it, you
+don't understand it at all. The second time you go through it, you think you
+understand it, except for one or two small points. The third time you go
+through it, you know you don't understand it, but by that time you are so used
+to it, it doesn't bother you any more.''\\
+\normalfont\hfill --- Arnold Sommerfeld
+\end{quote}
+
+\begin{quote}\small\itshape
+``No one really knows what entropy really is, so in a debate you will always
+have the advantage.''\\
+\normalfont\hfill --- John von Neumann, to Claude Shannon
+\end{quote}
+
+\begin{quote}\small\itshape
+``The law that entropy always increases holds, I think, the supreme position
+among the laws of Nature. \ldots\ if your theory is found to be against the
+second law of thermodynamics I can give you no hope; there is nothing for it
+but to collapse in deepest humiliation.''\\
+\normalfont\hfill --- Arthur Eddington, \emph{The Nature of the Physical World} (1928)
+\end{quote}
+
+\begin{quote}\small\itshape
+``Were it not for the existence of irreversible processes, the entire edifice
+of the 2nd Law would crumble.''\\
+\normalfont\hfill --- Max Planck
+\end{quote}
+\bigskip
+
+This opening chapter states the two laws of classical thermodynamics,
+identifies the two questions the classical theory leaves unanswered,
+and then gives the Real ThermoDynamics (RealTD) answer: the same 1st
+Law, and a 2nd Law in which the entropy product $T\,dS$ is replaced by
+turbulent dissipation $D$. A closing section presents the essence of
+RealTD as a finite-precision computational model of physics.
+
+\section{Classical 1st and 2nd Laws}\label{sec:classical-laws}
+
+Classical Thermodynamics rests on two laws. The \emph{1st Law} is the
+conservation of total energy, written $K$ for the \emph{kinetic (mechanical)
+energy} and $E$ for the \emph{internal (heat) energy}. In Clausius' differential
+form, with $dK$ and $dE$ the changes of these energies from one state to
+another,
+\begin{equation}\label{eq:classical1st}
+dK + dE = 0,
+\end{equation}
+so mechanical energy lost is gained as heat and vice versa --- energy is
+only converted between its mechanical and thermal forms, never created or
+destroyed. The \emph{2nd Law}, in Clausius' differential form, is
+\begin{equation}\label{eq:classical2nd-essence}
+T\,dS = dE + p\,dV, \qquad dS \ge 0,
+\end{equation}
+with $S$ \emph{entropy}, $T$ absolute \emph{temperature}, $V$ \emph{volume}, and
+$W = p\,dV$ \emph{work}. The equality is an energy balance; the inequality
+$dS \ge 0$ is the 2nd Law proper, expressing irreversibility.
+
+\paragraph{Why the form $T\,dS$.}
+The right-hand side $dE + p\,dV$ is the heat supplied in a transition, and by
+itself it is \emph{not} an exact differential --- the heat exchanged depends on
+the path taken between two states. Dividing by the temperature $T$ repairs this:
+for a perfect gas $(dE + p\,dV)/T$ \emph{is} an exact differential, so it defines
+a \emph{state function} $S$, the entropy, depending on the state alone. With the
+gas law $p = \gamma\rho T$, specific volume $V = 1/\rho$, and internal energy $E$
+satisfying $dE = dT$ per unit mass (a perfect gas), we have
+$(dE + p\,dV)/T = dT/T - \gamma\,d\rho/\rho$, and integration gives
+\begin{equation}\label{eq:S-perfectgas}
+S \;=\; \ln T \;-\; \gamma\ln\rho \;+\; \text{const} \;=\; \ln\!\frac{T}{\rho^{\gamma}} \;+\; \text{const},
+\end{equation}
+a function of the state $(\rho,T)$ alone. This is the reason the 2nd Law is
+written in the form $T\,dS$: the integrating factor $1/T$ manufactures a state
+function $S$ whose change $\Delta S$ between two equilibrium states is
+\emph{independent of the path} between them, so that the sign of that change
+classifies the transition --- $\Delta S = 0$ reversible, $\Delta S > 0$
+irreversible.
+
+\paragraph{Path-independence as a miracle.}
+That $\Delta S$ depends only on the endpoints, and not on the path between them,
+may appear as a small miracle. It is the same miracle as the Fundamental Theorem
+of Calculus: an integral need not be evaluated by summing a function over an
+interval --- a computationally intensive process --- but is obtained for free as
+the difference of a \emph{primitive} function between the two endpoints, with no
+computational work. A state function $S$ is exactly such a primitive for the
+heat $T\,dS$, and $\Delta S$ is read off from the endpoints alone. We shall see
+this miracle in action in the next chapter, where the entropy increase of
+Joule's free expansion comes out as $\gamma\ln 2$ from the endpoints --- to be
+compared with the actual turbulent dissipation that RealTD accumulates along the
+real path.
+
+\paragraph{What it does not give, and where it fails.}
+What the construction does \emph{not} deliver is the \emph{physical meaning} of
+$S$ or the \emph{reason} $\Delta S \ge 0$. Nor is it general: it depends
+essentially on the perfect-gas law. For a \emph{non-perfect} gas $(dE + p\,dV)/T$
+need not be an exact differential, and the construction then yields no such state
+function --- \textbf{the entropy $S$ is a state function for the perfect gas, but
+not in general}. The clean diagnosis of irreversibility by the sign of $\Delta S$
+is thus a perfect-gas convenience, not a general fact; outside the perfect gas
+\textbf{the form $T\,dS$ lacks its purpose}, and the 2nd Law must be carried by
+something else --- the turbulent dissipation $D$ of the next section, which is
+defined and non-negative for \emph{any} gas.
+
+\paragraph{The two unresolved questions.}
+Classical Thermodynamics leaves two questions unanswered, and they are
+the questions this volume confronts:
+\begin{itemize}
+\item \emph{What is the physical meaning of the entropy $S$?}
+\item \emph{Why is $dS \ge 0$ always?}
+\end{itemize}
+Boltzmann's statistical mechanics answered the first with ``disorder''
+and the second with an assumption of molecular chaos --- shifting the
+question rather than resolving it. Real ThermoDynamics answers both from
+the dynamics of slightly viscous flow.
+
+\section{1st Law and Real 2nd Law}\label{sec:fp2L}
+
+\paragraph{Dissipation in place of entropy.}
+Real ThermoDynamics keeps the \emph{1st Law identical} to the classical
+one~\eqref{eq:classical1st}, $dK + dE = 0$, and replaces the entropy
+form~\eqref{eq:classical2nd-essence} of the \emph{2nd Law} by a statement
+about \emph{turbulent dissipation} $D$ --- the rate at which coordinated
+kinetic energy is irreversibly converted to heat in the turbulent
+cascade. The mysterious product $T\,dS$ is replaced by $D$:
+\begin{equation}\label{eq:realtd2nd}
+D = dE + p\,dV, \qquad D \ge 0,
+\end{equation}
+where now $D \ge 0$ holds \emph{by construction} --- $D$ is the work done
+against the small-scale viscous stresses, a sum of squares, non-negative
+by definition rather than by postulate. In time-dependent (rate) form,
+with an overdot denoting $d/dt$, the two laws read
+\begin{equation}\label{eq:realtd-rate}
+\dot E + W = D, \qquad \dot E + \dot K = 0, \qquad D \ge 0.
+\end{equation}
+This answers the two questions of Section~\ref{sec:classical-laws} at a
+stroke. The physical meaning of $S$ is \emph{accumulated turbulent
+dissipation}, and $dS \ge 0$ holds not by assumption but because
+$D \ge 0$ by construction.
+
+\paragraph{The two energy balances.}
+Writing $V$ for the \emph{volume} and using the 1st Law $dE + dK = 0$, the
+two laws take the equivalent form of a pair of energy balances,
+\begin{equation}\label{eq:realtd-split}
+dE + p\,dV = D, \qquad dK - p\,dV = -D,
+\end{equation}
+which add to the 1st Law $dE + dK = 0$. They show how the pressure work $p\,dV$ shuttles
+energy between the internal (heat) energy $E$ and the kinetic energy $K$, while
+the dissipation $D \ge 0$ runs only one way, into heat. In an \emph{expansion}
+($p\,dV > 0$) the internal energy $E$ \emph{decreases} and the kinetic energy
+$K$ \emph{increases} --- the gas cools as it accelerates; in a \emph{compression}
+($p\,dV < 0$) the internal energy $E$ \emph{increases} and the kinetic energy
+$K$ \emph{decreases} --- the gas warms as it slows. The dissipation $D$ biases
+both directions toward heat, adding to $E$ and removing from $K$ irreversibly,
+whatever the sign of $p\,dV$.
+
+\paragraph{Per unit mass or per unit volume.}
+A word on bookkeeping, because the classical and Real forms differ in \emph{two}
+independent ways. The first is \emph{normalisation}: the classical quantities are
+\emph{per unit mass} --- specific internal energy $E = T$, specific volume
+$V = 1/\rho$ --- whereas the RealNSE field quantities are \emph{per unit volume}
+--- energy density $\rho T$, dissipation $D$. The two are related by the single
+factor $\rho$. The second is \emph{frame}: the classical relation
+$T\,dS = dE + p\,dV$ is \emph{Lagrangian}, following a fixed parcel of gas, so the
+differential $d$ is the change along that parcel's path (the material derivative
+$D/Dt$); the RealNSE equation is \emph{Eulerian}, written at a fixed point in
+space, with $\partial_t$ and a transport divergence in place of $D/Dt$, and the
+pressure work appearing as the expansion rate $p\,\nabla\!\cdot u$ rather than
+$p\,\dot V$. These two axes are logically independent --- one can write a
+per-mass field, or a per-volume parcel quantity --- and they coincide here only
+because classical thermodynamics is naturally a control-mass (Lagrangian,
+per-mass) statement and RealNSE a field (Eulerian, per-volume) one.
+
+The two forms are nonetheless the \emph{same} law, and passing between them takes
+one step on each axis. The \emph{frame} step uses mass conservation: following a
+parcel,
+\[
+\frac{d}{dt}\Big(\frac{1}{\rho}\Big) \;=\; \frac{\nabla\!\cdot u}{\rho},
+\]
+so $p\,\dot V = p\,(\nabla\!\cdot u)/\rho$ turns the Lagrangian pressure work into
+the Eulerian one. The \emph{normalisation} step is just the factor $\rho$.
+Applying both, the Eulerian per-volume balance
+$\rho\,\dot E + p\,\nabla\!\cdot u = D$ (with $E=T$), divided by $\rho$, returns
+the Lagrangian per-mass form $dE + p\,dV = D/\rho$ exactly; in particular the $D$
+in the per-mass relations~\eqref{eq:realtd2nd} and~\eqref{eq:realtd-split} is the
+per-volume dissipation $D$ divided by $\rho$. Both forms say that an expansion
+($\nabla\!\cdot u > 0$, equivalently $dV>0$) lowers the internal energy. We use
+whichever is convenient --- the per-mass/Lagrangian form to compare with
+classical thermodynamics, the per-volume/Eulerian field form to compare with the
+RealNSE equations the simulations actually solve.
+
+\paragraph{$T\,dS$ versus $D$.}
+The contrast between the two 2nd Laws turns on a single replacement.
+Classically the irreversible term is the product $T\,dS$, in which
+\emph{neither} factor is directly accessible: $T$ is measurable, but
+$S$ is a state function whose physical referent the theory never names,
+and the inequality $dS \ge 0$ is imposed as a separate postulate. In
+Real ThermoDynamics the one quantity $D$ carries the whole irreversible
+content: it is the turbulent dissipation \emph{per unit volume}
+$D = \mu_{\mathrm{mom}}\,|\nabla u|^2 \ge 0$, where $\mu_{\mathrm{mom}}$ is the
+effective (turbulent) viscosity acting in the momentum equation. It is directly
+computable from the RealNSE velocity field and non-negative \emph{by
+construction} as a sum of squares. The bridge between the two is the identification
+\begin{equation}\label{eq:TdS-eq-D}
+\rho\,T\,dS \;=\; D\,dt \;\ge\; 0 ,
+\end{equation}
+with $D$ per unit volume (equivalently $T\,dS = (D/\rho)\,dt$ per unit mass).
+Where the classical theory writes an opaque product $T\,dS$ and
+\emph{asserts} $dS \ge 0$, RealTD writes a transparent dissipation $D$
+and \emph{derives} $D \ge 0$ from the dynamics. Entropy is not denied;
+it is identified, after the fact, as $S = \int D\,dt/(\rho T)$.
+
+\paragraph{Equilibrium endpoints versus the real process in time.}
+The two theories also differ in what they describe. Classical thermodynamics
+relates \emph{equilibrium states} through their state functions. It is not
+confined to reversible processes: it assigns the irreversible free expansion of
+a perfect gas to double volume a definite entropy increase $\Delta S = \gamma\ln 2$,
+obtained by integrating $dQ/T$ along a reference reversible path between the
+same two equilibrium endpoints --- the increase that marks the transition as
+irreversible. What classical thermodynamics does \emph{not} supply is the
+\emph{process itself}: the evolution in time, the non-equilibrium states the gas
+actually passes through, the velocity and turbulence fields, the transient
+temperature gaps, and where and at what rate the dissipation occurs.
+\textbf{Real ThermoDynamics describes that real transition in time, through the
+real non-equilibrium states}, resolving the dissipation $D>0$ accumulated along
+the actual trajectory; the rate form~\eqref{eq:realtd-rate} is a statement about
+that trajectory. Run to full thermal equilibration the two agree on the endpoint
+--- the classical $\Delta S$ re-emerges as the integrated dissipation
+$\int D\,dt/T$ --- but only RealTD gives the process that connects them, and short
+of full equilibration (while a temperature gap remains) it produces less than the
+classical value (Chapter~\ref{ch:joule}).
+
+\section{The Essence of Real Thermodynamics}\label{sec:essence-realtd}
+
+\paragraph{Three models, one science.}
+Real ThermoDynamics rests on a hierarchy of three models:
+\begin{itemize}
+\item The \emph{ideal physical model}: a compressible perfect gas with a small
+linear (Newtonian) viscosity.
+\item The \emph{ideal mathematical model}: the compressible \emph{Navier--Stokes
+Equation} (NSE) for a perfect gas with small linear viscosity --- the exact
+differential equations of that gas.
+\item The \emph{real physical model}, which is the \emph{computational model}:
+the \textbf{best possible numerical solution} of the NSE at finite precision,
+which we call \textbf{RealNSE}. It is the \emph{real} physical model because
+Nature itself realises the gas only as a finite-precision process; RealNSE is
+what both Nature and the computer actually deliver, the ideal pointwise
+solution of the NSE being in general unattainable in the presence of
+turbulence.
+\end{itemize}
+\textbf{Real ThermoDynamics} (\textbf{RealTD}), the subject of this Volume~V, is
+the science of RealNSE: the macroscopic transformations of energy that survive
+the finite precision of the computation. It is the sister of \textbf{Real
+Quantum Mechanics} (\textbf{RealQM}, Volume~VI), which stands in exactly the same
+relation to the Schr\"odinger Equation (SE): RealQM is built on \textbf{RealSE},
+the best finite-precision solution of the SE, just as RealTD is built on
+RealNSE. The two volumes are one continuum mechanics in three space dimensions
+across all scales --- atomic scales geared by Coulomb potentials (RealSE), large
+scales geared by gravitational potentials (RealNSE) --- with both potentials
+satisfying the same Poisson equation.
 
 \paragraph{What ThermoDynamics is.}
 ThermoDynamics concerns dynamical transformations between kinetic
@@ -14,11 +272,13 @@ energy --- which, observed at the macroscopic level, is internal
 heat energy. The transformation is not optional: it is the mechanism
 by which the underlying continuum equations of compressible flow
 avoid the development of infinite velocity gradients in the
-convective instability characteristic of slightly viscous flow.
-Without dissipation the flow would crash on its own resolution;
-with dissipation it does not, and the price paid is that organised
-motion at large scales is converted to disorganised motion at small
-scales.
+convective instability characteristic of slightly viscous flow, and
+to represent the sharp fronts of shock waves, where the
+smooth-solution branch of the continuum equations loses uniqueness
+past a critical scale. Without dissipation the flow would crash on
+its own resolution; with dissipation it does not, and the price paid
+is that organised motion at large scales is converted to disorganised
+motion at small scales.
 
 \paragraph{Partial irreversibility from precision deficit.}
 The conversion is \emph{partially irreversible} for a precise
@@ -43,59 +303,12 @@ dissipation $D$, drag, lift, temperature gaps between chambers.
 They disagree on point-values of turbulent flow, which neither
 computation has the precision to predict.
 
-\section{The Finite-Precision 2nd Law}\label{sec:fp2L}
-
-The essence of the 2nd Law of Thermodynamics, on this reading, can be
-stated in one sentence:
-
-\begin{center}
-\fbox{\parbox{0.86\textwidth}{\centering\itshape
-The 2nd Law is the \textbf{necessary destruction of unstable
-fine-scale structure} in the presence of \textbf{finite precision},
-which \textbf{cannot be recovered} because the precision required to
-reverse the destruction is not available.
-}}
-\end{center}
-
-Each of the three emphasised clauses does load-bearing work.
-
-\paragraph{(i) Necessary / unavoidable.}
-The destruction is not an empirical observation about real fluids but
-a structural consequence of finite resolution. A sufficiently sharp
-velocity gradient is unstable under the smallest perturbations that
-the available resolution can support, and no finite-precision dynamics
-can prevent the instability from completing. The destruction
-\emph{must} happen; nothing in the laws of motion can hold a structure
-together below the resolution that supports it.
-
-\paragraph{(ii) Instability of fine-scale structure (sharp gradients).}
-The structure that gets destroyed is the inertially cascading
-small-scale eddies of turbulent flow and the sharp fronts of shock
-waves --- both characterised by velocity gradients that the underlying
-continuum equations would, at infinite resolution, support
-indefinitely but that finite resolution cannot represent.
-Mathematically: the smooth-solution branch of the continuum equations
-loses uniqueness past a critical scale; physically: the flow
-\emph{breaks} into the small-scale motion the resolution permits.
-
-\paragraph{(iii) Irreversibility from precision deficit.}
-Once the bulk kinetic energy has been redistributed across the
-resolution-limited small scales as incoherent thermal motion, the
-precision required to coordinate the small-scale motion back into the
-original bulk motion is not present in any finite-precision
-representation --- neither the analog physical world nor the digital
-simulation. The reverse process is not forbidden by the equations of
-motion; it is forbidden by the precision the equations of motion are
-solved with.
-
-\bigskip
-
 We refer to this formulation, throughout the book, as the
-\textbf{Finite-Precision 2nd Law} --- \textbf{FP 2nd Law} for short
---- in distinction to the classical state-function 2nd Law of
-equilibrium thermodynamics, the statistical-mechanical 2nd Law of
-Boltzmann, and the information-theoretic 2nd Law of Shannon. The FP
-2nd Law subsumes their content in the regimes where they apply and
+\textbf{Real 2nd Law} --- in distinction to the classical
+state-function 2nd Law of equilibrium thermodynamics, the
+statistical-mechanical 2nd Law of Boltzmann, and the
+information-theoretic 2nd Law of Shannon. The Real 2nd Law
+subsumes their content in the regimes where they apply and
 extends to the regimes they do not. The remainder of this volume is
 an extended demonstration of it: Joule's experiment, the
 piston-cylinder, refrigeration and heat-engine cycles, chemical

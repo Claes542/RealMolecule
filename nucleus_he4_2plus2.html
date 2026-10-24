@@ -51,7 +51,13 @@
   window.USER_DIRICHLET_EP = 'electron';
   window.USER_LOCKED_GROUPS = [[1,2],[1,3],[1,4],[2,3],[2,4],[3,4]];  // hold proton subdivision
   window.INIT_ZEFF = 1;
+  window.CONVERGENCE_THRESHOLD = 0.01;   // auto-stop -> onSweepDone(E)
 })();
+
+window.onSweepDone = function (E) {
+  document.title = 'HE4 DONE E=' + Number(E).toFixed(6);
+  console.log('=== SWEEPDONE HE4 E=' + Number(E).toFixed(6) + ' ===');
+};
 
 var s = document.createElement('script');
 s.src = 'molecule_nucleus.js?t=' + Date.now();
@@ -61,5 +67,6 @@ s.onload = function() {
   document.body.appendChild(p5s);
 };
 document.body.appendChild(s);
+setInterval(function(){ if (window._prevE !== undefined) document.title = 'HE4 E=' + Number(window._prevE).toFixed(6) + ' conv=' + (window._convCount||0); }, 500);
 </script>
 </body></html>

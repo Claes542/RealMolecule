@@ -39,8 +39,6 @@ As Z grows, <code>r* &rarr; R<sub>e</sub></code>, giving asymptote <code>|E/A|<s
       <input type="range" id="Re" min="0.05" max="2" step="0.01" value="0.15"></div>
     <div><span class="label">Max protons per shell N<sub>max</sub></span> = <span class="val" id="nmaxVal">56</span>
       <input type="range" id="nmax" min="2" max="200" step="1" value="56"></div>
-    <div><span class="label">Core expansion &gamma; (R<sub>e</sub><sup>eff</sup>=R<sub>e</sub>+&gamma;(Z&minus;Z<sub>break</sub>))</span> = <span class="val" id="gammaVal">0.0005</span>
-      <input type="range" id="gamma" min="0" max="0.01" step="0.0001" value="0.0005"></div>
     <div><span class="label">Energy scale s</span> = <span class="val" id="scaleVal">1.04</span>
       <input type="range" id="scale" min="0.1" max="3" step="0.02" value="1.04"></div>
     <div><span class="label">Highlight Z</span> = <span class="val" id="zVal">26</span>
@@ -58,6 +56,25 @@ As Z grows, <code>r* &rarr; R<sub>e</sub></code>, giving asymptote <code>|E/A|<s
   <div>
     <h3 style="font-size:14px;color:#2196f3;margin:0">Shell data (highlighted Z)</h3>
     <table id="tbl"></table>
+  </div>
+  <div>
+    <h3 style="font-size:14px;color:#e91e63;margin:0">Magic-number bumps (experimental B/A vs neighbours)</h3>
+    <table style="font-size:12px;margin-top:8px">
+      <tr><th>Magic Z</th><th>nuclide</th><th>B/A</th><th>Z&minus;1</th><th>Z+1</th><th>bump</th></tr>
+      <tr><td>2</td><td>He-4</td><td>7.07</td><td>H-2: 1.11</td><td>Li-7: 5.61</td><td style="color:#e91e63"><b>+5.84 vs Z+1</b></td></tr>
+      <tr><td>8</td><td>O-16</td><td>7.98</td><td>N-14: 7.48</td><td>F-19: 7.78</td><td style="color:#e91e63"><b>+0.20</b></td></tr>
+      <tr><td>20</td><td>Ca-40</td><td>8.55</td><td>K-39: 8.56</td><td>Sc-45: 8.62</td><td style="color:#888">flat</td></tr>
+      <tr><td>28</td><td>Ni-62</td><td>8.79</td><td>Co-59: 8.77</td><td>Cu-63: 8.75</td><td style="color:#e91e63"><b>+0.04</b></td></tr>
+      <tr><td>50</td><td>Sn-120</td><td>8.50</td><td>In-115: 8.52</td><td>Sb-121: 8.48</td><td style="color:#888">flat</td></tr>
+      <tr><td>82</td><td>Pb-208</td><td>7.87</td><td>Tl-205: 7.88</td><td>Bi-209: 7.85</td><td style="color:#888">flat</td></tr>
+    </table>
+    <p style="font-size:11px;color:#555;max-width:340px">
+      Bumps are clearest at light doubly-magic nuclei (He-4, O-16). At heavier
+      magic numbers the bump is small (~0.04 MeV) on a smooth ~8 MeV curve &mdash;
+      visible in differential measures (separation energies, first excited state) but
+      not in the most-stable-per-Z curve. The smooth model curve captures the envelope;
+      magic-number bumps are an additional structural layer requiring subshell physics.
+    </p>
   </div>
 </div>
 
@@ -85,8 +102,9 @@ const HA_TO_MEV = 2.72;
 // Beyond Z_break, the electron core expands so the same single shell still
 // accommodates all 2Z protons (no second shell forced).
 function effectiveRe(Z, Re, Nmax, gamma) {
-  const Zbreak = Nmax / 2;
-  return Re + gamma * Math.max(0, Z - Zbreak);
+  // Continuous expansion from Z=2: R_e^eff = R_e + gamma * Z.
+  // Peak emerges from balance between c/(2Z) decline and gamma*Z growth.
+  return Re + gamma * Z;
 }
 
 function modelEoverA(Z, c, Re, Nmax, scale, gamma) {
@@ -97,8 +115,9 @@ function modelEoverA(Z, c, Re, Nmax, scale, gamma) {
 }
 
 function $(id) { return document.getElementById(id); }
-const cSlider = $('c'), ReSlider = $('Re'), nmaxSlider = $('nmax'), gammaSlider = $('gamma'), scaleSlider = $('scale'), zSlider = $('zSlide');
-const cVal = $('cVal'), ReVal = $('ReVal'), nmaxVal = $('nmaxVal'), gammaVal = $('gammaVal'), scaleVal = $('scaleVal'), zVal = $('zVal');
+const GAMMA = 0.0003;   // continuous core expansion rate (peak emerges at Z = sqrt(c/(2 gamma)))
+const cSlider = $('c'), ReSlider = $('Re'), nmaxSlider = $('nmax'), scaleSlider = $('scale'), zSlider = $('zSlide');
+const cVal = $('cVal'), ReVal = $('ReVal'), nmaxVal = $('nmaxVal'), scaleVal = $('scaleVal'), zVal = $('zVal');
 const tbl = $('tbl');
 const shellCanvas = $('shells');
 const curveCanvas = $('curve');
@@ -107,13 +126,12 @@ function recompute() {
   const c = parseFloat(cSlider.value);
   const Re = parseFloat(ReSlider.value);
   const Nmax = parseInt(nmaxSlider.value);
-  const gamma = parseFloat(gammaSlider.value);
+  const gamma = GAMMA;
   const scale = parseFloat(scaleSlider.value);
   const Zsel = parseInt(zSlider.value);
   cVal.textContent = c.toFixed(2);
   ReVal.textContent = Re.toFixed(2);
   nmaxVal.textContent = Nmax;
-  gammaVal.textContent = gamma.toFixed(4);
   scaleVal.textContent = scale.toFixed(2);
   zVal.textContent = Zsel;
 
@@ -179,6 +197,17 @@ function recompute() {
     cctx.fillStyle = '#333';
     cctx.fillText(String(x), px - 6, 365);
   }
+  // Magic-number vertical markers
+  const magic = [2, 8, 20, 28, 50, 82];
+  cctx.strokeStyle = '#e91e63';
+  cctx.setLineDash([2, 4]);
+  magic.forEach(mz => {
+    const px = 40 + (mz - xMin) / (xMax - xMin) * 580;
+    cctx.beginPath(); cctx.moveTo(px, 20); cctx.lineTo(px, 350); cctx.stroke();
+    cctx.fillStyle = '#e91e63';
+    cctx.fillText(`Z=${mz}`, px - 10, 18);
+  });
+  cctx.setLineDash([]);
   // experimental dots + line
   cctx.strokeStyle = '#888'; cctx.lineWidth = 1.5;
   cctx.beginPath();
@@ -219,7 +248,7 @@ function recompute() {
   cctx.fillStyle = '#ff7043'; cctx.fillText(`Z=${Zsel}`, pxSel + 2, 30);
 }
 
-[cSlider, ReSlider, nmaxSlider, gammaSlider, scaleSlider, zSlider].forEach(s => s.addEventListener('input', recompute));
+[cSlider, ReSlider, nmaxSlider, scaleSlider, zSlider].forEach(s => s.addEventListener('input', recompute));
 recompute();
 </script>
 </body></html>

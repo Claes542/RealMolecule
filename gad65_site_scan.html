@@ -65,6 +65,18 @@ var PROBE = (q.match(/[?&]probe=(ca|c4p)/) || [])[1] || '';
 // the BOUND state. The off-axis force (38-59% of the total) is the calculation saying the proton
 // would rather be somewhere else. So: dynamics on, every nucleus frozen except the probe.
 var RELAX = /[?&]relax=1/.test(q);
+// tdt=, tsteps= : frozen-field TRAJECTORY. Release the probe from rest and integrate it in the
+// stored potential (velocity-Verlet, proton mass 1836.15). A single force vector says the probe is
+// pushed; a trajectory says where it goes, which is the chemical question. It also avoids the
+// gradP ball: Vp/force here are POINTWISE central differences, while window._nucForceTotal is
+// averaged over FORCE_RADIUS = max(5, round(3/h)) cells = 1.57 A at this mesh, a sphere that
+// swallows every bonded neighbour. Conservation of KE+V is the integrator's own check.
+var TRAJ_DT    = parseFloat((q.match(/[?&]tdt=([\d.]+)/)    || [])[1] || '2.0');
+var TRAJ_STEPS = parseInt(  (q.match(/[?&]tsteps=(\d+)/)    || [])[1] || '20000', 10);
+// psrc=<m> : force the probe's electron potential to come from P_directBuf[m] instead of the
+// automatic "furthest electron" choice. P_directBuf[m] omits electron m, so two runs with
+// different distant m bound the error that omission costs. Same number from both = controlled.
+var PSRC_M = parseInt((q.match(/[?&]psrc=(\d+)/) || [])[1] || '-1', 10);
 // aspd=<A> : slide the whole Asp364 block along its OD2->N1 axis so that d(OD2,N1) takes the
 // requested value. The crystal difference between the isoforms -- GAD65 2.46 A, GAD67 2.76 -- is
 // 0.30 A against a combined coordinate error of 0.26 A and B-factors of 40 on the GAD65 side, so
@@ -147,9 +159,13 @@ var atoms = [], zList = [], rcList = [], zNucList = [];
 for (var n = 0; n < coords.length; n++) {
   var el = coords[n][0];
   var isProbe = (n === PROBE_IDX);
-  atoms.push({ i: Math.round(gN2 + (coords[n][1]-SITE_CENTRE[0])*A2AU/h),
-               j: Math.round(gN2 + (coords[n][2]-SITE_CENTRE[1])*A2AU/h),
-               k: Math.round(gN2 + (coords[n][3]-SITE_CENTRE[2])*A2AU/h),
+  // NO ROUNDING. Snapping kernels to integer cells is worth 39.5 kcal/mol in NH3 and destroys
+  // any symmetry that is not axis-aligned -- and a crystal-derived active site is aligned with
+  // nothing. Positions reach the GPU as f32 and are never used as array indices. Measured
+  // 2026-09-17; see the same fix in nh3_pa.html.
+  atoms.push({ i: gN2 + (coords[n][1]-SITE_CENTRE[0])*A2AU/h,
+               j: gN2 + (coords[n][2]-SITE_CENTRE[1])*A2AU/h,
+               k: gN2 + (coords[n][3]-SITE_CENTRE[2])*A2AU/h,
                Z: isProbe ? 0 : Zof[el], el: el });
   zList.push(isProbe ? 0 : Zof[el]);          // no electron of its own
   zNucList.push(isProbe ? 1 : Zof[el]);       // but a unit positive kernel -> a bare proton
@@ -201,6 +217,19 @@ if (RELAX) {
   window.NO_AUTO_DYNAMICS = true;        // pure fixed-step runs stay clamped throughout
 }
 window.USER_DIRECT_POTHER = true;         // exact i != j every step (see gad65_decarb_scan.html)
+// DIRECT COULOMB FORCES, not gradient-of-P. Three reasons, each measured on this page:
+//  1. gradP averages <grad P> over FORCE_RADIUS = max(5, round(3/h)) cells = 11 cells = 1.57 A
+//     here -- a sphere wider than any bond in the site (C-C 1.54), so it is not a local force.
+//  2. its ball centre is round()ed to an integer cell, the snapping worth 39.5 kcal/mol elsewhere.
+//  3. decisive: gradP reads P, and P carries a boundary monopole deficit in this box. The
+//     angular average of V gives Q_enc = 2.0 / 7.0 / 13.0 / 18.9 at r = 8/10/12/14 au against a
+//     required 0, GROWING with r -- the electron potential is only 70% of what neutrality needs
+//     at r = 14. molecule.js:1060 documents this failure mode ("every molecule was over-bound").
+// The direct Coulomb path integrates the DENSITY instead: sum rho(r)(r-R)/|r-R|^3 at the
+// FRACTIONAL nuclear position. No Poisson solve, no boundary condition, no averaging ball, so it
+// is immune to all three. Eleven other pages already set this, with the comment "direct Coulomb
+// for bare H atoms" -- and the probe is a bare H atom.
+window.USER_GRADP_FORCE = false;
 // In relax mode the run must NOT stop at STEPS: the auto-release at molecule.js:5693 needs 10000
 // clamped steps first, so any STEPS below that ends the run before the nuclei are freed --
 // probeStart == probeEnd, which is exactly what the first attempt returned. Follow the
@@ -255,12 +284,251 @@ if (RELAX) {
   }, 2000);
 }
 
+// FROZEN-FIELD PROBE. Converge the electrons once, freeze them, then integrate a proton in the
+// stored field. A released-proton run costs ~500 GPU steps per nuclear move -- 4 days for a full
+// trajectory. This costs one readback and then pure arithmetic, so complete trajectories from many
+// starting points become minutes. It neglects the electrons' response to the moving proton, which
+// is real and large; the relaxed run is the reference that says how large.
+async function frozenFieldProbe() {
+  // Read the electron potential from a buffer that is actually FILLED. This page sets
+  // USER_DIRECT_POTHER, and on that path P_buf[0] is all zeros -- the probe then saw bare kernels
+  // and reported a field force identical to its kernel-only force, which is how this was caught.
+  // farFrom picks the omitted electron to be the one furthest from the probe; PSRC_M overrides it
+  // so the same run can be repeated with a different omission and the two compared.
+  // readPotTotal sums P_directBuf over all domains and divides by (NELEC-1), recovering the exact
+  // total electron potential. Verified on water: the angular average of V gives Q_enc = -0.05
+  // against a required 0, i.e. the field carries the right number of electrons to ~1%.
+  // readPot({m}) is short by one electron and is kept only for the psrc= comparison.
+  const np = window._nucPos;
+  let P = (PSRC_M >= 0) ? await window.readPot({ m: PSRC_M }) : await window.readPotTotal();
+  const PSRC = window._PdataSrc;
+  const S = window._PdataS;
+  const at = window.USER_ATOMS, zn = window.USER_Z_NUC || [];
+  const hh = h;                                   // grid spacing, a.u. per cell
+  // potential seen by a UNIT POSITIVE charge at grid position (x,y,z), probe's own kernel excluded
+  function Vp(x, y, z) {
+    let v = 0;
+    for (let a = 0; a < at.length; a++) {
+      if (a === PROBE_IDX) continue;
+      const Za = (zn[a] !== undefined ? zn[a] : at[a].Z) || 0;
+      if (!Za) continue;
+      const dx = (x - np[a][0]) * hh, dy = (y - np[a][1]) * hh, dz = (z - np[a][2]) * hh;
+      // MIRROR THE SOLVER'S CLAMPING. molecule.js clamps a bare kernel at R_SING = 2h and a
+      // pseudopotential kernel at its own r_c. A flat 0.05 made every kernel far deeper than the
+      // solver's near its centre, which is the leading suspect for the field force coming out
+      // 1.42x too large while pointing in exactly the right direction (cos 0.9999).
+      const rcA = (rcList && rcList[a] > 0) ? rcList[a] : (2 * hh);
+      v += Za / Math.max(Math.sqrt(dx*dx + dy*dy + dz*dz), rcA);
+    }
+    // trilinear sample of the electron potential; the factor 2 matches the electron Hamiltonian's
+    // +2P term and is CHECKED below against the solver's own force, not assumed.
+    const i0 = Math.floor(x), j0 = Math.floor(y), k0 = Math.floor(z);
+    let pe = 0;
+    if (i0 >= 0 && j0 >= 0 && k0 >= 0 && i0 < S-1 && j0 < S-1 && k0 < S-1) {
+      const fx = x-i0, fy = y-j0, fz = z-k0;
+      for (let di = 0; di < 2; di++) for (let dj = 0; dj < 2; dj++) for (let dk = 0; dk < 2; dk++) {
+        const w = (di?fx:1-fx)*(dj?fy:1-fy)*(dk?fz:1-fz);
+        pe += w * P[(i0+di)*S*S + (j0+dj)*S + (k0+dk)];
+      }
+    }
+    return v - 2 * pe;
+  }
+  // F = -grad V, taken ANALYTICALLY rather than by differencing Vp.
+  // Central-differencing the trilinear sample with a half-cell step straddles cell boundaries,
+  // where a trilinear field is only C0 and its gradient jumps. The resulting F was not the
+  // gradient of anything, and the trajectory's KE+V drifted 4.38 Ha. The exact gradient of the
+  // SAME interpolant is conservative by construction, so KE+V is now a real check rather than a
+  // measure of the differencing error.
+  //   kernel term: V = sum Z_a/max(r_a,rc_a)  ->  F = sum Z_a (r-R_a)/r_a^3, zero inside the clamp
+  //   electron term: V = -2P                  ->  F = +2 grad P
+  function force(x, y, z) {
+    let fx = 0, fy = 0, fz = 0;
+    for (let a = 0; a < at.length; a++) {
+      if (a === PROBE_IDX) continue;
+      const Za = (zn[a] !== undefined ? zn[a] : at[a].Z) || 0;
+      if (!Za) continue;
+      const dx = (x - np[a][0]) * hh, dy = (y - np[a][1]) * hh, dz = (z - np[a][2]) * hh;
+      const r = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      const rcA = (rcList && rcList[a] > 0) ? rcList[a] : (2 * hh);
+      if (r <= rcA || r === 0) continue;           // clamped region is flat, so no force there
+      const k = Za / (r*r*r);
+      fx += k * dx; fy += k * dy; fz += k * dz;
+    }
+    // exact gradient of the trilinear interpolant of P
+    const i0 = Math.floor(x), j0 = Math.floor(y), k0 = Math.floor(z);
+    if (i0 >= 0 && j0 >= 0 && k0 >= 0 && i0 < S-1 && j0 < S-1 && k0 < S-1) {
+      const ax = x-i0, ay = y-j0, az = z-k0;
+      let gx = 0, gy = 0, gz = 0;
+      for (let di = 0; di < 2; di++) for (let dj = 0; dj < 2; dj++) for (let dk = 0; dk < 2; dk++) {
+        const Pv = P[(i0+di)*S*S + (j0+dj)*S + (k0+dk)];
+        const wx = di ? ax : 1-ax, wy = dj ? ay : 1-ay, wz = dk ? az : 1-az;
+        gx += (di ? 1 : -1) * wy * wz * Pv;
+        gy += wx * (dj ? 1 : -1) * wz * Pv;
+        gz += wx * wy * (dk ? 1 : -1) * Pv;
+      }
+      fx += 2 * gx / hh; fy += 2 * gy / hh; fz += 2 * gz / hh;
+    }
+    return [fx, fy, fz];
+  }
+  // VERIFY against the solver's own force at the probe's position before trusting anything
+  const p0 = np[PROBE_IDX];
+  const fF = force(p0[0], p0[1], p0[2]);
+  const fS = (window._nucForceTotal || [])[PROBE_IDX] || null;
+  const mag = v => v ? Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]) : NaN;
+  const cosang = (fS && mag(fF) > 0) ?
+      (fF[0]*fS[0]+fF[1]*fS[1]+fF[2]*fS[2])/(mag(fF)*mag(fS)) : NaN;
+  // kernel-only force, so a remaining mismatch can be attributed to kernels vs electrons
+  function Vk(x,y,z){ let v=0;
+    for (let a=0;a<at.length;a++){ if(a===PROBE_IDX) continue;
+      const Za=(zn[a]!==undefined?zn[a]:at[a].Z)||0; if(!Za) continue;
+      const dx=(x-np[a][0])*hh, dy=(y-np[a][1])*hh, dz=(z-np[a][2])*hh;
+      const rcA=(rcList&&rcList[a]>0)?rcList[a]:(2*hh);
+      v+=Za/Math.max(Math.sqrt(dx*dx+dy*dy+dz*dz),rcA); } return v; }
+  const dd=0.5;
+  const fK=[-(Vk(p0[0]+dd,p0[1],p0[2])-Vk(p0[0]-dd,p0[1],p0[2]))/(2*dd*hh),
+            -(Vk(p0[0],p0[1]+dd,p0[2])-Vk(p0[0],p0[1]-dd,p0[2]))/(2*dd*hh),
+            -(Vk(p0[0],p0[1],p0[2]+dd)-Vk(p0[0],p0[1],p0[2]-dd))/(2*dd*hh)];
+  // TRAJECTORY. Release the proton from rest at its placement and integrate velocity-Verlet in
+  // the frozen field. Positions are carried in a.u.; Vp/force take GRID coordinates, so convert
+  // on every call. KE + V must be CONSERVED -- that is the integrator's own check. A drift means
+  // dt is too large or the trilinear sample too coarse, not that the proton did something.
+  // The field does not polarise as the proton moves (see the header): wells come out too shallow
+  // and barriers too high, so this says WHERE the proton goes, not how much energy it takes.
+  function trajectory(startG, opts) {
+    const o = opts || {};
+    const M = 1836.15;                       // proton mass, a.u.
+    const dt = o.dt || 2.0;                  // a.u. of time
+    const NSTEP = o.steps || 20000;
+    const REC = o.rec || 250;
+    const gr = q => [q[0]/hh, q[1]/hh, q[2]/hh];   // a.u. -> grid
+    let r = [startG[0]*hh, startG[1]*hh, startG[2]*hh];
+    let v = [0, 0, 0];
+    let F = force(...gr(r));
+    const V0 = Vp(...gr(r));
+    const E0 = V0;                           // released from rest, so KE = 0
+    const path = [];
+    let stop = 'maxsteps', nstep = 0, Edrift = 0;
+    // closest approach to every OTHER kernel, so "where it went" is answered by name
+    const closest = at.map(() => Infinity);
+    for (let s = 0; s < NSTEP; s++) {
+      for (let d = 0; d < 3; d++) {
+        v[d] += 0.5 * dt * F[d] / M;
+        r[d] += dt * v[d];
+      }
+      const g = gr(r);
+      // leaving the grid, or captured inside a kernel's clamp, ends the run
+      if (g[0] < 2 || g[1] < 2 || g[2] < 2 || g[0] > S-3 || g[1] > S-3 || g[2] > S-3) {
+        stop = 'left box'; nstep = s; break;
+      }
+      const Fn = force(...g);
+      for (let d = 0; d < 3; d++) v[d] += 0.5 * dt * Fn[d] / M;
+      F = Fn;
+      let captured = -1;
+      for (let a = 0; a < at.length; a++) {
+        if (a === PROBE_IDX) continue;
+        const Za = (zn[a] !== undefined ? zn[a] : at[a].Z) || 0; if (!Za) continue;
+        const dx = (g[0]-np[a][0])*hh, dy = (g[1]-np[a][1])*hh, dz = (g[2]-np[a][2])*hh;
+        const dist = Math.sqrt(dx*dx+dy*dy+dz*dz);
+        if (dist < closest[a]) closest[a] = dist;
+        const rcA = (rcList && rcList[a] > 0) ? rcList[a] : (2*hh);
+        if (dist < rcA) captured = a;
+      }
+      const KE = 0.5*M*(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
+      const Vv = Vp(...g);
+      Edrift = Math.max(Edrift, Math.abs(KE + Vv - E0));
+      if (s % REC === 0) path.push({ t: Number((s*dt).toPrecision(4)),
+        r: g.map(q => Number(q.toPrecision(5))),
+        dA: Number((Math.sqrt(((g[0]-startG[0])*hh)**2 + ((g[1]-startG[1])*hh)**2 +
+                              ((g[2]-startG[2])*hh)**2) * 0.529177).toPrecision(4)),
+        KE: Number(KE.toPrecision(4)), V: Number(Vv.toPrecision(6)) });
+      nstep = s;
+      if (captured >= 0) { stop = 'captured by atom ' + captured +
+        (at[captured].el ? ' (' + at[captured].el + ')' : ''); break; }
+    }
+    const gF = gr(r);
+    // report only the kernels it actually came near, in Angstrom, nearest first
+    const near = closest.map((d, a) => ({ a: a, el: at[a] && at[a].el, dA: Number((d*0.529177).toPrecision(4)) }))
+      .filter(x => isFinite(x.dA) && x.dA < 4.0).sort((p, q) => p.dA - q.dA).slice(0, 6);
+    return { stop: stop, steps: nstep, dt: dt, tTotal: Number((nstep*dt).toPrecision(5)),
+             V0: Number(V0.toPrecision(6)),
+             Edrift: Number(Edrift.toPrecision(3)),
+             displacementA: Number((Math.sqrt(((gF[0]-startG[0])*hh)**2 + ((gF[1]-startG[1])*hh)**2 +
+                                              ((gF[2]-startG[2])*hh)**2) * 0.529177).toPrecision(4)),
+             nearest: near, path: path.slice(0, 40) };
+  }
+  // MONOPOLE TEST, on the SITE -- the check that should have come before any trajectory.
+  // The angular average of V at radius r equals Q_enclosed/r, so <V>*r must equal the site's net
+  // charge (0 if neutral, probe excluded since Vp excludes it). This is the same exact test that
+  // validated the water field to ~1%; it was never applied to the system it was needed for.
+  // V0 = -8.15 Ha for a proton 2 A from a carbon, against -0.045 Ha at the analogous distance in
+  // water, says the site field is wrong by orders of magnitude. This measures by how much.
+  function monopole() {
+    const ga = Math.PI * (3 - Math.sqrt(5));
+    const out = [];
+    for (const rAu of [8, 10, 12, 14]) {
+      let sum = 0, cnt = 0;
+      for (let t = 0; t < 400; t++) {
+        const yy = 1 - 2*(t+0.5)/400, rr = Math.sqrt(Math.max(0, 1-yy*yy)), th = ga*t;
+        const g = [gN2 + rr*Math.cos(th)*rAu/hh, gN2 + yy*rAu/hh, gN2 + rr*Math.sin(th)*rAu/hh];
+        if (g[0]<1||g[1]<1||g[2]<1||g[0]>S-2||g[1]>S-2||g[2]>S-2) continue;
+        sum += Vp(g[0], g[1], g[2]); cnt++;
+      }
+      const av = cnt ? sum/cnt : NaN;
+      out.push({ r: rAu, n: cnt, Vavg: Number(av.toPrecision(4)), Qenc: Number((av*rAu).toPrecision(4)) });
+    }
+    // what the site's net charge SHOULD be: kernels minus electrons, probe excluded
+    let zn_sum = 0, el_sum = 0;
+    for (let a = 0; a < at.length; a++) {
+      if (a === PROBE_IDX) continue;
+      zn_sum += (zn[a] !== undefined ? zn[a] : at[a].Z) || 0;
+      el_sum += at[a].Z || 0;
+    }
+    return { spheres: out, sumZnuc: zn_sum, sumElec: el_sum, expectedQ: zn_sum - el_sum };
+  }
+  let mono = null;
+  try { mono = monopole(); } catch(e) { mono = { err: String(e).slice(0, 120) }; }
+
+  // dt LADDER. Edrift stayed at 4.16 Ha after the force was made an exact gradient, so the drift
+  // is not the differencing -- the proton dives to 0.14 A of a Z=4 kernel, where F ~ 55 a.u. and a
+  // dt of 2.0 kicks the velocity by 0.06 in one step. Velocity-Verlet error falls as dt^2, so if
+  // the timestep is the cause, halving dt must quarter the drift. If Edrift instead sits flat
+  // across the ladder, the timestep is exonerated and the field itself is the suspect.
+  // The solver run costs ~9 min and a trajectory costs seconds, so the whole ladder is free here.
+  let traj = null, ladder = [];
+  try {
+    const DTS = [2.0, 1.0, 0.5, 0.25, 0.125];
+    for (const dtv of DTS) {
+      const r = trajectory(p0, { dt: dtv, steps: Math.round(TRAJ_STEPS * (TRAJ_DT / dtv)) });
+      ladder.push({ dt: dtv, Edrift: r.Edrift, stop: r.stop, tTotal: r.tTotal,
+                    disp: r.displacementA, near0: (r.nearest && r.nearest[0]) || null });
+      if (dtv === TRAJ_DT) traj = r;
+    }
+    if (!traj) traj = trajectory(p0, { dt: TRAJ_DT, steps: TRAJ_STEPS });
+  } catch(e) { traj = { err: String(e).slice(0, 120) }; }
+  traj.dtLadder = ladder;
+
+  return { traj: traj, Psrc: PSRC, monopole: mono,
+           // identical fieldK and fieldF means the electron term contributed NOTHING -- the
+           // signature of reading an unfilled buffer. Checked, not assumed.
+           elecTermDead: (fK[0] === fF[0] && fK[1] === fF[1] && fK[2] === fF[2]),
+           fieldK: fK.map(v => Number(v.toPrecision(4))),
+           solverNuc: (window._nucForceNuc||[])[PROBE_IDX] ? window._nucForceNuc[PROBE_IDX].map(v=>Number(v.toPrecision(4))) : null,
+           fieldF: fF.map(v => Number(v.toPrecision(4))),
+           solverF: fS ? fS.map(v => Number(v.toPrecision(4))) : null,
+           magField: Number(mag(fF).toPrecision(4)),
+           magSolver: Number(mag(fS).toPrecision(4)),
+           cos: Number(cosang.toPrecision(4)) };
+}
+window.frozenFieldProbe = frozenFieldProbe;
+
 window.onSweepDone = async function(E){
   // Capture the Euler-Lagrange residual, not just the energy. Without it there is no way to tell
   // a converged run from one stopped at an arbitrary point on its trajectory -- which is exactly
   // how model A came out at -4.7 Ha at one geometry and -20.1 Ha at another.
   var res = null;
   try { res = await window.readELResidual(); } catch (e) { console.warn('residual unavailable', e); }
+  var ffp = null;
+  if (PROBE_IDX >= 0 && !RELAX) { try { ffp = await frozenFieldProbe(); } catch(e) { ffp = {err:String(e).slice(0,120)}; } }
   var fE = window._nucForceElec || [];
   var rec = { model: MODEL, R: R, steps: STEPS, E: E,
               rMax: res ? Number(res.rMax.toPrecision(4)) : null,
@@ -279,7 +547,7 @@ window.onSweepDone = async function(E){
               // integrator uses. Record whichever is exposed, and note which.
               fProbeTot: (PROBE_IDX >= 0 && (window._nucForceTotal||[])[PROBE_IDX]) ? window._nucForceTotal[PROBE_IDX].slice() : null,
               fProbeNuc: (PROBE_IDX >= 0 && (window._nucForceNuc||[])[PROBE_IDX]) ? window._nucForceNuc[PROBE_IDX].slice() : null,
-              relaxed: RELAX,
+              relaxed: RELAX, frozenField: ffp,
               // where the proton ENDED UP (grid coords), and how far it travelled from where it started
               probeEnd: (RELAX && window._nucPos && window._nucPos[PROBE_IDX]) ? window._nucPos[PROBE_IDX].slice() : null,
               // where it ended up relative to BOTH carbons -- the branch answering itself
@@ -300,7 +568,15 @@ window.onSweepDone = async function(E){
               dip:  [window._dip_x, window._dip_y, window._dip_z],
               nAtoms: coords.length };
   rec.iso = /[?&]iso=67/.test(q) ? 67 : 65;
-  try { localStorage.setItem('gad65_site_result', JSON.stringify(rec)); } catch(e){}
+  // KEY CARRIES EVERY VARIED PARAMETER. A single fixed key meant each run overwrote the last,
+  // so a failed or stale run was indistinguishable from a fresh result -- the same trap that cost
+  // hours on nh3_pa.html. With the parameters in the key a mismatch fails loudly (timeout)
+  // instead of silently returning someone else's number.
+  var _K = 'gad65_site_' + MODEL + '_' + (PROBE||'none') + '_dp' + DP + '_R' + R
+         + '_n' + STEPS + (RELAX?'_rx':'') + (ASPD?('_asp'+ASPD):'');
+  try { localStorage.setItem(_K, JSON.stringify(rec)); } catch(e){}
+  try { localStorage.setItem('gad65_site_result', JSON.stringify(rec)); } catch(e){}  // legacy
+  document.title = 'GAD65 DONE ' + (PROBE||'') + ' ' + _K;
   console.log('=== SITE RESULT ===', JSON.stringify(rec));
   document.getElementById('log').textContent += '\nDONE  E=' + E.toFixed(6) + ' Ha';
 };

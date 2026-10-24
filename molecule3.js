@@ -43,7 +43,10 @@ const r_cut_arr = ATOMS.map(a => {
 const r_cut = r_cut_arr[0]; // uniform cutoff for param struct (used in w update edge calc)
 
 let R_out = (typeof USER_SCREEN !== 'undefined') ? USER_SCREEN : 2.0;
-const STEPS_PER_FRAME = (typeof USER_STEPS !== 'undefined') ? USER_STEPS : 500;
+// USER_STEPS = total phase target. STEPS_PER_FRAME capped to keep each command
+// buffer under GPU TDR limits (queuing 100k dispatches in one submit hangs the driver).
+const TOTAL_STEPS = (typeof USER_STEPS !== 'undefined') ? USER_STEPS : 10000;
+const STEPS_PER_FRAME = Math.min(TOTAL_STEPS, 500);
 
 // Nuclear positions
 let nucPos = ATOMS.map(a => [a.i, a.j, a.k !== undefined ? a.k : N2]);
@@ -366,7 +369,7 @@ let gpuError = null;
 
 // Phase system: 0=molecule, 1=far apart, 2=done
 let phase = 0, phaseSteps = 0;
-const PHASE_STEPS = 10000;
+const PHASE_STEPS = TOTAL_STEPS;
 let E_mol = 0, E_mol2 = 0;
 
 const SLICE_SIZE = (NELEC * S * S + (3 * NELEC + 1) * S) * 4;

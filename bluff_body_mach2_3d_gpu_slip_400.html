@@ -53,7 +53,7 @@
     <button id="btnReset">Reset</button>
     <label>shape:
       <select id="selShape">
-        <option value="cube" selected>Cube</option>
+        <option value="cube">Cube</option>
         <option value="sphere">Sphere</option>
         <option value="cylinder_z">Cylinder (z axis)</option>
         <option value="cylinder_y">Cylinder (y axis)</option>
@@ -61,6 +61,7 @@
         <option value="twospheres">Two spheres (tandem)</option>
         <option value="cross3d">3D cross</option>
         <option value="airplane">Airplane (fuselage + swept wing + tail)</option>
+        <option value="airliner_realistic" selected>Airliner (NACA wing, ovoid fuselage, engines, dihedral) ★</option>
       </select>
     </label>
     <label>Substeps/frame:
@@ -183,7 +184,7 @@ rngSubsteps.addEventListener('input', () => {
 
 // Shape change: rebuild mask + init, re-upload to GPU, reset state
 let shapeChangePending = false;
-let bodyShape = 'cube';
+let bodyShape = 'airliner_realistic';
 const selShape = document.getElementById('selShape');
 selShape.addEventListener('change', () => {
   bodyShape = selShape.value;
@@ -360,6 +361,133 @@ async function main() {
             if (Math.abs(z - 0.505) < thick * 0.5) return true;
           }
         }
+        return false;
+      }
+      case 'airliner_realistic': {
+        // Higher-fidelity parametric airliner. Improvements over 'airplane':
+        //   (i) ovoid fuselage with conical nose and tail cone
+        //  (ii) NACA-0015 airfoil cross-section on the wing
+        // (iii) 4° dihedral on the wing
+        //  (iv) two engine nacelles under-wing
+        // All thicknesses still floored at ≥4 cells at 400³.
+
+        // --- 1. Fuselage: ovoid with conical nose + tail cone ---
+        // Body axis along x at (y, z) = (0.5, 0.5). Length ≈ 0.42, max radius 0.030.
+        const xN0 = 0.29, xN1 = 0.37, xT0 = 0.62, xT1 = 0.71;
+        const rMax = 0.030;
+        let rFus = 0.0;
+        if (x >= xN0 && x < xN1) {
+          // Conical nose
+          rFus = rMax * Math.pow((x - xN0) / (xN1 - xN0), 0.7);
+        } else if (x >= xN1 && x < xT0) {
+          rFus = rMax;
+        } else if (x >= xT0 && x <= xT1) {
+          rFus = rMax * (1 - (x - xT0) / (xT1 - xT0));
+        }
+        if (rFus > 0) {
+          // Slightly oblate fuselage: ry = rFus, rz = 1.1·rFus
+          const dyF = y - 0.5, dzF = z - 0.5;
+          const ry = rFus, rz = rFus * 1.10;
+          if (dyF*dyF / (ry*ry) + dzF*dzF / (rz*rz) < 1.0) return true;
+        }
+
+        // --- 2. Main wing with NACA-0015 airfoil + dihedral + sweep ---
+        const yw = Math.abs(y - 0.5);
+        if (yw < 0.28) {
+          const xLE = 0.42 + 0.36 * yw;
+          const cRoot = 0.13, cTip = 0.06;
+          const chord = cRoot - (cRoot - cTip) * (yw / 0.28);
+          const xTE  = xLE + chord;
+          if (x >= xLE && x <= xTE) {
+            const xi = (x - xLE) / chord;             // 0 → 1 along chord
+            // NACA 0015 half-thickness, formula (t = 0.15):
+            // y_t = (t/0.2) · (0.2969√x − 0.1260x − 0.3516x² + 0.2843x³ − 0.1015x⁴)
+            const t = 0.15;
+            const yt = (t / 0.20) * (
+              0.2969 * Math.sqrt(xi)
+              - 0.1260 * xi
+              - 0.3516 * xi * xi
+              + 0.2843 * xi * xi * xi
+              - 0.1015 * xi * xi * xi * xi
+            );
+            let halfThick = yt * chord;
+            // Floor at 2.5 cells (0.00625) so the trailing edge stays visible
+            if (halfThick < 0.00625) halfThick = 0.00625;
+            // Wing dihedral: tip rises 4° above root
+            const dihedral = 0.07 * yw;              // tan(4°) ≈ 0.07
+            const zCamber = 0.50 + dihedral;
+            if (Math.abs(z - zCamber) < halfThick) return true;
+          }
+        }
+
+        // --- 3. Vertical fin (NACA cross-section, swept) ---
+        const zf = z - 0.50;
+        if (zf > 0.0 && zf < 0.15) {
+          const xLE = 0.62 + 0.27 * zf;
+          const cRoot = 0.10, cTip = 0.06;
+          const chord = cRoot - (cRoot - cTip) * (zf / 0.15);
+          const xTE  = xLE + chord;
+          if (x >= xLE && x <= xTE) {
+            const xi = (x - xLE) / chord;
+            const t = 0.12;
+            const yt = (t / 0.20) * (
+              0.2969 * Math.sqrt(xi)
+              - 0.1260 * xi
+              - 0.3516 * xi * xi
+              + 0.2843 * xi * xi * xi
+              - 0.1015 * xi * xi * xi * xi
+            );
+            let halfThick = yt * chord;
+            if (halfThick < 0.00625) halfThick = 0.00625;
+            if (Math.abs(y - 0.5) < halfThick) return true;
+          }
+        }
+
+        // --- 4. Horizontal stabiliser (with own NACA section) ---
+        const yh = Math.abs(y - 0.5);
+        if (yh < 0.13 && Math.abs(z - 0.515) < 0.015) {
+          const xLE = 0.66 + 0.11 * yh;
+          const cRoot = 0.06, cTip = 0.035;
+          const chord = cRoot - (cRoot - cTip) * (yh / 0.13);
+          const xTE  = xLE + chord;
+          if (x >= xLE && x <= xTE) {
+            const xi = (x - xLE) / chord;
+            const t = 0.12;
+            const yt = (t / 0.20) * (
+              0.2969 * Math.sqrt(xi)
+              - 0.1260 * xi
+              - 0.3516 * xi * xi
+              + 0.2843 * xi * xi * xi
+              - 0.1015 * xi * xi * xi * xi
+            );
+            let halfThick = yt * chord;
+            if (halfThick < 0.00625) halfThick = 0.00625;
+            if (Math.abs(z - 0.515) < halfThick) return true;
+          }
+        }
+
+        // --- 5. Two engine nacelles under the wings ---
+        // Cylinders + nose-cone, slung at y = ±0.11, z ≈ 0.475 (just below wing).
+        for (const ySign of [-1, 1]) {
+          const yc = 0.50 + ySign * 0.11;
+          const zc = 0.475;
+          const dyE = y - yc, dzE = z - zc;
+          // Inlet → body → outlet, total length 0.10, max radius 0.018
+          if (x >= 0.42 && x <= 0.52) {
+            let rN = 0.018;
+            if (x < 0.435) rN = 0.018 * ((x - 0.42) / 0.015);     // inlet lip taper
+            else if (x > 0.51) rN = 0.018 * (1.0 - (x - 0.51) / 0.01); // exhaust taper
+            if (rN > 0 && dyE*dyE + dzE*dzE < rN*rN) return true;
+          }
+        }
+
+        // --- 6. Pylons connecting nacelles to wing ---
+        for (const ySign of [-1, 1]) {
+          const yc = 0.50 + ySign * 0.11;
+          if (Math.abs(y - yc) < 0.006 && z > 0.475 && z < 0.502
+              && x > 0.44 && x < 0.50) return true;
+        }
+
         return false;
       }
     }

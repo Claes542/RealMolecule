@@ -32,6 +32,10 @@ const S2 = S * S;
 const S3 = S * S * S;
 const dt = d * h2;
 const poissonMode = window.USER_POISSON || 'multigrid';
+// Nuclear-kernel softening r^2 += soft*h^2 at the cusp. Calibrated on He+ (Z=2,
+// 1 electron, exact E=-2.000) at 100^3/scr=5: soft=0.081 -> E=-2.0000; the old
+// hard-coded 0.12 under-binds He+ by ~0.013 Ha. Override via USER_SOFT.
+const soft = (window.USER_SOFT !== undefined) ? window.USER_SOFT : 0.081;
 
 // Per-shell arrays
 const U = [], W = [], P = [];
@@ -63,7 +67,7 @@ for (let i = 0; i <= NN; i++) {
   for (let j = 0; j <= NN; j++) {
     for (let k = 0; k <= NN; k++) {
       const id = idx(i, j, k);
-      const r2 = (i - N2) * (i - N2) * h2 + (j - N2) * (j - N2) * h2 + (k - N2) * (k - N2) * h2 + 0.12 * h2;
+      const r2 = (i - N2) * (i - N2) * h2 + (j - N2) * (j - N2) * h2 + (k - N2) * (k - N2) * h2 + soft * h2;
       const r = Math.sqrt(r2);
 
       K[id] = Z_kernel / r;

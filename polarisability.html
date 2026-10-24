@@ -117,6 +117,47 @@ window.onerror = function (msg, url, line) {
   // least. The inner pair is still divided by a plane, since two electrons may not share a
   // domain; spherically averaging them into one -2 density would be the closer model of a
   // closed shell but is not available in this solver.
+  // noval=1: same frozen core, same partition, valence domain EMPTIED. The difference
+  // E(core only) - E(core + valence) is the ionisation energy, and the core's badly resolved
+  // self-energy cancels exactly between the two -- which is the point. Outside a spherical
+  // core of charge 2 the potential is -(3-2)/r by Gauss whatever the mesh does inside, so the
+  // valence electron feels the right field even when the total energy is far off.
+  // ?split=he  -- THE AUFBAU DEMONSTRATION, simplest case.
+  // Two one-electron domains on a +2 kernel, declared EXPLICITLY (two atom entries, two labels)
+  // so the label field and the atoms array agree -- the mismatch that makes split=shell diverge.
+  //   domain 0 : charge 1, carries the +2 kernel
+  //   domain 1 : charge 1, no kernel of its own
+  // urc = [0,0]: no r_c anywhere. The only structure is the free boundary between them.
+  //
+  // ?x0= offsets the INITIAL dividing plane from the nucleus (au, default 0). A symmetric seed
+  // that stays symmetric proves nothing -- it was handed the answer. Seeded OFF-CENTRE, the wall
+  // must migrate back to the nucleus on its own, which is the free boundary actually finding the
+  // configuration. readWallPositions() reports where it ends up.
+  // He is the right first case: the polarisability work found frozen and free boundaries
+  // identical to 6 decimals here, so the free boundary is stable for this system (unlike the
+  // 3-electron Li shell, which blows up).
+  if (SPLIT === 'he') {
+    atoms = [{ i: N2, j: N2, k: N2, Z: 1, el: 'He' },
+             { i: N2, j: N2, k: N2, Z: 1, el: 'X'  }];
+    uz  = [1, 1];
+    uzn = [Z, 0];
+    uze = [Math.max(Z - 0.3, 0.8), Math.max(Z - 0.3, 0.8)];
+    urc = [0, 0];
+    window.USER_ATOMS = atoms; window.USER_Z = uz; window.USER_Z_NUC = uzn;
+    window.USER_INIT_ZEFF = uze; window.USER_RC = urc;
+    var X0 = parseFloat(q.get('x0') || '0');
+    window.CUSTOM_LABEL_INIT = function (S, hGrid) {
+      var lab = new Uint32Array(S * S * S), S2 = S * S, c = (S - 1) / 2;
+      var ip = c + X0 / hGrid;                     // plane position in grid units
+      for (var i = 0; i < S; i++) {
+        var v = (i < ip) ? 0 : 1;
+        for (var j = 0; j < S; j++) { var base = i * S2 + j * S;
+          for (var k = 0; k < S; k++) lab[base + k] = v; }
+      }
+      return lab;
+    };
+  }
+  if (SPLIT === 'homog' && q.get('noval') === '1') { uz[1] = 0; atoms[1].Z = 0; }
   if (SPLIT === 'homog') {
     window.CUSTOM_LABEL_INIT = function (S, hGrid) {
       var lab = new Uint32Array(S * S * S), S2 = S * S, c = (S - 1) / 2;
@@ -171,7 +212,10 @@ window.onerror = function (msg, url, line) {
     }
     var st = JSON.parse(localStorage.getItem(KEY) || '{}');
     var cfg = 'Z' + Z + '_ne' + NE + '_rc' + RC.toFixed(2) + '_h' + h.toFixed(3)
-            + '_box' + scr + (SPLIT === 'radial' ? '_RADIAL' : SPLIT === 'shell' ? '_SHELL' : SPLIT === 'homog' ? '_HOMOG' : '')
+            + '_box' + scr + (SPLIT === 'radial' ? '_RADIAL' : SPLIT === 'shell' ? '_SHELL' : SPLIT === 'homog' ? ('_HOMOG' + (q.get('noval') === '1' ? '_NOVAL' : '')) : '')
+            // R0 sets the shell partition, so it must be in the key: without it an R0 sweep
+            // overwrites itself and five radii come back as one record.
+            + ((SPLIT === 'shell' || SPLIT === 'homog') ? '_R0' + R0.toFixed(2) : '')
             + (q.get('free') === '1' ? '_free' : '');
     st[cfg] = st[cfg] || {};
     // p_electronic = -integral rho x dV ; the nucleus sits at the origin so adds nothing.
@@ -247,5 +291,49 @@ s.onload = function () {
   document.body.appendChild(p5s);
 };
 document.body.appendChild(s);
+</script>
+
+<script>
+// ?auto=wall  -- AUFBAU READOUT for split=shell&ne=3.
+// Waits for the energy to stall, then records the label-field wall positions along the axis.
+// With split=shell the inner pair occupies r < R0 (divided by a plane, since two electrons may
+// not share a domain) and the valence electron everything outside, so the wall at +-R0 IS the
+// shell radius -- found by the boundary moving to where the energy is least, with NO r_c and
+// nothing calibrated. Sweeping ?R0= and checking that the wall converges to the SAME radius
+// from different starts is the test: if it does, the 2+1 structure is found rather than imposed.
+// Written to localStorage because AppleScript can read the DOM and localStorage but never
+// window.* page globals -- those always read undefined from outside.
+(function(){
+  var q=new URLSearchParams(location.search);
+  if(q.get('auto')!=='wall') return;
+  var KEY='polwall_R'+(q.get('R0')||'1.10')+'_Z'+(q.get('Z')||'2')+'_ne'+(q.get('ne')||'2');
+  try{localStorage.removeItem(KEY);}catch(e){}
+  var t0=Date.now(),hist=[],since=null,done=false;
+  setInterval(function(){
+    if(done) return;
+    if(typeof window._E!=='number'||!isFinite(window._E)) return;
+    var el=(Date.now()-t0)/1000;
+    hist.push({t:Date.now(),E:window._E}); if(hist.length>14) hist.shift();
+    var st=document.getElementById('status');
+    if(st) st.textContent='auto=wall  '+Math.round(el)+'s  E='+window._E.toFixed(6);
+    if(hist.length<8) return;
+    var a=hist[0],b=hist[hist.length-1];
+    var slow=Math.abs((b.E-a.E)/Math.max((b.t-a.t)/1000,0.01))<2e-6;
+    // hard timeout too: a FREE boundary may never settle to a tight threshold, and that is
+    // itself a result worth recording rather than losing.
+    if(!slow && el<1500){ since=null; return; }
+    if(slow && since===null) since=Date.now();
+    if(el<1500 && (since===null || Date.now()-since<20000)) return;
+    done=true;
+    (window.readWallPositions?window.readWallPositions():Promise.resolve(null))
+      .then(function(w){
+        var rec={R0:parseFloat(q.get('R0')||'1.10'),Z:parseFloat(q.get('Z')||'2'),
+                 ne:parseInt(q.get('ne')||'2',10),E:window._E,
+                 walls:w,elapsed:Math.round(el),why:(el>=1500?'timeout':'stalled')};
+        try{localStorage.setItem(KEY,JSON.stringify(rec));}catch(e){}
+        document.title='WALL DONE R0='+rec.R0+' E='+rec.E.toFixed(5);
+      }).catch(function(e){document.title='WALL DONE (read failed)';});
+  },1000);
+})();
 </script>
 </body></html>

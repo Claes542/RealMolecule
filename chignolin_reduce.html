@@ -217,14 +217,13 @@
     const dims = [xmax - xmin, ymax - ymin, zmax - zmin];
     const rg_au = Math.max(...dims) / 2;
     // Build the reduced model record
+    // Provenance: clearly separate RealQM-computed fields from standard-chemistry lookups.
     const model = {
       species: 'chignolin',
       sequence: seq.join(''),
       n_residues: nRes,
       n_atoms: atoms.length,
-      energy_Ha: window._E !== undefined ? +window._E.toFixed(4) : null,
-      net_charge_e: netCharge,
-      mass_Da: nRes * 110,    // ~110 Da per residue average
+      mass_Da: nRes * 110,
       end_to_end_au: +e2e_au.toFixed(3),
       end_to_end_AA: +(e2e_au / A).toFixed(3),
       bounding_box_au: {
@@ -235,11 +234,35 @@
       hydrodynamic_radius_au: +rg_au.toFixed(2),
       centre_of_mass_au: [+comX.toFixed(3), +comY.toFixed(3), +comZ.toFixed(3)],
       diffusion_translational_au_per_step: '~3e-6 cm²/s @300K (Stokes-Einstein, η_water)',
-      residues,
-      modes: 'TODO — requires displacement runs to build Cα Hessian',
-      surface_electrostatic: 'TODO — requires marching-cubes on converged density grid',
+
+      realqm_derived: {
+        _comment: "Quantities computed by molecule.js (RealQM Level-3 ITP convergence).",
+        energy_Ha: window._E !== undefined ? +window._E.toFixed(4) : null,
+        energy_binding_Ha: window._E_bind !== undefined ? +window._E_bind.toFixed(4) : null,
+        energy_components: {
+          T_kinetic:    window._E_T  !== undefined ? +window._E_T.toFixed(4)  : null,
+          V_electron_nuclear: window._E_eK !== undefined ? +window._E_eK.toFixed(4) : null,
+          V_electron_electron: window._E_ee !== undefined ? +window._E_ee.toFixed(4) : null,
+          V_nuclear_nuclear:   window._E_KK !== undefined ? +window._E_KK.toFixed(4) : null,
+        },
+        dipole_au: window._dipole_au !== undefined ? +window._dipole_au.toFixed(4) : null,
+        dipole_D:  window._dipole_D  !== undefined ? +window._dipole_D.toFixed(4)  : null,
+      },
+
+      standard_chemistry: {
+        _comment: "Quantities NOT from density integration. Net charge and per-residue charges come from amino-acid formal charges at physiological pH. Hydrophobicity is from the Kyte–Doolittle (1982) scale. These are the standard substitutes for per-residue density integration, which is not yet implemented as a per-residue GPU reduction in molecule.js.",
+        net_charge_e: netCharge,
+        residues,
+      },
+
+      todo: {
+        per_residue_density_integration: 'requires GPU compute shader on rhoTotalBuf with Voronoi assignment to nuclei',
+        surface_electrostatic_map:        'requires marching-cubes on converged density isosurface + Coulomb potential sampling',
+        modes:                            'requires displacement runs to build Cα Hessian',
+      },
+
       provenance: {
-        method: 'RealQM via molecule.js (real-space multiphase non-overlap)',
+        method: 'RealQM via molecule.js (real-space multiphase non-overlap, ITP at fixed nuclei)',
         grid: gridN + '³',
         screen_au: SCREEN,
         h_au: +h.toFixed(4),

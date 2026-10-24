@@ -21,7 +21,7 @@ const INTERIOR = (NN - 1) * (NN - 1) * (NN - 1);
 const STEPS_PER_FRAME = 500;
 const NORM_INTERVAL = 20;
 const NELEC = 4;
-const NRED = NELEC + 1;
+const NRED = NELEC + 4;  // 4 norms + E + dipole(x,y,z) = 8 slots
 
 // Sweep configuration
 const sweepDistances = [3.2, 4.0, 6.0, 8.0, 10.0];  // au
@@ -142,7 +142,7 @@ ${paramStructWGSL}
 @group(0) @binding(4) var<storage, read> K: array<f32>;
 @group(0) @binding(5) var<storage, read_write> partials: array<f32>;
 
-var<workgroup> sn: array<f32, 1280>;
+var<workgroup> sn: array<f32, 2048>;  // 256 × 8
 
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>,
@@ -151,19 +151,25 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
   let NM = p.NN - 1u;
   let tot = NM * NM * NM;
 
-  for (var x: u32 = 0u; x < 5u; x++) { sn[lid * 5u + x] = 0.0; }
+  for (var x: u32 = 0u; x < 8u; x++) { sn[lid * 8u + x] = 0.0; }
 
   if (gid.x < tot) {
     let k = (gid.x % NM) + 1u;
     let j = ((gid.x / NM) % NM) + 1u;
     let i = (gid.x / (NM * NM)) + 1u;
     let id = i * p.S2 + j * p.S + k;
+    let xc = (f32(i) - f32(p.N2)) * p.h;
+    let yc = (f32(j) - f32(p.N2)) * p.h;
+    let zc = (f32(k) - f32(p.N2)) * p.h;
 
     var en: f32 = 0.0;
+    var dipEx: f32 = 0.0;
+    var dipEy: f32 = 0.0;
+    var dipEz: f32 = 0.0;
     for (var m: u32 = 0u; m < 4u; m++) {
       let o = m * p.S3;
       let v = U[o + id];
-      sn[lid * 5u + m] = v * v * p.h3;
+      sn[lid * 8u + m] = v * v * p.h3;
       if (W[o + id] > 0.7) {
         let a = U[o + id + p.S2] - v;
         let b = U[o + id + p.S] - v;
@@ -171,24 +177,32 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
         en += 0.5 * (a * a + b * b + c * c) * p.h;
       }
       en += (Pv[o + id] - K[id]) * v * v * p.h3;
+      // Electronic dipole: -∫ρ_m·r dV
+      let rho_cell = v * v * p.h3;
+      dipEx -= rho_cell * xc;
+      dipEy -= rho_cell * yc;
+      dipEz -= rho_cell * zc;
     }
-    sn[lid * 5u + 4u] = en;
+    sn[lid * 8u + 4u] = en;
+    sn[lid * 8u + 5u] = dipEx;
+    sn[lid * 8u + 6u] = dipEy;
+    sn[lid * 8u + 7u] = dipEz;
   }
 
   workgroupBarrier();
 
   for (var s: u32 = 128u; s > 0u; s >>= 1u) {
     if (lid < s) {
-      for (var x: u32 = 0u; x < 5u; x++) {
-        sn[lid * 5u + x] += sn[(lid + s) * 5u + x];
+      for (var x: u32 = 0u; x < 8u; x++) {
+        sn[lid * 8u + x] += sn[(lid + s) * 8u + x];
       }
     }
     workgroupBarrier();
   }
 
   if (lid == 0u) {
-    let base = wgid.x * 5u;
-    for (var x: u32 = 0u; x < 5u; x++) {
+    let base = wgid.x * 8u;
+    for (var x: u32 = 0u; x < 8u; x++) {
       partials[base + x] = sn[x];
     }
   }
@@ -201,15 +215,15 @@ struct NWG { count: u32 }
 @group(0) @binding(1) var<storage, read_write> sums: array<f32>;
 @group(0) @binding(2) var<uniform> nwg: NWG;
 
-var<workgroup> wg: array<f32, 1280>;
+var<workgroup> wg: array<f32, 2048>;  // 256 × 8
 
 @compute @workgroup_size(256)
 fn main(@builtin(local_invocation_index) lid: u32) {
-  for (var x: u32 = 0u; x < 5u; x++) { wg[lid * 5u + x] = 0.0; }
+  for (var x: u32 = 0u; x < 8u; x++) { wg[lid * 8u + x] = 0.0; }
 
   for (var i: u32 = lid; i < nwg.count; i += 256u) {
-    for (var x: u32 = 0u; x < 5u; x++) {
-      wg[lid * 5u + x] += partials[i * 5u + x];
+    for (var x: u32 = 0u; x < 8u; x++) {
+      wg[lid * 8u + x] += partials[i * 8u + x];
     }
   }
 
@@ -217,15 +231,15 @@ fn main(@builtin(local_invocation_index) lid: u32) {
 
   for (var s: u32 = 128u; s > 0u; s >>= 1u) {
     if (lid < s) {
-      for (var x: u32 = 0u; x < 5u; x++) {
-        wg[lid * 5u + x] += wg[(lid + s) * 5u + x];
+      for (var x: u32 = 0u; x < 8u; x++) {
+        wg[lid * 8u + x] += wg[(lid + s) * 8u + x];
       }
     }
     workgroupBarrier();
   }
 
   if (lid == 0u) {
-    for (var x: u32 = 0u; x < 5u; x++) {
+    for (var x: u32 = 0u; x < 8u; x++) {
       sums[x] = wg[x];
     }
   }
@@ -295,6 +309,7 @@ let updatePL, reducePL, finalizePL, normalizePL, extractPL;
 let updateBG = [], reduceBG = [], finalizeBG, normalizeBG = [], extractBG = [];
 let cur = 0, gpuReady = false, computing = false;
 let tStep = 0, E = 0, lastMs = 0;
+let dipole = [0, 0, 0], dipoleMag = 0;  // total dipole (au); 1 au = 2.5417 D
 let gpuError = null;
 let sweepDone = false;
 
@@ -586,6 +601,12 @@ async function doSteps(n) {
   const sumsData = new Float32Array(sumsReadBuf.getMappedRange().slice(0));
   sumsReadBuf.unmap();
   E = sumsData[4] + nucRepulsion;  // energy at index 4 (after 4 norms) + nuclear repulsion
+  // Dipole: nuclei (Li Z=3 and H Z=1) + electronic contribution from shader
+  const dipNx = 3 * (Li_pos - N2) * hv + 1 * (H_pos - N2) * hv;
+  dipole[0] = dipNx + sumsData[5];
+  dipole[1] = 0 + sumsData[6];  // both atoms at j=k=N2
+  dipole[2] = 0 + sumsData[7];
+  dipoleMag = Math.hypot(dipole[0], dipole[1], dipole[2]);
 
   await sliceReadBuf.mapAsync(GPUMapMode.READ);
   sliceData = new Float32Array(sliceReadBuf.getMappedRange().slice(0));
@@ -737,6 +758,9 @@ function draw() {
   text("LiH sweep " + (sweepIdx+1) + "/" + sweepDistances.length + " | d=" + d_au.toFixed(2) + " au, " + NN + "^3", 5, 20);
   text("step " + tStep + "/" + STEPS_PER_POINT + "  E=" + E.toFixed(6) + "  min=" + (isFinite(E_min) ? E_min.toFixed(6) : "---"), 5, 35);
   if (lastMs > 0) text((lastMs / STEPS_PER_FRAME).toFixed(1) + "ms/step", 300, 35);
+  fill(150, 220, 255);
+  text("dipole=" + dipoleMag.toFixed(4) + " au (" + (dipoleMag * 2.5417).toFixed(3) + " D)  x=" + dipole[0].toFixed(3), 5, 50);
+  fill(255);
 
   // Show completed sweep results
   if (sweepResults.length > 0) {

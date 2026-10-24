@@ -1,5 +1,5 @@
-\part{Model Analysis}
- 
+% \part{Model Analysis}  % --- removed: Burgers + BurgersRealNSE now close Part II (Mathematical Foundations) ---
+
 \chapter{Burgers Equation}
 \small
 %\begin{quote}
@@ -409,7 +409,7 @@ and $-1$ if $w<0$, to get by integration by parts:
 \end{equation}
 and using the fact that for a shock $u_+<u_-$.
 Moreover, we will below with a different type of stability estimate
-show that a shock is stable from computational RNS point of view, 
+show that a shock is stable from computational RealNSE point of view, 
 Thus, a shock is a stable phenomenon from both physical and computational
 point of view.
 
@@ -537,7 +537,7 @@ of 10 meters, you may get suspicious and refrain from a deal.
 
  
 
-\chapter{BurgersRNS}
+\chapter{RealBurgers}
 
 \small
 \begin{quote} But maybe that is our mistake: 
@@ -549,20 +549,20 @@ apparent unpredictability. (Stephen Hawking 1988)
 \normalsize  
 
 \section{Introduction}
-We will now consider RNS applied to Burgers' equation as a simple
-version of RNS. We recall that RNS is Galerkin's 
+We will now consider RealNSE applied to Burgers' equation as a simple
+version of RealNSE. We recall that RealNSE is Galerkin's 
 finite element method
 combined with a weighted least-squares control of the
-residual. RNS is based on  piecewise polynomial approximation
+residual. RealNSE is based on  piecewise polynomial approximation
 in space-time and offers spectrum of computational methods 
 depending on the choice of the space-time
 mesh, as presented in detail in \cite{cde,ambsflow}.
-RNS uses piecewise polynomials which are
+RealNSE uses piecewise polynomials which are
 continuous in space and possibly discontinuous in time.
 These variants are referred to as cG($p$)cG($q$) or cG($p$)dG($q$) with
 cG($p$) referring to continuous piecewise approximation of degree $p$
 in space, and cG($q$)/dG($q$) referring to  continuous/discontinuous
-approxiamtion in time of degree $q$. RNS is \emph{Eulerian} if
+approxiamtion in time of degree $q$. RealNSE is \emph{Eulerian} if
 the space-time mesh oriented along the space and time coordinate axis, 
 is \emph{Lagrangean} if the space-time mesh is oriented along particle
 paths in space-time, and \emph{Arbitrary Lagrangean-Eulerian} or \emph{ALE} 
@@ -572,7 +572,7 @@ Lagrangean variants are also referred to as \emph{characteristic Galerkin},
 and Eulerian variants as \emph{streamline diffusion methods}.
 
 In all these variants the space-time mesh is usually organized in
-space-time slabs between discrete time levels, and RNS then
+space-time slabs between discrete time levels, and RealNSE then
 gives a time-stepping method allowing the solution to be
 computed form one time level to the next progessing in time. The
 space mesh may be changed across the discrete time levels to avoid 
@@ -601,26 +601,26 @@ developed in recent decades, use discontinuous polynomial
 approximation with numerical fluxes often constructed using
 1d Riemann solvers. 
 All these methods may alternatively be viewed as particular 
-RNS methods. 
+RealNSE methods. 
 
 
 %Galerkin/least squares methods were pionereed in the early
 %1980s by Hughes followed by Johnson in the form of 
 %streamline diffusion methods, see \cite{hughes}, \cite{johnson}, \cite{cime}.
  
-\section{Semi-Discrete RNS for Burgers Equation}
+\section{Semi-Discrete RealNSE for Burgers Equation}
 
 For the purpose of analysis displaying essential aspects,
-we consider a \emph{semi-discrete} RNS method for Burgers equation with
+we consider a \emph{semi-discrete} RealNSE method for Burgers equation with
 cG(1) discretization in space. Full discretization
 with cG(q) or dG(q) in time can be analyzed similarly.
 Let then for a
 given mesh on $\bbR$ with 
 mesh size $h$, $V_h$ be the set of continuous functions $v(x,t)$ 
 which for $t\in I=[0,T]$ are piecewise linear in $x$ on the mesh.
-The simplest version of semidiscrete RNS takes the form: 
+The simplest version of semidiscrete RealNSE takes the form: 
 Find $U\in V_h$ such that
-\begin{equation}\label{RNSburgers} 
+\begin{equation}\label{RealNSEburgers} 
   ((R(U),v))+((hU^\prime ,v^\prime ))=0\quad\forall v\in V_h,
 %+(\hat\epsilon \nabla U,\nabla v)_n
 %  +([U_{n-1}],v_{n-1}^+)_\bbR =0,\quad\forall v\in V _n,
@@ -640,7 +640,7 @@ with viscosity $\nu =h$.
 %now $R(U)=\vert \dot U+A(U)U^\prime \vert + \vert [U_{n-1}]\vert/k_n$ on $S_n$. 
 \section{Basic Energy Estimate as 2nd Law}
 
-Choosing $v=U$ in (\ref{RNSburgers}), we obtain by 
+Choosing $v=U$ in (\ref{RealNSEburgers}), we obtain by 
 integration by parts over $\bbR$ the following direct analog
 of (\ref{2ndlawBurgers}):
 \[
@@ -651,31 +651,31 @@ of (\ref{2ndlawBurgers}):
 %K(U;t)=\frac{1}{2}\int_{\bbR} U^2(t)dt,
 %\quad D_h(U;t)=\int_0^t\int_\bbR h(U^\prime )^2\, dxdt.
 %\]
-%This is the basic energy estimate for RNS for Burgers'equation,
+%This is the basic energy estimate for RealNSE for Burgers'equation,
 %which is also a 2nd Law for the kinetic energy $K$.
 In the presence of shocks, $D_h(U; t)$ will be substantial
 and thus $U'$ will at shocks be large ($\sim h^{-1})$.
 
 
 
-%\section{RNS and the 2nd Law}
+%\section{RealNSE and the 2nd Law}
 
 %We shall now prove as a major observation of this note that
-%RNS automatically satisfies the entropy inequality (\ref{entropyineq})
+%RealNSE automatically satisfies the entropy inequality (\ref{entropyineq})
 %in a weak sense, and thus automatically computes a physical solution
 %without explicitely enforcing the entropy inequality. The key point is
-%thus that construction of RNS as weak satisfaction of the conservation
+%thus that construction of RealNSE as weak satisfaction of the conservation
 %law combined with weighted least squares constrol of the pointwise
-%residual, assures that a RNS solution also satisfies the entropy
+%residual, assures that a RealNSE solution also satisfies the entropy
 %inequality characterizing physical solutions. In particular, there
-%is no chance that RNS will produce an non-physical solution
+%is no chance that RealNSE will produce an non-physical solution
 %violating the entropy condition.
 
 %To see this, we choose a smooth non-negative
 %test function $\varphi$, write $w=\varphi  U$ and then choose
-%in RNS the finite element test function $v=w_h$, where
+%in RealNSE the finite element test function $v=w_h$, where
 %$w_h\in V_h$ is a nodal interpolant of $w$, noting that $w$ does
-%not belong to $V_h$ in RNS in general. We then have with
+%not belong to $V_h$ in RealNSE in general. We then have with
 %$\tilde U_n=\frac{1}{2}(U_n^++U_n^-)$, by integration by parts in space and time,
 %\[ 
 % -(\frac{1}{2}U^2,\dot\varphi )_{Q_N}
@@ -693,7 +693,7 @@ and thus $U'$ will at shocks be large ($\sim h^{-1})$.
 %\[
 %\equiv I+II+III,
 %\]
-%where $\hat w_h=w-w_h$, and we used (\ref{RNSburgers}) with $v=w_h$.
+%where $\hat w_h=w-w_h$, and we used (\ref{RealNSEburgers}) with $v=w_h$.
 %We now estimate the interpolation error $\hat w_h$ as follows:
 %\[
 %\Vert \hat w_h\Vert_{S_n}\le \Vert h^2D^2w\Vert_{S_n}\le Ch\Vert U\Vert_\infty ,
@@ -731,18 +731,18 @@ and thus $U'$ will at shocks be large ($\sim h^{-1})$.
 %-(\frac{1}{3}U^3,\varphi^\prime )_{Q_N}\le CM\sqrt{h},
 %\] 
 %where $M$ is a bound for $U$ and $C$ depends on up to second derivatives
-%of $\varphi$. This expresses that the RNS solution $U$
+%of $\varphi$. This expresses that the RealNSE solution $U$
 %approximately satisfies the entropy inequality in weak form
-%and the approximation improves as $h$ gets smaller. We refer to this property of RNS
+%and the approximation improves as $h$ gets smaller. We refer to this property of RealNSE
 %as entropy consistency. In particular
-%RNS cannot compute a non-physical solution significantly
+%RealNSE cannot compute a non-physical solution significantly
 %violating the entropy inequality significantly. Note that the $M$-bound on $U$ is natural
-%and can be proved by a maximum principle if RNS is suitably modified.  
+%and can be proved by a maximum principle if RealNSE is suitably modified.  
 
-%We have now established the key feature of RNS to automatically satisfy
+%We have now established the key feature of RealNSE to automatically satisfy
 %the entropy inequality approximately, as a consequence of the
 %least squares stabilization. The key to the proof is the super-approximation
-%making it effectively possible to choose $U\phi$ as a test function in RNS, 
+%making it effectively possible to choose $U\phi$ as a test function in RealNSE, 
 %from which entropy consistency follows using the positivity of the least squares
 %term, which reflects that
 %the entropy inequality is obtained by multiplication of the viscid Burgers' equation
@@ -791,7 +791,7 @@ to get the error representation
 \[
 \Vert u-U\Vert_{Q}^2=((R(U),\phi ))+((hU^\prime ,\varphi^\prime )).
 \]
-We then use the Galerkin orthogonality (\ref{RNSburgers})
+We then use the Galerkin orthogonality (\ref{RealNSEburgers})
 with $v=\Phi\in V_h$ an interpolant of the dual solution $\varphi$, to get
 \[
 \Vert u-U\Vert_{Q}^2=((R(U),\phi -\Phi ))+
@@ -819,7 +819,7 @@ which of course is checked a posteriori, and thus we expect
 \Vert u-U\Vert_{Q}\le S\sqrt{h} .
 \end{equation}
 We shall now prove that for a shock $S\sim 1$, which shows that
-a shock is computable with RNS, with a $L_2(Q)$ error of size $\sqrt{h}$, which
+a shock is computable with RealNSE, with a $L_2(Q)$ error of size $\sqrt{h}$, which
 is optimal from approximation point of view (if we consider 
 the exact solution $u$ to be discontinuous) 
 and $U$ is continuous in $x$ on the mesh.
@@ -892,7 +892,7 @@ we get with $Q_{\tau} =\bbR\times (\tau ,T)$
 which proves the desired result stating that $S\sim 1$ for a shock.
 
 \begin{figure}[ht]\label{chardualshock}
-\centerline{\psfig{figure=ambsthermopict/figCHARS.eps,height=2.5in,width=4in}}
+\centerline{\includegraphics[height=2.5in,width=4in]{ambsthermopict/figCHARS.eps}}
 \caption{Characteristics of the dual problem for a 
 regularized shock solution.}
 \end{figure}
@@ -965,7 +965,7 @@ we now present.
 
 \section{Dual Solution and Stability Factors}
 
-We display below RNS computations of a combination of  
+We display below RealNSE computations of a combination of  
 a rarefaction wave and a shock using the cG(1)dG(0)-
 method on a uniform space mesh with $h=10^{-3}$
 and time step $10^{-4}$ taken from \cite{burman}.  We plot 
@@ -1043,7 +1043,7 @@ $L_2(Q_N)$ with work comparable to interpolation.
 
 \iffalse  % --- removed: placeholder section with missing figures (sphere/cylinder eps files not in repo) ---
 \section{Turbulent Bluff Body Flow}
-We show RNS flow with shocks around a sphere and cylinder in
+We show RealNSE flow with shocks around a sphere and cylinder in
 Figs. \ref{sphere} and \ref{cyl}. This section will be
 extended with turbulent/shock flow around a cube and sphere.
 \begin{figure}[bhpt] 
@@ -1076,7 +1076,7 @@ extended with turbulent/shock flow around a cube and sphere.
 \end{figure}
 
 \section{Turbulent Flow in Heat Engines and Refrigerators}
-This section will contain RNS simulations of diffuser flow with
+This section will contain RealNSE simulations of diffuser flow with
 gas expanding under cooling while getting heated by turbulence,
 with the objective of computing losses and efficiency.
 \fi  % --- end removed placeholder block (Bluff Body + Heat Engines stubs) ---

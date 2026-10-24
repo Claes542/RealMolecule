@@ -258,3 +258,86 @@ if __name__ == "__main__" and True:
         sl,_ = np.polyfit(np.log(A[:,0]), np.log(A[:,col]), 1)
         print(f"  {name:>12} ~ h^{sl:+.2f}")
     print("=" * 70)
+
+
+# ============================================================================
+#  SPACE-TIME ADJOINT: forward with stored history, then backward march
+# ============================================================================
+def cube(x, y, z, side, xc):
+    X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
+    x0, s = xc * x[-1], side / 2
+    return (np.abs(X-x0) < s) & (np.abs(Y-.5) < s) & (np.abs(Z-.5) < s)
+
+
+def forward_store(n, T):
+    """Compressible forward solve past the cube, storing the whole history."""
+    nx, ny, nz = AR*n, n, n
+    hx, h = AR*1.0/nx, 1.0/ny
+    x = (np.arange(nx)+.5)*hx; y = (np.arange(ny)+.5)*h; z = (np.arange(nz)+.5)*h
+    soli = cube(x, y, z, CUBE, XC)
+    rho = np.ones((nx,ny,nz)); e = np.ones_like(rho)/GAMMA
+    cs0 = np.sqrt(GAMMA*e[0,0,0]/rho[0,0,0]); U0 = MACH*cs0
+    m1 = rho*U0; m2 = np.zeros_like(rho); m3 = np.zeros_like(rho)
+    # dt must satisfy BOTH constraints: the artificial viscosity nu ~ c h |u|
+    # makes the diffusive limit tighter than the convective one here.
+    speed   = U0 + cs0
+    nu0     = CVISC*max(hx,h)*speed
+    dt_conv = CFL*min(hx,h)/speed
+    dt_visc = 0.5*min(hx,h)**2/(6*nu0)
+    dt = min(dt_conv, dt_visc)
+    nt = int(T/dt)
+    hist = []
+    for it in range(nt):
+        u1,u2,u3 = m1/rho, m2/rho, m3/rho
+        cs = np.sqrt(GAMMA*np.maximum(e,1e-9)/np.maximum(rho,1e-9))
+        nu = CVISC*max(hx,h)*(np.abs(u1)+np.abs(u2)+np.abs(u3)+cs).max()
+        hist.append((rho.copy(), m1.copy(), m2.copy(), m3.copy(), e.copy(), nu))
+        rho_t = -div(m1,m2,m3,hx,h) + nu*lap(rho,(hx,h))
+        g1,g2,g3 = grad(e,hx,h)
+        m1_t = -div(m1*u1,m1*u2,m1*u3,hx,h) - GAMMA*g1 + nu*lap(m1,(hx,h))
+        m2_t = -div(m2*u1,m2*u2,m2*u3,hx,h) - GAMMA*g2 + nu*lap(m2,(hx,h))
+        m3_t = -div(m3*u1,m3*u2,m3*u3,hx,h) - GAMMA*g3 + nu*lap(m3,(hx,h))
+        du   = div(u1,u2,u3,hx,h)
+        e_t  = -div(e*u1,e*u2,e*u3,hx,h) - GAMMA*e*du + nu*lap(e,(hx,h))
+        rho = np.maximum(rho + dt*rho_t, 1e-6); e = np.maximum(e + dt*e_t, 1e-9)
+        m1 += dt*m1_t; m2 += dt*m2_t; m3 += dt*m3_t
+        f = 1.0/(1.0 + PEN*dt)                       # body: stop the momentum
+        m1 = np.where(soli, m1*f, m1); m2 = np.where(soli, m2*f, m2); m3 = np.where(soli, m3*f, m3)
+        rho[0]=1.0; e[0]=1.0/GAMMA; m1[0]=U0; m2[0]=0; m3[0]=0        # inflow
+        rho[-1]=rho[-2]; e[-1]=e[-2]; m1[-1]=m1[-2]; m2[-1]=m2[-2]; m3[-1]=m3[-2]
+    return hist, dt, (hx,h), soli, (nx,ny,nz), U0
+
+
+def dual_spacetime(hist, dt, geom, soli, shape, T_dual):
+    """Backward march of the space-time adjoint, drag data on the cube."""
+    hx, h = geom
+    phi = tuple(np.zeros(shape) for _ in range(5))      # (rd, p1, p2, p3, ed), phi(T)=0
+    nstep = min(int(T_dual/dt), len(hist)-1)
+    gsum = 0.0
+    for j in range(nstep):
+        base = hist[len(hist)-1-j]                      # MATCHING time level
+        A = adjoint(phi, base, geom)
+        phi = tuple(p + dt*a for p, a in zip(phi, A))
+        rd, p1, p2, p3, ed = phi
+        p1 = np.where(soli, 1.0, p1)                    # DRAG: phi = (1,0,0) on the body
+        p2 = np.where(soli, 0.0, p2); p3 = np.where(soli, 0.0, p3)
+        p1[-1]=0; p2[-1]=0; p3[-1]=0; rd[-1]=0; ed[-1]=0        # dual inflow at the right
+        p1[0]=p1[1]; p2[0]=p2[1]; p3[0]=p3[1]; rd[0]=rd[1]; ed[0]=ed[1]   # free at the left
+        phi = (rd, p1, p2, p3, ed)
+        g = sum(ddx(f,hx,0)**2 + ddx(f,h,1)**2 + ddx(f,h,2)**2 for f in (p1,p2,p3))
+        gsum += g.sum()*hx*h*h*dt
+        if not np.isfinite(gsum): return phi, np.inf, j
+    return phi, np.sqrt(gsum), nstep
+
+
+if __name__ == "__main__" and True:
+    print()
+    print("=" * 70)
+    print("SPACE-TIME ADJOINT, drag on the cube, compressible")
+    print(f"{'n':>4}{'nt fwd':>8}{'nt dual':>9}{'max|phi_x|':>12}{'S=||grad phi||':>16}")
+    print("-" * 70)
+    for n in (12, 16, 20):
+        hist, dt, geom, soli, shape, U0 = forward_store(n, T_FWD)
+        phi, S, ns = dual_spacetime(hist, dt, geom, soli, shape, T_DUAL)
+        print(f"{n:>4}{len(hist):>8}{ns:>9}{np.abs(phi[1]).max():>12.4g}{S:>16.4g}")
+    print("=" * 70)

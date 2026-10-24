@@ -98,6 +98,7 @@ window.onerror = function(msg, url, line) {
   var resStartIdx = [];
   var resEndIdx = [];
   var caIndices = [];
+  var cbIndices = [];
   var carbonylOIdx = [];
   var amideHIdx = [];
 
@@ -149,6 +150,7 @@ window.onerror = function(msg, url, line) {
       var cbX = Cap[0] - perp[0]*bCaCb*0.8;
       var cbY = Cap[1] - perp[1]*bCaCb*0.8;
       var cbZ = Cap[2] - perp[2]*bCaCb*0.8;
+      cbIndices[r] = atoms.length;
       pushAtom(cbX, cbY, cbZ, 'C', 4);
       for (var hh = 0; hh < 3; hh++) {
         var phi = hh * 2.094 + r * 1.2;
@@ -184,6 +186,7 @@ window.onerror = function(msg, url, line) {
   var bOHw = 0.96 * A;
   var angW = 104.5 * Math.PI / 180;
   var nWater = 0;
+  var waterTriplets = [];  // [O_idx, H1_idx, H2_idx] per water — used by harmonic bend constraint
   var waterSpacing = 3.0 * A;
   var zMin = -(nResPerHelix - 1) * helixRise / 2;
   var zMax = (nResPerHelix - 1) * helixRise / 2;
@@ -205,9 +208,11 @@ window.onerror = function(msg, url, line) {
       }
       if (tooClose) continue;
 
+      var oIdx = atoms.length;
       pushAtom(ox, oy, oz, 'O', 2);
       pushAtom(ox + bOHw*Math.sin(angW/2), oy + bOHw*Math.cos(angW/2), oz, 'H', 1);
       pushAtom(ox - bOHw*Math.sin(angW/2), oy + bOHw*Math.cos(angW/2), oz, 'H', 1);
+      waterTriplets.push([oIdx, oIdx + 1, oIdx + 2]);
       nWater++;
     }
   }
@@ -246,12 +251,20 @@ window.onerror = function(msg, url, line) {
 
   // Inter-helix distances (the key measurement)
   // Hydrophobic core: Leu at a,d positions (res 0,3,7,10 in each helix)
-  bondPairs.push([caIndices[0], caIndices[nResPerHelix], "L1-L16(inter):"]);
-  bondPairs.push([caIndices[3], caIndices[nResPerHelix+3], "L4-L19(inter):"]);
-  bondPairs.push([caIndices[7], caIndices[nResPerHelix+7], "L8-L23(inter):"]);
-  // Closest approach
+  // Cb-Cb interhelix distances (hydrophobic side-chain contacts)
+  if (cbIndices[0] && cbIndices[nResPerHelix])
+    bondPairs.push([cbIndices[0], cbIndices[nResPerHelix], "Cb1-Cb16:"]);
+  if (cbIndices[3] && cbIndices[nResPerHelix+3])
+    bondPairs.push([cbIndices[3], cbIndices[nResPerHelix+3], "Cb4-Cb19:"]);
+  if (cbIndices[7] && cbIndices[nResPerHelix+7])
+    bondPairs.push([cbIndices[7], cbIndices[nResPerHelix+7], "Cb8-Cb23:"]);
+  // Backbone Ca-Ca for reference
   bondPairs.push([caIndices[7], caIndices[nResPerHelix+6], "Ca8-Ca21(close):"]);
 
+  window.USER_WATER_TRIPLETS = waterTriplets;  // harmonic H-O-H bend constraint targets
+  var urlBendK = parseFloat(new URLSearchParams(location.search).get('bendK'));
+  window.USER_BEND_K = isFinite(urlBendK) ? urlBendK : 1.5;  // Ha/rad² default; ?bendK=0 disables
+  console.log('Water triplets: ' + waterTriplets.length + ', bendK=' + window.USER_BEND_K);
   window.USER_BOND_PAIRS = bondPairs;
 
   window.USER_REFERENCE = {

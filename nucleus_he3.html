@@ -52,7 +52,13 @@
   window.USER_DIRICHLET_EP = 'electron';
   window.USER_LOCKED_GROUPS = [[1, 2, 3]];   // hold the proton subdivision
   window.INIT_ZEFF = 1;
+  window.CONVERGENCE_THRESHOLD = 0.01;       // auto-stop at settled minimum -> onSweepDone(E)
 })();
+
+window.onSweepDone = function (E) {
+  document.title = 'HE3 DONE E=' + Number(E).toFixed(6);
+  console.log('=== SWEEPDONE HE3 E=' + Number(E).toFixed(6) + ' ===');
+};
 
 var s = document.createElement('script');
 s.src = 'molecule_nucleus.js?t=' + Date.now();
@@ -62,5 +68,10 @@ s.onload = function() {
   document.body.appendChild(p5s);
 };
 document.body.appendChild(s);
+// title bridge: mirror current E and convergence count into document.title (readable by automation)
+setInterval(function(){
+  if (window._prevE !== undefined)
+    document.title = 'HE3 E=' + Number(window._prevE).toFixed(6) + ' conv=' + (window._convCount||0);
+}, 500);
 </script>
 </body></html>

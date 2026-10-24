@@ -37,20 +37,253 @@
     //   idx 2 → -x-y direction (BLUE slot)
     // Attach H's along the red (+x-y) and blue (-x-y) sector centers;
     // leave green (+y) as the lone pair side.
+    // ?sfix=0 -> split_fix:false, i.e. the three sectors are only the INITIAL partition and the
+    // boundaries are free thereafter. mol_fast.js:214 otherwise re-imposes the angular split
+    // every step ("keeps sectors sharp"), which is what pins three wedges together along +-z and
+    // makes the seam: a density depression where the lone pairs belong, and the surface extrema
+    // land on it. Releasing it also matches the stated model -- only r_c is imposed, outer
+    // boundaries free by non-overlap. Precedent: mol_fast_lih3.html:66 uses split_fix:false.
+    var SFIX = !/[?&]sfix=0/.test(location.search);
+    // ?rc= oxygen clamp radius (default 0.5). THE POLARITY SUSPECT: O is clamped at 0.5 so its
+    // well bottoms out at 3/0.5 = 6.0 Ha, while H is unclamped and reaches ~1/(2h) = 8.3 Ha. The
+    // HYDROGEN kernel is therefore the deeper one, electrons pile there, and the molecule comes out
+    // with its H end negative (measured: electron centroid 0.103 a.u. TOWARD the H's). rc=0 removes
+    // the asymmetry. Safe to use here only because ?dyn=0 pins the geometry -- gallery.html:2859
+    // records rc=0 as the branch where the angle wanders 111->100->95 deg.
+    var RCO = parseFloat((location.search.match(/[?&]rc=([\d.]+)/)||[])[1]);
+    if (!isFinite(RCO)) RCO = 0.5;
     window.USER_NN = N;
     window.USER_SCREEN = scr;
-    window.USER_STEPS = 100000;
+    // ?steps= total ITP steps, default 10000 (was 100000). At ~48 ms/step wall that is ~8 min
+    // instead of ~80. The reporter still waits for the energy to STALL, so a capped run can
+    // end before it does -- check E against a longer run before trusting a small difference.
+    window.USER_STEPS = parseInt((location.search.match(/[?&]steps=(\d+)/)||[])[1]||"10000",10);
     window.USER_SHELL_MODE = true;
     window.USER_NUCLEI = [
-      { i: N2, j: N2, k: N2, Z: 3, rc: 0.5, z_init: 2.0, split: 'third', split_idx: 0, split_axis: [0, 0, 1], fixed: true },  // red: bond → H1 (+x-y)
-      { i: N2, j: N2, k: N2, Z: 0, rc: 0.5, z_init: 2.0, split: 'third', split_idx: 1, split_axis: [0, 0, 1], fixed: true },  // green: lone pair (+y)
-      { i: N2, j: N2, k: N2, Z: 0, rc: 0.5, z_init: 2.0, split: 'third', split_idx: 2, split_axis: [0, 0, 1], fixed: true },  // blue: bond → H2 (-x-y)
+      { i: N2, j: N2, k: N2, Z: 3, rc: RCO, z_init: 2.0, split: 'third', split_idx: 0, split_axis: [0, 0, 1], fixed: true, split_fix: SFIX },  // red: bond → H1 (+x-y)
+      { i: N2, j: N2, k: N2, Z: 0, rc: RCO, z_init: 2.0, split: 'third', split_idx: 1, split_axis: [0, 0, 1], fixed: true, split_fix: SFIX },  // green: lone pair (+y)
+      { i: N2, j: N2, k: N2, Z: 0, rc: RCO, z_init: 2.0, split: 'third', split_idx: 2, split_axis: [0, 0, 1], fixed: true, split_fix: SFIX },  // blue: bond → H2 (-x-y)
       { i: N2 + dxCells, j: N2 - dyCells, k: N2, Z: 1, rc: 0.0 },  // H1 at (+x, -y)
       { i: N2 - dxCells, j: N2 - dyCells, k: N2, Z: 1, rc: 0.0 },  // H2 at (-x, -y)
     ];
     window.USER_NORM_TARGETS = [1, 1, 1, 1, 1];
-    window.USER_DYNAMICS = true;  // H's free to move; O still fixed via `fixed: true`
+    // ?dyn=0 fixes the geometry at the experimental values. Standard MEP practice is a
+    // FIXED geometry, and literature V_min/V_max are quoted there, so relaxing first adds
+    // a geometric confound (this model settles at 103.0 deg, literature values are at
+    // 104.5) on top of ~50-90 min of relaxation that the electrostatics do not need.
+    window.USER_DYNAMICS = !/[?&]dyn=0/.test(location.search);
     window.USER_ANGLE_ATOMS = [0, 3, 4];  // O, H1, H2
+  })();
+
+  // REPORTER (reporting only -- changes no physics). mol_fast exposes _E and _mu_* but has no
+  // completion hook, and AppleScript sees the DOM and localStorage ONLY, so poll from inside.
+  //
+  // MIN_S is not decoration. The same reporter on mol_fast_h2o_split.html published after 40 s on a
+  // 100000-step run with dynamics, because an early plateau satisfies dE/dt < 1e-5 for 5 s long
+  // before the geometry has relaxed; it reported mu = 0.106 D, which is a snapshot of an
+  // unrelaxed molecule, not a result. Hold for MIN_S before believing any stall.
+  //
+  // This page is the FREE-boundary reference: mol_fast has no FREEZE_BOUNDARY at all
+  // (mol_fast.js:178 "free-boundary advection"; only r_c is enforced), while h2o_mep.html inherited
+  // FREEZE_BOUNDARY=true from h2o_split.html, which molecule.js:1562 says means "the free-boundary
+  // stationarity condition is never imposed". Same +3 three-split O, frozen, gave 5.80 D.
+  // gallery.html:2859 records this configuration (r_c=0.5) as stable at 101.6 deg with 1.638 D.
+  // A time series is logged because at r_c=0 the geometry is known to WANDER (111->100->95 deg),
+  // so a single number is only meaningful if it is actually holding still.
+  // Surface analysis. Runs once, after the energy has stalled, on the relaxed geometry.
+  async function runSurface() {
+    var P   = await window.readPotTotal();
+    var rho = await window.readDensity();
+    var S = window._gridS, h = window._gridH, N2 = window._gridN2, nuc = window._nuclei;
+    function samp(F, x, y, z) {                       // trilinear, grid coords
+      var i0 = Math.floor(x), j0 = Math.floor(y), k0 = Math.floor(z);
+      if (i0 < 0 || j0 < 0 || k0 < 0 || i0 >= S-1 || j0 >= S-1 || k0 >= S-1) return 0;
+      var fx = x-i0, fy = y-j0, fz = z-k0, s = 0;
+      for (var di=0; di<2; di++) for (var dj=0; dj<2; dj++) for (var dk=0; dk<2; dk++)
+        s += (di?fx:1-fx)*(dj?fy:1-fy)*(dk?fz:1-fz) * F[(i0+di)*S*S + (j0+dj)*S + (k0+dk)];
+      return s;
+    }
+    function V(x, y, z) {
+      var v = 0;
+      for (var a = 0; a < nuc.length; a++) {
+        var Za = nuc[a].Z || 0; if (!Za) continue;
+        var dx = (x-nuc[a].i)*h, dy = (y-nuc[a].j)*h, dz = (z-nuc[a].k)*h;
+        var r = Math.sqrt(dx*dx+dy*dy+dz*dz), rc = nuc[a].rc > 0 ? nuc[a].rc : 2*h;
+        v += Za / Math.max(r, rc);
+      }
+      return v - 2 * samp(P, x, y, z);                // factor 2: V_Hartree = 2*P_total
+    }
+    function gradV(x,y,z){ return [ (V(x+1,y,z)-V(x-1,y,z))/(2*h),
+                                    (V(x,y+1,z)-V(x,y-1,z))/(2*h),
+                                    (V(x,y,z+1)-V(x,y,z-1))/(2*h) ]; }
+    // MONOPOLE SELF-CHECK first: <V>*r = Q_enclosed, which must equal the net charge. Cheap,
+    // exact, needs no external reference, and it is what caught the GAD65 field being wrong.
+    // CONVENTION-FREE POLARITY CHECK. No dipole formula, no potential, no factor of 2 -- just
+    // WHERE THE NEGATIVE CHARGE SITS relative to the positive charge.
+    //   nuclear charge centroid  R_N = sum_a Z_a R_a / sum_a Z_a
+    //   electron centroid        R_e = sum_cells rho*r / sum_cells rho
+    // Water: oxygen is far more electronegative, so R_e MUST lie on the oxygen side of R_N, i.e.
+    // (R_e - R_N) points AWAY from the hydrogens. If it points toward them, the model really has
+    // the anisotropy backwards; if it points away, then my V construction or dipole reading is
+    // sign-flipped and the model is fine. The monopole test cannot see this -- it probes l=0 only,
+    // and every candidate error here lives at l=1.
+    var nx=0, ny=0, nz=0, nq=0;
+    for (var a3=0; a3<nuc.length; a3++){
+      var Z3 = nuc[a3].Z || 0; if (!Z3) continue;
+      nx += Z3*nuc[a3].i; ny += Z3*nuc[a3].j; nz += Z3*nuc[a3].k; nq += Z3;
+    }
+    nx/=nq; ny/=nq; nz/=nq;
+    var ex=0, ey=0, ez=0, ew=0;
+    for (var i4=1;i4<S-1;i4++) for (var j4=1;j4<S-1;j4++) for (var k4=1;k4<S-1;k4++){
+      var rv = rho[i4*S*S + j4*S + k4];
+      if (!(rv>1e-9)) continue;
+      ex += rv*i4; ey += rv*j4; ez += rv*k4; ew += rv;
+    }
+    ex/=ew; ey/=ew; ez/=ew;
+    // H bisector direction, from the O kernel toward the midpoint of the two hydrogens
+    var hIdx = [], oPos = null;
+    for (var a4=0; a4<nuc.length; a4++){
+      if ((nuc[a4].Z||0) === 1) hIdx.push(a4);
+      if ((nuc[a4].Z||0) > 1) oPos = nuc[a4];
+    }
+    var polarity = null;
+    if (hIdx.length === 2 && oPos){
+      var hx=(nuc[hIdx[0]].i+nuc[hIdx[1]].i)/2, hy2=(nuc[hIdx[0]].j+nuc[hIdx[1]].j)/2,
+          hz=(nuc[hIdx[0]].k+nuc[hIdx[1]].k)/2;
+      var bx=hx-oPos.i, by=hy2-oPos.j, bz=hz-oPos.k;
+      var bl=Math.sqrt(bx*bx+by*by+bz*bz)||1; bx/=bl; by/=bl; bz/=bl;
+      var dx3=(ex-nx), dy3=(ey-ny), dz3=(ez-nz);          // electron centroid minus nuclear centroid
+      var proj3 = (dx3*bx + dy3*by + dz3*bz) * h;          // a.u., + = toward the H's
+      polarity = { sepAu: Number((Math.sqrt(dx3*dx3+dy3*dy3+dz3*dz3)*h).toPrecision(4)),
+                   towardH_au: Number(proj3.toPrecision(4)),
+                   verdict: proj3 < 0 ? 'electrons on the O side -- CORRECT'
+                                      : 'electrons on the H side -- INVERTED',
+                   R_N: [Number(nx.toFixed(3)),Number(ny.toFixed(3)),Number(nz.toFixed(3))],
+                   R_e: [Number(ex.toFixed(3)),Number(ey.toFixed(3)),Number(ez.toFixed(3))],
+                   bisector: [Number(bx.toFixed(3)),Number(by.toFixed(3)),Number(bz.toFixed(3))] };
+    }
+
+    var ga = Math.PI*(3-Math.sqrt(5)), mono = [];
+    [3,4,5,6].forEach(function(rA){
+      var s=0,c=0;
+      for (var t=0;t<400;t++){
+        var yy=1-2*(t+0.5)/400, rr=Math.sqrt(Math.max(0,1-yy*yy)), th=ga*t;
+        var g=[N2+rr*Math.cos(th)*rA/h, N2+yy*rA/h, N2+rr*Math.sin(th)*rA/h];
+        if (g[0]<1||g[1]<1||g[2]<1||g[0]>S-2||g[1]>S-2||g[2]>S-2) continue;
+        s+=V(g[0],g[1],g[2]); c++;
+      }
+      mono.push({ r: rA, Qenc: c ? Number((s/c*rA).toPrecision(4)) : null });
+    });
+    var qn = 0; for (var a2=0;a2<nuc.length;a2++) qn += (nuc[a2].Z||0);
+    // ISOSURFACE: last crossing of rho = 0.001 a.u. outward along each of 300 rays
+    var pts = [];
+    for (var t2=0;t2<300;t2++){
+      var yy2=1-2*(t2+0.5)/300, rr2=Math.sqrt(Math.max(0,1-yy2*yy2)), th2=ga*t2;
+      var u=[rr2*Math.cos(th2), yy2, rr2*Math.sin(th2)], rHit=null;
+      for (var rA2=0.4; rA2<=7.0; rA2+=0.04){
+        var g2=[N2+u[0]*rA2/h, N2+u[1]*rA2/h, N2+u[2]*rA2/h];
+        if (g2[0]<2||g2[1]<2||g2[2]<2||g2[0]>S-3||g2[1]>S-3||g2[2]>S-3) break;
+        if (samp(rho,g2[0],g2[1],g2[2]) >= 0.001) rHit = rA2;
+      }
+      if (rHit===null) continue;
+      var gp=[N2+u[0]*rHit/h, N2+u[1]*rHit/h, N2+u[2]*rHit/h];
+      var gr=gradV(gp[0],gp[1],gp[2]);
+      pts.push({ u:u, r:rHit, V:V(gp[0],gp[1],gp[2]),
+                 gm:Math.hypot(gr[0],gr[1],gr[2]),
+                 En:-(gr[0]*u[0]+gr[1]*u[1]+gr[2]*u[2]) });   // outward normal component
+    }
+    if (!pts.length) return { err:'no isosurface found', mono:mono, netCharge:qn };
+    var byV = pts.slice().sort(function(a,b){return a.V-b.V;});
+    var lo = byV[0], hi = byV[byV.length-1];
+    var byG = pts.slice().sort(function(a,b){return a.gm-b.gm;});
+    var K = 627.51;
+    return {
+      polarity: polarity, mono: mono, netCharge: qn, n: pts.length,
+      rMin: Number(byG.reduce(function(m,p){return Math.min(m,p.r);},9).toFixed(3)),
+      rMax: Number(byG.reduce(function(m,p){return Math.max(m,p.r);},0).toFixed(3)),
+      Vmin_kcal: Number((lo.V*K).toFixed(2)), Vmin_u: lo.u.map(function(x){return Number(x.toFixed(3));}),
+      Vmax_kcal: Number((hi.V*K).toFixed(2)), Vmax_u: hi.u.map(function(x){return Number(x.toFixed(3));}),
+      Vmean_kcal: Number((pts.reduce(function(s,p){return s+p.V;},0)/pts.length*K).toFixed(2)),
+      Fmin: Number(byG[0].gm.toPrecision(4)), Fmax: Number(byG[byG.length-1].gm.toPrecision(4)),
+      Fmean: Number((pts.reduce(function(s,p){return s+p.gm;},0)/pts.length).toPrecision(4)),
+      Fmax_u: byG[byG.length-1].u.map(function(x){return Number(x.toFixed(3));}),
+      En_at_Vmin: Number(lo.En.toPrecision(4)),   // must be NEGATIVE: proton pulled in at acceptor
+      En_at_Vmax: Number(hi.En.toPrecision(4)),   // must be POSITIVE: proton pushed out at donor
+      nAttract: pts.filter(function(p){return p.En<0;}).length,
+      // RAW POINTS, so the surface can be mapped rather than only summarised. Summary statistics
+      // hid the important thing here: V_max and |F|_max both sit nearly perpendicular to the
+      // molecular plane, at the three-way seam the 'third' split leaves along +-z, not at a
+      // hydrogen. [ux, uy, uz, r_au, V_kcal, |F|_Ha_per_au, En] per point.
+      pts: pts.map(function(p){ return [
+        Number(p.u[0].toFixed(3)), Number(p.u[1].toFixed(3)), Number(p.u[2].toFixed(3)),
+        Number(p.r.toFixed(2)), Number((p.V*K).toFixed(2)),
+        Number(p.gm.toPrecision(3)), Number(p.En.toPrecision(3)) ]; })
+    };
+  }
+
+  (function reporter() {
+    // key carries sfix and dyn so a run with the angular split RELEASED cannot be read back as one
+    // with it enforced -- stale-key misreads have already cost time today
+    // SFIX is scoped to the config IIFE above, so re-derive it here rather than reach across.
+    var sfixOn = !/[?&]sfix=0/.test(location.search);
+    var rcTag = '_rc' + (((location.search.match(/[?&]rc=([\d.]+)/)||[])[1]) || '0.5');
+    var KEY = 'mf_h2o_tetra_report' + rcTag + (sfixOn ? '_sfix1' : '_sfix0') +
+              (window.USER_DYNAMICS ? '_dyn' : '_fix');
+    // 21.77 ms/step measured, USER_STEPS = 100000 => the full run is ~2200 s. A 240 s hold lands at
+    // ~11000 steps, still 11% in, which is how the sister page reported a meaningless 0.106 D.
+    // Default to most of the run; ?mins= overrides.
+    var MIN_S = parseInt((location.search.match(/[?&]mins=(\d+)/) || [])[1] || (window.USER_DYNAMICS ? '1800' : '180'), 10);
+    try { localStorage.removeItem(KEY); } catch(e) {}
+    // published guard: without it the interval re-publishes every second once stalled, so the
+    // stored record keeps drifting and never matches what was read (1.3495 D stored vs 1.342 in
+    // the title on the previous run). Publish once, then stop.
+    var t0 = Date.now(), hist = [], since = null, series = [], published = false;
+    setInterval(function() {
+      if (window._E === undefined) return;
+      var el = (Date.now() - t0) / 1000;
+      var mu = window._mu_mag, ang = window._angle;
+      if (series.length === 0 || el - series[series.length-1].s >= 20) {
+        series.push({ s: Math.round(el), E: Number(window._E.toFixed(5)),
+                      muD: mu === undefined ? null : Number((mu*2.5417).toFixed(4)),
+                      ang: ang === undefined ? null : ang });
+      }
+      hist.push({ t: Date.now(), E: window._E });
+      if (hist.length > 12) hist.shift();
+      var st = document.getElementById('loadStatus');
+      if (st) st.textContent = 'elapsed ' + Math.round(el) + 's  E=' + window._E.toFixed(5) +
+        '  mu=' + (mu === undefined ? '?' : (mu*2.5417).toFixed(3)) + ' D' +
+        '  angle=' + (ang === undefined ? '?' : ang);
+      if (el < MIN_S || hist.length < 6) return;
+      var a = hist[0], b = hist[hist.length-1];
+      var dEdt = Math.abs((b.E - a.E) / Math.max((b.t - a.t)/1000, 0.01));
+      if (dEdt < 1e-5) {
+        if (since === null) since = Date.now();
+        if (Date.now() - since > 15000 && !published) {
+          published = true;
+          var rec = { E: window._E, mu_au: mu, mu_D: mu === undefined ? null : mu*2.5417,
+                      mu_x: window._mu_x, mu_y: window._mu_y, mu_z: window._mu_z,
+                      angle: ang === undefined ? null : ang,
+                      elapsed_s: Math.round(el), series: series.slice(-20) };
+          // ---- MEP AND SURFACE FIELD, on the solver's own free boundary and native sectors ----
+          // V(r) = sum_a Z_a/r_a - 2*P_total(r): the molecular electrostatic potential, i.e. the
+          // energy of a unit positive test charge in the frozen density. F = -grad V is the force
+          // it feels. The BOUNDARY is where this is cleanly computable: no nuclear singularity, no
+          // density cusp, no r_c clamp, no sub-cell position dependence -- every force difficulty
+          // sits at a nucleus and none of them is out here.
+          runSurface().then(function(sf) {
+            rec.surface = sf;
+            try { localStorage.setItem(KEY, JSON.stringify(rec)); } catch(e) {}
+            document.title = 'TETRA DONE mu=' + (rec.mu_D === null ? '?' : rec.mu_D.toFixed(3)) +
+                             ' D Vmax=' + (sf && sf.Vmax_kcal !== undefined ? sf.Vmax_kcal.toFixed(1) : '?');
+          }).catch(function(e) {
+            rec.surfaceErr = String(e).slice(0, 160);
+            try { localStorage.setItem(KEY, JSON.stringify(rec)); } catch(e2) {}
+            document.title = 'TETRA DONE (surface failed) mu=' +
+                             (rec.mu_D === null ? '?' : rec.mu_D.toFixed(3));
+          });
+        }
+      } else since = null;
+    }, 1000);
   })();
 
   var status = document.getElementById('loadStatus');

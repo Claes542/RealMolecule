@@ -163,9 +163,16 @@ function step() {
 }
 
 function render() {
-  // Re-scan |v| max for auto-scaling
+  // Re-scan |v| max for auto-scaling — EXCLUDE the right-edge source column
+  // (i = N-1), whose value is held at the source amplitude and would otherwise
+  // dominate the scale and make the propagating wave nearly invisible.
   let m = 1e-9;
-  for (let q = 0; q < NC; q++) { const av = Math.abs(vOld[q]); if (av > m) m = av; }
+  for (let j = 0; j < N; j++) {
+    for (let i = 0; i < N - 1; i++) {
+      const av = Math.abs(vOld[idx(i, j)]);
+      if (av > m) m = av;
+    }
+  }
   vMax = m;
   const invMax = 1 / vMax;
 

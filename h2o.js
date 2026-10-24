@@ -10,7 +10,7 @@ const D_bond = window.USER_D_AU ? Math.round(window.USER_D_AU / (20 / 200)) : 40
 const r_cut = window.USER_RC || [0.1, 0.6, 0.1];   // au, inner w cutoff per nucleus
 let R_out = 2.0;   // au, outer w cutoff
 const NELEC = 3;
-const NRED = 6;  // 3 norms + T + V_eK + V_ee
+const NRED = 9;  // 3 norms + T + V_eK + V_ee + dipole(x,y,z)
 const _uz = window.USER_Z || [1, 2, 1];
 let Z = [..._uz];
 let Ne = [..._uz];    // electron occupation = charge
@@ -170,7 +170,7 @@ ${paramStructWGSL}
 @group(0) @binding(4) var<storage, read> K: array<f32>;
 @group(0) @binding(5) var<storage, read_write> partials: array<f32>;
 
-var<workgroup> sn: array<f32, 768>;
+var<workgroup> sn: array<f32, 1152>;  // 128 × 9
 
 @compute @workgroup_size(128)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>,
@@ -179,23 +179,30 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
   let NM = p.NN - 1u;
   let tot = NM * NM * NM;
 
-  for (var x: u32 = 0u; x < 6u; x++) { sn[lid * 6u + x] = 0.0; }
+  for (var x: u32 = 0u; x < 9u; x++) { sn[lid * 9u + x] = 0.0; }
 
   if (gid.x < tot) {
     let k = (gid.x % NM) + 1u;
     let j = ((gid.x / NM) % NM) + 1u;
     let i = (gid.x / (NM * NM)) + 1u;
     let id = i * p.S2 + j * p.S + k;
+    // Cell coords relative to grid center, in atomic units (for dipole)
+    let xc = (f32(i) - f32(p.N2)) * p.h;
+    let yc = (f32(j) - f32(p.N2)) * p.h;
+    let zc = (f32(k) - f32(p.N2)) * p.h;
 
     var T: f32 = 0.0;
     var VeK: f32 = 0.0;
     var Vee: f32 = 0.0;
+    var dipEx: f32 = 0.0;
+    var dipEy: f32 = 0.0;
+    var dipEz: f32 = 0.0;
     for (var m: u32 = 0u; m < 3u; m++) {
       let o = m * p.S3;
       let v = U[o + id];
       var Zm: f32;
       if (m == 0u) { Zm = p.Z0; } else if (m == 1u) { Zm = p.Z1; } else { Zm = p.Z2; }
-      sn[lid * 6u + m] = v * v * p.h3;
+      sn[lid * 9u + m] = v * v * p.h3;
       if (W[o + id] > 0.1) {
         let a = U[o + id + p.S2] - v;
         let b = U[o + id + p.S] - v;
@@ -204,26 +211,34 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
       }
       VeK -= Zm * K[id] * v * v * p.h3;
       Vee += Zm * Pv[o + id] * v * v * p.h3;
+      // Electronic dipole contribution: -Zm·∫ ρ_m·r dV (Zm = occupation for this orbital)
+      let rho_cell = Zm * v * v * p.h3;
+      dipEx -= rho_cell * xc;
+      dipEy -= rho_cell * yc;
+      dipEz -= rho_cell * zc;
     }
-    sn[lid * 6u + 3u] = T;
-    sn[lid * 6u + 4u] = VeK;
-    sn[lid * 6u + 5u] = Vee;
+    sn[lid * 9u + 3u] = T;
+    sn[lid * 9u + 4u] = VeK;
+    sn[lid * 9u + 5u] = Vee;
+    sn[lid * 9u + 6u] = dipEx;
+    sn[lid * 9u + 7u] = dipEy;
+    sn[lid * 9u + 8u] = dipEz;
   }
 
   workgroupBarrier();
 
   for (var s: u32 = 64u; s > 0u; s >>= 1u) {
     if (lid < s) {
-      for (var x: u32 = 0u; x < 6u; x++) {
-        sn[lid * 6u + x] += sn[(lid + s) * 6u + x];
+      for (var x: u32 = 0u; x < 9u; x++) {
+        sn[lid * 9u + x] += sn[(lid + s) * 9u + x];
       }
     }
     workgroupBarrier();
   }
 
   if (lid == 0u) {
-    let base = wgid.x * 6u;
-    for (var x: u32 = 0u; x < 6u; x++) {
+    let base = wgid.x * 9u;
+    for (var x: u32 = 0u; x < 9u; x++) {
       partials[base + x] = sn[x];
     }
   }
@@ -236,15 +251,15 @@ struct NWG { count: u32 }
 @group(0) @binding(1) var<storage, read_write> sums: array<f32>;
 @group(0) @binding(2) var<uniform> nwg: NWG;
 
-var<workgroup> wg: array<f32, 768>;
+var<workgroup> wg: array<f32, 1152>;  // 128 × 9
 
 @compute @workgroup_size(128)
 fn main(@builtin(local_invocation_index) lid: u32) {
-  for (var x: u32 = 0u; x < 6u; x++) { wg[lid * 6u + x] = 0.0; }
+  for (var x: u32 = 0u; x < 9u; x++) { wg[lid * 9u + x] = 0.0; }
 
   for (var i: u32 = lid; i < nwg.count; i += 128u) {
-    for (var x: u32 = 0u; x < 6u; x++) {
-      wg[lid * 6u + x] += partials[i * 6u + x];
+    for (var x: u32 = 0u; x < 9u; x++) {
+      wg[lid * 9u + x] += partials[i * 9u + x];
     }
   }
 
@@ -252,15 +267,15 @@ fn main(@builtin(local_invocation_index) lid: u32) {
 
   for (var s: u32 = 64u; s > 0u; s >>= 1u) {
     if (lid < s) {
-      for (var x: u32 = 0u; x < 6u; x++) {
-        wg[lid * 6u + x] += wg[(lid + s) * 6u + x];
+      for (var x: u32 = 0u; x < 9u; x++) {
+        wg[lid * 9u + x] += wg[(lid + s) * 9u + x];
       }
     }
     workgroupBarrier();
   }
 
   if (lid == 0u) {
-    for (var x: u32 = 0u; x < 6u; x++) {
+    for (var x: u32 = 0u; x < 9u; x++) {
       sums[x] = wg[x];
     }
   }
@@ -333,6 +348,7 @@ let updateBG = [], reduceBG = [], finalizeBG, normalizeBG = [], extractBG = [];
 let cur = 0, gpuReady = false, computing = false;
 let tStep = 0, E = 0, lastMs = 0;
 let E_T = 0, E_eK = 0, E_ee = 0, E_KK = 0;
+let dipole = [0, 0, 0], dipoleMag = 0;  // total dipole (au); 1 au = 2.5417 Debye
 let gpuError = null;
 
 // Phase system: sweep over distances
@@ -670,6 +686,17 @@ async function doSteps(n) {
   E_T = sumsData[3];
   E_eK = sumsData[4];
   E_ee = sumsData[5];
+  // Dipole moment (au): electron contribution from shader + nuclear contribution (CPU)
+  let dipNx = 0, dipNy = 0, dipNz = 0;
+  for (let a = 0; a < 3; a++) {
+    dipNx += Z_orig[a] * (nucPos[a][0] - N2) * hv;
+    dipNy += Z_orig[a] * (nucPos[a][1] - N2) * hv;
+    dipNz += Z_orig[a] * (nucPos[a][2] - N2) * hv;
+  }
+  dipole[0] = dipNx + sumsData[6];
+  dipole[1] = dipNy + sumsData[7];
+  dipole[2] = dipNz + sumsData[8];
+  dipoleMag = Math.hypot(dipole[0], dipole[1], dipole[2]);
 
   await sliceReadBuf.mapAsync(GPUMapMode.READ);
   sliceData = new Float32Array(sliceReadBuf.getMappedRange().slice(0));
@@ -817,6 +844,12 @@ function draw() {
 
   fill(200);
   text("T=" + E_T.toFixed(4) + " V_eK=" + E_eK.toFixed(4) + " V_ee=" + E_ee.toFixed(4) + " V_KK=" + E_KK.toFixed(4), 5, 50);
+
+  // Dipole moment
+  fill(150, 220, 255);
+  const dipD = dipoleMag * 2.5417;
+  text("dipole=" + dipoleMag.toFixed(4) + " au (" + dipD.toFixed(3) + " D)  dir=("
+    + dipole[0].toFixed(3) + ", " + dipole[1].toFixed(3) + ", " + dipole[2].toFixed(3) + ")", 5, 395);
 
   // Show completed sweep results
   let y = 65;

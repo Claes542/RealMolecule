@@ -66,6 +66,7 @@ CASES = {
     'be8':      ('nucleus_be8_2alpha_cloud.html',56.4996),   # the dumbbell, not one shell
 }
 REFERENCE = 'he4'
+LAM_OVERRIDE = [None]      # --lam pins the size factor, bypassing the scan result
 # The solver stops on |dE| < THRESH between samples. Disabling it entirely (0)
 # does not work: the run then never reports, so the tight threshold is both the
 # convergence fix and the mechanism by which a result comes back at all.
@@ -339,7 +340,8 @@ def phase_ladder(args, grids, budget, cases):
     try:
         for label in cases:
             page, _ = CASES[label]
-            lam = st.get('scan', {}).get(label, {}).get('lambda', 1.0)
+            lam = (LAM_OVERRIDE[0] if LAM_OVERRIDE[0] is not None
+                   else st.get('scan', {}).get(label, {}).get('lambda', 1.0))
             pts, unsettled = [], []
             print(f'--- ladder {label} (lambda {lam:.2f})', flush=True)
             for N in grids:
@@ -398,6 +400,8 @@ def main():
         i = args.index('--grid'); grid = int(args[i + 1]); del args[i:i + 2]
     if '--grids' in args:
         i = args.index('--grids'); grids = [int(x) for x in args[i + 1].split(',')]; del args[i:i + 2]
+    if '--lam' in args:
+        i = args.index('--lam'); LAM_OVERRIDE[0] = float(args[i + 1]); del args[i:i + 2]
     if '--thresh' in args:
         i = args.index('--thresh'); globals()['THRESH'] = float(args[i + 1]); del args[i:i + 2]
     if '--budget' in args:

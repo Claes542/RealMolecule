@@ -21,11 +21,11 @@
       document.body.innerHTML = '<pre>ERROR: ' + msg + '\nLine: ' + line + '\nFile: ' + url + '</pre>';
     };
 
-    var bondLengths = [3.0];
+    var bondLengths = [3.0, 3.5, 4.0, 4.5, 5.0, 5.6, 6.0, 7.0, 8.0];
     var sweepIdx = 0;
     var sweepResults = [];
 
-    var N = 200, scr = 6;
+    var N = 200, scr = 14;   // box big enough for R up to 8 au with 3 au buffer on each side
     var hg = scr / N;
 
     // Each He = 2 H nuclei at adjacent grid points (modeling single Z=2 nucleus), 2 electrons
@@ -37,14 +37,15 @@
       var halfCells = Math.round(0.5 * bond / hg);
       var ci = Math.round(0.5 * scr / hg);
       var cj = Math.round(0.5 * scr / hg);
-      // Both nuclei of each He at same position (adjacent cells)
+      // Both H-atoms of each He at the SAME integer grid cell so _nucMap merges them
+      // into a single +2 nucleus (avoids spurious intra-He V_KK of 1/h_grid).
       return [
-        // He_A: atoms 0,1 at left position
-        { i: ci - halfCells,     j: cj, Z: 1, el: 'H' },
-        { i: ci - halfCells + 1, j: cj, Z: 1, el: 'H' },
-        // He_B: atoms 2,3 at right position
-        { i: ci + halfCells,     j: cj, Z: 1, el: 'H' },
-        { i: ci + halfCells + 1, j: cj, Z: 1, el: 'H' }
+        // He_A: atoms 0,1 both at left position
+        { i: ci - halfCells, j: cj, Z: 1, el: 'H' },
+        { i: ci - halfCells, j: cj, Z: 1, el: 'H' },
+        // He_B: atoms 2,3 both at right position
+        { i: ci + halfCells, j: cj, Z: 1, el: 'H' },
+        { i: ci + halfCells, j: cj, Z: 1, el: 'H' }
       ];
     }
 

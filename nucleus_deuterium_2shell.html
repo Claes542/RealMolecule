@@ -48,7 +48,13 @@
   window.USER_DIRICHLET_EP = 'electron';
   window.USER_LOCKED_GROUPS = [[1, 2]];  // hold the inner/outer proton boundary
   window.INIT_ZEFF = 1;
+  window.CONVERGENCE_THRESHOLD = 0.01;   // auto-stop -> onSweepDone(E)
 })();
+
+window.onSweepDone = function (E) {
+  document.title = 'DEUT DONE E=' + Number(E).toFixed(6);
+  console.log('=== SWEEPDONE DEUT E=' + Number(E).toFixed(6) + ' ===');
+};
 
 var s = document.createElement('script');
 s.src = 'molecule_nucleus.js?t=' + Date.now();
@@ -58,5 +64,6 @@ s.onload = function() {
   document.body.appendChild(p5s);
 };
 document.body.appendChild(s);
+setInterval(function(){ if (window._prevE !== undefined) document.title = 'DEUT E=' + Number(window._prevE).toFixed(6) + ' conv=' + (window._convCount||0); }, 500);
 </script>
 </body></html>

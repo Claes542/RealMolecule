@@ -33,13 +33,13 @@
 
     // N at center; H umbrella opening toward -i
     var ni = N2, nj = N2, nk = N2;
-    var h1 = { i: Math.round(ni - rAxial), j: Math.round(nj + rPerp), k: N2 };
-    var h2 = { i: Math.round(ni - rAxial),
-               j: Math.round(nj + rPerp * Math.cos(2*Math.PI/3)),
-               k: Math.round(nk + rPerp * Math.sin(2*Math.PI/3)) };
-    var h3 = { i: Math.round(ni - rAxial),
-               j: Math.round(nj + rPerp * Math.cos(4*Math.PI/3)),
-               k: Math.round(nk + rPerp * Math.sin(4*Math.PI/3)) };
+    var h1 = { i: ni - rAxial, j: nj + rPerp, k: N2 };
+    var h2 = { i: ni - rAxial,
+               j: nj + rPerp * Math.cos(2*Math.PI/3),
+               k: nk + rPerp * Math.sin(2*Math.PI/3) };
+    var h3 = { i: ni - rAxial,
+               j: nj + rPerp * Math.cos(4*Math.PI/3),
+               k: nk + rPerp * Math.sin(4*Math.PI/3) };
 
     window.USER_NN = N;
     window.USER_SCREEN = scr;
@@ -57,7 +57,7 @@
     var urlSic = new URLSearchParams(location.search).get('sic');
     window.USER_FULL_SELF = (urlSic === '0');
     window.USER_NUCLEI = [
-      { i: ni,   j: nj,   k: nk,   Z: 3, rc: 0.5 },  // N (pseudo, Li-like valence shell)
+      { i: ni,   j: nj,   k: nk,   Z: 3, rc: (function(){var v=parseFloat(new URLSearchParams(location.search).get('rc'));return isFinite(v)?v:0.5;})() },  // N (pseudo, Li-like valence shell)
       { i: h1.i, j: h1.j, k: h1.k, Z: 1, rc: 0.0 },
       { i: h2.i, j: h2.j, k: h2.k, Z: 1, rc: 0.0 },
       { i: h3.i, j: h3.j, k: h3.k, Z: 1, rc: 0.0 },
@@ -78,5 +78,36 @@
   };
   s.onerror = function() { status.textContent += '\nFAILED to load mol_fast.js'; status.style.color = '#f44'; };
   document.body.appendChild(s);
+
+// REPORTER. mol_fast.js exposes _E and _mu_mag/_mu_x/y/z but has no completion hook, and
+// AppleScript sees only the DOM and localStorage -- never page globals. So watch _E here and
+// publish once it stops moving: |dE/dt| < 1e-5 sustained 5 s, the same rule the H3X scan uses.
+(function(){
+  var qs = new URLSearchParams(location.search);
+  var KEY = 'mfnh3_' + (qs.get('bond')||'1.912') + '_rc' + (qs.get('rc')||'0.5')
+          + '_tf' + (qs.get('alpha')||'4.79') + '_scr' + (qs.get('scr')||'12');
+  try { localStorage.removeItem(KEY); } catch(e){}
+  var hist=[], since=null;
+  setInterval(function(){
+    if (window._E === undefined) return;
+    hist.push({t: Date.now(), E: window._E}); if (hist.length > 12) hist.shift();
+    if (hist.length < 6) return;
+    var a=hist[0], b=hist[hist.length-1];
+    var dEdt = Math.abs((b.E-a.E)/Math.max((b.t-a.t)/1000, 0.01));
+    if (dEdt < 1e-5) {
+      if (since === null) since = Date.now();
+      if (Date.now()-since > 5000) {
+        var rec = { E: window._E, mu: window._mu_mag, mux: window._mu_x,
+                    muy: window._mu_y, muz: window._mu_z,
+                    bond: parseFloat(qs.get('bond')||'1.912'),
+                    rc: parseFloat(qs.get('rc')||'0.5'),
+                    alphaTF: parseFloat(qs.get('alpha')||'4.79'),
+                    scr: parseFloat(qs.get('scr')||'12'), nn: 200 };
+        try { localStorage.setItem(KEY, JSON.stringify(rec)); } catch(e){}
+        document.title = 'MFNH3 DONE mu=' + Number(rec.mu).toFixed(3);
+      }
+    } else since = null;
+  }, 1000);
+})();
 </script>
 </body></html>

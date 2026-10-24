@@ -61,14 +61,19 @@ window.__done = false;
 window.onSweepDone = function (E) {
   if (window.__done) return;
   window.__done = true;
-  var r = JSON.stringify({case: window.__label, E: Number(E), steps: window.__steps || null});
+  var r = JSON.stringify({case: window.__label, E: Number(E), trace: window.__trace || []});
   document.title = 'RESULT ' + r;
   document.getElementById('out').textContent = 'RESULT ' + r;
   fetch('/__result?payload=' + encodeURIComponent(r));
 };
 // progress into the DOM so a --dump-dom shows how far it got even without convergence
+window.__trace = [];
 setInterval(function () {
   if (window.__done) return;
+  if (window._prevE !== undefined && isFinite(window._prevE)) {
+    var t = window.__trace;
+    if (!t.length || Math.abs(t[t.length-1] - window._prevE) > 1e-9) t.push(Number(Number(window._prevE).toFixed(4)));
+  }
   var e = document.getElementById('out');
   var g = 'gpu?';
   try { g = 'gpuReady=' + gpuReady + ' gpuError=' + (gpuError || 'none') + ' init=' + (typeof initProgress !== 'undefined' ? initProgress : '?'); }
@@ -83,12 +88,14 @@ setInterval(function () {
 """
 
 
-def build(label, page, grid):
+def build(label, page, grid, thresh=None):
     html = (ROOT / page).read_text()
     body = html[html.index('<script>') + 8:html.rindex('</script>')]
     cfg = body[:body.index('var s = document.createElement')]
     # strip the page's own title-polling and its onSweepDone, keep the USER_* block
     cfg = re.sub(r'window\.onSweepDone\s*=\s*function[\s\S]*?\};', '', cfg)
+    if thresh is not None:
+        cfg += f'\nwindow.CONVERGENCE_THRESHOLD = {thresh};\n'
     if grid:
         # the page computes atom indices from its own gridN, so a bare USER_NN
         # override would leave the seeds outside the box: rescale the page's
@@ -154,6 +161,9 @@ def main():
     timeout_s = 1800
     if '--grid' in args:
         i = args.index('--grid'); grid = int(args[i + 1]); del args[i:i + 2]
+    thresh = None
+    if '--thresh' in args:
+        i = args.index('--thresh'); thresh = float(args[i + 1]); del args[i:i + 2]
     if '--timeout' in args:
         i = args.index('--timeout'); timeout_s = int(args[i + 1]); del args[i:i + 2]
     want = args or list(CASES)
@@ -167,7 +177,7 @@ def main():
     results = {}
     for label in want:
         page, exp = CASES[label]
-        drv = build(label, page, grid)
+        drv = build(label, page, grid, thresh)
         print(f'--- {label} ({page}, grid {grid or "as configured"}) ...', flush=True)
         t0 = time.time()
         r = run(httpd, drv, timeout_s)
@@ -175,7 +185,9 @@ def main():
             print(f'    no result in {timeout_s}s', flush=True)
             continue
         results[label] = r['E']
-        print(f'    E = {r["E"]:.6f}   ({time.time() - t0:.0f}s)', flush=True)
+        tr = r.get('trace') or []
+        tail = ' '.join(f'{v:.3f}' for v in tr[-6:])
+        print(f'    E = {r["E"]:.6f}   ({time.time() - t0:.0f}s)  samples={len(tr)}  tail: {tail}', flush=True)
 
     if 'deuteron' not in results:
         print('\nno deuteron energy: ratios need it as the reference')

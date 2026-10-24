@@ -15,7 +15,7 @@ window.onerror = function (m, src, l) { window.__err.push(m + ' @' + (src||'').s
 // Frozen, shells locked. Solver: molecule_nucleus.js. Scale -2.12 <-> 2.22 MeV
 // (equal-mass charge-cloud model; the old heavy-proton model gave the weaker ratio 9.5).
 (function() {
-  var gridN = 200, scr = 10, N2 = 100;
+  var gridN = 120, scr = 10, N2 = 60;
   var h = scr / gridN;
   var rIn = 0.65, rOut = 1.2;          // seed radii of inner / outer proton shells (au)
   var atoms = [];
@@ -60,19 +60,26 @@ window.onerror = function (m, src, l) { window.__err.push(m + ' @' + (src||'').s
 
 
 
+window.CONVERGENCE_THRESHOLD = 0.0005;
+
 window.__label = 'deuteron';
 window.__done = false;
 window.onSweepDone = function (E) {
   if (window.__done) return;
   window.__done = true;
-  var r = JSON.stringify({case: window.__label, E: Number(E), steps: window.__steps || null});
+  var r = JSON.stringify({case: window.__label, E: Number(E), trace: window.__trace || []});
   document.title = 'RESULT ' + r;
   document.getElementById('out').textContent = 'RESULT ' + r;
   fetch('/__result?payload=' + encodeURIComponent(r));
 };
 // progress into the DOM so a --dump-dom shows how far it got even without convergence
+window.__trace = [];
 setInterval(function () {
   if (window.__done) return;
+  if (window._prevE !== undefined && isFinite(window._prevE)) {
+    var t = window.__trace;
+    if (!t.length || Math.abs(t[t.length-1] - window._prevE) > 1e-9) t.push(Number(Number(window._prevE).toFixed(4)));
+  }
   var e = document.getElementById('out');
   var g = 'gpu?';
   try { g = 'gpuReady=' + gpuReady + ' gpuError=' + (gpuError || 'none') + ' init=' + (typeof initProgress !== 'undefined' ? initProgress : '?'); }

@@ -3,6 +3,14 @@
 <body style="margin:0;background:#000;color:#eee;font-family:monospace">
 <div id="log" style="padding:16px;font-size:14px;line-height:1.7"></div>
 <script>
+window.onerror = function (msg, url, line) {
+  var d = document.getElementById('log');
+  if (d) d.innerHTML = '<b style="color:#f66">ERROR line ' + line + ': ' + msg + '</b>';
+  window._pageError = msg + ' @line ' + line;
+  return false;
+};
+</script>
+<script>
 // Ne ionization energy with the INNER shells spherically symmetric and the OUTER shell in 3D,
 // the core/valence interface a FREE BOUNDARY. No r_c anywhere; Z=10 is the only input.
 //
@@ -55,7 +63,7 @@
 
   window.USER_NN      = N;
   window.USER_SCREEN  = scr;
-  window.USER_ATOMS   = Zel.map(function () { return { i: ci, j: ci, k: ci, Z: 1, el: 'Ne' }; });
+  window.USER_ATOMS   = Zel.map(function (z) { return { i: ci, j: ci, k: ci, Z: z, el: 'Ne' }; });
   window.USER_Z       = Zel;
   window.USER_Z_NUC   = Znuc;
   window.USER_RC      = rcA;                 // no core radius anywhere
