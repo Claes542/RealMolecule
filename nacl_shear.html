@@ -107,8 +107,13 @@
     const y = cy + j * D_NN;
     const isTop = (j === N_PER_AXIS - 1);
     const isBottom = (j === 0);
-    // Apply shear displacement to top layer
-    const dx_shear = isTop ? EPS * Ly_au : 0;
+    // AFFINE shear: layer j moves in proportion to its HEIGHT, dx = eps*y.
+    // Was `isTop ? EPS * Ly_au : 0` -- a STEP, which rigidly slips the top plane over a
+    // rigid block below, putting all the distortion in ONE interlayer gap at twice the
+    // nominal strain instead of shearing the crystal.  That cost 1.0860 Ha at eps=0.02,
+    // a modulus 1e4 above the measured C44.  The top layer is unchanged by this fix:
+    // eps*(N-1)*D_NN == eps*Ly_au.  Only the interior layers were wrong.
+    const dx_shear = EPS * (j * D_NN);
     for (let i = 0; i < N_PER_AXIS; i++) {
       const x = cx + i * D_NN + dx_shear;
       for (let k = 0; k < N_PER_AXIS; k++) {
