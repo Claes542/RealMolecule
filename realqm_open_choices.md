@@ -42,37 +42,30 @@ a given code happens to use.
 
 ---
 
-## 2. H^1 continuity against masked interfaces
+## 2. The interface condition -- SETTLED, and not as this document first had it
 
-**The choice.** Whether the kinetic form is assembled across a domain interface or not.
+**What I first wrote here was wrong**, and the author corrected it. This section said the theory was
+clear (H^1 continuity), that `molecule.js` and `atom.js` were in debt for masking their interfaces,
+and that porting an unmasked stencil was outstanding work. That is a different theory, not a repair.
 
-**What the theory says.** Unambiguous: Psi in H^1(R^3), "the psi_i being continuous across joint
-boundaries Gamma_i ^ Gamma_j" (`RealQM_method.tex:101`). So the straddling faces are assembled.
+**The theory's structure.** For a fixed partition, free variation of psi_i over Omega_i gives
+homogeneous **Neumann** on its own boundary (`FoundChem.tex:185`). Solved that way the values at
+Gamma generically disagree, and **the interface is placed where they agree** -- so continuity is not
+a condition on psi but *the equation that determines Gamma*. `RealQM_method:101` and
+`FoundChem:185` are then consistent: Neumann from varying the density, H^1 from choosing the
+boundary.
 
-**What is done in practice.** Both. The radial atoms solver is already correct — `atom_headless.js`
-has ONE global array `u` partitioned by shell boundaries `M[s]`, with the Laplacian running across
-them. But `molecule.js` masks, in 18 lines across 3 shaders (`700-705, 800-805, 2135-2140`):
-`select(uc, Ui[nbr], l_nbr == myL && !excl)` substitutes the cell's own value whenever the
-neighbour carries a different label. `atom.js` masks in its **energy** (line 262, "Energy: only
-count where this electron's W dominates") while its **operator** couples across the interface via
-`div(W grad U)` with face weights — so one file does it two ways.
+**Why the alternative does not work.** Impose H^1 first and minimise one global field over a fixed
+partition: a minimiser exists for every partition, continuity holds throughout and selects nothing,
+so Gamma must come from stationarity of E(Gamma) instead -- a different condition giving a different
+interface. Measured: Li's core boundary at **0.446** that way against **2.00** from the matching
+condition.
 
-**What is measured** (`tools/axisym_h1.py`, controlled swap, one line apart):
-- at a **symmetry plane** the two agree to **4e-8** — so symmetric systems cannot test this, and
-  He and H2 split on the midplane are null tests;
-- at an **asymmetric** interface, masking under-stiffens by ~5x AND has **no continuum limit**
-  (0.1296 -> 0.1472, still climbing) where H^1 converges to **0.739**;
-- with a **hard** mask on a sharp partition the interface is destroyed, not shifted: R* runs to the
-  scan bound with E = -54.7 against a stable interior R* = 0.446.
-
-**What depends on it.** Anything with an asymmetric interface: molecules, core/valence, shear,
-defects. Not the alkali cell face, which is symmetric.
-
-**What would close it.** Nothing in the theory is unclear here — this one is an implementation debt,
-not a formulation gap. The port of the unmasked stencil plus per-domain charge constraints to the 3D
-solvers is the outstanding work.
-
----
+**So masking the per-domain operator is correct**, `atom.js`'s front speed is the matching condition
+implemented (`c[m]=0; for n!=m: c[m]-=U[n]; c[m]=0.5*(c[m]+U[m])`), and there is no interface gap in
+the formulation. What remains true is only that the two formulations differ a great deal -- 4e-8 at a
+symmetry plane, ~5x apart at an asymmetric one -- so the distinction is consequential and worth
+stating explicitly in the papers, which currently leave a reader to infer it.
 
 ## 3. The core model
 
