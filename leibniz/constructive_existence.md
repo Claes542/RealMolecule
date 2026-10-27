@@ -28,6 +28,18 @@ There is a precedent for accepting this as proof, and it is a good one. The four
 
 And it brings a reformulation with it. A problem can be *well posed in the quantities that are observable while remaining ill posed in the field that carries them*. Mean drag and mean lift for turbulent flow past a bluff body come out to a few per cent on meshes of a few hundred thousand points — small enough for a personal computer, and orders of magnitude coarser than resolving the Kolmogorov scale would require. On those same meshes the pointwise velocity field is not converged and never becomes so. Both facts hold at once. Turbulence stops being the thing that makes fluid mechanics incomputable and becomes the thing that makes the pointwise field irrelevant.
 
+## And It Supplies an Object
+
+There is a third thing constructive existence gives, beyond a number and a bound, and it is the one that has actually produced understanding.
+
+A computed solution is an *object*: a particular flow or a particular charge configuration, held in full, every field at every point, open to being plotted, sectioned, differenced and stared at. An existence proof supplies nothing of the kind. You cannot inspect the QCD vacuum to see why nuclei bind; the construction establishes that the theory is there and leaves you with no configuration to look at.
+
+And inspection is not a figure of speech. The resolution of d'Alembert's paradox and the account of how a wing generates lift were both obtained by looking at computed turbulent solutions — seeing where the instability acted, what it generated, and which part of the surface carried the drag. Both are stated symbolically afterwards, as arguments about stability and about vorticity, not as tables of numbers. The computation did not replace the analysis. It supplied the object the analysis was about.
+
+The same thing happened to me this week in the quantum case, and the parallel is almost verbatim. Asking *which part of the cell carries the kinetic energy* — the analogue of which part of the surface carries the drag — turned a puzzle into a mechanism. The computed valence density turned out to be flat to within eight per cent across the whole outer region, with its peak not at the ion but interstitially, between ions. A density that flat has almost no gradient, so a kinetic term that charges for variation collects almost nothing from it: the whole kinetic energy is one and a half per cent of the total. And more than half of even that little comes from a region occupying under nine per cent of the volume — the climb out of the depletion at the ion core, which is the only real gradient in the cell.
+
+None of that was derived. It was seen, by plotting the thing and looking, and only then written down. An existence theorem for the same model — which, as noted, takes a line — would have yielded none of it.
+
 ## The Same Standard in Quantum Mechanics
 
 None of this is special to fluids, and the quantum case makes the point more sharply because the contrast is starker.
