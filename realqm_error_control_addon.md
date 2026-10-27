@@ -112,8 +112,37 @@ lower energy is *not* the test, and a correct partition may have higher energy t
 admissible one. So the add-on certifies convergence at a given partition and cannot adjudicate
 between partitions.
 
-## Honest summary
+## It is not engineering. It is the existence theory.
 
-This is the one item on `realqm_open_choices.md` that is engineering rather than physics, and it is
-now demonstrated to be engineering, with a working reference. It would have prevented none of the
-interface failures and all of the convergence ones.
+An earlier version of this document filed this as the one open item that was engineering rather than
+physics. That was wrong, and the reason matters.
+
+**Pure existence says nothing.** Three existence results are in play as of October 2026 and not one
+yields a number about matter. A singularity exists for Navier--Stokes under some force -- which says
+nothing about the drag on a wing. QCD exists as a four-dimensional quantum field theory -- which says
+nothing about why helium-4 binds. A RealQM minimiser exists once a perimeter term is included, by BV
+compactness -- which says nothing about the interface, the geometry, or the energy. Each theorem is
+real and its information content about matter is zero.
+
+**Constructive existence says everything, and this repo already defines the standard.**
+`clay_navier_stokes.tex`: the error in the output is "bounded by a quantity the computation itself
+produces", and "adaptivity and error control are the same mechanism" -- with the four-colour theorem
+cited as the precedent for computation accepted as proof, *because* it was reproducible and its error
+controlled. Not "a solution exists" but "here is one, and here is how far it is from the truth".
+
+**So the bound is not hygiene -- it IS RealQM's existence theory**, in the only sense that carries
+information. Without it a calculation asserts a number. With it, every calculation carries a theorem:
+the conforming upper bound `E_computed >= E_min` is a rigorous statement about the model's minimum,
+available for one pass over the solution and no solve.
+
+**And it levels the two programmes, which are not currently level.** The fluid side meets this
+standard: outputs computed, error bounded by the dual, adaptivity and error control unified. The
+quantum side reports `tol=1e-12` in 29 places and watches for "drift" in 19. That asymmetry has been
+the odd feature of this repository all along, and it now has a name -- the fluid work is constructive
+in the author's own sense and the quantum work is not yet.
+
+**What is reached and what is not.** The upper bound is rigorous and cheap. The post-processing
+estimate is asymptotically exact but not a bound (98% of the error on the hydrogen test). The
+asymptotic lower bound held in no row. So RealQM's constructive existence would at present be
+**one-sided**, where G2's is two-sided because the dual supplies the other half. That gap is the real
+remaining work, and it is mathematics rather than coding.
