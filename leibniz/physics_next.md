@@ -1,0 +1,47 @@
+## Mathematics Has Already Been Reframed
+
+The machine Leibniz asked for now exists. He wanted a formal language in which any concept could be written down and a mechanical procedure for drawing out the consequences, so that two people who disagreed could stop arguing and say *calculemus*. Three hundred years later the thing manipulates symbols, derives, writes programs, and produces proofs that proof-checkers accept.
+
+What that does to mathematics is not to end it but to move where the work is. Deriving a consequence from stated premises is the part a machine can do, and now does. What it cannot do is decide which premises are worth stating, or whether a formal description fits the world it claims to describe. Leibniz drew that line himself, in the *Monadology*: there are truths of reasoning, whose opposite is impossible, which follow from what has already been granted; and truths of fact, whose opposite is possible, which have to be checked against how things are. A machine that manipulates symbols correctly delivers every truth of the first kind and none of the second.
+
+So mathematics has been reframed at every level — in teaching, where the premium shifts from executing procedures to formulating and checking them, and in research, where the bottleneck moves from derivation to judgement. That reframing has largely happened. The interesting question is what is next.
+
+## Physics Is Next, and It Is Harder
+
+Physics carries the same division but with an extra burden. A physical theory must not only be internally consistent; it must face measurement. It lives on both sides of Leibniz's line at once: its derivations are truths of reasoning, and its claims about matter are truths of fact.
+
+Which exposes something awkward about the part of physics that touches matter directly. The Schrödinger equation is believed exact for atoms and molecules and is, for almost everything, not solvable. The wave function of *N* electrons is a function of 3*N* variables, so the cost of holding it grows exponentially. Benzene has forty-two electrons and a wave function on a 126-dimensional space; no machine that will ever be built can hold it.
+
+What is used instead is a ladder of substitutes. Coupled cluster is the accurate end and scales as the seventh power of system size, which means tens of atoms. Density functional theory reaches thousands of atoms and carries essentially all of computational materials science — but it asks the user to name an exchange–correlation functional first, and there are several hundred, most of them containing parameters fitted to measured data. The accurate end does not scale; the scalable end is fitted.
+
+Read that against Leibniz's distinction and the problem is sharp. When a calculation disagrees with experiment there is always an ingredient to adjust — a functional, a basis, a correction — and when it agrees, agreement was available by construction. So the equation itself is never what is tested. Uncomputability puts it beyond refutation, and what is beyond refutation is equally beyond confirmation. The unbroken record of success is a property of the arrangement, not a finding about nature. This is not an accusation of bad practice; it is the structural position of a theory whose exact content is out of reach.
+
+## One Model, With Nothing to Select
+
+RealQM is worth following as the clearest example of the alternative. It represents *N* electrons by *N* charge densities on ordinary three-dimensional space, each carrying one unit of charge, occupying regions that do not overlap, with the boundaries between them free and located by minimising the energy. The energy is a localisation term plus the Coulomb energy of the charge configuration, each pair counted once. No antisymmetry, no exchange, no correlation functional. The exclusion principle is not an algebraic condition on a wave function; it is the geometric statement that two electrons do not occupy the same place.
+
+Two consequences matter more than any number it produces.
+
+First, **it is computable**. Cost grows with the number of electrons and the fineness of the grid, not exponentially. So the same model runs on a hydrogen atom, a water molecule, a crystal, and a protein active site. Not a ladder of methods each valid in its own window — one model, across the range.
+
+Second, **there is nothing to select**. Given the nuclear charges and where the nuclei sit, the energy is fully determined. No functional is named, no parameter is chosen per system. And a model with nothing left to choose can be wrong in public: when it disagrees with measurement, there is no ingredient to adjust, so the disagreement is about the model.
+
+That is the reframing. Not a claim to be more accurate than the methods that exist — on absolute energies it is not — but a claim of a different kind, which is that the claims are decidable.
+
+## What It Gets Right, and Where It Stops
+
+Being decidable means some of the verdicts go against it, and those are worth stating plainly, because they are the content of a testable theory rather than apologies for it.
+
+Geometry comes out well: structures, bond angles, the direction of forces. Absolute energies carry errors of a few per cent at best. Differences taken *within* one composition are reliable, because the errors largely cancel; differences taken *across* compositions are not. The equilibrium coefficients of continuum mechanics follow directly from differentiating a computed energy with no averaging of any kind — a real result, and one the standard route cannot get without an ensemble. Dispersion-bound systems are outside its range. Metals are outside its range too, and for a reason that is now understood rather than guessed: what holds the ions of a metal apart is the pressure of electrons that are mutually orthogonal, and a theory whose exclusion principle is geometric has nothing to generate it with when every neighbour is identical.
+
+A theory that can tell you where it fails, and why, is in a different epistemic position from one that cannot fail anywhere.
+
+## Why This Gives Chemistry a New Frame for Biology
+
+The limits just listed look like bad news until you notice where biology actually happens.
+
+Almost nothing in a cell changes composition. A protein changes conformation; a proton moves from one group to another; a substrate binds; a hydrogen-bond network rearranges. Atoms move, and the same atoms are present before and after. That is precisely the regime where this model's errors cancel and its geometry and forces are sound — rearrangement at fixed composition.
+
+Put that together with computability and the frame changes. The question stops being "which method can I afford for a system this size, and which parameterisation do I trust for this chemistry?" and becomes "does the one model hold here?" — a question with an answer that does not depend on who is asking. Electronic structure at biological scale becomes something you compute rather than something you approximate your way toward, and the things one wants to know about an enzyme are structural questions about rearrangement, which is the model's strongest ground.
+
+That is the claim worth making, and it is a claim about frames and not about decimal places: one computable model, nothing selected, spanning atoms through chemistry to the molecules of biology, with failures you can name. Whether it survives is a truth of fact, and must be checked. The machine can now do the checking at a rate that makes checking it realistic — which is the whole of why this is the moment to try.

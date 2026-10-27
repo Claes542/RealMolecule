@@ -1,0 +1,57 @@
+## The Same Nightmare Twice
+
+Two fields, a century apart in their founding equations, have arrived at the same predicament by the same route, and neither seems to have noticed the other.
+
+Quantum chemistry starts from Schrödinger's equation, believed exact for atoms and molecules. The wave function of *N* electrons is a function of 3*N* variables, so storing it costs exponentially in the number of electrons. Benzene has forty-two electrons; its wave function lives on a 126-dimensional space and no machine will ever hold it. What is used instead is density functional theory, which scales — and which asks the user to name an exchange–correlation functional before any number appears. There are several hundred, most containing parameters fitted to measured data.
+
+Fluid mechanics starts from the Navier–Stokes equations, believed exact for ordinary fluids. Resolving a turbulent flow down to the Kolmogorov scale at the Reynolds numbers of an aircraft or a ship is beyond any computer that will be built. What is used instead is a turbulence model — RANS, large-eddy simulation, wall functions — each carrying constants calibrated against measured flows.
+
+In both fields the exact equation is out of computational reach, and in both the practical substitute carries an ingredient supplied by hand. The consequence is identical and it is not about accuracy. **What gets tested is the ingredient, not the equation.** When a calculation disagrees with experiment there is a functional to change or a model constant to retune; when it agrees, agreement was available by construction. The equation is never what failed, because the equation was never evaluated. And a claim that cannot fail cannot be confirmed either: the long record of success belongs to the arrangement, not to nature.
+
+This is not an accusation of bad practice. Both communities do careful work under a real constraint. It is a description of what that constraint does to the epistemic status of the result.
+
+## The Uncomputable Object Was the Wrong Thing to Ask For
+
+Here is the move that both programmes make, and it is the same move.
+
+The 3*N*-dimensional wave function is uncomputable. But nobody measures a wave function. What is measured is an energy, a density, a geometry — and those live in ordinary three-dimensional space. The pointwise velocity field of a turbulent flow is uncomputable. But nobody measures a pointwise velocity field in a turbulent wake. What is measured is a drag, a lift, a mean pressure — and those are averages.
+
+So in both cases the object whose uncomputability blocked everything was never the object anyone needed. It was the object the formalism happened to be written in.
+
+In fluid mechanics this has been made quantitative, and the result deserves to be better known than it is. Mean drag and mean lift for turbulent flow past a bluff body come out to a few per cent on meshes of a few hundred thousand points — small enough to run on a personal computer, and orders of magnitude coarser than a simulation resolving the Kolmogorov scale would need. On those same meshes the pointwise velocity field is *not* converged, and does not become so however far you refine. **Both facts hold at once.** The outputs are stable because their stability factor is moderate; the pointwise field is not, because its stability factor is not.
+
+That is not a compromise or a lucky average. It is a reformulation of what wellposedness should mean: a problem is wellposed in the quantities that are observable, and need not be wellposed in the field that carries them. Turbulence stops being the thing that makes fluid mechanics incomputable and becomes the thing that makes the pointwise field irrelevant.
+
+## And the Error Is Bounded, Not Hoped For
+
+There is a second difference that matters more than it sounds.
+
+In a fitted framework you cannot bound your error. You can compare two meshes, or two functionals, or two turbulence models, and if they agree you take courage. That is a consistency check, not a bound, and it fails exactly when the ingredient is systematically wrong — which is the case it would need to detect.
+
+The alternative computes the bound. For each output of interest a dual problem is linearised about the computed solution and solved backwards; its stability factor is evaluated; the mesh is refined where the product of residual and dual weight is largest. The error in the output is then bounded by a quantity the computation itself produces. Adaptivity and error control turn out to be one mechanism rather than two. You are told how wrong you are, by the calculation, rather than reassured by a trend.
+
+Nothing in a method carrying a tuned constant can offer this, because the error attributable to the constant is not visible to any mesh refinement.
+
+## New Computability, New Results
+
+The reason to care about any of this is that removing the hand-supplied ingredient produces results the fitted frameworks cannot reach, and both programmes have delivered some.
+
+Take the viscosity to zero in a computation with no turbulence model and you do not get potential flow. You get potential flow modified by a three-dimensional rotational separation, and that separation carries drag. That is d'Alembert's paradox resolved — not by boundary layers, but by noticing that the smooth potential solution was never the vanishing-viscosity limit, because the correct limit is turbulent. The same analysis applied to a wing gives lift and drag *without a circulation condition imposed by hand*: the Kutta condition, which classical aerodynamics must supply, stops being an input and becomes an output.
+
+On the quantum side the analogue is that the coefficients of continuum mechanics — the modulus, the equation of state — follow by differentiating a computed energy, with no averaging over microscales and no ensemble. A quantity that the standard route reaches only through statistical machinery becomes a derivative of one number.
+
+In both cases the result was available only once the hand-supplied ingredient was gone. That is the argument for computability, and it is not an argument about decimal places.
+
+## Why There Has Been No Discussion
+
+Both programmes published. Neither prompted much argument. The reasons are worth setting out, because they are structural and not a grievance.
+
+A framework with a fitted ingredient is *more* convenient, not less. It is analytically tractable, teachable on a blackboard, examinable, and it reproduces measurement by construction. Removing the ingredient offers the practitioner a harder computation and a theory that can now embarrass them. That is a worse deal, and no amount of correctness changes it.
+
+Curricula select for what can be transmitted. Potential flow with circulation, and density functional theory with a named functional, are both teachable in a term. A result obtained by inspecting a computed turbulent solution, or by solving a free-boundary problem in three dimensions, is not a problem sheet.
+
+And displacing an established framework needs a practitioner's grievance, not a refutation. Three things have to coincide: the old framework must visibly fail at something people need, the new one must do something they want, and the textbooks must turn over. Resolving a paradox supplies none of the three. Where both approaches give the same lift coefficient for a cruising wing, nobody has a reason to move.
+
+So the leverage is not in the cases where they agree. It is in the cases where the fitted framework is wrong and known to be wrong — stall and post-stall, three-dimensional separation, unsteady and flapping flight; and on the other side, systems where no functional is reliable and the answer matters. One measured case where the hand-supplied ingredient fails and its absence succeeds would do more than twenty years of correct publication, which is a statement about how fields change rather than about who is right.
+
+The honest request is not that anyone believe this. It is that these are claims which *can* fail, made in frameworks where failure would be visible, and that is rarer than it should be. They should be tested rather than left alone.
