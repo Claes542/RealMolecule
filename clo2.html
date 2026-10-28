@@ -123,7 +123,30 @@
   window._atomNames      = names;
   // The flag is USER_DYNAMICS (molecule.js:391).  USER_NUC_DYN does not exist, and
   // setting it leaves the nuclei frozen while looking exactly like a converged geometry.
-  if (dyn) { window.USER_DYNAMICS = true; window.USER_NUC_SUBSTEPS = 2; }
+  //
+  // DO NOT set it true at step 0.  molecule.js auto-enables dynamics at phaseSteps >= 10000
+  // (line 6135) precisely so the electrons relax BEFORE the nuclei are allowed to move;
+  // forcing it on from the start moves the nuclei on forces computed from an unrelaxed
+  // density, and ClO2 then simply flies apart -- Cl-O 2.78 -> 4.53 -> 8.46 au in 44 s,
+  // which is a protocol artefact and not a dissociation.  So ?dyn=1 now only lifts the
+  // suppression and lets the built-in schedule do the releasing; ?settle= moves the step
+  // at which it happens, for the protocol ladder.
+  if (dyn) {
+    window.USER_NUC_SUBSTEPS = 2;
+    var settle = parseInt(q.get('settle') || '0', 10);
+    if (settle > 0) {
+      window.NO_AUTO_DYNAMICS = true;
+      setTimeout(function () {                 // release only after the electrons have settled
+        var iv = setInterval(function () {
+          if (window._phaseSteps === undefined || window._phaseSteps >= settle) {
+            window.USER_DYNAMICS = true; clearInterval(iv);
+          }
+        }, 1000);
+      }, 1000);
+    }
+  } else {
+    window.NO_AUTO_DYNAMICS = true;            // geometry held, for checking the build
+  }
 
   // --- print the geometry that was ACTUALLY built, from the kernel cells ---
   function dist(p, r) { var d = [p[0]-r[0], p[1]-r[1], p[2]-r[2]];
