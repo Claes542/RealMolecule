@@ -161,6 +161,48 @@
     '  absolute energies; and 2 ClO2 vs Cl2O4, which is a difference ACROSS compositions.\n' +
     '\nloading molecule.js ...';
 
+  // --- live readout: poll window._E and window._nucPos, mirror into the DOM and the
+  //     title so the run can be read from outside the page.  AppleScript's injected JS
+  //     sees DOM and localStorage ONLY -- window.* page globals always read undefined
+  //     (feedback_applescript_isolated_world), so everything measured must land here.
+  var out = document.createElement('pre');
+  out.id = 'live';
+  out.style.cssText = 'white-space:pre-wrap;background:#0f141a;border:1px solid #243;'
+    + 'border-left:3px solid #ffb74d;padding:10px 13px;border-radius:6px;max-width:900px;margin-top:10px';
+  out.textContent = 'waiting for the solver ...';
+  document.body.appendChild(out);
+
+  var t0 = Date.now(), nTick = 0;
+  function geomNow() {
+    var P = window._nucPos;
+    if (!P || !P[16]) return null;
+    var cl = P[0], oa = P[8], ob = P[16];           // entry 0 = Cl, 8 = O(a), 16 = O(b)
+    function dcell(p, r) { var d0=p[0]-r[0], d1=p[1]-r[1], d2=p[2]-r[2];
+      return Math.sqrt(d0*d0 + d1*d1 + d2*d2); }
+    var ra = dcell(cl, oa) * h, rb = dcell(cl, ob) * h;
+    var va = [oa[0]-cl[0], oa[1]-cl[1], oa[2]-cl[2]];
+    var vb = [ob[0]-cl[0], ob[1]-cl[1], ob[2]-cl[2]];
+    var dt = va[0]*vb[0] + va[1]*vb[1] + va[2]*vb[2];
+    var La = Math.sqrt(va[0]*va[0]+va[1]*va[1]+va[2]*va[2]);
+    var Lb = Math.sqrt(vb[0]*vb[0]+vb[1]*vb[1]+vb[2]*vb[2]);
+    return { ra: ra, rb: rb, ang: Math.acos(Math.max(-1, Math.min(1, dt/(La*Lb)))) * 180/Math.PI };
+  }
+  setInterval(function () {
+    nTick++;
+    var E = window._E, g = geomNow();
+    var secs = ((Date.now() - t0) / 1000).toFixed(0);
+    var txt = 't=' + secs + 's'
+      + '  E=' + (E === undefined ? 'n/a' : E.toFixed(5))
+      + (g ? '  Cl-O=' + g.ra.toFixed(4) + '/' + g.rb.toFixed(4) + ' au'
+             + ' (' + (g.ra/A2AU).toFixed(4) + '/' + (g.rb/A2AU).toFixed(4) + ' A)'
+             + '  O-Cl-O=' + g.ang.toFixed(3) + ' deg'
+           : '  geom n/a')
+      + '  | n=' + N + ' box=' + scr + ' rc=' + rcCl + '/' + rcO + ' dyn=' + (dyn ? 1 : 0);
+    out.textContent = txt;
+    document.title = 'CLO2 ' + txt;      // read-off channel, as the rho diagnostic does
+    try { localStorage.setItem('clo2_live', txt); } catch (e) {}
+  }, 2000);
+
   var s = document.createElement('script');
   s.src = 'molecule.js?t=' + Date.now();
   s.onerror = function () { document.getElementById('log').innerHTML += '\n<b class="w">failed to load molecule.js</b>'; };
