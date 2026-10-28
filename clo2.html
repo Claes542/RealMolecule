@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<!--
+  clo2.html -- chlorine dioxide, ClO2, in RealQM.
+  =================================================================================
+  WHY THIS SYSTEM.  ClO2 has 19 valence electrons -- ODD -- and is a stable free
+  radical.  In standard quantum mechanics that is what makes it hard: open-shell
+  doublet, UHF or ROHF, spin contamination, a decision about which orbital holds the
+  unpaired electron, and Pauling's "three-electron bond" invented to explain Cl-O
+  distances shorter than a single bond.  Every one of those difficulties is SPIN
+  BOOKKEEPING.
+  RealQM has no spin and no pairing -- Pauli exclusion is replaced by non-overlap of
+  unit charge densities -- so 19 valence electrons means 19 one-electron domains and
+  there is no paired/unpaired distinction to make.  An odd-electron molecule is not a
+  special case here; it is the generic case.  This page is the test of that claim,
+  and the observable is the GEOMETRY, which is where the framework is strong.
+
+  CONSTRUCTION, and why every number in it comes from somewhere.
+    - Cl, O as screened pseudo-kernels with the valence outside: the house
+      construction (mol_fast_menu.html carries Cl as Z=7, rc=0.5 and O as rc=0.5).
+    - One-electron domains, not multi-occupancy blobs: CLAUDE.md's rule, and a
+      charge-N blob has a known intra-domain repulsion defect.
+    - The eight-sector 'cube' split (splitType 7) is the CLOSED OCTET of the packing
+      papers -- a tetrahedron together with its inversion.  Cl is one electron short
+      of the octet, so SEVEN of eight sectors are occupied and one is a vacancy;
+      O is two short, so SIX of eight.  7 + 6 + 6 = 19.  The odd electron survives,
+      and no sector count was invented: it is the octet with holes in it.
+      (Pattern copied from atom_ne_octet.html, which runs this split.)
+    - Nuclear charge is spread evenly over an atom's eight sectors (Z_nuc = 7/8 and
+      6/8), exactly as the Ne octet page spreads +8 over eight sectors, so kernel and
+      partition stay identical whatever the occupancy.
+
+  WHAT THIS PAGE CANNOT DO, so that nobody reads it as doing it.
+    - Every spin observable: the doublet ground state, EPR, hyperfine, the g-tensor.
+      Real RealQM is Coulomb-only.  These are absent structurally, not inaccurately.
+    - Energetics: bond dissociation, the shock-sensitive decomposition, the
+      ClO2/ClO2- couple.  And why ClO2 does NOT dimerise where NO2 gives N2O4 is an
+      energy difference ACROSS compositions (2 ClO2 vs Cl2O4), which is the class in
+      which the errors stop cancelling.
+    - Z = 17 sits at the top of the validated atomic range (Z <= 18, 4+4 packing),
+      so chlorine is inside it but at the edge.  And the Ne octet gave bad ionisation
+      energies (project_ne_octet_ie) -- that was an ENERGY; this is a geometry.
+
+  BEFORE QUOTING ANY ANGLE: ladders, per CLAUDE.md.
+    step:  ?steps=4000 / 8000 / 16000 / 32000
+    mesh:  ?n=120 / 160 / 200 / 240
+    r_c:   ?rc_cl=0.3..0.7 and ?rc_o=0.3..0.7   (r_c is an INPUT, and the water case
+           showed r_c trading the dipole against the angle)
+  Kernel positions are FRACTIONAL on purpose.  Math.round on a kernel position costs
+  39.5 kcal/mol in NH3 and destroys T_d (project_kernel_grid_snapping); the menu page
+  rounds, and this page must not.
+
+  ?dyn=1 releases the nuclei so the geometry is FOUND rather than imposed; the default
+  holds the experimental geometry so the realised build can be checked first.
+-->
+<meta charset="utf-8">
+<title>ClO2 -- chlorine dioxide in RealQM</title>
+<style>
+  body { background:#0b0e12; color:#cfd8dc; font:13px/1.6 -apple-system,Segoe UI,sans-serif; margin:0; padding:14px }
+  #log { white-space:pre-wrap; background:#0f141a; border:1px solid #243; border-left:3px solid #4fc3f7;
+         padding:10px 13px; border-radius:6px; max-width:900px }
+  b.k { color:#4fc3f7 } b.w { color:#ffb74d } b.g { color:#a5d6a7 }
+</style>
+<div id="log">loading...</div>
+
+<script>
+(function () {
+  var q    = new URLSearchParams(location.search);
+  var N    = parseInt(q.get('n') || '200', 10);
+  var scr  = parseFloat(q.get('box')   || '16');
+  var rcCl = parseFloat(q.get('rc_cl') || '0.5');   // mol_fast_menu: Cl rc 0.5
+  var rcO  = parseFloat(q.get('rc_o')  || '0.5');   // mol_fast_menu: O  rc 0.5
+  var steps= parseInt(q.get('steps')   || '32000', 10);
+  var dyn  = q.get('dyn') === '1';
+
+  // --- experimental geometry (microwave): r(Cl-O) = 1.470 A, O-Cl-O = 117.4 deg ---
+  var A2AU = 1 / 0.529177210903;
+  var R    = parseFloat(q.get('r')     || '1.470') * A2AU;
+  var ANG  = parseFloat(q.get('angle') || '117.4');
+  var half = ANG * Math.PI / 360;                    // half-angle in radians
+  var h    = scr / N;
+  var c    = N / 2;                                  // NOT rounded: fractional centre
+
+  // Cl at the centre, C2 axis along +z, molecule in the xz-plane.
+  var ox = R * Math.sin(half), oz = R * Math.cos(half);
+  var posAu = {
+    Cl:  [0, 0, 0],
+    Oa:  [+ox, 0, +oz],
+    Ob:  [-ox, 0, +oz]
+  };
+  function cell(p) { return [c + p[0] / h, c + p[1] / h, c + p[2] / h]; }  // fractional
+
+  // --- octet with holes: Cl 7 of 8 sectors, each O 6 of 8 ---
+  var spec = [
+    { el: 'Cl', pos: posAu.Cl, ne: 7, Znuc: 7, rc: rcCl, axis: [0, 0, 1] },
+    { el: 'O',  pos: posAu.Oa, ne: 6, Znuc: 6, rc: rcO,  axis: [-Math.sin(half), 0, -Math.cos(half)] },
+    { el: 'O',  pos: posAu.Ob, ne: 6, Znuc: 6, rc: rcO,  axis: [+Math.sin(half), 0, -Math.cos(half)] }
+  ];
+
+  var atoms = [], Zel = [], Znuc = [], rcA = [], stype = [], sidx = [], saxis = [], srot = [], names = [];
+  spec.forEach(function (a) {
+    var g = cell(a.pos);
+    for (var m = 0; m < 8; m++) {
+      atoms.push({ i: g[0], j: g[1], k: g[2], Z: 1, el: a.el });
+      Zel.push(m < a.ne ? 1 : 0);        // the last 8-ne sectors are the vacancies
+      Znuc.push(a.Znuc / 8);             // spread evenly: sums to a.Znuc
+      rcA.push(a.rc);
+      stype.push('cube'); sidx.push(m); saxis.push(a.axis); srot.push(0);
+      names.push(a.el + ' sector ' + m + (m < a.ne ? '' : ' (vacancy)'));
+    }
+  });
+
+  window.USER_NN         = N;
+  window.USER_SCREEN     = scr;
+  window.USER_STEPS      = steps;
+  window.USER_ATOMS      = atoms;
+  window.USER_Z          = Zel;
+  window.USER_Z_NUC      = Znuc;
+  window.USER_RC         = rcA;
+  window.USER_SPLIT_TYPE = stype;
+  window.USER_SPLIT_IDX  = sidx;
+  window.USER_SPLIT_AXIS = saxis;
+  window.USER_SPLIT_ROT  = srot;
+  window._atomNames      = names;
+  if (dyn) window.USER_NUC_DYN = 1;
+
+  // --- print the geometry that was ACTUALLY built, from the kernel cells ---
+  function dist(p, r) { var d = [p[0]-r[0], p[1]-r[1], p[2]-r[2]];
+    return Math.sqrt(d[0]*d[0] + d[1]*d[1] + d[2]*d[2]) * h; }
+  var gCl = cell(posAu.Cl), gOa = cell(posAu.Oa), gOb = cell(posAu.Ob);
+  var rA = dist(gCl, gOa), rB = dist(gCl, gOb);
+  var va = [gOa[0]-gCl[0], gOa[1]-gCl[1], gOa[2]-gCl[2]];
+  var vb = [gOb[0]-gCl[0], gOb[1]-gCl[1], gOb[2]-gCl[2]];
+  var dot = va[0]*vb[0] + va[1]*vb[1] + va[2]*vb[2];
+  var la = Math.sqrt(va[0]*va[0]+va[1]*va[1]+va[2]*va[2]);
+  var lb = Math.sqrt(vb[0]*vb[0]+vb[1]*vb[1]+vb[2]*vb[2]);
+  var angBuilt = Math.acos(dot / (la * lb)) * 180 / Math.PI;
+
+  var nDom = Zel.filter(function (z) { return z > 0; }).length;
+  var kern = Znuc.reduce(function (s, z) { return s + z; }, 0);
+
+  document.getElementById('log').innerHTML =
+    '<b class="k">ClO2 -- chlorine dioxide, RealQM</b>\n' +
+    'octet with holes: Cl 7 of 8 sectors, each O 6 of 8 -> <b class="g">' + nDom +
+      ' one-electron domains</b> (odd), kernel +' + kern.toFixed(3) + ', net ' +
+      (kern - nDom).toFixed(3) + '\n' +
+    'grid ' + N + '^3, box ' + scr + ' au, h = ' + h.toFixed(4) + ' au, steps ' + steps + '\n' +
+    'r_c: Cl ' + rcCl + ', O ' + rcO + '   (inputs, from mol_fast_menu -- run the r_c ladder)\n' +
+    'nuclei ' + (dyn ? '<b class="w">RELEASED (?dyn=1) -- geometry is being found</b>'
+                     : 'held at the experimental geometry (add ?dyn=1 to release)') + '\n' +
+    '\n<b class="k">geometry actually built</b> (from the kernel cells, not from the input)\n' +
+    '  Cl-O    ' + rA.toFixed(4) + ' / ' + rB.toFixed(4) + ' au   = ' +
+      (rA / A2AU).toFixed(4) + ' / ' + (rB / A2AU).toFixed(4) + ' A' +
+      '   [target ' + R.toFixed(4) + ' au = ' + (R / A2AU).toFixed(3) + ' A]\n' +
+    '  O-Cl-O  ' + angBuilt.toFixed(3) + ' deg   [target ' + ANG.toFixed(1) + ' deg]\n' +
+    '  positions are FRACTIONAL cells -- no Math.round anywhere\n' +
+    '\n<b class="w">ladders before any number is quoted</b>\n' +
+    '  step  ?steps=4000 / 8000 / 16000 / 32000\n' +
+    '  mesh  ?n=120 / 160 / 200 / 240\n' +
+    '  r_c   ?rc_cl= / ?rc_o=\n' +
+    '\n<b class="w">out of range, structurally</b>  spin (doublet, EPR, hyperfine, g-tensor);\n' +
+    '  absolute energies; and 2 ClO2 vs Cl2O4, which is a difference ACROSS compositions.\n' +
+    '\nloading molecule.js ...';
+
+  var s = document.createElement('script');
+  s.src = 'molecule.js?t=' + Date.now();
+  s.onerror = function () { document.getElementById('log').innerHTML += '\n<b class="w">failed to load molecule.js</b>'; };
+  s.onload  = function () {
+    var p5s = document.createElement('script');
+    p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    document.head.appendChild(p5s);
+  };
+  document.head.appendChild(s);
+})();
+</script>
