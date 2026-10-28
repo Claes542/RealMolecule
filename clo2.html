@@ -121,7 +121,9 @@
   window.USER_SPLIT_AXIS = saxis;
   window.USER_SPLIT_ROT  = srot;
   window._atomNames      = names;
-  if (dyn) window.USER_NUC_DYN = 1;
+  // The flag is USER_DYNAMICS (molecule.js:391).  USER_NUC_DYN does not exist, and
+  // setting it leaves the nuclei frozen while looking exactly like a converged geometry.
+  if (dyn) { window.USER_DYNAMICS = true; window.USER_NUC_SUBSTEPS = 2; }
 
   // --- print the geometry that was ACTUALLY built, from the kernel cells ---
   function dist(p, r) { var d = [p[0]-r[0], p[1]-r[1], p[2]-r[2]];
