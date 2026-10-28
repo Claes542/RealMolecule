@@ -6,13 +6,19 @@ A schoolchild can ask why. Every textbook answers in a paragraph, and the paragr
 
 The person who has spent a career inspecting that paragraph answers **no**, in print, and this post is about what his answer does and does not establish — and about what a different answer looks like when it is scored against his own questions rather than against the numbers.
 
-## The authority's answer is no
+## The authority's answer, and how it changed
 
 Eric Scerri has spent a career on exactly this question — his research programme is stated as the extent to which chemistry *reduces* to quantum mechanics — and Chapter 9 of *The Periodic Table: Its Story and Its Significance* (Oxford, 2007; 2nd edition 2019) is given over to how far modern quantum mechanics can explain the periodic system **from first principles**. His verdict is negative. The chemistry of the table has not been reduced to a purely quantum-mechanical explanation; periodicity and the properties of the elements are not entirely reducible to quantum mechanics, *at least not yet*.
 
 Two qualifications of his own must travel with that, because they are load-bearing and they are the most misread part of his position. **He is not saying the calculations fail.** He grants that *ab initio* computation reproduces configurations and energies. His claim is that reproducing an answer numerically is not deriving the rule — calculation is not explanation. And **at least not yet** means he claims no impossibility; the thing has not been done, which is a weaker and far more defensible statement than the one often attributed to him.
 
 So this is not a fringe objection to be argued for. It is the reference position in the field, and it is contested from the other side — Ostrovsky, in *Foundations of Chemistry* — rather than from his.
+
+**And then he moved.** Anyone citing Scerri for a flat denial is citing the book and not the man. Writing in *Inference* in April 2017 he put it this way: "The reduction of the periodic table to quantum mechanics is far more successful than some chemists … have been willing to admit." On the specific gap he had pressed for twenty years, he allowed that "whether or not the Madelung rule can be derived from quantum mechanics may be irrelevant." And asked directly whether chemistry reduces to physics, his answer was "Yes, almost but not quite."
+
+The reason for the shift is technical, and it is the most interesting thing in the dispute. The Madelung rule is not a statement about which orbitals fill inside a given atom — "the building-up of atoms with electrons does not in fact follow this time-honored rule". It tracks the *differentiating* electron along the sequence of elements, which is a different object. So a demand for its derivation from the Schrödinger equation may be a demand for the derivation of the wrong thing — and that is Scerri's own ground for setting the demand aside, not anyone else's.
+
+The honest summary of his standpoint is therefore not *no* but **almost but not quite**, which is a harder position to argue against and a more useful one to be measured by.
 
 ## His questions, which make a better yardstick than any answer
 
