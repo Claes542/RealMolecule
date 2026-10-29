@@ -59,6 +59,27 @@
     // end before it does -- check E against a longer run before trusting a small difference.
     window.USER_STEPS = parseInt((location.search.match(/[?&]steps=(\d+)/)||[])[1]||"10000",10);
     window.USER_SHELL_MODE = true;
+    // ---- mol_fast's own fixes, which it defaults OFF ----
+    // mol_fast.js documents four defects and supplies a switch for each, every one defaulted
+    // off because "every existing page in this collection was tuned against the unweighted
+    // behaviour".  Of the 63 pages that load it, 3 set the weighted density and 1 sets the rest.
+    // So every published number from this page -- including the relaxed angle -- was obtained
+    // with the domains OVERLAPPING (u is frozen, not zero, where a domain lost the territory
+    // competition) and with the partition applied to ONE integral of four (only the kinetic
+    // energy carries w).  These parameters make that testable instead of assumed.  Defaults are
+    // unchanged, so the page behaves exactly as before unless a URL asks otherwise.
+    //   ?wd=1      USER_WEIGHTED_DENSITY -- density becomes u^2*w in every integral and
+    //              normalisation enforces int u^2 w = target, i.e. the partition is genuine
+    //   ?udec=d    USER_U_DECAY -- collapse the amplitude where w < 0.5, so a lost domain
+    //              stops carrying frozen seed charge
+    //   ?wfloor=f  USER_W_FLOOR -- a retreating domain leaves no residue to regrow from
+    //   (?sfix=0 already exists, and releases the angular split so the sector boundaries are
+    //    free thereafter rather than re-imposed every step)
+    if (/[?&]wd=1/.test(location.search))   window.USER_WEIGHTED_DENSITY = true;
+    var _ud = parseFloat((location.search.match(/[?&]udec=([\d.]+)/)||[])[1]);
+    if (isFinite(_ud)) window.USER_U_DECAY = _ud;
+    var _wf = parseFloat((location.search.match(/[?&]wfloor=([\d.]+)/)||[])[1]);
+    if (isFinite(_wf)) window.USER_W_FLOOR = _wf;
     window.USER_NUCLEI = [
       { i: N2, j: N2, k: N2, Z: 3, rc: RCO, z_init: 2.0, split: 'third', split_idx: 0, split_axis: [0, 0, 1], fixed: true, split_fix: SFIX },  // red: bond → H1 (+x-y)
       { i: N2, j: N2, k: N2, Z: 0, rc: RCO, z_init: 2.0, split: 'third', split_idx: 1, split_axis: [0, 0, 1], fixed: true, split_fix: SFIX },  // green: lone pair (+y)
