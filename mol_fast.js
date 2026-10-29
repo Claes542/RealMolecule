@@ -2138,6 +2138,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
           var cosA = (v1x*v2x + v1y*v2y + v1z*v2z) / (d1 * d2);
           cosA = Math.max(-1, Math.min(1, cosA));
           var angleDeg = Math.acos(cosA) * 180 / Math.PI;
+          // EXPORT IT.  This was drawn to the canvas and never exposed, so every page whose
+          // reporter reads window._angle -- mol_fast_h2o_tetra.html among them -- recorded
+          // angle: null and printed angle=?.  The angles quoted from those pages were read off
+          // the canvas by eye, not captured.  One line, additive: nothing else reads _angle.
+          window._angle = angleDeg;
           fill(255, 220, 150);
           text("angle " + aa[1] + "-" + aa[0] + "-" + aa[2] + " = " + angleDeg.toFixed(1) + "°", 5, 388);
         }

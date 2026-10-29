@@ -94,6 +94,20 @@
     // 104.5) on top of ~50-90 min of relaxation that the electrostatics do not need.
     window.USER_DYNAMICS = !/[?&]dyn=0/.test(location.search);
     window.USER_ANGLE_ATOMS = [0, 3, 4];  // O, H1, H2
+    // LIVE MIRROR.  The reporter below fires only when the energy STALLS, so a run that hits
+    // the step cap first never reports at all -- three 22-minute runs returned nothing that
+    // way.  This writes the current E, angle and dipole to localStorage every few seconds, so
+    // a run can be sampled while it is still going.  Reporting only; changes no physics.
+    setInterval(function () {
+      try {
+        localStorage.setItem('mf_h2o_live', JSON.stringify({
+          t: Math.round(performance.now() / 1000),
+          E: window._E, angle: window._angle, mu: window._mu_mag,
+          wd: !!window.USER_WEIGHTED_DENSITY, udec: window.USER_U_DECAY || 0,
+          sfix: !/[?&]sfix=0/.test(location.search)
+        }));
+      } catch (e) {}
+    }, 4000);
   })();
 
   // REPORTER (reporting only -- changes no physics). mol_fast exposes _E and _mu_* but has no
