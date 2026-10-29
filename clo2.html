@@ -86,6 +86,25 @@
   var steps= parseInt(q.get('steps')   || '32000', 10);
   var dyn  = q.get('dyn') === '1';
 
+  // ---- KERNEL SOFTENING, set by the collapse criterion, not by taste ----
+  //
+  // molecule.js records the criterion: with softening eps = c*h, charge concentrating
+  // in one cell gains ~Z/eps while the kinetic penalty is capped at ~1/h^2, so collapse
+  // sets in once Z*h/c exceeds about 0.1.  Default c = 1, and here the Cl kernel is
+  // Z = 3 at h = box/n = 0.1, giving Z*h/c = 0.3 -- three times over the line.  The
+  // symptom is exactly what the first R ladder showed: E still falling at 1.05 A, below
+  // its value at 1.30 and at 1.47, so the curve has no minimum and the valence is
+  // collapsing onto the kernels rather than finding a bond.
+  //
+  // So c is chosen to satisfy the criterion rather than left at 1:
+  //     c >= Z_max * h / 0.1
+  // With Z_max = 3 and h = 0.1 that is c = 3.  Overridable with ?soft=, and ?soft=1
+  // recovers the old behaviour for comparison.
+  var hTmp  = parseFloat(q.get('box') || '16') / N;
+  var softAuto = Math.max(1, Math.ceil(3 * hTmp / 0.1));
+  var soft  = parseFloat(q.get('soft') || String(softAuto));
+  window.USER_SOFT = soft;
+
   // --- experimental geometry (microwave): r(Cl-O) = 1.470 A, O-Cl-O = 117.4 deg ---
   var A2AU = 1 / 0.529177210903;
   var R    = parseFloat(q.get('r')     || '1.470') * A2AU;
@@ -277,6 +296,8 @@
       '  &mdash; <b class="w">7 is odd, so the radical survives the reduction</b>\n' +
     'grid ' + N + '^3, box ' + scr + ' au, h = ' + h.toFixed(4) + ' au, steps ' + steps + '\n' +
     'r_c: Cl ' + rcCl + ', O ' + rcO + '   (inputs -- run the r_c ladder)\n' +
+    'kernel softening eps = ' + soft.toFixed(2) + '*h  ->  Z*h/c = '
+      + (3*h/soft).toFixed(3) + '  <b class="w">(collapse sets in above ~0.1)</b>\n' +
     'nuclei ' + (dyn ? '<b class="w">released by the built-in schedule at step 10000</b>'
                      : 'held at the experimental geometry (add ?dyn=1 to release)') + '\n' +
     '\n<b class="k">nuclear geometry actually built</b> (from the kernel cells)\n' +
