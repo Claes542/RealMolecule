@@ -167,7 +167,22 @@
   window.USER_SPLIT_AXIS = saxis;
   window.USER_SPLIT_ROT  = srot;
   window._atomNames      = names;
-  if (dyn) window.USER_NUC_SUBSTEPS = 2; else window.NO_AUTO_DYNAMICS = true;
+  // RELEASE THE NUCLEI ON CONVERGENCE, NOT ON A STEP COUNT.
+  //
+  // molecule.js auto-enables dynamics at phaseSteps >= 10000 (line 6135), and for this
+  // system that is far too early: at the experimental geometry the electronic energy
+  // needs about 270 s to settle, falling -10.368 -> -9.821 -> -9.715 -> -9.697 ->
+  // -9.6928 and then flat to 1e-4.  Releasing before that moves the nuclei on forces
+  // from a density still expanding out of an over-bound seed, and ClO2 then runs apart
+  // -- 2.78 -> 7.00 au with the angle collapsing 117 -> 73 -- which is the protocol and
+  // not the molecule.  Setting CONVERGENCE_THRESHOLD switches the gate to three
+  // consecutive frames within tolerance (line 6141), which is what should decide it.
+  if (dyn) {
+    window.USER_NUC_SUBSTEPS   = 2;
+    window.CONVERGENCE_THRESHOLD = parseFloat(q.get('conv') || '1e-5');
+  } else {
+    window.NO_AUTO_DYNAMICS = true;
+  }
 
   // ---- the geometry actually built, from the kernel cells ----
   var gCl = cell(posAu.Cl), gOa = cell(posAu.Oa), gOb = cell(posAu.Ob);
