@@ -99,13 +99,43 @@
   var posAu = { Cl: [0,0,0], Oa: [ +R*sh, 0, +R*ch ], Ob: [ -R*sh, 0, +R*ch ] };
   function cell(p) { return [ c + p[0]/h, c + p[1]/h, c + p[2]/h ]; }
 
-  // Azimuth of O(a) in the shader's own in-plane basis (e1 = x, e2 = -z for axis +y).
-  var rot = Math.atan2(-ch, sh);                     // = -31.3 deg at 117.4
+  // ---- where the odd electron is put: ?radical=plane (default) or perp ----
+  //
+  // stdQM assigns ClO2 a X 2B1 ground state, and b1 in C2v is the OUT-OF-PLANE
+  // representation, so the standard picture has the odd electron in a pi* orbital
+  // perpendicular to the molecular plane.  The question is whether this model agrees.
+  //
+  // It cannot be asked as a pure rotation.  A 'third' split bins cells by azimuth
+  // about its axis, so its three sector centres are COPLANAR by construction -- and
+  // the two bond directions together with the out-of-plane direction are not
+  // coplanar: a.O(a) = a.O(b) = a.y = 0 forces a = 0.  So the two variants below are
+  // different PARTITIONS, not one partition rotated, and the energy difference
+  // between them mixes the radical's placement with the shape of the partition.
+  // Stated here because it limits what the comparison can settle.
+  //
+  //   plane  axis +y, sectors fan out IN the molecular xz-plane:
+  //          two on the bonds, the third along -z, away from both oxygens.
+  //          splitRot = azimuth of O(a) in the shader's basis (e1 = x, e2 = -z).
+  //   perp   axis +z, sectors fan out in the xy-plane (e1 = y, e2 = -x):
+  //          sector 1 centred on +y, OUT of the plane; sectors 0 and 2 straddle the
+  //          plane on the O(a) and O(b) sides.  Asymmetry to note: -y also falls in
+  //          sector 0, so that domain carries the O(a) side and the -y region both.
+  var radical = (q.get('radical') === 'perp') ? 'perp' : 'plane';
+  var clAxis, clRot, clLabels;
+  if (radical === 'plane') {
+    clAxis = [0,1,0];
+    clRot  = Math.atan2(-ch, sh);                    // = -31.30 deg at 117.4
+    clLabels = ['bond to O(b)', 'bond to O(a)', 'radical lobe, IN plane, along -z'];
+  } else {
+    clAxis = [0,0,1];
+    clRot  = 0;                                      // puts sector 1 centre on +y
+    clLabels = ['O(a) side (and the -y region)', 'radical lobe, OUT of plane, along +y',
+                'O(b) side'];
+  }
 
   var spec = [
     { el:'Cl', pos:posAu.Cl, ne:3, Znuc:3, rc:rcCl, split:'third',
-      axis:[0,1,0], rot:rot,
-      labels:['bond to O(b)', 'bond to O(a)', 'radical lobe, away from both O'] },
+      axis:clAxis, rot:clRot, labels:clLabels },
     { el:'O',  pos:posAu.Oa, ne:2, Znuc:2, rc:rcO,  split:'hemi',
       axis:[-sh,0,-ch], rot:0, labels:['far side', 'bond side, toward Cl'] },
     { el:'O',  pos:posAu.Ob, ne:2, Znuc:2, rc:rcO,  split:'hemi',
@@ -151,17 +181,39 @@
   var angBuilt = Math.acos(dp/(La*Lb))*180/Math.PI;
 
   // ---- the SECTOR geometry actually built: where each Cl third points ----
-  // Reproduce the shader's basis for axis +y, then report each sector's centre.
+  // Reproduce the shader's own basis (molecule.js:461-474) for whatever axis is in
+  // use, so the printout is a check and not a restatement of the input.
+  function shaderBasis(a) {
+    var L = Math.hypot(a[0],a[1],a[2]); a = [a[0]/L, a[1]/L, a[2]/L];
+    var e1 = (Math.abs(a[2]) < 0.9) ? [a[1], -a[0], 0] : [0, a[2], -a[1]];
+    var l1 = Math.hypot(e1[0],e1[1],e1[2]); e1 = [e1[0]/l1, e1[1]/l1, e1[2]/l1];
+    var e2 = [ a[1]*e1[2] - a[2]*e1[1], a[2]*e1[0] - a[0]*e1[2], a[0]*e1[1] - a[1]*e1[0] ];
+    return { a:a, e1:e1, e2:e2 };
+  }
+  var B = shaderBasis(clAxis);
+  function sectorOf(p) {                    // which third a direction falls in
+    var th = Math.atan2(p[0]*B.e2[0]+p[1]*B.e2[1]+p[2]*B.e2[2],
+                        p[0]*B.e1[0]+p[1]*B.e1[1]+p[2]*B.e1[2]) - clRot;
+    while (th < -Math.PI) th += 2*Math.PI;
+    while (th >  Math.PI) th -= 2*Math.PI;
+    return ((Math.floor((th + Math.PI)/(2*Math.PI/3)) % 3) + 3) % 3;
+  }
   var secLines = '';
   for (var m = 0; m < 3; m++) {
-    var thC = -Math.PI + (m + 0.5) * (2*Math.PI/3);   // sector m centre in th
-    var az  = thC + rot;                              // back to azimuth
-    var px  = Math.cos(az), pz = -Math.sin(az);       // e1 = x, e2 = -z
-    var degFromZ = Math.atan2(px, pz) * 180/Math.PI;  // signed angle from +z toward +x
-    secLines += '    Cl sector ' + m + ': points ' + degFromZ.toFixed(1)
-              + ' deg from +z  (' + spec[0].labels[m] + ')\n';
+    var az = -Math.PI + (m + 0.5)*(2*Math.PI/3) + clRot;
+    var u  = [ Math.cos(az)*B.e1[0] + Math.sin(az)*B.e2[0],
+               Math.cos(az)*B.e1[1] + Math.sin(az)*B.e2[1],
+               Math.cos(az)*B.e1[2] + Math.sin(az)*B.e2[2] ];
+    secLines += '    Cl sector ' + m + ' centre = ('
+              + u[0].toFixed(3) + ', ' + u[1].toFixed(3) + ', ' + u[2].toFixed(3) + ')'
+              + '   |y| = ' + Math.abs(u[1]).toFixed(3)
+              + '   (' + clLabels[m] + ')\n';
   }
-  var bondAz = [ (Math.atan2(sh, ch)*180/Math.PI), (Math.atan2(-sh, ch)*180/Math.PI) ];
+  var dirOa = [ sh, 0, ch], dirOb = [-sh, 0, ch], dirY = [0,1,0], dirMz = [0,0,-1];
+  secLines += '    O(a) bond -> sector ' + sectorOf(dirOa)
+            + ',  O(b) bond -> sector ' + sectorOf(dirOb)
+            + ',  +y -> sector ' + sectorOf(dirY)
+            + ',  -z -> sector ' + sectorOf(dirMz) + '\n';
 
   document.getElementById('log').innerHTML =
     '<b class="k">ClO2 -- chlorine dioxide, RealQM</b>\n' +
@@ -182,10 +234,16 @@
     '  O-Cl-O  ' + angBuilt.toFixed(3) + ' deg   [target ' + ANG.toFixed(1) + ' deg]\n' +
     '  fractional cells, no Math.round\n' +
     '\n<b class="k">electron geometry actually built</b> (sector centres, checked not assumed)\n' +
+    '  radical placement: <b class="w">' + radical.toUpperCase() + '</b>' +
+      (radical === 'plane' ? '  (odd electron IN the molecular plane, along -z)'
+                           : '  (odd electron OUT of the plane, along +y -- the b1 direction)') +
+      '   &mdash; switch with ?radical=plane|perp\n' +
     secLines +
-    '    bonds lie at ' + bondAz[0].toFixed(1) + ' and ' + bondAz[1].toFixed(1) +
-      ' deg from +z, so each bond sits inside its own sector\n' +
     '    O hemi axis = O->Cl, so sector 1 is the bond-side hemisphere and 0 the far side\n' +
+    '    <b class="w">caveat:</b> the two variants are different PARTITIONS, not one rotated,\n' +
+    '    because a third split has coplanar sector centres and the two bonds plus the\n' +
+    '    out-of-plane direction are not coplanar. The energy difference therefore mixes\n' +
+    '    the radical placement with the partition shape.\n' +
     '\n<b class="w">ladders before any number is quoted</b>  ?steps= / ?n= / ?rc_cl= / ?rc_o=\n' +
     '<b class="w">out of range</b>  spin (doublet, EPR, hyperfine, g); absolute energies;\n' +
     '  and 2 ClO2 vs Cl2O4, a difference ACROSS compositions.\n' +
