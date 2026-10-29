@@ -3,72 +3,86 @@
   clo2.html -- chlorine dioxide, ClO2, in RealQM.
   =================================================================================
   WHY THIS SYSTEM.  ClO2 has 19 valence electrons -- ODD -- and is a stable free
-  radical.  In standard quantum mechanics that is what makes it hard: open-shell
-  doublet, UHF or ROHF, spin contamination, a decision about which orbital holds the
-  unpaired electron, and Pauling's "three-electron bond" invented to explain Cl-O
-  distances shorter than a single bond.  Every one of those difficulties is SPIN
-  BOOKKEEPING.
+  radical.  In standard quantum mechanics that is the difficulty: open-shell doublet,
+  UHF or ROHF, spin contamination, a decision about which orbital holds the unpaired
+  electron, and Pauling's "three-electron bond" invented to explain Cl-O distances
+  shorter than a single bond.  Every one of those is SPIN BOOKKEEPING.
   RealQM has no spin and no pairing -- Pauli exclusion is replaced by non-overlap of
-  unit charge densities -- so 19 valence electrons means 19 one-electron domains and
-  there is no paired/unpaired distinction to make.  An odd-electron molecule is not a
-  special case here; it is the generic case.  This page is the test of that claim,
-  and the observable is the GEOMETRY, which is where the framework is strong.
+  unit charge densities -- so an odd electron count is not a special case here, it is
+  the generic case.  The observable is the GEOMETRY, where the framework is strong.
 
-  CONSTRUCTION, and why every number in it comes from somewhere.
-    - Cl, O as screened pseudo-kernels with the valence outside: the house
-      construction (mol_fast_menu.html carries Cl as Z=7, rc=0.5 and O as rc=0.5).
-    - One-electron domains, not multi-occupancy blobs: CLAUDE.md's rule, and a
-      charge-N blob has a known intra-domain repulsion defect.
-    - The eight-sector 'cube' split (splitType 7) is the CLOSED OCTET of the packing
-      papers -- a tetrahedron together with its inversion.  Cl is one electron short
-      of the octet, so SEVEN of eight sectors are occupied and one is a vacancy;
-      O is two short, so SIX of eight.  7 + 6 + 6 = 19.  The odd electron survives,
-      and no sector count was invented: it is the octet with holes in it.
-      (Pattern copied from atom_ne_octet.html, which runs this split.)
-    - Nuclear charge is spread evenly over an atom's eight sectors (Z_nuc = 7/8 and
-      6/8), exactly as the Ne octet page spreads +8 over eight sectors, so kernel and
-      partition stay identical whatever the occupancy.
+  THE MODEL.  Reduced bonding valence on screened pseudo-kernels, which is the house
+  convention (mol_fast_menu.html: O is Z=2 rc=0.5, N is Z=3, C is Z=4, F is Z=5):
 
-  WHAT THIS PAGE CANNOT DO, so that nobody reads it as doing it.
+      Cl   kernel +3,  3 valence electrons   'third' split, 3 sectors at 120 deg
+      O    kernel +2,  2 valence electrons   'hemi'  split, 2 hemispheres
+      O    kernel +2,  2 valence electrons   'hemi'
+
+      7 one-electron domains, kernel +7, net 0.  SEVEN IS ODD, so the radical
+      character survives the reduction, which is the whole point of the test.
+
+  Chlorine at +3 is two Cl-O bonds plus the odd electron, on the same reading that
+  makes O two bonds and N three.  No sector count is invented: 3 and 2 are splits the
+  machinery already has, so unlike the 8-sector octet-with-holes construction there
+  are no vacancies whose orientation has to be guessed.
+
+  SECTOR ORIENTATION, derived rather than assumed.  For splitType 3 ('third') the
+  shader builds its in-plane basis as e1 = (a1,-a0,0) and e2 = a x e1 (molecule.js
+  :461-474).  With the molecule in the xz-plane and the split axis along +y, that
+  gives e1 = x, e2 = -z, so a direction's azimuth is atan2(-p_z, p_x).  Setting
+  splitRot to the azimuth of O(a) puts
+      sector 1 -> bond to O(a)      sector 0 -> bond to O(b)
+      sector 2 -> the radical direction, -z, away from both oxygens
+  with separations 117.4 / 121.3 / 121.3 deg against the sectors' 120.  For 'hemi'
+  the axis is the O->Cl direction, so sector 1 (dotp >= 0) is the bond-side
+  hemisphere and sector 0 the far side -- both occupied, nothing to orient.
+
+  The page PRINTS the realised sector directions, not just the bond lengths: the
+  electron geometry has to be checked the way CLAUDE.md requires the nuclear geometry
+  to be checked, and a wrongly aimed sector would not show up in a bond length.
+
+  WHAT THIS CANNOT DO, so nobody reads it as doing it.
     - Every spin observable: the doublet ground state, EPR, hyperfine, the g-tensor.
-      Real RealQM is Coulomb-only.  These are absent structurally, not inaccurately.
-    - Energetics: bond dissociation, the shock-sensitive decomposition, the
-      ClO2/ClO2- couple.  And why ClO2 does NOT dimerise where NO2 gives N2O4 is an
-      energy difference ACROSS compositions (2 ClO2 vs Cl2O4), which is the class in
-      which the errors stop cancelling.
-    - Z = 17 sits at the top of the validated atomic range (Z <= 18, 4+4 packing),
-      so chlorine is inside it but at the edge.  And the Ne octet gave bad ionisation
-      energies (project_ne_octet_ie) -- that was an ENERGY; this is a geometry.
+      Coulomb-only, so these are absent structurally, not inaccurately.
+    - Absolute energies, and 2 ClO2 vs Cl2O4 -- a difference ACROSS compositions,
+      which is the class where the errors stop cancelling.
+    - Z = 17 is at the top of the validated atomic range (Z <= 18, 4+4 packing), so
+      chlorine is inside it but at the edge.
 
   BEFORE QUOTING ANY ANGLE: ladders, per CLAUDE.md.
-    step:  ?steps=4000 / 8000 / 16000 / 32000
-    mesh:  ?n=120 / 160 / 200 / 240
-    r_c:   ?rc_cl=0.3..0.7 and ?rc_o=0.3..0.7   (r_c is an INPUT, and the water case
-           showed r_c trading the dipole against the angle)
+    step   ?steps=4000 / 8000 / 16000 / 32000
+    mesh   ?n=120 / 160 / 200 / 240
+    r_c    ?rc_cl= and ?rc_o=    (r_c is an INPUT; the water case showed r_c trading
+                                 the dipole against the angle)
   Kernel positions are FRACTIONAL on purpose.  Math.round on a kernel position costs
   39.5 kcal/mol in NH3 and destroys T_d (project_kernel_grid_snapping); the menu page
   rounds, and this page must not.
 
-  ?dyn=1 releases the nuclei so the geometry is FOUND rather than imposed; the default
-  holds the experimental geometry so the realised build can be checked first.
+  ?dyn=1 lets the built-in schedule release the nuclei, so the geometry is FOUND.
+  Do NOT set USER_DYNAMICS at step 0: molecule.js auto-enables at phaseSteps >= 10000
+  (line 6135) so the electrons relax first, and forcing it on earlier moves the nuclei
+  on forces from an unrelaxed density -- ClO2 then flies apart, 2.78 -> 8.46 au in
+  44 s, which is a protocol artefact and not a dissociation.
 -->
 <meta charset="utf-8">
 <title>ClO2 -- chlorine dioxide in RealQM</title>
 <style>
   body { background:#0b0e12; color:#cfd8dc; font:13px/1.6 -apple-system,Segoe UI,sans-serif; margin:0; padding:14px }
-  #log { white-space:pre-wrap; background:#0f141a; border:1px solid #243; border-left:3px solid #4fc3f7;
-         padding:10px 13px; border-radius:6px; max-width:900px }
+  pre.box { white-space:pre-wrap; background:#0f141a; border:1px solid #243; padding:10px 13px;
+            border-radius:6px; max-width:940px }
+  #log  { border-left:3px solid #4fc3f7 }
+  #live { border-left:3px solid #ffb74d; margin-top:10px }
   b.k { color:#4fc3f7 } b.w { color:#ffb74d } b.g { color:#a5d6a7 }
 </style>
-<div id="log">loading...</div>
+<pre class="box" id="log">loading...</pre>
 
 <script>
 (function () {
   var q    = new URLSearchParams(location.search);
   var N    = parseInt(q.get('n') || '200', 10);
   var scr  = parseFloat(q.get('box')   || '16');
-  var rcCl = parseFloat(q.get('rc_cl') || '0.5');   // mol_fast_menu: Cl rc 0.5
-  var rcO  = parseFloat(q.get('rc_o')  || '0.5');   // mol_fast_menu: O  rc 0.5
+  var rcCl = parseFloat(q.get('rc_cl') || '0.5');
+  var rcO  = parseFloat(q.get('rc_o')  || '0.5');   // mol_fast_menu: O at Z=2 uses rc 0.5
   var steps= parseInt(q.get('steps')   || '32000', 10);
   var dyn  = q.get('dyn') === '1';
 
@@ -76,36 +90,38 @@
   var A2AU = 1 / 0.529177210903;
   var R    = parseFloat(q.get('r')     || '1.470') * A2AU;
   var ANG  = parseFloat(q.get('angle') || '117.4');
-  var half = ANG * Math.PI / 360;                    // half-angle in radians
+  var half = ANG * Math.PI / 360;
   var h    = scr / N;
-  var c    = N / 2;                                  // NOT rounded: fractional centre
+  var c    = N / 2;                                  // fractional centre, NOT rounded
 
   // Cl at the centre, C2 axis along +z, molecule in the xz-plane.
-  var ox = R * Math.sin(half), oz = R * Math.cos(half);
-  var posAu = {
-    Cl:  [0, 0, 0],
-    Oa:  [+ox, 0, +oz],
-    Ob:  [-ox, 0, +oz]
-  };
-  function cell(p) { return [c + p[0] / h, c + p[1] / h, c + p[2] / h]; }  // fractional
+  var sh = Math.sin(half), ch = Math.cos(half);
+  var posAu = { Cl: [0,0,0], Oa: [ +R*sh, 0, +R*ch ], Ob: [ -R*sh, 0, +R*ch ] };
+  function cell(p) { return [ c + p[0]/h, c + p[1]/h, c + p[2]/h ]; }
 
-  // --- octet with holes: Cl 7 of 8 sectors, each O 6 of 8 ---
+  // Azimuth of O(a) in the shader's own in-plane basis (e1 = x, e2 = -z for axis +y).
+  var rot = Math.atan2(-ch, sh);                     // = -31.3 deg at 117.4
+
   var spec = [
-    { el: 'Cl', pos: posAu.Cl, ne: 7, Znuc: 7, rc: rcCl, axis: [0, 0, 1] },
-    { el: 'O',  pos: posAu.Oa, ne: 6, Znuc: 6, rc: rcO,  axis: [-Math.sin(half), 0, -Math.cos(half)] },
-    { el: 'O',  pos: posAu.Ob, ne: 6, Znuc: 6, rc: rcO,  axis: [+Math.sin(half), 0, -Math.cos(half)] }
+    { el:'Cl', pos:posAu.Cl, ne:3, Znuc:3, rc:rcCl, split:'third',
+      axis:[0,1,0], rot:rot,
+      labels:['bond to O(b)', 'bond to O(a)', 'radical lobe, away from both O'] },
+    { el:'O',  pos:posAu.Oa, ne:2, Znuc:2, rc:rcO,  split:'hemi',
+      axis:[-sh,0,-ch], rot:0, labels:['far side', 'bond side, toward Cl'] },
+    { el:'O',  pos:posAu.Ob, ne:2, Znuc:2, rc:rcO,  split:'hemi',
+      axis:[ sh,0,-ch], rot:0, labels:['far side', 'bond side, toward Cl'] }
   ];
 
-  var atoms = [], Zel = [], Znuc = [], rcA = [], stype = [], sidx = [], saxis = [], srot = [], names = [];
+  var atoms=[], Zel=[], Znuc=[], rcA=[], stype=[], sidx=[], saxis=[], srot=[], names=[];
   spec.forEach(function (a) {
     var g = cell(a.pos);
-    for (var m = 0; m < 8; m++) {
-      atoms.push({ i: g[0], j: g[1], k: g[2], Z: 1, el: a.el });
-      Zel.push(m < a.ne ? 1 : 0);        // the last 8-ne sectors are the vacancies
-      Znuc.push(a.Znuc / 8);             // spread evenly: sums to a.Znuc
+    for (var m = 0; m < a.ne; m++) {
+      atoms.push({ i:g[0], j:g[1], k:g[2], Z:1, el:a.el });
+      Zel.push(1);
+      Znuc.push(a.Znuc / a.ne);        // spread evenly; sums to a.Znuc
       rcA.push(a.rc);
-      stype.push('cube'); sidx.push(m); saxis.push(a.axis); srot.push(0);
-      names.push(a.el + ' sector ' + m + (m < a.ne ? '' : ' (vacancy)'));
+      stype.push(a.split); sidx.push(m); saxis.push(a.axis); srot.push(a.rot);
+      names.push(a.el + ' ' + m + ': ' + a.labels[m]);
     }
   });
 
@@ -121,120 +137,99 @@
   window.USER_SPLIT_AXIS = saxis;
   window.USER_SPLIT_ROT  = srot;
   window._atomNames      = names;
-  // The flag is USER_DYNAMICS (molecule.js:391).  USER_NUC_DYN does not exist, and
-  // setting it leaves the nuclei frozen while looking exactly like a converged geometry.
-  //
-  // DO NOT set it true at step 0.  molecule.js auto-enables dynamics at phaseSteps >= 10000
-  // (line 6135) precisely so the electrons relax BEFORE the nuclei are allowed to move;
-  // forcing it on from the start moves the nuclei on forces computed from an unrelaxed
-  // density, and ClO2 then simply flies apart -- Cl-O 2.78 -> 4.53 -> 8.46 au in 44 s,
-  // which is a protocol artefact and not a dissociation.  So ?dyn=1 now only lifts the
-  // suppression and lets the built-in schedule do the releasing; ?settle= moves the step
-  // at which it happens, for the protocol ladder.
-  if (dyn) {
-    window.USER_NUC_SUBSTEPS = 2;
-    var settle = parseInt(q.get('settle') || '0', 10);
-    if (settle > 0) {
-      window.NO_AUTO_DYNAMICS = true;
-      setTimeout(function () {                 // release only after the electrons have settled
-        var iv = setInterval(function () {
-          if (window._phaseSteps === undefined || window._phaseSteps >= settle) {
-            window.USER_DYNAMICS = true; clearInterval(iv);
-          }
-        }, 1000);
-      }, 1000);
-    }
-  } else {
-    window.NO_AUTO_DYNAMICS = true;            // geometry held, for checking the build
-  }
+  if (dyn) window.USER_NUC_SUBSTEPS = 2; else window.NO_AUTO_DYNAMICS = true;
 
-  // --- print the geometry that was ACTUALLY built, from the kernel cells ---
-  function dist(p, r) { var d = [p[0]-r[0], p[1]-r[1], p[2]-r[2]];
-    return Math.sqrt(d[0]*d[0] + d[1]*d[1] + d[2]*d[2]) * h; }
+  // ---- the geometry actually built, from the kernel cells ----
   var gCl = cell(posAu.Cl), gOa = cell(posAu.Oa), gOb = cell(posAu.Ob);
-  var rA = dist(gCl, gOa), rB = dist(gCl, gOb);
-  var va = [gOa[0]-gCl[0], gOa[1]-gCl[1], gOa[2]-gCl[2]];
-  var vb = [gOb[0]-gCl[0], gOb[1]-gCl[1], gOb[2]-gCl[2]];
-  var dot = va[0]*vb[0] + va[1]*vb[1] + va[2]*vb[2];
-  var la = Math.sqrt(va[0]*va[0]+va[1]*va[1]+va[2]*va[2]);
-  var lb = Math.sqrt(vb[0]*vb[0]+vb[1]*vb[1]+vb[2]*vb[2]);
-  var angBuilt = Math.acos(dot / (la * lb)) * 180 / Math.PI;
+  function d(p,r){ var a=p[0]-r[0], b=p[1]-r[1], e=p[2]-r[2];
+                   return Math.sqrt(a*a+b*b+e*e)*h; }
+  var rA = d(gCl,gOa), rB = d(gCl,gOb);
+  var va=[gOa[0]-gCl[0],gOa[1]-gCl[1],gOa[2]-gCl[2]];
+  var vb=[gOb[0]-gCl[0],gOb[1]-gCl[1],gOb[2]-gCl[2]];
+  var dp=va[0]*vb[0]+va[1]*vb[1]+va[2]*vb[2];
+  var La=Math.hypot(va[0],va[1],va[2]), Lb=Math.hypot(vb[0],vb[1],vb[2]);
+  var angBuilt = Math.acos(dp/(La*Lb))*180/Math.PI;
 
-  var nDom = Zel.filter(function (z) { return z > 0; }).length;
-  var kern = Znuc.reduce(function (s, z) { return s + z; }, 0);
+  // ---- the SECTOR geometry actually built: where each Cl third points ----
+  // Reproduce the shader's basis for axis +y, then report each sector's centre.
+  var secLines = '';
+  for (var m = 0; m < 3; m++) {
+    var thC = -Math.PI + (m + 0.5) * (2*Math.PI/3);   // sector m centre in th
+    var az  = thC + rot;                              // back to azimuth
+    var px  = Math.cos(az), pz = -Math.sin(az);       // e1 = x, e2 = -z
+    var degFromZ = Math.atan2(px, pz) * 180/Math.PI;  // signed angle from +z toward +x
+    secLines += '    Cl sector ' + m + ': points ' + degFromZ.toFixed(1)
+              + ' deg from +z  (' + spec[0].labels[m] + ')\n';
+  }
+  var bondAz = [ (Math.atan2(sh, ch)*180/Math.PI), (Math.atan2(-sh, ch)*180/Math.PI) ];
 
   document.getElementById('log').innerHTML =
     '<b class="k">ClO2 -- chlorine dioxide, RealQM</b>\n' +
-    'octet with holes: Cl 7 of 8 sectors, each O 6 of 8 -> <b class="g">' + nDom +
-      ' one-electron domains</b> (odd), kernel +' + kern.toFixed(3) + ', net ' +
-      (kern - nDom).toFixed(3) + '\n' +
+    'reduced bonding valence: <b class="g">Cl +3 with 3 electrons</b> (third split), ' +
+      '<b class="g">O +2 with 2 electrons</b> each (hemi split)\n' +
+    '-> <b class="g">' + Zel.length + ' one-electron domains</b>, kernel +' +
+      Znuc.reduce(function(s,z){return s+z;},0).toFixed(3) + ', net ' +
+      (Znuc.reduce(function(s,z){return s+z;},0) - Zel.length).toFixed(3) +
+      '  &mdash; <b class="w">7 is odd, so the radical survives the reduction</b>\n' +
     'grid ' + N + '^3, box ' + scr + ' au, h = ' + h.toFixed(4) + ' au, steps ' + steps + '\n' +
-    'r_c: Cl ' + rcCl + ', O ' + rcO + '   (inputs, from mol_fast_menu -- run the r_c ladder)\n' +
-    'nuclei ' + (dyn ? '<b class="w">RELEASED (?dyn=1) -- geometry is being found</b>'
+    'r_c: Cl ' + rcCl + ', O ' + rcO + '   (inputs -- run the r_c ladder)\n' +
+    'nuclei ' + (dyn ? '<b class="w">released by the built-in schedule at step 10000</b>'
                      : 'held at the experimental geometry (add ?dyn=1 to release)') + '\n' +
-    '\n<b class="k">geometry actually built</b> (from the kernel cells, not from the input)\n' +
-    '  Cl-O    ' + rA.toFixed(4) + ' / ' + rB.toFixed(4) + ' au   = ' +
-      (rA / A2AU).toFixed(4) + ' / ' + (rB / A2AU).toFixed(4) + ' A' +
-      '   [target ' + R.toFixed(4) + ' au = ' + (R / A2AU).toFixed(3) + ' A]\n' +
+    '\n<b class="k">nuclear geometry actually built</b> (from the kernel cells)\n' +
+    '  Cl-O    ' + rA.toFixed(4) + ' / ' + rB.toFixed(4) + ' au = ' +
+      (rA/A2AU).toFixed(4) + ' / ' + (rB/A2AU).toFixed(4) + ' A   [target ' +
+      (R/A2AU).toFixed(3) + ' A]\n' +
     '  O-Cl-O  ' + angBuilt.toFixed(3) + ' deg   [target ' + ANG.toFixed(1) + ' deg]\n' +
-    '  positions are FRACTIONAL cells -- no Math.round anywhere\n' +
-    '\n<b class="w">ladders before any number is quoted</b>\n' +
-    '  step  ?steps=4000 / 8000 / 16000 / 32000\n' +
-    '  mesh  ?n=120 / 160 / 200 / 240\n' +
-    '  r_c   ?rc_cl= / ?rc_o=\n' +
-    '\n<b class="w">out of range, structurally</b>  spin (doublet, EPR, hyperfine, g-tensor);\n' +
-    '  absolute energies; and 2 ClO2 vs Cl2O4, which is a difference ACROSS compositions.\n' +
+    '  fractional cells, no Math.round\n' +
+    '\n<b class="k">electron geometry actually built</b> (sector centres, checked not assumed)\n' +
+    secLines +
+    '    bonds lie at ' + bondAz[0].toFixed(1) + ' and ' + bondAz[1].toFixed(1) +
+      ' deg from +z, so each bond sits inside its own sector\n' +
+    '    O hemi axis = O->Cl, so sector 1 is the bond-side hemisphere and 0 the far side\n' +
+    '\n<b class="w">ladders before any number is quoted</b>  ?steps= / ?n= / ?rc_cl= / ?rc_o=\n' +
+    '<b class="w">out of range</b>  spin (doublet, EPR, hyperfine, g); absolute energies;\n' +
+    '  and 2 ClO2 vs Cl2O4, a difference ACROSS compositions.\n' +
     '\nloading molecule.js ...';
 
-  // --- live readout: poll window._E and window._nucPos, mirror into the DOM and the
-  //     title so the run can be read from outside the page.  AppleScript's injected JS
-  //     sees DOM and localStorage ONLY -- window.* page globals always read undefined
-  //     (feedback_applescript_isolated_world), so everything measured must land here.
+  // ---- live readout: DOM + title, since AppleScript sees no window.* globals ----
   var out = document.createElement('pre');
-  out.id = 'live';
-  out.style.cssText = 'white-space:pre-wrap;background:#0f141a;border:1px solid #243;'
-    + 'border-left:3px solid #ffb74d;padding:10px 13px;border-radius:6px;max-width:900px;margin-top:10px';
+  out.className = 'box'; out.id = 'live';
   out.textContent = 'waiting for the solver ...';
   document.body.appendChild(out);
 
-  var t0 = Date.now(), nTick = 0;
+  var t0 = Date.now();
   function geomNow() {
     var P = window._nucPos;
-    if (!P || !P[16]) return null;
-    var cl = P[0], oa = P[8], ob = P[16];           // entry 0 = Cl, 8 = O(a), 16 = O(b)
-    function dcell(p, r) { var d0=p[0]-r[0], d1=p[1]-r[1], d2=p[2]-r[2];
-      return Math.sqrt(d0*d0 + d1*d1 + d2*d2); }
-    var ra = dcell(cl, oa) * h, rb = dcell(cl, ob) * h;
-    var va = [oa[0]-cl[0], oa[1]-cl[1], oa[2]-cl[2]];
-    var vb = [ob[0]-cl[0], ob[1]-cl[1], ob[2]-cl[2]];
-    var dt = va[0]*vb[0] + va[1]*vb[1] + va[2]*vb[2];
-    var La = Math.sqrt(va[0]*va[0]+va[1]*va[1]+va[2]*va[2]);
-    var Lb = Math.sqrt(vb[0]*vb[0]+vb[1]*vb[1]+vb[2]*vb[2]);
-    return { ra: ra, rb: rb, ang: Math.acos(Math.max(-1, Math.min(1, dt/(La*Lb)))) * 180/Math.PI };
+    if (!P || !P[5]) return null;
+    var cl = P[0], oa = P[3], ob = P[5];     // 0-2 Cl thirds, 3-4 O(a) hemis, 5-6 O(b)
+    function dc(p,r){ var a=p[0]-r[0], b=p[1]-r[1], e=p[2]-r[2];
+                      return Math.sqrt(a*a+b*b+e*e); }
+    var ra = dc(cl,oa)*h, rb = dc(cl,ob)*h;
+    var wa=[oa[0]-cl[0],oa[1]-cl[1],oa[2]-cl[2]], wb=[ob[0]-cl[0],ob[1]-cl[1],ob[2]-cl[2]];
+    var dt=wa[0]*wb[0]+wa[1]*wb[1]+wa[2]*wb[2];
+    var A=Math.hypot(wa[0],wa[1],wa[2]), B=Math.hypot(wb[0],wb[1],wb[2]);
+    return { ra:ra, rb:rb, ang:Math.acos(Math.max(-1,Math.min(1,dt/(A*B))))*180/Math.PI };
   }
   setInterval(function () {
-    nTick++;
     var E = window._E, g = geomNow();
-    var secs = ((Date.now() - t0) / 1000).toFixed(0);
-    var txt = 't=' + secs + 's'
+    var txt = 't=' + ((Date.now()-t0)/1000).toFixed(0) + 's'
       + '  E=' + (E === undefined ? 'n/a' : E.toFixed(5))
-      + (g ? '  Cl-O=' + g.ra.toFixed(4) + '/' + g.rb.toFixed(4) + ' au'
-             + ' (' + (g.ra/A2AU).toFixed(4) + '/' + (g.rb/A2AU).toFixed(4) + ' A)'
-             + '  O-Cl-O=' + g.ang.toFixed(3) + ' deg'
-           : '  geom n/a')
-      + '  | n=' + N + ' box=' + scr + ' rc=' + rcCl + '/' + rcO + ' dyn=' + (dyn ? 1 : 0);
+      + (g ? '  Cl-O=' + g.ra.toFixed(4) + '/' + g.rb.toFixed(4) + ' au ('
+             + (g.ra/A2AU).toFixed(4) + '/' + (g.rb/A2AU).toFixed(4) + ' A)'
+             + '  O-Cl-O=' + g.ang.toFixed(3) + ' deg' : '  geom n/a')
+      + '  | 7e n=' + N + ' box=' + scr + ' rc=' + rcCl + '/' + rcO + ' dyn=' + (dyn?1:0);
     out.textContent = txt;
-    document.title = 'CLO2 ' + txt;      // read-off channel, as the rho diagnostic does
+    document.title = 'CLO2 ' + txt;
     try { localStorage.setItem('clo2_live', txt); } catch (e) {}
   }, 2000);
 
   var s = document.createElement('script');
   s.src = 'molecule.js?t=' + Date.now();
-  s.onerror = function () { document.getElementById('log').innerHTML += '\n<b class="w">failed to load molecule.js</b>'; };
+  s.onerror = function () { out.textContent += '\nfailed to load molecule.js'; };
   s.onload  = function () {
-    var p5s = document.createElement('script');
-    p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
-    document.head.appendChild(p5s);
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    document.head.appendChild(p);
   };
   document.head.appendChild(s);
 })();
