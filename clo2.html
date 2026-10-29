@@ -133,14 +133,42 @@
                 'O(b) side'];
   }
 
-  var spec = [
-    { el:'Cl', pos:posAu.Cl, ne:3, Znuc:3, rc:rcCl, split:'third',
-      axis:clAxis, rot:clRot, labels:clLabels },
-    { el:'O',  pos:posAu.Oa, ne:2, Znuc:2, rc:rcO,  split:'hemi',
-      axis:[-sh,0,-ch], rot:0, labels:['far side', 'bond side, toward Cl'] },
-    { el:'O',  pos:posAu.Ob, ne:2, Znuc:2, rc:rcO,  split:'hemi',
-      axis:[ sh,0,-ch], rot:0, labels:['far side', 'bond side, toward Cl'] }
-  ];
+  // ---- ?mode=mol | cl | o : the molecule, or one separated fragment ----
+  //
+  // The binding energy is computed against the SEPARATED ATOMS of this same
+  // construction, not against anything external:
+  //
+  //     E_bind = [ E(Cl) + 2 E(O) ] - E(ClO2)
+  //
+  // Each fragment is the identical pseudo-kernel with the identical split, r_c, mesh
+  // and box -- Cl +3 with three 'third' domains, O +2 with two 'hemi' domains -- moved
+  // out of each other's reach.  Same composition, same domain count, same partition
+  // topology, differing only in separation, which is the class in which this model's
+  // errors cancel.  It is also the construction the essence demo uses for H2, where
+  // E_bind = 2 E(H) - E(H2) comes out self-consistent.
+  //
+  // Every fragment is NEUTRAL (Cl: +3 with 3e; O: +2 with 2e), so there is no monopole
+  // at the box wall and the free outer boundary is not doing work.  That is what makes
+  // the fragment energies comparable with the molecule's at the same box size.
+  var mode = q.get('mode') || 'mol';
+
+  var spec;
+  if (mode === 'cl') {
+    spec = [ { el:'Cl', pos:[0,0,0], ne:3, Znuc:3, rc:rcCl, split:'third',
+               axis:clAxis, rot:clRot, labels:clLabels } ];
+  } else if (mode === 'o') {
+    spec = [ { el:'O', pos:[0,0,0], ne:2, Znuc:2, rc:rcO, split:'hemi',
+               axis:[0,0,1], rot:0, labels:['hemisphere 0','hemisphere 1'] } ];
+  } else {
+    spec = [
+      { el:'Cl', pos:posAu.Cl, ne:3, Znuc:3, rc:rcCl, split:'third',
+        axis:clAxis, rot:clRot, labels:clLabels },
+      { el:'O',  pos:posAu.Oa, ne:2, Znuc:2, rc:rcO,  split:'hemi',
+        axis:[-sh,0,-ch], rot:0, labels:['far side', 'bond side, toward Cl'] },
+      { el:'O',  pos:posAu.Ob, ne:2, Znuc:2, rc:rcO,  split:'hemi',
+        axis:[ sh,0,-ch], rot:0, labels:['far side', 'bond side, toward Cl'] }
+    ];
+  }
 
   var atoms=[], Zel=[], Znuc=[], rcA=[], stype=[], sidx=[], saxis=[], srot=[], names=[];
   spec.forEach(function (a) {
@@ -301,22 +329,34 @@
     var E = window._E, g = geomNow(), st = window._phaseSteps;
     var dE = (E !== undefined && prevE !== null) ? Math.abs(E - prevE) : NaN;
 
-    if (st === lastSteps) stuck++; else { stuck = 0; lastSteps = st; }
+    // only a NUMBER that stops advancing is a halt; undefined means not started yet
+    if (typeof st === 'number') {
+      if (st === lastSteps) stuck++; else { stuck = 0; lastSteps = st; }
+    } else { stuck = -1; }
 
-    // release the nuclei once E has genuinely stopped moving
-    if (dyn && !released && isFinite(dE) && dE < convTol) {
+    // Converged?  Stamp it in the title so a scan can scrape the final energy without
+    // guessing when to stop.  With dyn=1 the same test releases the nuclei; with the
+    // geometry held -- which is how the R scan is run -- it just marks the value.
+    var conv = false;
+    if (isFinite(dE) && dE < convTol) {
       if (++hold >= convNeed) {
-        window.dispatchEvent(new KeyboardEvent('keydown', { key:'d', bubbles:true }));
-        released = true;
+        conv = true;
+        if (dyn && !released) {
+          window.dispatchEvent(new KeyboardEvent('keydown', { key:'d', bubbles:true }));
+          released = true;
+        }
       }
-    } else if (dyn && !released) { hold = 0; }
+    } else { hold = 0; }
     if (E !== undefined) prevE = E;
 
     var txt = 't=' + ((Date.now()-t0)/1000).toFixed(0) + 's'
       + '  step=' + (st === undefined ? '?' : st)
-      + (stuck >= 3 ? ' <HALTED>' : '')
+      + (stuck >= 3 ? ' <HALTED>' : (stuck < 0 ? ' <not started>' : ''))
+      + '  mode=' + mode
+      + (mode === 'mol' ? ' R=' + (R/A2AU).toFixed(4) + 'A ang=' + ANG.toFixed(1) : '')
       + '  dyn=' + (window._dynOn ? 'ON' : 'off')
       + '  E=' + (E === undefined ? 'n/a' : E.toFixed(6))
+      + (conv ? ' CONV' : '')
       + '  dE=' + (isFinite(dE) ? dE.toExponential(1) : 'n/a')
       + (g ? '  Cl-O=' + g.ra.toFixed(4) + '/' + g.rb.toFixed(4) + ' au ('
              + (g.ra/A2AU).toFixed(4) + '/' + (g.rb/A2AU).toFixed(4) + ' A)'
