@@ -1,0 +1,1564 @@
+% !TEX TS-program = pdflatex
+% !TEX encoding = UTF-8 Unicode
+
+% This is a simple template for a LaTeX document using the "article" class.
+% See "book", "report", "letter" for other types of document.
+
+\documentclass[11pt]{article} % use larger type; default would be 10pt
+
+%\usepackage[utf8]{inputenc} % set input encoding (not needed with XeLaTeX)
+
+%%% Examples of Article customizations
+% These packages are optional, depending whether you want the features they provide.
+% See the LaTeX Companion or other references for full information.
+
+%%% PAGE DIMENSIONS
+\usepackage{geometry} % to change the page dimensions
+\geometry{a4paper} % or letterpaper (US) or a5paper or....
+% \geometry{margin=2in} % for example, change the margins to 2 inches all round
+% \geometry{landscape} % set up the page for landscape
+%   read geometry.pdf for detailed page layout information
+
+\usepackage{graphicx} % support the \includegraphics command and options
+
+% \usepackage[parfill]{parskip} % Activate to begin paragraphs with an empty line rather than an indent
+
+%%% PACKAGES
+\usepackage{booktabs} % for much better looking tables
+\usepackage{array} % for better arrays (eg matrices) in maths
+%\usepackage{paralist} % very flexible & customisable lists (eg. enumerate/itemize, etc.)
+\usepackage{verbatim} % adds environment for commenting out blocks of text & for better verbatim
+\usepackage{subfig} % make it possible to include more than one captioned figure/table in a single float
+% These packages are all incorporated in the memoir class to one degree or another...
+
+%%% HEADERS & FOOTERS
+\usepackage{fancyhdr} % This should be set AFTER setting up the page geometry
+\pagestyle{fancy} % options: empty , plain , fancy
+\renewcommand{\headrulewidth}{0pt} % customise the layout...
+\lhead{}\chead{}\rhead{}
+\lfoot{}\cfoot{\thepage}\rfoot{}
+\usepackage{hyperref}
+
+%%% SECTION TITLE APPEARANCE
+%\usepackage{sectsty}
+%\allsectionsfont{\sffamily\mdseries\upshape} % (See the fntguide.pdf for font help)
+% (This matches ConTeXt defaults)
+
+%%% ToC (table of contents) APPEARANCE
+%\usepackage[nottoc,notlof,notlot]{tocbibind} % Put the bibliography in the ToC
+%\usepackage[titles,subfigure]{tocloft} % Alter the style of the Table of Contents
+%\renewcommand{\cftsecfont}{\rmfamily\mdseries\upshape}
+%\renewcommand{\cftsecpagefont}{\rmfamily\mdseries\upshape} % No bold!
+
+%%% END Article customizations
+
+%%% The "real" document content comes below...
+
+\title{RealQM Chemistry: Introduction}
+\author{Claes Johnson\\
+\\
+\small{Royal Institute of Technology Stockholm}}
+
+
+%\date{} % Activate to display a given date or no date (if empty),
+         % otherwise the current date is printed 
+
+\begin{document}
+\maketitle
+\begin{abstract} RealQM offers a generalisation of Schr\"odinger's equation for the Hydrogen atom with $N=1$ electron to atoms and molecules with $N>1$ electrons,  viewed as non-overlapping 3d unit charge densities subject to Coulomb interaction without self-repulsion and meeting at a common free boundary with continuity and zero normal derivative,  thus  in forms of classical multi-phase continuum mechanics in physical 3D space.  RealQM offers a foundation of chemistry in terms of a parameter-free mathematical model expressed as an essentially 3-line computer code with linear computational complexity for ab initio simulation of molecular dynamics. 
+\end{abstract} 
+
+
+\section{Mathematical Foundation of Chemistry}
+Chemistry as the science of \emph{molecules} created by \emph{chemical bonding} of \emph{atoms},  seeks its foundation in \emph{atomic physics} as textbook \emph{Standard Quantum Mechanics StdQM} first expressed in mathematical form as a \emph{Schr\"odinger Equation SE} in 1926 \cite{piela, primas,koch, scerri1,bader}.  Major efforts over 100 years have been made to explain the physics of chemical bonding by StdQM,  but there is still no consensus even for the simplest molecule as the \emph{Hydrogen molecule} $H_2$ supposed to be formed by a \emph{covalent bond} between two \emph{Hydrogen atoms} $H$.  Nordholm and Bacskay as leading theoretical chemists summarize the situation in 2020 \cite{nordholm}: "the concept of a covalent bond … is still the subject of debate,  disagreement,  and ignorance with respect to its physical origin".  The emergence of a discipline of \emph{Philosophy of Chemistry} \cite{scerri2, philchem} is an expression of unresolved foundational issues captured by Roald Hoffmann \cite{hoffman}: "What quantum mechanics gives us are numbers.  But not stories.".  StdQM thus appears as a black box delivering numbers but not physics-based explanations of what is inside the box.
+
+%Yet chemists invariably in each new review of covalent bonding,  express that StdQM is the most formidable scientific success all times.  How can this be?
+In this note we present an alternative SE as the basis of \emph{RealQM} as an alternative to StdQM,  thus as an alternative computational  foundation of chemistry offering "new numbers" together with "stories" as theoretical explanations.  The basic concept of RealQM is \emph{electrons} as \emph{non-overlapping 3D unit charge densities} subject to \emph{Coulomb interaction without self-repulsion} meeting at a common \emph{free boundary} with \emph{continuity and zero normal derivative}.  This is a conception compatible with the clear ontology of \emph{classical multi-phase continuum mechanics} with RealQM as natural extension into atomic physics,  which is computable in the same sense.  RealQM supports a view of the dynamical evolution of a physical system as a form of \emph{time-stepping analog computation} \cite{wolfram},  which can be simulated in \emph{digital computation} thus making \emph{dynamical computational chemistry} foundational.  RealQM can be implemented in a basically 3-line \emph{explicit time-stepping} code capturing formation of molecules,  which can be explained by theory.  RealQM replaces the blackbox "Shut up and Calculate" of StdQM with "Calculate and Explain". 
+
+ 
+
+%RealQM has the form of classical continuum mechanics expressed as non-overlapping one-electron charge densities interaction by Coulomb potentials and equipped with a form of "localisation energy" in StdQM named as "kinetic energy".  RealQM combines conceptually simple mathematical form of clear physical meaning with linear computational complexity and so can serve as foundation of molecular physics.  In particular,  RealQM is parameter-free and thus offers concrete possibilities ab initio simulation. 
+%We show performance of RealQM in a variety of concrete cases of chemical bonding and as explantion of the \emph{Periodic Table PT}. 
+We start out returning to the critical moment in 1926 when Schr\"odinger having formulated his SE for $H$ with one electron,  faced the challenge to generalise SE to systems with $N>1$ electrons.  We shall see that the \emph{formalist school} of Bohr-Born-Heisenberg-Dirac overpowered the \emph{realist school} of Schr\"odinger-Einstein,  and so declared the foundation of chemistry to be StdQM.  No alternative was ever formulated and so chemists have for 100 years been left by physicists to make sense of StdQM,  while physicists have shifted interest to subatomic physics.  
+RealQM could have been formulated by Schr\"odinger in 1926,  or later or by somebody else,  but such an initiative apparently did not surface under the total control of StdQM as expressed by Nobel Laureate Gell Mann at a Nobel Conference in 1976: "Niels Bohr brainwashed a whole generation of theorists into thinking that the job (interpreting quantum theory) was done 50 years ago."
+
+Chemistry was by Dirac assigned the new foundation of StdQM to be explored by chemists,  but the task showed to be much more difficult than envisioned.  The abstract non-physical nature of StdQM showed distance to the essence of chemistry as building concrete physical molecules.  RealQM presents an alternative foundation without this gap.
+
+
+\section{Outline}
+
+We formulate the basic assumptions of RealQM as a parameter-free mathematical model within classical continuum mechanics,  which we transform into a 3-line time-stepping code with work scaling with $N$.  We give a survey of some of the capacity of RealQM in simulations/explanations  of (1) why $H_2$ forms while $He_2$ and $Au_2$ do not,  (2) how Helium $He$ can combine with a proton $H_+$ to form the first molecule $He_+H$,  (3) OrthoHelium vs ParaHelium,  (4) the periodicity of the \emph{Periodic Table PT} as an \emph{electron packing problem},  (5) $H_2O$ complemented by dynamical formation of a prototype $X3$ molecule , (6) extension to atomic nuclei and (7) existence/stability of matter.  Complementing material is given on the RealQM web site \cite{RealQM} including articles \cite{articles} and code repository \cite{coderepository}, together with many posts on the author's main blog \cite{Chemistry}.
+%RealQM combines computability with clear physical meaning expressed in a 3-line code and so opens to \emph{Molecular Dynamics} of large molecules based on physical Coulomb forces.
+%Molecular Dynamics with physical forces and (6) how nuclei can form from electrons and protons switching roles.  We also show that RealQM does not carry the StdQM issues of spin,  exchange,  correlation,  antisymmetry and indistinguishable electrons. 
+%After all SE is a mathematical model of physics and proper understanding requires both mathematical insight and physical intuition. 
+
+ 
+\section{Schr\"odinger 1926: $H$ Atom with  $N=1$}
+%\begin{quote}
+%Schr\"odinger's point of view is the simplest; he thought
+%that by his development of de Brolie's wave mechanics the whole 
+%paradoxical problem of the quanta had been settled: there are no particles,
+%no 'quantum jumps'-- there are only waves with their well-known vibrations,
+%characterized by integral numbers. The particles are narrow wave-packets.
+%The objection is that one generally needs waves in spaces of many dimensions,
+%which are something entirely different from the waves of classical physics,
+%and impossible to visualize. (Born in the Born-Einstein Letters)
+%\end{quote}
+
+Modern physics of QM was born in January 1926,  when the 38 year old Austrian physicist Erwin Schr\"odinger after an outburst of creativity on vacation in the Swiss Alps together with a friend,  rocketed to fame by formulating a mathematical model of the $H$ atom with one electron subject to \emph{Coulomb attraction} from a \emph{positive proton kernel} at $x=0$ in the form of an \emph{eigenvalue problem} for a \emph{Hamiltonian} as a partial differential operator acting on a real-valued \emph{wave function} $\Psi (x)$ depending on a spatial coordinate $x$ in a 3D \emph{Euclidean space} $\Re^3$,  with $\Psi^2(x)$ representing \emph{electron charge density},  named \emph{Schr\"odinger's Equation SE}. 
+
+Schr\"odinger managed to compute the eigenvalues of SE analytically and found them to agree with the Balmer-Rydberg formula (1888) for the observed spectrum of $H$ and so could reveal a deep truth about physics expressed in terms of eigenfunctions $\Psi (x)$ determined as stationary points of a \emph{total energy} $TE(\Psi )$ given by
+\begin{equation}
+TE(\psi ) = K(\psi )+PK(\psi ) \equiv \frac{1}{2}\int\vert\nabla\psi (x)\vert^2dx -\int \frac{\psi^2(x)}{\vert x\vert}dx
+\end{equation}
+ with normalisation $\int\psi^2(x)dx=1$,  where $K$ is named \emph{kinetic energy} and $PK$ is \emph{Coulomb kernel potential energy}.  Stationarity is attained by $\Psi$ satisfying with $W(x)=-\frac{1}{\vert x\vert}$
+\begin{equation}
+\mathcal{H}\Psi\equiv  -\frac{1}{2}\Delta\Psi +W\Psi = E\Psi, 
+\end{equation}
+with $\mathcal{H}$ \emph{Hamiltonian} and $E$ \emph{eigenvalue},  which has the form of \emph{classical continuum mechanics} built from a classical Coulomb potential and a stabilising \emph{Laplacian} giving rise to kinectic energy in a form of  \emph{localisation energy}.  The ground state of $H$ with minimal total energy can be described as a charge density localising optimally around the kernel to decrease potential energy subject to a localisation cost in the form of kinetic energy.  In the present context with $\Psi^2(x)$ representing charge density,  the kinetic energy represents the new physics of QM,  but the terminlogy is misleading,  since no motion of electronic charge  is present.  In any case,  SE for $H$ can be solved analytically and so can be viewed to be completely understood from both mathematical and physical point of view.  Schr\"odinger identified the minimal eigenvalue to be $TE=K+PK=\frac{1}{2}-1=-\frac{1}{2}$ with eigenfunction $\Psi (x)=\frac{1}{\sqrt{\pi}}\exp(-\vert x\vert)$ with charge density decaying with $\vert x\vert$ from peak at $x=0$.  The balance of $PK$ and $K$ is expressed by the \emph{Virial Theorem} as $K =-\frac{1}{2}PK$. 
+
+The complete success of SE for the Hydrogen atom with one electron,  asked for a quick generalisation to an atomic system with $N>1$ electrons.  Schr\"odinger hesitated,  but was overpowered by the easy catch suggested by Max Born and Werner Heisenberg in the form of a purely formal extension without physics,  simply by adding a new coordinate and Euclidean space $\Re^3$ for each new electron leading to a wave function $\Psi (x)$ depending on the coordinate $x\in\Re^{3N}$ as \emph{configuration space}.  It only remained to give the formal SE with wave function $\Psi (x)$ over configuration space a physical meaning for $N>1$.  This showed to require abandoning classical physics as realities for quantum physics as probabilities of possibilities,  which was a high price,  but became the \emph{Copenhagen Interpretation} based on Born's idea of $\Psi^2(x)$ as a \emph{probability density} as textbook StdQM.  Schr\"odinger supported by Einstein protested,  but were both marginalized. 
+
+
+%The formal extension of SE to $N>1$ was effortless,  and everybody except Schr\"odinger was happy when Born came up with the idea of giving $\Psi^2(x)$ a probabilistic/statistical meaning covering up lack of direct physical meaning.
+%\begin{itemize}
+%\item $\Psi^2(x)$ is the probability of finding the electron configuration specified by $x\in\Re^{3N}$.
+%item $\Psi (x)$ with $x$ ranging over $\Re^{3N}$ represents "all there is to know" about the system.
+%\end{itemize}
+%Schr\"odinger supported by Einstein protested to letting $\Psi^2 (x)$ describe \emph{probabilities of possibilities} and wanted real physics to concern \emph{actualities}.  But \emph{statistical physics} had already been introduced in the form of \emph{statistical mechanics} by Boltzmann,  and so the road was paved for QM as statistics of electron configurations,  and this is still the textbook truth as the \emph{Copenhagen Interpretation CI} of StdQM by Bohr-Born-Heisenberg although several other interpretations have also been suggested.   
+%StdQM is presented as a formidable success story of modern physics with complete agreement between StdQM and experimental observation.  StdQM found its form in 1926 and has not essentially changed over the 100 years.
+
+StdQM is viewed as the basic theory of atom physics and so also of chemistry as the science of molecules made of atoms.  But there is a back side to this golden coin which has become increasingly evident with computation taking over practice: StdQM as account of all possibilities comes with  \emph{exponential computational complexity}. This  
+%The water molecule $H_2O$ is described by a wave function $\Psi (x)$ depending on $x\in\Re^{30}$.  With a computational resolution of 100 in each coordinate the number of mesh points would be $10^{60}$ to be compared with a total memory capacity of not more than $10^{25}$ bytes and maximal flops of $10^{20}$.  
+has demanded draconic ad hoc dimensional reductions with \emph{Density Functional Theory DFT} the ultimate reduction into one common electron density depending on $x\in\Re^3$ as the only option for larger $N$ based on StdQM,  however with unclear physics inherited from StdQM.
+
+\section{RealQM for Atoms with $N>1$}
+\begin{quote}
+If we now have to deal with $N$ particles, then $\Psi (x_1,...,x_N )$ is a function of $N$ variables $x_1$,...,$x_N$  over $N$ 3D spaces $R_1,...,R_N$.  Now first let $R_1$ be identified with the real space $\Re^3$ and integrate over $R_2,...,R_N$. Second, identify $R_2$ with the real space and integrate over $R_1, R_3,...,R_N$ and so on. 
+The $N$ individual results are to be added after they have been multiplied by certain constants which characterise the particles.  I consider the result to be the electric charge density in real space.  (Schr\"odinger in a letter to Lorentz June 6  1926):
+\end{quote}
+\begin{quote} An important historical point is to be noted here. It might have been thought that the correct generalization for N particles is to use N functions of one variable instead of one function of N variables. 
+Such a ”wrong turn” did not happen historically,  which is,  after all,  remarkable. (Lieb-Seiringer in Stability of Matter 2005)
+\end{quote}
+
+To extend SE for $H$ to Helium $He$ with $N=2$,  it is natural from mathematical point of view to split 3D space into two halfspaces meeting at a plane through the kernel and let each electron occupy one half space and meet with continuity of charge density at the diving plane.  This is what RealQM does and it shows to give a ground state energy in agreement with observation.  We shall see that the split of electrons in $He$ carries through the PT as a "two-valuedness" replacing that of spin.
+
+The same idea for $N>2$,  which is essentially that of the above two quotes,  builds on a subdivision of 3D space into non-overlapping domains $\Omega_i$ with boundary $\Gamma_i$ for $i=1,...,N$,  each occupied by a non-zero electron charge density,  which meet with continuity on the common boundary $\Gamma $ as the union of all $\Gamma_i\bigcap\Gamma_j$ with $i,j=1,...,N$.  We let $H^1(\Omega )$ denote the set of real-valued functions which are square integrable together with first partial derivatives over a domain $\Omega$.  RealQM thus builds on a natural mathematical conception of electrons as charge densities occupying non-overlapping regions in space and meeting with continuity,  which can also be given a clear physical meaning in terms of classical continuum physics.  
+
+RealQM for an atom takes the following form restricting here to \emph{ground state} with \emph{minimal energy}: Find the function $\psi (x)=\sum_{i=1}^N\psi_i(x)$ in $H^1(\Re^3)$ with $\psi_i\in H^1(\Omega_i )$ and $\int\psi_i^2(x)dx=1$,  which minimizes the \emph{total energy} 
+\begin{displaymath}
+TE(\psi )\equiv K(\psi )+PK(\psi )+PE(\psi )
+\end{displaymath}
+as the sum of \emph{kinetic energy}:
+\begin{displaymath}
+K(\psi )=\frac{1}{2}\int_{\Re^3}\vert\nabla\psi (x)\vert^2\, dx,
+\end{displaymath}
+ \emph{attractive kernel potential energy}:
+\begin{displaymath}
+PK(\psi )=\int_{\Re^3}W(x)\psi^2(x)\, dx,
+\end{displaymath}
+and \emph{repulsive electronic potential energy}:
+\begin{displaymath}
+PE(\psi )=\sum_i\int_{\Omega_i}\sum_{j\neq i} V_j(x)\psi_i^2(x)\, dx,
+\end{displaymath}    
+%where the Hamiltonian $H$ is given by
+%\begin{equation}
+%H(x) = -\frac{1}{2}\Delta - \frac{Z}{\vert x\vert}+\sum_{k\neq j}V_k(x)\quad \mbox{for} \quad x\in\Omega_j,
+%\end{equation}
+where $W(x)=-\frac{Z}{\vert x\vert}$ is the potential generated by a pointlike positive kernel of charge $Z$ and $V_j(x)$ is the potential (modulo factor 2) generated by electron charge density $j$ defined by 
+\begin{displaymath}
+V_j(x)=\int_{\Omega_j}\frac{\psi_j^2(y)}{2\vert x-y\vert}dy \quad\mbox{for}\quad x\in\Re^3.
+\end{displaymath}
+We understand that the kinetic energy appears as a measure of charge density variation in space and does not express any motion of charge in space,  but rather appears as an analog to elastic energy.  In particular,  the ground state charge density has no time dependence,  which means that the ground state does not radiate energy and so can persist over time.  On the other hand,  a radiating dipole in resonance with external forcing can be created as oscillation betweeen ground and excited state.  The model contains \emph{no electronic self-repulsion} since $j\neq i$ in the summation to $PE (\psi )$.  This is an essential difference compared to StdQM/DFT,  where effects of overlapping wave functions including self-repulsion need cancellation. The SE of RealQM is a non-linear equation over 3D physical space with a free boundary determined by charge density continuity.
+%We see that the total energy $TE(\psi )$ of an electronic configuration defined by the wave function $\psi (x)$ has a negative contribution from Coulombic attractive kernel potential energy $PK(\psi )$, a positive contribution from Coulombic repulsive electronic potential energy $PE(\psi )$ without self-repulsion,  and a positive contribution from $K(\psi )$ as a measure of concentration of electron charge.  
+
+
+Variation of $TE(\psi )$ over $\psi =\sum_i\psi_i\in H^1(\Re^3)$ with $\psi_i\in H^1(\Omega_i )$,  leads to the following characterization of a minimiser $\Psi =\sum_i\Psi_i\in H^1(\Re^3)$ with $\Psi_i\in H^1(\Omega_i)$ and $\int\Psi_i^2(x)dx=1$,  satisfying for $i=1,...,N$:
+%expressing vanishing of the gradient of with respect to free variation of $\psi_i$ over $H^1(\Omega_i)$ under the side condition $\int\psi_i^2\,dx=1$ for 
+\begin{equation}\label{Hi}
+\mathcal{H}_i\Psi_i\equiv -(\frac{1}{2}\Delta+W+2\sum_{j\neq i}V_j)\Psi_i = E_i\Psi_i\,\mbox{in }\Omega_i,
+\end{equation}
+\begin{equation}\label{neumann}
+ \frac{\partial\Psi_i}{\partial n}=0\,\mbox{on }\Gamma_i,
+\end{equation}
+where $E_i$ is the Lagrange multiplier for electron charge $\int\Psi_i^2\,dx=1$,  and free variation of  $\psi_i$ over $\Omega_i$ imposes the homogeneous Neumann boundary condition (\ref{neumann}) with $n$ normal to the boundary.  The boundary $\Gamma$ appears as a \emph{Bernoulli free boundary} combining a homogeneous Neumann condition and a Dirichlet/continuity condition.  RealQM can be seen as a form of DFT \cite{koch} based on one-electron non-overlapping charge densities forming a total charge density.  RealQM also connects to Bader's AIM \cite{bader} but differs by being based on charge densities rather than basins of kernel attraction. 
+
+%We observe that the total energy $TE(\Psi )$ of a minimising $\Psi =\sum_j\Psi_j$ with eigenvalues $E_j$ is not simply given as $\sum_jE_j$ because of the factor 2 of the electronic potential in (\ref{Hj}).
+
+\section{3-Line Code with Physics}
+
+The ground state energy $TE(\Psi )$ of RealQM is computed by a gradient method including the following 3 steps: 
+\begin{enumerate}
+\item Each electron seeks to minimize its contribution to total energy subject to Coulomb interaction with the other electronsr
+ and the kernel as expressed by (\ref{Hi}) and (\ref{neumann}).
+\item The potentials $V_j$ are computed as solutions the Poisson equation $-\Delta V_j=2\pi\psi_j^2$ in $\Re^3$. 
+\item The free boundary is updated in terms of \emph{level set functions} $\chi_i (x)$ serving as characteristics functions of each $\Omega_i$ as solutions to level set equations with coefficients $\beta_i$ depending on jumps of wave functions across common boundaries moving the free boundary in the direction of lower charge density and so towards continuity. 
+\end{enumerate}
+%The ground state of minimal energy of an atom or molecule with fixed kernel positions is computed by explicit time stepping of the following equations on a uniform 3d mesh of da cube containing the atom/molecule as a gradient method 
+A Code Repository \cite{coderepository} contains benchmark problems computed by realising 1-3 in the form of explicit time-stepping of the following equations on a fixed 1 million mesh points spatial grid as a 3-line code: For  $i=1,...,N$,
+\begin{equation}\label{code1}
+\dot \Psi_i + \mathcal{H}_i\Psi_i=0\quad\mbox{in }\Omega_i,\, \frac{\partial\Psi_i}{\partial n}=0\quad\mbox{on}\quad\Gamma_i
+\end{equation} 
+\begin{equation}\label{code2}
+\dot V_i -\Delta V_i=2\pi\Psi_i^2\quad\mbox{in }\Re^3,
+\end{equation} 
+\begin{equation}\label{code3}
+\dot\chi_i +\beta_i\vert\nabla\chi_i\vert=0\quad\mbox{in }\Re^3,
+\end{equation} 
+where the dot signifies derivation with respect to time,  and in each time step $\Psi_i$ is normalised to unit charge,  as a dissipative process where molecular excess energy is absorbed by an environment.
+Computations typically are initialized with electrons well separated allowing the free boundary to develop dynamically with an overlap of level set functions of a couple of mesh points,  and so the creation of a molecule can be followed.  The codes in Code Repository can directly be tested and modified on the web.  
+
+RealQM directly extends to molecules by adding more kernels.  Formation of a molecule can be computed
+by evaluating forces on kernels from electron charge potentials and moving kernels until equilibrium.  More generally RealQM opens to \emph{Molecular Dynamics MD} based on physical forces on kernels from electron potentials,  instead of the energy based pseudo-forces using StdQM.  
+
+RealQM unifies computation and physics by viewing the 3-line code as a direct expression of dynamical formation of molecules under relaxation into balance of forces. 
+
+\section{Summary RealQM}
+
+Electrons are viewed as non-overlapping unit charge densities interacting by Coulomb potentials and satisfying a Bernoulli free boundary condition. The above 3-line code executes time-stepping evolution towards minimal total energy as expression of the following physics:
+\begin{itemize}
+\item Each electron charge density is updated towards balance of potential and kinetic energies  with potentials given by kernel and other electrons (\ref{code1}) under normalisation of charge densities including energy dissipation into environment. 
+\item Electron potentials are updated (\ref{code2}).
+\item Free boundary is updated towards continuity of charge densities (\ref{code3}).
+\end{itemize}
+The code is parameter-free.  The only user input is case specific data as kernel positions and number of electrons and grid resolution.  Extension to MD is direct with forces computed as gradients of potentials.  
+
+Is it possible that RealQM can deliver anything new after a 100 year sleep to a field overloaded with complex quantum chemistry academic and commercial software (and scientifc reporting) asking for massive supercomputer resources now in competion with AI?  Is it possible that RealQM can offer a new tool for ab initio simulation of \emph{protein folding},  and if not,  why? RealQM does not meet the difficulties of StdQM of \emph{collapse of wave function},  \emph{measurement},  \emph{exchange}, \emph{correlation} and \emph{Pauli Exclusion Principle},  while not supporting \emph{superposition}.  This may seem as a death sentence,  but is also a relief.  Maybe after all,  QM is not so strange? Maybe strange physics is not real physics.  Maybe atom physics can be described by computable mathematics,  like celestial mechanics described by Newton's Law of Gravitation.  Maybe micro-physics has a simpler parameter-free strucure than macro-physics with many parameters building on micro-physics? Maybe chemistry can be seen as emergence of quantum physics revealed by computation.  Maybe the need of a philosophy of chemistry can be reduced by clear ontology in computational mathematical form.  
+
+Computational forms of StdQM typically work with products of one-electron wave functions with overlapping supports as products of probabilities asking for compensation to capture \emph{electron correlation}.  RealQM computes with sums of one-electron wave functions as non-overlapping charge densities with full correlation. 
+
+Ground state energies of molecules are of prime concern in chemistry and are deterministically determined both in StdQM and RealQM.  Comparisons can thus be focussed on computational complexity leaving StdQM interpretation without purpose.
+
+
+
+%as Molecular Dynamics  Born-Oppenheimer  computing electron confteration towards a molecule ground state can be done by computing  first the ground state electron distribution for a fixed kernel configuration and then computing the total potential from electrons and kernels to update kernel positions.  RealQM thus appears to deliver a computable parameter-free model of systems with many electrons. 
+
+%\section{Supporting Material}
+%Examples and topics in Code Repository \cite{coderepository}: He,  OrthoHelium,  H2,  HeH+,  H2O,  XH,  Au,  ionization,  dissociation,  atoms/ions in spherical symmetry,  shell structure,  covalent bonding,  stability of matter,  Periodic Table.
+
+
+
+
+
+\section{Covalent Bonding}
+
+Chemistry can be seen as the physics of chemical bonding of atoms into molecules with lower energy than separate atoms,  described as either \emph{covalent} with "sharing of electrons" or \emph{ionic} with "transfer of electrons". The unclear physicality of StdQM offers an unclear explanation of covalent bonding as (A1) localisation of electrons beween kernels decreasing potential energy and (B1) delocalisation of electrons over the whole molecule to avoid increase of kinetic energy from localisation \cite{nordholm}.  But localisation and delocalisation appears to be contradictory from physical point of view and so (A1)+(B1) may not describe real physics and not even consensus. 
+
+RealQM explains covalent bonding as (A2) localisation of electrons beween kernels decreasing potential energy and (B2) free boundary allowing electrons to meet with non-zero charge and so without increase of kinetic energy from localisation.  There is no contradiction between (A2) and (B2) and so (A2)+(B2) appears to represent physics better than (A1)+(B1).  
+%We here let RealQM reveal why H2 is formed but He2 not starting from a model case,  and leave the door open to further exploration including \cite{RealQMChem} in upcoming articles. 
+%\section{Model Case}
+We first show RealQM applied to a 2d model molecule $X_2$ formed by a covalent bond between two Hydrogen like atoms $X$ with one electron surrounding a kernel.  We compute (code \cite{X2code}) the total energy at different distances between the kernels to discover that the total energy decreases with decreasing distance until the kernel repulsion takes over with an increase of total energy.  We analyse the contributions to total energy from kernel-electron,  electron-electron and kernel-kernel potential energy and electronic kinetic energy to understand the dip to a minimum of total energy at a certain kernel distance forming the covalent bond.  
+
+We see in the screenshots of computations below in 2d wave functions (red) and 1d cross-cuts of wave functions (red),  kernel potentials (blue) and electron potentials (light-blue).  We identify in particular the shaded area between the blue and light-blue curves which combine with the red to give a net decrease of potential energy with negative kernel-electron energy dominating positive electron-electron energy.  We see that the wave functions meet with non-zero value allowing kinetic energy to stay constant.  In the plots,  potential energy refers to the combined kernel-electron and electron-electron energy.  It is natural to name the chemical bond formed by the meeting of electron wave functions at a free boundary between the kernels as a \emph{covalent bond},  but then with new meaning compared to StdQM.  Note that the Neumann condition on the free boundary is imposed weakly and so is not visible in the plot and compare with Fig. \ref{Sim1} where it is present.
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=8.0cm]{Covalent1} 
+} 
+\caption{}
+\label{} 
+\end{figure}
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=8.0cm]{Covalent2} 
+} 
+\caption{}
+\label{} 
+\end{figure}
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=8.0cm]{Covalent3} 
+} 
+\caption{}
+\label{} 
+\end{figure}
+
+We now turn to the basic example of formation of a $H_2$ molecule which can be followed by running the RealQM 3D code \cite{H2code} to discover a stationary state after explicit time-stepping as a $H_2$ molecule at a kernel distance of 1.4 atomic units.  We can follow charge concentration forming between the kernels with wave functions meeting at a midway plane orthogonal to the line between kernels,  in a process without increase of kinetic energy just like in the model case above.  RealQM thus delivers a covalent bond forming $H_2$.
+
+The energy is reported here as the same bracket as for $He$ below, and for the same reason.  The two ways of imposing the exclusion at $N=2$ give $-1.1336$ with the electrons sharing one density and $-1.2750$ with them on disjoint half-spaces, against the reference $-1.174476$:  a shared density under-binds by $3.5\%$, disjoint domains over-bind by $8.6\%$, and the reference lies inside the span of the model's own two treatments.  The bracket is wider than helium's, and no dissociation energy is quoted, because a dissociation energy would assert a position inside it.  (An earlier version of this passage quoted $-1.17$ Hartree, and a dissociation energy of $0.17$ Hartree, as agreeing with the list values.  That is withdrawn.  The value came from a run on a much coarser mesh, $h=0.13$--$0.20$, on which two large errors cancel:  the pair repulsion is $7\%$ low, which over-binds, while the coarse grid together with the explicit $r\to\sqrt{r^2+h^2}$ kernel softening under-binds.  Refinement removes the cancellation, and the axisymmetric reduction --- which is exact for two domains on an axis and carries no angular discretisation error --- converges the disjoint-domain construction to $-1.276$.  So $-1.17$ is a value the relaxation passes \emph{through} on its way to the construction's own minimum, exactly as $-2.91$ is for helium.)  In the output plot the essence of the 3-line code is made visible. 
+
+With the same code (or directly \cite{Heliumcode}) we can follow the formation of Helium $He$ letting the kernels coincide while neglecting kernel-kernel repulsion,  which gives an energy of $-2.86$ with the two electrons sharing one density and $-3.03$ with them on disjoint half-spaces, bracketing the reference $-2.9037$ from either side.  The two ways of imposing the exclusion at $N=2$ fail in opposite directions --- a shared density under-binds by $1.5\%$, disjoint domains over-bind by $4.2\%$ --- so the reference value lies inside the span of the model's own two treatments.  (An earlier version of this passage quoted $-2.91$, within $0.24\%$, and said the agreement could be made exact by giving the kernel a small radius.  Both are withdrawn: $-2.91$ is a value the relaxation passes \emph{through} on its way to the construction's own minimum, and the kernel softening that reproduces $-2.9037$ scales as the mesh spacing, so it vanishes in the continuum and is a numerical constant rather than a physical kernel size.) 
+
+Having understood how two $H$ atoms can form a $H_2$ molecule by a covalent bond as well as $He$,  we now ask if $He$ can similarly form a $He_2$ molecule.  
+% In RealQM electrons do not overlap and so are restricted to two half spaces meeting at a plane through the kernel.  You can follow the formation of a He atom by running the code \cite{Hecode} delivering a total energy of $-3.03$ Hartree with the electrons on disjoint half-spaces, against the reference $-2.9037$; the shared-density alternative gives $-2.86$, so the reference lies between the two.  We can see He with its two halfspaces being formed by eliminating kernel repulsion in H2 letting the kernel distance go to zero.  
+%Compare with the explanation by RealQM in \cite{Au} of the weak reactivity of a Gold atom despite the fact that it does not have a filled outer shell but a valence shell with only one electron like H.
+We run the code \cite{He2code} to discover that this is not so,  because the charge concentration between kernels is not taking place,  because the two planes through the kernels separating the two electrons of each He atom,  are pushed away from the center to maintain continuity of charge density at the separating planes.  RealQM delivers the following total energies E for two He atoms at varying kernel distance
+D= 4,  3.2,  2.4,  1,6,  E= 0.00, -0.04, 0.03, 0.20,  showing very little bonding energy and so gives evidence that $He$ does not form a $He_2$ molecule.
+
+
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=8.0cm]{He2} 
+} 
+\caption{Non-existence of He2 molecule by non-accumulation of charge density between kernels by outward shift of planes P separating the electrons for each He atom to maintain continuity at P.}
+\label{} 
+\end{figure}
+
+
+\section{The First Molecule $He_+H$}
+%Following up the previous post we now let RealQM simulate the formation of the He+H molecule believed to be the first chemical compound created after the Big Bang (article in Nature). 
+
+Standard Cosmology says that Big Bang created free electrons and free protons forming neutrons together forming the Helium kernel from 2 protons and 2 neutrons,  which then combined with electrons into the first atom as $He$,  thus forming before combination into $H$,  because of stronger kernel attraction.  The first molecule was then formed by compressing a proton $H_+$ and $He$ to form $He_+H$ by transfer of an electron from $He$ to $H_+$ in a weakly exothermic reaction,  which can then dissociate into $He_+$ and $H$,  thus altogether a process of forming $H$ from $He$ in the early universe \cite{piela,HeH+}.  
+%See Fig. (\ref{HeH+fig}) from \cite{SciAm} depicting two identical elliptical electron orbitals around the $He$ nucleus to the left stretching out to incorporate the $H+$ to the right:
+%\begin{figure}[bhpt] 
+%\centerline{ 
+%\includegraphics[height=4.0cm]{HeH+} 
+%} 
+%\caption{}
+%\label{HeH+fig} 
+%\end{figure}
+
+%But cosmic presence of $HeH+$ was detected only in 2019 and lab formation has shown to very difficult because $He$ is an inert gas not willing to engage.  Yet $HeH+$ is presented as a milestone of cosmology as the first molecule.
+
+%We here compare with the isomer $He+H$ formed by the same ingredients as one of the two electrons of $He$ is  transferred to a nearby proton $H+$ to form an $H$ atom bonding to the remaining $He+$ as the molecule $He+H$.  This is an endothermic reaction which could take place in a hot dense early universe.  After formation $He+H$ could dissociate into $He+$ and $H$,  
+%The input energy was the -2.903 Hartre of He which then could dissociate to He+ and H thus altogether forming H from He. 
+
+
+%We recall that RealQM models the $He$ atom as a +2 kernel with two electrons filling half-spaces meeting at a plane through the kernel as a free boundary with ground state energy E =-2.903 Hartree in agreement with observation.  We initiate the simulation of the formation of $He+H$ from $He$ and $H+$ according to Fig. (\ref{start}):
+
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=8.0cm]{He+Hstart} 
+} 
+\caption{Helium atom with two half-space electrons and inserted proton}
+\label{start} 
+\end{figure}
+
+
+
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=8.0cm]{He+H} 
+} 
+\caption{Formation of $He_+H$ with one electron captured by proton.}
+\label{He+Hfig} 
+\end{figure}
+
+We now let RealQM model this process (code \cite{He+Hcode}) to find $He_+H$. We see here the characteristic feature of RealQM for Helium with its two electrons occupying two separate non-overlapping half lobes meeting at a plane together with the +2 kernel in the middle,  and we also see a proton inserted on the left.  The energy of the system is the ground state energy E = -2.903 of $He$ leaving the energy required for the proton insertion to the simulation.  We watch the dynamics when the left electron is attracted to the proton and the right electron gradually takes over the Helium kernel ino a final state with energy E = -2.490 depicted in Fig. (\ref{He+Hfig}).Recall the shooting off an electron from He requires 0.903 Hartree to create $He_+$ which is a lot,  while the above process with instead a proton capturing an electron involves only 0.413 Hartree from -2.903 to -2.490 with the rest borrowed from H. 
+
+%We understand that  the process is endothermic asking for 0.413 Hartree input as the energy required to insert the proton overcoming repulsion from the He kernel,  then supplied by Big Bang.  We understand that -2.500 is the energy of separate He+ (-2.000) and H atom (-0.500) and so the final state of He+H with energy -2.490 can easily dissociate into separate He+ and H.  We see that the distance between the He kernel and the proton is decided so as to make the dissociation from He+H into He+ and H possible. 
+
+%The whole process starting from He and H+ and ending with He+ and H can thus be seen as a process of forming H from He right after Big Bang.  In later stage H is transfomed into He in nuclear fusion. 
+
+%RealQM thus let us follow the process when He delivers one of its electrons to an inserted proton to create the molecule He+H which can separate into He+ and H.  We understand that the initial He atom with two electrons separated in space is instrumental in the subsequent passage of the left electron to surround the proton preparing formation of an H atom,  while leaving the Helium kernel to the right electron.  In StdQM the two electrons of He would have the same orbital and separation would seem difficult. 
+
+
+
+\
+\section{Helium and OrthoHelium}
+%This note is part of a series of articles \cite{intro, Covalent, Gold, First,shell} covering different aspects of \emph{Real Quantum Mechanics RealQM} as an alternative to \emph{Standard Quantum Mechanics StdQM} as the current text book canon based on \emph{Schr\"odinger's Equation SE} in its form \emph{StdSE} of StdQM \cite{piela,nordholm,primas,bader,scerri}.  RealQM gives a generalisation of SE for the Hydrogen atom with $N=1$ electron,  to atoms and molecules with $N>1$ electrons starting with formally the same Hamiltonian as StdQM,  but with a fundamentally different interpretation taking as \emph{RealSE} the form of a \emph{non-linear system} of $N$ \emph{one-electron wave functions} with \emph{non-overlapping supports} depending on a \emph{common 3d spatial coordinate}.  RealSE involves a \emph{free boundary} where one-electron wave functions meet with \emph{continuity}. The computational complexity of RealSE scales linearly with $N$ while that of StdQM in non-compressed form is exponential. 
+
+A Helium atom in ground state has 2 electrons surrounding a +2 kernel.  In StdQM the two electrons are overlapping with different spin.  In RealQM electrons do not overlap (spin is not an issue) and so are restricted to two half spaces meeting at a plane through the kernel.  The formation of the He ground state can be followed running the code \cite{Heliumcode} delivering a total energy of $-3.03$ Hartree with the electrons on disjoint half-spaces, against the reference $-2.9037$; the shared-density alternative gives $-2.86$, so the reference lies between the two.  We can see He with its two halfspaces being formed by eliminating kernel repulsion in H2 letting the kernel distance go to zero. 
+
+%\section{1st Excited State of Helium: Orthohelium}
+
+
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=8.0cm]{He1+1} 
+} 
+\caption{Orthohelium as inner(red) and outer(green) shell electrons.}
+\label{fig1} 
+\end{figure}
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=8.0cm]{Heexc} 
+} 
+\caption{Orthohelium as excited half-space electrons.}
+\label{fig2} 
+\end{figure}
+
+He occurs in two excited forms as \emph{OrthoHelium} with energy  $-2.175$ and \emph{ParaHelium} with slightly higher energy  $-2.148$. 
+%giving rise to different spectra with energy of $0.728$ Hartree as the difference between a 1st excited state with energy  and the ground state with energy $-2.903$. The excited is referred to as \emph{Orthohelium} to be compared with a state of \emph{Parahelium} with a larger energy of $-2.145$ Hartree.  Orthohelium shows a stronger line than Parahelium.
+We now let RealQM compute a state of He with one of the electrons excited to an outer shell with the remaining electron filling an an entire inner shell around the kernel.  Running the code \cite{code1} we find that RealQM gives an energy of $-2.175\pm 0.005$ in agreement with Orthohelium,  see Fig \ref{fig1}. 
+
+The observed spectrum of Orthohelium matches that of the theoretical spectrum of one electron atom with charge outside a sphere of radius about $0.3$ au with kernel at the center of the sphere.  This fits with the RealQM model of Orthohelium.
+
+We compare using the code \cite{code2} excitation keeping the half-space geometry of the ground state to find again an energy of $-2.175\pm 0.005$ Hartree,  see Fig. \ref{fig2}.  RealQM thus delivers Orthohelium as the 1st excitation of He in two geometrically different settings.  
+
+StdQM presents Orthohelium as a complicated triplet state with the electrons having same spin,  and Parahelium as a simple singlet state with the two electrons having opposite spin.
+
+
+
+\section{Periodic Table from Electron Packing}
+
+RealQM presents the ground state of an Atom as the result of an \emph{electron packing} energy minimization problem,  where each electron seeks to minimize its contributtion to the total energy under Coulomb attraction/repulsion from the atom nucleus and the other electrons,  while the supports of the electrons meet at a common \emph{free boundary} determined so as to maintain \emph{continuity of electron charge density}.  In this packing problem electrons take on a certain width/volume in 3D space determined by proximity to the kernel while competing for space with other electrons.  RealQM can thus be seen as a "ballon packing" problem with electron kinetic energy serving as a measure of "compression".  RealQM thus gives a rationale for the Aufbau of the PT,  which is different from that of StdQM based on the s, p, d atomic orbitals of $H$ \cite{scerri1}.
+
+
+%\section{Shell Structure in Spherical Symmetry} 
+
+RealQM packs electrons into an expanding sequence of on-overlapping spherical shells $S_n$ centered at the kernel with $n=1,2,3...$ with each $S_n$ first subdivided into two half-spherical shells each of which is divided into two angular directions into $n\times n$ electron domains thus with a total of $2n^2$ electrons in each full shell $S_n$.  This gives the familiar sequence 2,  8,  18,  32,... which is repeated in the periods of the Periodic Table 2,  8,  8,  18,  18,  32,  32.  
+
+In particular,  RealQM suggests the following shell structures of filled shells with 8-shells radially divided into two 4-shells:
+\begin{itemize}
+\item (2)+(4+4)
+\item (2)+(4+4)+(4+4) 
+\item (2)+(4+4)+(8)+(2)
+\item (2)+(4+4)+(18)+(2)
+\item (2)+(4+4)+(18)+(8)
+\item (2)+(4+4)+(18)+(18)+(4+4)
+\item (2)+(4+4)+(18)+(32)+(18)+(4+4)
+\end{itemize}
+
+Below we show computed ground state energies with code \cite{AtomSim} (here reduced to 3 shells),  where the electrons in each subshell are homogenised to spherical symmetry with the electron subshell structure indicated and table values in parenthesis. The shell configration is partly up to choice with best choice in principle having smallest energy,  but the choice also has to be accessible in a dynamic build of the atom by succesively adding electrons.  This opens a rich world to explore by RealQM.    
+%Notice that the 8 main shell structure is repeated so that in particular Argon with 18 electrons has the form 2+(4+4)+(4+4):
+\begin{itemize}
+\item Lithium (2)+1: -7.55 (-7.48)                  1st ionisation:      (0.2)
+\item Beryllium (2)+(2): -15.14 (-14.57)           1st ionisation: 0.5 (0.35)
+\item Boron (2)+(2+1): -25.3 (-24.53)               1st ionisation: 0.2 (0.3)
+\item Carbon (2)+(2+2): -38.2  (-37.7)               1st ionisation 0.5 (0.4)
+\item Nitrogen (2)+(3+2):  -55.3 (-54.4)            1st ionisation  0.5  (0.5)
+\item Oxygen (2)+(3+3): -75.5 (-74.8)               1st ionisation  0.5  (0.5)
+\item Fluorine (2)+(3+4):  -99.9   (-99.5)            1st ionisation  0.5      (0.65)
+\item Neon (2)+(4+4):   -132.4     (-128.5  )        1st ionisation 0.6        (0.8)
+\item Sodium (2)+(4+4)+(1): -165 (-162)
+\item Magnesium (2)+(4+4)+(2): -202  (-200)
+\item Aluminium (2)+(4+4)+(2+1): -244 (-243)
+\item Silicon (2)+(4+4)+(2+2): -291 (-290)
+\item Phosphorus (2)+(4+4)+(3+2): -340 (-340)
+\item Sulphur (2)+(4+4)+(4+2): -397 (-399)
+\item Chlorine (2)+(4+4)+(3+4): -457 (-461)
+\item Argon: (2)+(4+4)+(4+4): -523 (-526)
+\item Calcium: (2)+(4+4)+(8)+(2): -670 (-680)
+\item Titanium: (2)+(4+4)+(10)+(2): -848 (-853)
+\item Chromium: (2)+(4+4)+(12)+(2): -1039 (-1050)
+\item Iron: (2)+(4+4)+(14)+(2): -1260 (-1272)
+\item Nickel: (2)+(4+4)+(16)+(2): -1516 (-1520)
+\item Zinc: (2)+(4+4)+(18)+(2): -1773 (-1795)
+\item Germanium: (2)+(4+4)+(18)+(2+2): -2089 (-2097)
+\item Selenium: (2)+(4+4)+(18)+(4+2):- 2416 (-2428)
+\item Krypton: (2)+(4+4)+(18)+(4+4): -2766 (-2788)
+\item Xenon: (2)+(4+4)+(18)+(18)+(4+4): -7355  (-7438)
+\item Radon: (2)+(4+4)+(18)+(32)+(18)+(4+4): -22800 (-23560)
+\end{itemize}
+
+
+%\section{Analysis}
+
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=4.0cm]{shell4} 
+\includegraphics[height=4.0cm]{shell8} 
+\includegraphics[height=4.0cm]{shell9} 
+} 
+\caption{Basic shell structure.}
+\label{shellfig} 
+\end{figure}
+
+We see good agreement even with the relatively crude approximation of homogenisation into spherical symmetry used in the computations.  In Figs.  (\ref{Sim1}) we see interface and output for Oxygen in 2+3+3 configuration with 2+4+2 and 2+2+4 of similar energy.
+
+To see the effect of the subshell structure we compare Neon: (2)+(4+4) with Neon: (2)+(8) without the (4+4) subshell structure,  which has a ground state energy of -153,  which is much smaller than the observed -128.5.  We conclude that somehow the (4+4) subdivision is preferred before a subdivision without subshells.  The difference between (8) and (4+4) is the homogeneous Neumann condition acting between subshells,  tending to increase the width of the shell and thus increase the energy.
+
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=6.0cm]{AtomSim1} 
+\includegraphics[height=6.0cm]{AtomSIm2} 
+} 
+\caption{Atom Simulator Interface and Output.}
+\label{Sim1} 
+\end{figure}
+
+
+The deeper reason for this preference remains to describe,  but the intuition suggests that it relates to the shape or size of the domain occupied by an electron.  With subshells electron domains are obtained by subdivision in both radial and azimuthal direction,  while without subshells there is only azimuthal/angular subdivision of each shell. 
+
+We observe that ionisation energies,  which are of similar size in different shells,  become increasingly small as compared to ground state energies,  and thus are delicate to compute as the difference between the ground state energies of atom and ion.
+
+\section{Approximate Shell Structure}
+RealQM shows an approximate electronic shell stucture for an atom with kernel charge $Z$ to have \emph{shell radius} $r_m\sim m^3/Z$ and \emph{shell thickness} $d_m\sim m^2/Z$,  where $m$ is shell number with $2m^2$ number of electrons in filled shell.  This conforms with charge density $\rho_m(r)\sim\frac{Z}{r^2}$,  thus with a constant shell charge per unit of distance $r$ to the kernel in spherical symmetry,  which gives a total energy $E\sim log(Z)Z^2$ in accordance with observations for $Z<30$ outside first shell,  and also for larger $Z$ outside second shell.  This also conforms to $d_m\sim \frac{1}{Z_{eff}}$ with $Z_{eff}$ the effective charge for $r>r_m$.  
+
+The shell structure is determined from optimal \emph{electron packing} under consecutive filling of shells,  as a possible physical \emph{design principle}. 
+
+
+%Recall that a main task for StdQM is to explain the PT,  but the mission does not seem to be complete \cite{scerri1}.  It is possible that RealQM can do better.
+
+
+
+
+
+
+
+
+\section{From Weak to Strong Reacticity} 
+A basic question of theoretical chemistry is why Gold $Au$ has weak reactivity.  To prepare an answer,  we start recalling the following electron shell structure for atoms with one valence electron in the outermost shell including $Au$,  with E 1st ionization energy according to NIST:
+\begin{itemize} 
+\item  E = 0.339 Au: 2+8+18+32+18+1    
+\item E = 0.143  Cs: 2+8+18+18+8+1       
+\item E = 0.205 Ag: 2+8+18+18+1            
+\item E = 0.154  R : 2+8+18+8+1              
+\item E = 0.213 Cu: 2+8+18+1                 
+\item  E = 0.159 K: 2+8+8+1                
+\item E = 0.188  Na: 2+8+1                         
+\item  E =  0.198 Li:   2+1                             
+\item  E = 0.500 H: 1                                    
+\end{itemize} 
+We see that $Cs$ ,  $Rb$,  $K$ and $Na$ all have shell structure ending with 8+1 together with observed small 1st ionization energy and strong reactivity,  which can be explained by Coulomb attraction after transfer of the valence electron to form an ionic bond.
+
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=6.0cm]{X2} 
+\includegraphics[height=6.0cm]{H2} 
+} 
+\caption{Two $Au$ ($H$) atoms with large (small) inner shell radius and small (large) binding.}
+\end{figure}
+
+ \begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=6.0cm]{X2smallR}
+\includegraphics[height=6.0cm]{X2largeR}
+}
+\caption{}
+\end{figure}
+
+We see that $Au$,  $Ag$ and $Cu$ all have electron structure ending with 18+1 together with observed large 1st ionization energy and weak reactivity decreasing with number of electrons.  Large ionization energy prevents iconic bonds,  but the possibility of a covalent bond remains.  We now seek a theoretical explanation of the observed fact that $Au$ does not form an $Au_2$ molecule,  while $H$ forms $H_2$.  What is the essential difference between $Au$ and $H$ both having one valence electron? 
+
+According to Standard Quantum Mechanics StdQM as the current canon,  the weak reactivity of $Au$ comes from a relativistic effect of inner electrons swirling around the kernel at half the speed of light thus gaining mass and so strongly binding the valence electron into weak reactivity.  The same argument would seem to apply to $Cs$ and even more to $Fr$ and so contradict their strong reactivity.  To explain the weak reactivity of $Au$ as a relativistic effect does not seem to be real physics.
+
+%We will now use RealQM \cite{intro,  RealQM} as an alternative to StdQM to explain why Au does not form Au2, while H forms H2 in terms of covalent bonding.  RealQM gives a generalisation of Schr\"odinger's equation for the Hydrogen atom with $N=1$ to $N>1$ starting with formally the same Hamiltonian as StdQM,  but with a fundamentally different interpretation taking the form of a \emph{non-linear system} of $N$ \emph{one-electron wave functions} with \emph{non-overlapping supports} depending on a \emph{common 3d spatial coordinate}.  RealQM is a \emph{Bernoulli free boundary problem} where one-electron wave functions meet at a common boundary with \emph{continuity and zero normal derivative}.  
+%This note is part of a series of articles covering different aspects of atomic physic as seen by RealQM. 
+
+To seek to understand why $Au$ does not form the molecule $Au_2$,  while $H$ forms $H_2 $,  we let RealQM using the code \cite{Au2code} compute the energy E1 of an X2 molecule formed by two X atoms with one valence electron outside a shell of radius R to get the following results with E1 minimal at a ceratin distance D1 compared with energy E2 at large distance D2:
+
+\begin{itemize}
+\item R = 0:    E1 =-1.17  at   D1 = 1.4,       E2 = -1     at  D2 = 4.
+\item R = 0.5: E1 = -0.87  at D1 = 2,         E2 = -0.85 at D2 = 4.
+\item R = 1:     E1 = -0.51  at D1 = 2,          E2 = - 0.63 at D2 =4.
+\end{itemize}
+We make the following connection to H vs Au:
+\begin{itemize}
+\item R = 0:  corresponds to H2 with energy release 0.17 under formation of molecule.
+\item R = 0.5:  is intermediate with very small energy release 0.02.
+\item R = 1:  corresponds to Au2 which needs input of 0.12 to form.
+\end{itemize} 
+By inspecting the figures below it is easy to understand that (i) the covalent bonding of $H_2$ comes from presence of charge density between the kernels, (ii) the non-bonding of $Au_2$ comes from lack of space between the kernels for electron presence.
+
+RealQM also offers an explanation of the large ionization energy of $Au$ (0.339) compared to $Cs$ (0.143) as an effect of the 18+1 shell configuration ending compared to 8+1.  Ionization means that the valence electron is dragged away from the atom, which in the shell configuration of RealQM requires to also drag the 18 or 8 inner shell electrons to zero density with an increasing energy cost for 18.  The even higher cost for H comes from the fact the the electron of H reaches the kernel,  which the valence electrons of $Au$ and $Cs$ do not.
+
+\section{Water $H_2O$}
+
+Oxygen $O$ has kernel charge +8 with the following possible electronic shell configurations 2+6,  2+4+2,  2+3+3 or 2+2+4.  RealQM in spherical symmetry shows that both 2+4+2 and 2+3+3 match observation.  We here choose 2+3+3 since it promotes a bent $H_2O$ molecule. while 2+4+2 fits with CO2 with linear shape.  
+
+We next use the 3d code \cite{H2O} to simulate the formation of a $H_2O$ starting from a bent configuration matching 3 valence electrons in the outer shell of O to meet the valence electrons of H to form a covalent bond with dissociation energy matching observation,  see Fig.  \ref{H2Ofig}.
+
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=6.0cm]{H2O} 
+} 
+\caption{H2O with O as 2+3+3}
+\label{H2Ofig} 
+\end{figure}
+
+
+
+\section{Molecular Dynamics}
+RealQM simulates the dynamical formation of a molecule moving each kernel according to forces computed as gradients of electron potentials and other kernel potentials until equilibrium with zero force.  Running the code \cite{O3code} we can follow the formation of a $X3$ molecule from 3 X atoms (2D prototype),  each atom consisting of an inner shell with atom kernel shielded by electrons surrounded by an outer shell of valence electron charge density (red),  which meet at a free boundary between the kernels.  We see in Fig. (\ref{X3}) cross-cut through lower kernels of electron charge density (green), global potentials for lower inner shells (blue) with gradients (light-blue) indicating directions of update of kernel positions. We see kernels slowly moving in the directions given by light-blue gradients which tend to zero in approach to energy minimum.  See also $C_2H_4$ \cite{C2H4} and $C_2H_5OH$ \cite{C2H5OH}.
+
+%This is an exercise to show qualitative performance of RealQM for simulation of formation of a molecule froms atoms coming together in a process of energy minimisation. The computational complexity scales linearly with the total number of valence electrons, and so opens to simulations of formation of large molecules.
+ \begin{figure}[bhpt]
+\centerline{ 
+\includegraphics[height=6.0cm]{O3}
+}
+\caption{Dynamic formation of $X3$ molecule.}
+\label{X3}
+\end{figure}
+
+
+\section{RealQM for Nucleus}
+
+The molecule $H_2$ can be seen as two protons held together by Coulomb attraction from electron charge density accumulated between the protons,  which overpowers proton-proton repulsion.  Let us now see if a similar 
+mechanism can keep together a nucleus consisting of an equal number of protons and neutrons,  to give perspective on the balance of attractive and repulsive forces forming molecules. 
+
+The Nobel Prize in Physics 1963 was awarded to  Maria Goeppert Mayer (1/4) and Hans Jensen (1/4) for a shell model of atomic nuclei with the protons and neutrons forming a nucleus arranged in shells in an attractive spherically symmetric potential.  RealQM in the form of \emph{RealNucleus} offers such a nucleus model with charge $+Z$ as a kernel of negative density of total charge $-Z$ surrounded by $2Z$ protons arranged in a shell system,  viewing a neutron split into a proton and an electron.  It is possible that RealNucleus connects to the magic numbers 2,  8,  20,  28,  50 associated with complete shells in the same way RealQM gives the periods of PT. 
+
+
+%The model was inspired by the standard quantum mechanics (stdQM) model of an atom as a positive pointlike nucleus/kernel surrounded by electrons arranged in shells with shell n containing 2∗n2 when full, for n=1,2,3.... The shell model for atoms was motivated by the Pauli Exclusion Principle reflecting that electrons can have two forms of spin (up and down) and that two electrons with the same quantum identification including spin cannot occupy the same position. 
+
+%Real Quantum Mechanics RealQM offers a model of an atom as \emph{pointlike nucleus} of charge $+Z$ including $Z$ \emph{protons} of charge $+1$,  attracting a surrounding collection of $N$ \emph{electrons} of charge $-1$ represented as non-overlapping charge densities interacting by \emph{Coulomb potentials}.  RealQM describes the ground state of an atom with $N=Z$ as the solution to an electron packing energy minimization problem,  with electrons organized in an expanding sequence of shells $S_n$ for $n=1, 2,3,...$ filled with at most $2n^2$ electrons,  where the size of an electron scales with the effective attraction from the nucleus under shielding from electrons in inner shells.  The factor 2 comes from a basic two-valuedness reflecting that the shell containing the nucleus is split into two half spaces and $n$ from subdivision of a half shell into $n^2$ pieces.  
+
+%We now seek a model of a nucleus by switching roles of protons and electrons.  We thus consider a nucleus to formally consist of $Z$ protons and $Z$ neutrons,  with each neutron split into one proton and one electron,  thus a model of  altogether $2Z$ protons organized in shells around a kernel as a sphere of radius $R>0$ of negative density of total charge charge $-Z$.  The kernel of this nucleus model is thus not pointlike as in the case of an atom,  but has a certain $R>0$ which will be used as a model parameter to fit the model to observations.  
+
+%The RealQM nucleus model is an analog of an atomic ion with $Z$ protons and $2Z$ electrons: The Deuterium nucleus consists of one proton and one neutron and so corresponds to an  $H^-$ ion consisting of one proton and two electrons.  A 4Helium nucleus consisting of two protons and two neutrons then correspond to a $He^{2-}$ ion.  Note that while $He^{2-}$ is unstable,  RealQM shows 4Helium to be stable because 4 protons can fill a first shell.  We recall that the electron shell of an atom has a size of $10^{-10}$ m around a proton nucleus of size $10^{-15}$ m.  The RealQM nucleus model then consists of a squence of proton shells of size $10^{-15}$ surrounding a spherical negative density of radius $R <10^{-15}$ of total charge $-Z$.  A change of spatial scale between atom and atomic nucleus of $10^5$ is translated to binding energies with the same factor.  We thus expect to see total binding energies for a nucleus in MeV compared to eV for atoms. The decay energy of neutron into a proton and an electron is 0.782 Me.  We then view a neutron as an inverted H atom with binding energy 13.6 eV with then a factor of about $10^5$.  
+%What emerges is a form of Russian Doll with an H atom as a Big Doll with nucleus as a Small Doll composed in the same way with just a switch of sign of charge (\ref{fig1}).
+  
+%The basic case is represented by two possible configurations of 1 proton and 1 electron: As a H atom with proton kernel surrounded by an electron density with observed binding energy 13.6. eV,  and as a neutron N as an electron kernel surrounded by a proton density with observed binding energy 0.78 MeV with a factor of about $10^5$. 
+%The observed total binding energies of nuclei with $Z$ protons and $N=Z$ neutrons scales with $Z$.  We can fit the RealQM nucleus model to observations using the radius $R$ of the kernel electron density as parameter. We thus obtain a model of a nucleus as a collection of protons and neurons held together by Coulomb attraction between protons and electron kernel overpowering proton repulsion,  thus without any need of a strong nuclear force. The price to pay is to assume that the kernel electron density is not subject to self-repulsion,  and has certain extension in space. 
+
+%SM is viewed to support a Big Bang cosmological theory claiming that the electron as first fundamental particle was created slightly before protons and neutrons as composite particles built from a quark-gluon plasma.  The electron with charge -1 and the proton with charge +1 were thus not created together in some form of split of zero charge into -1 and +1.  Why then there are as many electrons as protons remains as a main open problem. 
+
+%SM says that an atomic nucleus consists of protons and neutrons formed from quarks held together by a strong force carried by gluons,  both from the early quark-gluon soup. SM appears as a very complex ad hoc model of a nucleus with more than 20 parameters. There is no room for electrons in this model.
+
+%RealNucleus offers a different model of a nucleus as a system of electrons and protons interacting by Coulomb potentials/forces without need of any strong force.  RealNucleus thus connects to a charge split of zero into -1 and +1 thus creating exactly the same number of electrons and protons leaving the SM open question with a clear simple answer. 
+
+%RealNucleus suggest the following time line of nucleosynthesis starting with creation of electrons and protons as a split of zero into -1 and +1:
+%\begin{enumerate}
+%\item Formation by an endothermic process of neutron as 1 proton surrounding 1 electron as an H atom with shifted roles of proton and electron. 
+%\item Formation of a 2H nucleus by exothermic fusion of 1 neutron with 1 proton into 2 protons surrounding a 1 electron kernel. 
+%\item Formation of 3H by fusion of 2H and 1 neutron into 3 protons surrounding a 2 electron kernel.
+%\item Formation of 4He by fusion of 2H and 2H or of 3H and proton into 4 protons surrounding a 2 electron kernel.   
+%\item Formation of heavier nuclei by successive fusion followed by fission.  
+%\end{enumerate}
+%RealNucleus gives a  model of a nucleus as a system of non-overlapping charge densities with full quantum mechanical resolution of both electron charge densities in the kernel and surrounding proton charge densities.  RealNucleus computes a total energy of -1 MeV for 2H and about -6 MeV for 4He in fair accordance with observation,  with negative total energy the sign of stability/existence.  RealNucleus thus shows stability/existence of 2H and 4He in a full quantum model of a nucleus as a system of proton and electrons charge densities interacting by Coulomb potentials/forces.  
+
+%RealNucleus offers an explanation of the observation that stable nuclei have about the same number of protons and neutrons,  in the form of (i) confinement of protons by Coulomb potential from electron kernel, and (ii) confinement of electrons by Coulomb potential of surrounding protons overpowering electron-electron and proton-proton repulsion and kinetic energies.   
+
+%It is natural to ask what RealNucleus would say about a hypothetical "double-neutron" consisting of 2 protons surrounding a kernel of 2 electrons as an analog to the Helium atom with the roles of protons and electrons shifted. RealNucleus shows positive total energy from kernel electron-electron repulsion and kinetic energy and thus instability of "double neutron" in the same sense a free neutron is unstable decaying into a proton + electron.
+
+ \begin{figure}[bhpt]
+\centerline{ 
+\includegraphics[height=6.0cm]{RealNucleusInput}
+\includegraphics[height=6.0cm]{Nucleus24}
+}
+\caption{RealNucleus with 2 electrons surrounded by 4 protons }
+\label{Nucleus}
+\end{figure}
+
+To see if such a model makes sense,  let us check if $Z$ negative point charges and $2Z$ positive point charges can form a stable configuration under Coulomb interaction.  We start with $Z=1$ corresponding to 2H consisting of 2 protons surrounding a  nucleus kernel of 1 electron.  Suppose a linear particle configuration with the protons at coordinates -1 and +1 and the electron at 0.  We have the following Coulomb potential energies: 
+\begin{itemize}
+\item proton-electron attraction = -1-1 = -2
+\item proton-proton repulsion = +0.5 
+\item total energy as (total potential energy)/2 = -0.75. 
+\end{itemize}      
+We find the total energy to be negative as evidence of stability/existence. We understand that this is a special case without electron-electron repulsion since self-repulsion is excluded.  
+
+We next consider $Z=2$ corresponding to 4He consisting of 4 protons surrounding a nucleus kernel of 2 electrons,  thus a case with non-zero electron-electron repulsion.  Suppose a planar quadratic configuration with the electrons at (-0.5, 0) and (0.5, 0) and the protons at (-1.5,0), (1.5,0), (0,1.5) and (0.-1.5) in a 2d coordinate system,  which gives the following Coulomb potential energies (with different spatial scale as compared to 2H)   
+\begin{itemize}
+\item proton-electron attraction $<-1-1-\frac{1}{2}-\frac{1}{2}-\frac{4}{1.5\sqrt{2}}$
+\item proton-proton repulsion $=\frac{1}{3}+\frac{1}{3}+\frac{4}{1.5\sqrt{2}}$
+\item electron-electron repulsion $=1$ 
+\item total energy as (total potential energy)/2 $<-\frac{2}{3}$.  
+\end{itemize}     
+We find a total energy which is clearly negative even in the presence of electron-electron repulsion from the kernel.  This is made possible by assuming a distance between the electrons in the kernel to be comparable to the distance to the protons,  thus with a nucleus kernel of size comparable to that of the nucleus.  We confirm stability using a RealNucleus code in spherical symmetry \cite{Nucleus} with input/output in Fig. \ref{Nucleus}.
+
+%On the other hand,  the nucleus of an atom is much smaller than the atom since it scales with the inverse of the mass of the proton   which is much bigger than the mass of the electron (factor 1836). 
+% made possible by the presence in the Schr\"odinger equation of mass $m$ in the coefficient $\frac{1}{2m}$ of the Laplacian, which sets a spatial scale by the same factor $\frac{1}{m}$.  Recalling that the mass of the proton Laplacian is much bigger than that of the electron Laplacian (factor 1836),  
+%we find a rationale for assuming that the kernel is not small compared to the nucleus,  thus allowing electron-proton attraction to dominate electron-electron repulsion.  
+
+
+%The shell model of the 1963 Nobel Prize is today complemented by the SM where the protons and neutrons of a nucleus consist of triples of quarks.  Is it time for a come-back in the present situation when the Standard Model increasingly is being questioned?
+
+
+
+%RealQM has now been extended to a full Schrödinger Equation SE for an atom as an electron density of total charge $-Z$ surrounding a nucleus as a proton density of total charge $+2Z$ surrounding a nucleus kernel as an electron density of total charge $-Z$, as RealAtom + RealNucleus. The total energy includes the kinetic energies of both electrons and protons as well as all Coulomb potential energies including both electron-electron repulsion and proton-proton repulsion. The nucleus here appears as in inverted form of the atom with switched roles of electrons and protons, like a Russian doll system with an electron-proton-electron pattern from nucleus kernel -Z to nucleus +2Z to atom -Z (in basic form).
+
+%RealAtom computes binding energies of atoms in eV and RealNucleus binding energies of nuclei in MeV with a change of scale of about $5\times 10^5$ reflecting a change of spatial scale from nucleus to atom, while the change of scale from nucleus kernel to nucleus is much smaller around $10$. 
+
+%RealQM thus offers a full SE for an atom with nucleus based on a Hamiltonian including all kinetic and Coulomb potential energies. The model is parameter-free modulo the change of scale from nucleus to atom, assuming a mass ratio of 1836 between proton and electron. The computational complexity scales with $Z$.
+
+%Note that textbook Standard Quantum Mechanics StdQM including the Standard Model SM does not offer any such complete Schrödinger which is computable. What is offered is (i) SE for an atom with nucleus modeled as a point-wise charge density with zero kinetic and potential energies, and (ii) a shell model of a nucleus consisting of protons and neutrons swimming in a negative potential from a charge density without kinetic and potential energy. StdQM thus does not include the full SE of RealQM. 
+
+%In short, RealQM offers the first full SE of an atom including nucleus as a unified model in terms of non-overlapping electron and proton charge densities interacting by Coulomb potentials while adding kinetic energies to potential energies to total energy with computations geared to find minima corresponding to ground states.
+
+%Preliminary computations show that RealQM can match observations. RealQM may show a way out of the dead-end of uncomputable StdQM of atom including nucleus. 
+
+%Test case 1: 2H
+
+%The basic test for RealNucleus is the 2H nucleus in StdQM viewed to consist of 1 proton and 1 neutron, and in RealNucleus viewed to consist of 2 proton charge densities surrounding a nucleus kernel of 1 electron. This a the nucleus analog of an atom consisting of 2 electrons surrounding a nucleus of 1 proton, that is the $H^-$ ion of the H atom with one extra electron, which is known to be stable. If we then assume that the only electron of the nucleus kernel of 2H has zero kinetic energy and no self repulsion, we get the message that 2H should be stable. RealNucleus confirms by giving a binding $E\approx 1$ MeV including the kinetic energy and zero potential energy from no self repulsion of of the nucleus kernel.  
+
+%Test case 2: 4He
+
+%A more serious test case is the 4He nucleus in StdQM viewed to consist of 2 protons and 2 neutrons, and in RealNucleus viewed to consist of 4 protons surrounding a nucleus kernel of 2 electrons. In this case both kinetic and potential energy of the kernel add to the total energy, and the question is if then the total energy will be negative indicating stability, or not? 
+
+We thus find the enigma of the existence of a nucleus can be resolved as a marriage between the two Coulomb components of the system: 
+\begin{itemize}
+\item control of electron-electron kernel repulsion by surrounding protons,
+\item control of proton-proton repulsion by electron kernel,
+\item a kernel of Z electrons binding 2Z protons,
+\item 2Z protons confining a kernel of Z electrons.
+\end{itemize}
+We find here a rationale for the near equal number of proton and neutrons in a stable nucleus.
+Altogether,  RealQM + RealNucleus captures atom + nucleus in two steps: 
+\begin{itemize}
+\item atom as electrons around a nucleus of protons of small size,
+\item nucleus as protons around a kernel of electrons of comparable size.
+%\item A nucleus is stable on its own as a collection of positive and negative charge densities meeting with continuity.
+\end{itemize}
+RealNucleus does not need the \emph{strong force} of the \emph{Standard Model},  which is remarkable. 
+
+
+\section{Existence/Stability of Atoms and Matter}
+
+%The fact that electron charge densities do not overlap in RealQM,  gives a lower bound $-Z^2$ of the total energy of an atom 
+
+A lower bound on total energy of an atom guarantees \emph{existence/stability}.  The total energy of an atom with kernel charge $Z$ is observed to scale with $-Z^\alpha$ with $\alpha\approx 1.81$,  which is captured by RealQM with a suitable shell structure.  
+
+Existence/stability of \emph{bulk matter},  as a collection of a large number $M$ of atoms,  is expressed by a lower bound on total energy scaling with $-M$ making it an \emph{extensive quantity}.  This is safely built in for RealQM since electrons do not overlap.  The following Kato-Hardy inequality 
+\begin{equation}
+\int\frac{\psi^2(x)}{\vert x\vert}dx\le (\int\psi^2(x)dx)^{\frac{1}{2}}(\int\vert\nabla\psi (x)\vert^2dx)^{\frac{1}{2}}.
+\end{equation} 
+for all $\psi\in H^1(R^3)$,  shows that potential energy is controlled in terms of kinetic energy,  thus proving existence/stability.  
+
+A corresponding proof for StdQM is much more involved because electrons overlap,  as evidenced in a 100 page proof by Dyson-Lenard later cut down by Lieb-Thirring. The fact that stability of matter is safely built into the structure of RealQM,  can be seen as an expression of physicality of RealQM. 
+
+\section{Spin}
+The \emph{Pauli Exclusion Principle PEP} has no role in RealQM,  which means that spin as basis for PEP has no role.  But spin in StdQM has also a role in interaction with magnetic fields,  and this role can be added to RealQM to capture e g the Stern-Gerlach experiment. 
+
+%Wave functions of StdQM have overlapping global supports,  which does not directly capture electron correlation, while this is built in to RealQM because supports are not overlapping.
+\section{Molecule Model vs RealQM}
+Chemists use 3D Models of molecules formed by non-overlapping atomic charge densities with direct connection to spherically homogenized  RealQM,  see Fig. \ref {Balloon}.
+
+ \begin{figure}[bhpt]
+\centerline{ 
+\includegraphics[height=4.0cm]{MoleculeModel}
+\includegraphics[height=6.0cm]{BeH2}
+}
+\caption{Balloon model vs RealQM BeH2 with Be 2+2 (hole + red/blue).}
+\label{Balloon}
+\end{figure}
+
+\section{School Chemistry without StdQM}
+The lack of "stories" about chemical bonding based on StdQM means that school chemistry education is disconnected from StdQM,  because stories/explanations are needed to give meaning for students.  Chemical bonding is thus explained as a story of "sharing of electrons" in "Lewis structures" without connection to StdQM.  RealQM offers stories/explanations based on physics understandable also by young minds,  and so may have a role in school chemistry.  
+
+\section{Conclusion}
+RealQM follows up the early idea of Schr\"odinger to view electrons as charge densities carrying identity from spatial occupation into a model of atomic physics within classical multi-phase continuum physics,  which has linear computational complexity expressed in an essentially 3-line computer code.  We show that RealQM captures basic aspects of atomic and molecular physics and so in particular may open new possibilities for ab initio protein folding. 
+
+%\section{RealQM vs StdQM as Foundation of Chemistry}
+%Chemistry was in 1926 assigned the new foundation of StdQM formed by Born-Heisenberg-Dirac,  to be explored by chemists.  But the task showed to be much more difficult than envisioned by Dirac,  because the abstract non-physical nature of StdQM did not serve well to build concrete physical molecules as the essence of chemistry.  RealQM presents an alternative foundation without this gap.
+
+%Real Quantum Mechanics RealQM gives a generalisation of Schr\"odinger's equation for the Hydrogen atom with $N=1$ electron to atoms with $N>1$ electrons taking the form of a \emph{non-linear system} of $N$ \emph{one-electron wave functions} with \emph{non-overlapping supports} depending on a common 3d spatial coordinate.  RealQM is a \emph{Bernoulli free boundary problem} where one-electron wave functions meet at a common boundary with \emph{continuity and zero normal derivative}.  RealQM forms the ground state of an atom as the result of an energy minimisation electron packing problem organising the electrons into a sequenece of spherical shells in agreement the of the Periodic Table with a basic pattern of at most $2n^2$ electrons in main shell $n=1,2,3,4,$ with the factor 2 reflecting a basic two-valuedness inherited from the first shell split into two halves and $n^2$ from subdivision of a square into $n\times n$ equal pieces.
+
+
+
+% basic pattern of about the same number of protons and neutrons in a stable nucleus.
+  
+
+
+
+
+
+
+%In RealQM an atomic nucleus is held together by Coulomb attraction between electron kernel and surrounding proton density thus overpowering proton repulsion,  in the same way an atomic ion is held together by Coulomb attraction between proton nucleus and surrounding electron density overpowering electron repulsion. 
+%There is here no need to ad hoc introduce a strong force as in the Standard Model.  The price to pay is to assume that the kernel electron density is not subject to self-repulsion.  
+
+%The RealQM nucleus model has kernel  requires that the kernel of an atomic nucleus as a negative charge of strength more than 1 is free of self-repulsion,  since it has no positive kernel overpowering repulsion as in Big and Small Doll.  This remains to be understood.  Can two electrons be compressed to a negative charge density -2 without self-repulsion? Is this possible by some form of quantum gravity? In any case this makes two electrons fundamentally different from two protons for which there is no need of compression to +2 without self-repulsion.
+
+%A Russian Doll system as a form of fractal system describing the Universe as a repeating pattern, would thus end with a Small Doll in the form of a nucleus as a negative charge density of size $10^{-20}$  m without self-repulsion surrounded by a collection of non-overlapping proton densities organised into shells as solution to an energy minimisation packing problem.  Such a nucleus would be held together by Coulomb attraction overpowering repulsion without need of the strong force of the Standard Model.  
+
+%Recall that the early Bohr model of an atom was a planetary system of electrons/planets orbiting a nucleus/Sun. In RealQM this is replaced by a stationary system of non-overlapping electron densities surrounding a nucleus as solution to an energy minimisation packing problem.  Compare with Fractal Cosmology. It seems that we can find fractals on largest scales governed by gravitational attraction and smallest scales governed by Coulomb electric attraction, but not on human scales showing more complexity.  
+
+%\begin{figure}[bhpt] 
+%\centerline{ 
+%\includegraphics[height=8.0cm]{doll} 
+%} 
+%\caption{A model of an atom with nucleus of analogous form. }
+%\label{fig1} 
+%\end{figure}
+
+%\section{Molecular Dynamics with RealQM}
+%RealQM is an alternative version of textbook Standard Quantum Mechanics StdQM. RealQM is based on non-overlapping one-electron charge densities in 3d physical space which preserves fundamental principles of classical continuum mechanics of 
+
+
+
+
+
+
+
+\begin{thebibliography}{9}
+\bibitem{hoffman} R.  Hoffmann,  What might Philosophy of Chemistrt be?,  Foundations of Chemistry,  Vol. 1,  No 1,  1999.
+\bibitem{piela} L. Piela,  Ideas of Quantum Chemistry,  Elsevier 2007.
+\bibitem{scerri2} E. Scerri, The Periodic Table,  Oxford University Press 2nd ed 2019.
+\bibitem{scerri1} E. Scerri,  Philosophy of Chemistry: Synthesis of a New Discipline, Foundations of Chemistry,  Vol. 6,  No.(1), 2004.
+%\bibitem{bell} J.  Bell,  Speakable and Unspeakable in Quantum Mechanics,  Cambridge University Press 2004.
+\bibitem{primas} H. Primas,  Chemistry,  Quantum Mechanics and Reductionism,  Springer 1981. 
+\bibitem{nordholm} S. Nordholm and and G.B. Bacskay,  The Basics of the Covalent Bond in Terms of Energy and Dynamics,  Molecules 8 June 2020.
+\bibitem{koch} W.  Koch and M. Holthausen,  A Chemist's Guide to Density Functional Theory,  Wiley 2001.
+\bibitem{wolfram} S. Wolfram,  A New Kind of Science 2000.
+%\bibitem{maudlin} T. Maudlin,  Philosophy of Physics: Quantum Theory (Princeton Foundations of ContemporaryPhilosophy ,  Prineton University Press 2019.
+\bibitem{HeH+} K. Pachucki,  Born-Oppenheimer potential for HeH+,  Chemical  Physics Letters, 498(4-6), 192-195, 2010.
+\bibitem{bader} R. Bader,  Atoms in Molecules, A Quantum Theory,  Clarendon Press Oxford 1990. 
+\bibitem{SciAm} \href{https://www.scientificamerican.com/article/the-first-molecule-in-the-universe/}{Scientific American 2020}
+\bibitem{philchem} A. Woody,  R. Hendry and P.  Needham,  Philosophy of Chemistry,  Handbook of the Philosophy of Science Vol 6,  Elsevier 2012.
+\bibitem{RealQM} \href{https://physicalquantummechanics.wordpress.com}{Real Quantum Mechanics web site} 
+\bibitem{articles} \href{https://physicalquantummechanics.wordpress.com/articles}{RealQM articles} 
+\bibitem{Chemistry}\href{https://claesjohnson.blogspot.com}{Towards Quantum Chemistry}
+\bibitem{coderepository}\href{https://physicalquantummechanics.wordpress.com/code-repository/         }{Code Repository} 
+\bibitem{code1}\href{https://editor.p5js.org/claesjohnson/full/UDL23Mw-2}{OrthoHelium1+1 code}
+\bibitem{code2}\href{https://editor.p5js.org/claesjohnson/full/__FwBGV5m}{HeliumExc code}
+%\bibitem{Hecode}\href{https://editor.p5js.org/claesjohnson/sketches/0MvJUe1ph_}{Helium code}
+\bibitem{H2O}\href{https://editor.p5js.org/claesjohnson/full/sH9uSZvkQ}{RealQM 3d H20}
+\bibitem{C2H4}\href{https://editor.p5js.org/claesjohnson/full/KsLTZcGvC}{C2H4 code}
+\bibitem{C2H5OH}\href{https://editor.p5js.org/claesjohnson/full/NrtgM15eH}{C2H5OH code}
+\bibitem{Nucleus}\href{https://editor.p5js.org/claesjohnson/full/hZmA2tDjw}{Nucleus code}
+%\bibitem{intro} \href{https://www.dropbox.com/scl/fo/rdzaw7bydbtlcpwthumje/AA2HaTM-j7KyK-eAJjBNHe0?rlkey=7c5tv6jrqlub85a0cto96t5w3&dl=0}{RealQM: Introduction}
+%\bibitem{Covalent}\href{https://www.dropbox.com/scl/fi/qpdns2ktz4a89z7nmyd09/RealQMCovalent.pdf?rlkey=bdhvfdwlgidqj3lwum621xbli&dl=0}{RealQM: Covalent Bonding}
+%\bibitem{Gold}\href{https://www.dropbox.com/scl/fi/07i9jooczotg8j1zt3ozy/RealQMGold.pdf?rlkey=9xpbspcs1h265b70pvcrd1c72&dl=0}{RealQM: Weak Reactivity of Gold}
+%\bibitem{First}\href{https://www.dropbox.com/scl/fi/2yaop99aypfomawhbe9by/RealQMFirstMolecule1.pdf?rlkey=82cnrllbujnn33a458r8xfm0j&dl=0}{RealQM: He+H or HeH+}
+%\bibitem{shell}\href{https://www.dropbox.com/scl/fi/e97azjux4un0z8w1wqeff/RealShell.pdf?%rlkey=k3ja447d6s2qw96ce1alb4py9&dl=0}{RealQM: Shell Structure and Periodic Table}
+%\bibitem{H2O}\href{https://www.dropbox.com/scl/fi/ex0o1sf2myp5x3913ofcn/RealQMH2O.pdf?rlkey=klix2sfzabogi6oeszajydf5v&dl=0}{RealQM: H2O}
+%\bibitem{RealQMChem} \href{https://claesjohnson.blogspot.com/2023/10/towards-real-quantum-chemistry.html}%{Towards Real Quantum Chemistry}
+\bibitem{AtomSim}\href{https://editor.p5js.org/claesjohnson/sketches/mdiozQLuY}{Atom Simulator code}
+%\bibitem{nucleus}\href{https://editor.p5js.org/claesjohnson/sketches/cpuPxeeBv}{Nucleus Simulator code}
+\bibitem{Au2code} \href{https://editor.p5js.org/claesjohnson/full/crmqPxDrj}{Au2 code}
+\bibitem{X2code} \href{https://editor.p5js.org/claesjohnson/sketches/TORJShfCP}{X2 covalent code}
+\bibitem{H2code} \href{https://editor.p5js.org/claesjohnson/sketches/kFxd2D-42}{H2 code}
+\bibitem{Heliumcode}\href{https://editor.p5js.org/claesjohnson/sketches/LT8XrC0GG}{Helium code}
+%https://editor.p5js.org/claesjohnson/sketches/LT8XrC0GG
+%https://editor.p5js.org/claesjohnson/sketches/LT8XrC0GG
+\bibitem{He2code}\href{https://editor.p5js.org/claesjohnson/sketches/JLVp7r3y-}{He2 code}
+\bibitem{O3code}\href{https://editor.p5js.org/claesjohnson/full/F4aOODAal}{Formation O3 code}
+
+%\bibitem{Au}\href{https://claesjohnson.blogspot.com/2025/03/reactivity-of-gold-vs-caesium.html}{Weak reactivity of Gold}
+\bibitem{He+Hcode}\href{https://editor.p5js.org/claesjohnson/full/ZxXgZl76v}{He+H code}
+
+%\bibitem{McWeeny} Roy McWeeny, Quantum Mechanics of Many-Particle Systems: Atoms, Molecules - and More, Basic Books in Science.
+%\bibitem{patiltang} S.H. Patil and K.T. Yang, Asymptotic Methods in Quantum Mechanics, Applications to Atoms, Molecules and Nuclei, Springer 2000.
+%\bibitem{brown} Brown, LeMay, Burstein, Murphy, Woodward, Chemistry The Central Science, Prentice Hall 2012.
+%\bibitem{stone} A. J. Stone, The Theory of Intermolecular Forces, Oxford Univeristy Press 2013.
+%\bibitem{penrose} R. Penrose, Fashion, Faith and Fantasy in the New Physics of the Universe, Princeton University Press 2016.
+%\bibitem{kragh} H. Kragh, Dirac A Scientific Biography, Cambridge University Press 1988.
+%\bibitem{demtroder} W. Demtr\"oder, Atoms, Molecules and Photons, Springer 2006.
+%\bibitem{popelier1} P. Popelier, Solving Schr\"odinger's Equation Has Everything Been Tried?, Imperial College Press 2011.
+%\bibitem{popelier2} P. Popelier and R. Gillespie, Chemical Bonding and Molecular Geometry, From Lewis to Electronic Densities, Oxford University Press, 2001.
+%\bibitem{eschrig} H. Eschrig, The Fundamentals of Density Functional Theory, University of Technology Dresden.
+%\bibitem{bowman}  G. Bowman, Essential Quantum Mechanics, Oxford University Press 2008.
+%\bibitem{tsuneda} T. Tsuneda,  Density Functional Theory in Quantum Chemistry,  Springer 2014.
+%\bibitem{weinberg} S. Weinberg, Lectures on Quantum Mechanics, Cambridge University Press, 2013.
+%\bibitem{bacciagaluppi} G. Bacciagaluppi and Antony Valentini,  Quantum Theory at the Cross Roads: Reconsidering the 1927 Solvay Conference,  arXiv:quant-ph/0609184v2.
+%\bibitem{zeilinger} A. Zeilinger, On the Interpretation and Philosophical Foundation of Quantum Mechanics, in Festschrift for K. V. Laurikainen, U. Ketvel et al (Eds), Helsinki University Press 1996.
+% \href{http://www.youtube.com/watch?v=C2VMO7pcWhg}{Einstein's Strike of Genius.}
+%\bibitem{He+Hcoarse}\href{https://editor.p5js.org/claesjohnson/full/ZxXgZl76v}{He+H coarse}
+%\bibitem{He+Hfine}\href{https://editor.p5js.org/claesjohnson/full/CjjY6Ukcu}{He+Hfine}
+%\bibitem{piela} L. Piela,  Ideas of Quantum Chemistry,  Elsevier 2007.
+%\bibitem{bell} J.  Bell,  Speakable and Unspeakable in Quantum Mechanics,  Cambridge University Press 2004.
+%\bibitem{bader} R. Bader,  Atoms in Molecules, A Quantum Theory,  Clarendon Press Oxford 1990. 
+%https://physicalquantummechanics.wordpress.com
+%\bibitem{McWeeny} Roy McWeeny, Quantum Mechanics of Many-Particle Systems: Atoms, Molecules - and More, Basic Books in Science.
+%\bibitem{patiltang} S.H. Patil and K.T. Yang, Asymptotic Methods in Quantum Mechanics, Applications to Atoms, Molecules and Nuclei, Springer 2000.
+%\bibitem{brown} Brown, LeMay, Burstein, Murphy, Woodward, Chemistry The Central Science, Prentice Hall 2012.
+%\bibitem{stone} A. J. Stone, The Theory of Intermolecular Forces, Oxford Univeristy Press 2013.
+%\bibitem{penrose} R. Penrose, Fashion, Faith and Fantasy in the New Physics of the Universe, Princeton University Press 2016.
+%\bibitem{kragh} H. Kragh, Dirac A Scientific Biography, Cambridge University Press 1988.
+%\bibitem{demtroder} W. Demtr\"oder, Atoms, Molecules and Photons, Springer 2006.
+%\bibitem{popelier1} P. Popelier, Solving Schr\"odinger's Equation Has Everything Been Tried?, Imperial College Press 2011.
+%\bibitem{popelier2} P. Popelier and R. Gillespie, Chemical Bonding and Molecular Geometry, From Lewis to Electronic Densities, Oxford University Press, 2001.
+%\bibitem{eschrig} H. Eschrig, The Fundamentals of Density Functional Theory, University of Technology Dresden.
+%\bibitem{bowman}  G. Bowman, Essential Quantum Mechanics, Oxford University Press 2008.
+%\bibitem{tsuneda} T. Tsuneda,  Density Functional Theory in Quantum Chemistry,  Springer 2014.
+%\bibitem{koch} W.  Koch and M. Holthausen,  A Chemist's Guide to Density Functional Theory,  Wiley 2001.
+%\bibitem{weinberg} S. Weinberg, Lectures on Quantum Mechanics, Cambridge University Press, 2013.
+%\bibitem{bacciagaluppi} G. Bacciagaluppi and Antony Valentini,  Quantum Theory at the Cross Roads: Reconsidering the 1927 Solvay Conference,  arXiv:quant-ph/0609184v2.
+%\bibitem{zeilinger} A. Zeilinger, On the Interpretation and Philosophical Foundation of Quantum Mechanics, in Festschrift for K. V. Laurikainen, U. Ketvel et al (Eds), Helsinki University Press 1996.
+% \href{http://www.youtube.com/watch?v=C2VMO7pcWhg}{Einstein's Strike of Genius.}
+\end{thebibliography} 
+    
+
+\end{document}
+
+
+
+%\section{Comments}
+%Compared to classical mechanics in physical 3d space, this is a new (strange) construction with $N$ versions of $\Re^3$ so to speak stacked upon each other into a product space $\Re^{3N}$ of $N$ versions of $\Re^3$,  which are separated but yet share the same $\Re^3$ in the electronic repulsion potential $\frac{1}{\vert x_i-x_j\vert}$. The result is that $H_{std}$ has no interpretation in real physical space $\Re^3$,  only a statistical invented by Born under protests from Schrödinger who never accepted $H_{std}$ as physics.
+
+%Because of the $3N$ spatial dimensions, the Schrödinger equation built on the Hamiltonian $H_{std}$ of StdQM, is uncomputable if $N$ is not very small, and so $H_{std}$ must be dimensionally compressed to computable form. Density Functional Theory performs the most drastic compression into a Hamiltonian $H_{DFT}$ acting on a joint electron density $\rho (x)$ depending on a single 3d $x$ spatial coordinate obtained by integrating $\Psi (x_1,...,x_N)\vert^2$ over all coordinates $x_i$ but one.  But the corresponding integration of $H_{std}$ does not compress the electron repulsion potential $\frac{1}{\vert x_i-x_j\vert}$ to a potential acting on $\rho (x)$ and $H_{DFT}$ cannot be derived from $H_{std}$ and so has to be invented,  which has shown to be very difficult. The result is that the use of DFT has shown to require a lot of expert knowledge.  
+
+%We thus see that both $H_{std}$ and $H_{real}$ start from formally the same abstract Hamiltonian but employ different concrete realisations,  with the principle differences being: 
+%StdQM uses electronic wave functions with global support in multi-dimensional space.
+%RealQM uses electronic wave functions with non-overlapping local support in 3d space.
+%The Schrödinger equation of RealQM is a system of partial differential equations for non-overlapping electron charge densities depending on a 3d space coordinate, with computational complexity scaling linearly with $N$ opening to simulation of large molecules.  RealQM can be seen as a refined form of DFT with the original electron repulsion potential of StdQM,  thus avoiding the main difficulty of DFT of inventing such a thing.
+%We see that RealQM neatly fits in between StdQM and DFT as (i) being computable with (ii) the electron Coulomb electronic repulsion of StdQM,  thus keeping the main advantages of both. 
+%This is the conclusion of a long journey to be completed in a revision of the RealQM book including a lot of chemsitry.
+
+ 
+
+
+%The Schr\"odinger equation for the Hydrogen atom in charge density is an example of an \emph{Eulerian continuum mode}l of the same form as the \emph{Navier-Stokes equations for fluid flow} in terms of velocity and pressure as distributed functions of a 3d space coordinate,  where individual particle trajectories are not followed.  A major advantage of a continuum model is that it allows very efficient computation under different spatial resolutions.
+
+%Schr\"odinger's equation does not involve point positions of electrons,  just distributed charge density,  and thus has nothing to say about point positions of electron.  At least this is what a mathematician would say understanding that a mathematical model does not contain more than what is put in.  Even an emergent phenomenon is ultimately a consequence of input.  It is not meaningful to ask about point positions of the planets in the Solar system at some given time from a model that only contains time-less orbits of the planets.  Neither can an exact point position of the electron of a Hydrogen atom be determined experimentally.  Wittgenstein would say that asking for the electron position does not make sense in the Schr\"odinger charge density model and so should not no be spoken of.  
+
+%But physicists would not hesitate to say that it is meaningful to ask about the position of the Hydrogen electron, even if it is not contained in the model and cannot be experimentally determined.  A physicist would insists that Schrödinger's equation is to be viewed to be formulated in terms of a probability density of electron point positions,  and not charge density. 
+%But a probability density is not by itself any physical quantity,  but instead is described as a catalog of possible electron point positions.  But physics does not keep such a catalog.  Changing from charge density to probability density thus turns Schrödinger's equation from being a model of physics into a model of non-physics. 
+%So why did physicists take this step in 1926 when seeking to give a meaning to Schr\"odinger's equation for the Hydrogen atom,  which had shown to accurately capture the spectrum of the Hydrogen atom.  Schr\"odinger certainly viewed his equation for Hydrogen in terms of charge density and not probability density.
+
+%The switch to probability density came with an ad hoc generalisation of Schr\"odinger's equation for atoms with more than one electron in terms of a multi-dimensional wave function depending on $3N$ spatial variables for an atom with $N>1$ electrons.  With the help of Max Born this model was given an interpretation in terms of probability density to form the foundation of modern physics in the form of \emph{Standard Quantum Mechanics StdQM}.  Here Born's rule states that experimental observation of a prepared quantum state as a given linear combination of eigen-states,  choses one of the eigen-states with probability measured by its coefficient in the linear combination.  This is called \emph{collapse of the wave function} and has remained a true mystery from physical point of view.  The eigen-states are determined by Schr\"odinger's equation and so the spectrum.  Statistics thus enters only in experimental observation of prepared states (while the computed spectrum is deterministic),  which connects to the view of Bohr-Heisenberg that the objective of StdQM is to predict outcomes of prepared experiments,  not to model reality e.  g.  in the form of spectrum,  which represents a fundamental change of what physics is all about.  The linearity of the Schr\"odinger equation of StdQM invited to a mathematical analysis using the machinery of the new field of functional analysis developed by Hilbert in terms of Hilbert spaces,  which von Neumann exploited in a form of axiomatic formal mathematics (in uncomputable form) with axioms without clear physical meaning.  Main efforts have been made over the 100 years since 1926 to give StdQM physical meaning,  but no consensus has been reached.  
+
+%Mathematics can thus serve to keep physicality of quantum mechanics as in RealQM,  but also by von Neumann abstraction leave physicality as in StdQM.  Physics education has been locked on StdQM with all its complications from non-physicality as expressed by Nobel Laureate Murray Gell-Mann 50 years ago:
+%Niels Bohr brainwashed a whole generation of theorists into thinking that the job of interpreting quantum theory was done 50 years ago.
+%The brainwash has continued since text-book physics still today is StdQM.  Attempts have been made to give StdQM physical meaning like Many-Worlds and Bohmian Pilot Wave but are not viewed to be successful.  RealQM opens a new way of thinking, which apparently has been brainwashed away for 100 years... 
+
+%Bohr quotes:
+%Physics is not about how the world is, it is about what we can say about the world.
+%Those who are not shocked when they first come across quantum theory cannot possibly have understood it.
+%Yes, it is shocking to learn that StdQM it is not about how the world is, that StdQM is non-physical. Schrödinger would have welcomed RealQM as a theory about physics, while such a thing would have shocked Bohr again...
+
+%RealQM is based on the same physics as the SE for Hydrogen atom: Coulomb potential energy and kinetic energy.  RealQM describe the microscopic world in the same form as Newton's mechanics describes the macroscopic world,  and so RealQM seamlessly connects to Newton's mechanics in a unified continuum model over all scales.  
+
+
+
+
+
+
+
+
+
+\section{Formulation of RealQM as Free Boundary Problem}
+
+%We consider a mathematical model in terms of classical continuum mechanics of an atom or ion consisting of a kernel of positive charge $Z$ occuping a ball $B_\epsilon =\{x\in\Re^3:\vert x\vert <\epsilon\}$ of small radius $\epsilon$ centered at the origin, surrounded by $N$ electrons of negative unit charge, as a free boundary problem for a system of $N$ distributed non-overlapping electron charge densities in the domain $\Re^3_\epsilon =\Re^3 - S_\epsilon$ outside the kernel. 
+
+We now give the precise formulatinon RealQM for the ground state of a atom with $N>1$ based on the Hamiltonian 
+$H_{real}$. 
+%For a neutral atom $N=Z$, 
+%while $N<Z$ for an ion with positive charge $Z-N$ and $N>Z$ for an ion with negative charge $N-Z$, as an atom which has lost or gained electrons.  The chemical properties of an atom is largely determined by the energy required to remove an electron (ionisation energy) and the energy released by capturing an electron (electron affinity), as prime tasks for an atom model.
+We start from a wave function Ansatz
+\begin{equation}\label{psipsij}
+\psi (x) = \sum_{j=1}^N\psi_j(x)     
+\end{equation}
+as a sum of $N$ real-valued electron wave functions $\psi_j(x)$ depending on a common space coordinate $x\in \Re^3$ and having non-overlapping spatial supports $\Omega_j$ with boundaries $\Gamma_j$ for $j=1,...,N$, together filling $\Re^3$. 
+
+We assume that $\psi_j\in H^1(\Omega_j )$ for $j=1,...,N$ ,where $H^1(\Omega )$ is the set of real-valued functions defined on the domain $\Omega$ in $\Re^3$ which are square integrable along with first derivatives.
+
+We ask the electron wave functions $\psi_j$ to statisfy the normalization condition
+ \begin{equation}\label{normalization}
+ \int_{\Omega_j}\psi_j^2\, dx = 1\quad\mbox{for}\quad j=1,..,N,
+ \end{equation}
+attributing unit charge to each electron with $\psi_j^2(x)$ representing the charge density of electron $j$. 
+
+We consider $\Gamma$ as the union of $\Gamma_i\cap\Gamma_j$ for $i,j=1,...,N$ to be a \emph{free boundary} to be determined along with the wave function $\psi$ and as a free boundary condition, we shall ask $\psi$ to be continuous across $\Gamma$, that is that $\psi_j$ and $\psi_k$ agree on $\Gamma_i\cap\Gamma_j$. We express satisfaction of the free boundary condition of continuity by asking that $\psi\in H^1(\Re^3)$. 
+
+We start considering real-valued wave functions $\psi (x)$ depending on the space coordinate $x$, and later extend to complex-valued wave functions with time dependency.
+
+We seek the \emph{neutral ground state} of the atom with $N=Z$ as a real-valued function $\psi\in H^1(\Re^3)$ of the form (\ref{psipsij}) sat�sfying (\ref{normalization}), which with the $\psi_j$ varying freely over $H^1(\Omega_j)$ minimizes the \emph{total energy} 
+\begin{equation}\label{totE}
+TE(\psi )\equiv K(\psi )+PK(\psi )+PE(\psi )
+\end{equation}
+as the sum of \emph{kinetic energy} (with Planck's constant $h$ normalized to 1):
+\begin{equation}\label{kinE} 
+K(\psi )=\frac{1}{2}\int_{\Re^3}\vert\nabla\psi (x)\vert^2\, dx,
+\end{equation}
+ \emph{attractive kernel potential energy}:
+\begin{equation}\label{potE}
+PK(\psi )=\int_{\Re^3}W(x)\psi^2(x)\, dx,
+\end{equation}
+and \emph{repulsive electronic potential energy}:
+\begin{equation}\label{eleE}
+PE(\psi )=\sum_j\int_{\Omega_j}\sum_{k\neq j} V_k(x)\psi_j^2(x)\, dx,
+\end{equation}    
+%where the Hamiltonian $H$ is given by
+%\begin{equation}
+%H(x) = -\frac{1}{2}\Delta - \frac{Z}{\vert x\vert}+\sum_{k\neq j}V_k(x)\quad \mbox{for} \quad x\in\Omega_j,
+%\end{equation}
+where $W(x)=-\frac{Z}{\vert x\vert}$ is the potential generated by a pointlike positive kernel of charge $Z$ and $V_k(x)$ is the potential generated by electron $k$  defined by 
+\begin{equation}\label{Vk} 
+V_k(x)=\int_{\Omega_k}\frac{\psi_k^2(y)}{2\vert x-y\vert}dy \quad\mbox{for}\quad x\in\Re^3.
+\end{equation}
+We see that the total energy $TE(\psi )$ of an electronic configuration defined by the wave function $\psi (x)$ has a negative contribution from Coulombic attractive kernel potential energy $PK(\psi )$, a positive contribution from Coulombic repulsive electronic potential energy $PE(\psi )$ without self-repulsion, and a positive contribution from $K(\psi )$ as a measure of concentration of electron charge.  
+
+As in the case $N=1$ the potentials $V_k$ can be computed by solving the Poisson problem $-\Delta V_k=2\pi\psi_k^2$ in $\Re^3$.
+
+We see that 
+\begin{equation}\label{PEpsi}
+PE(\psi )=\sum_{k\neq j}\int_{\Omega_j}\int_{\Omega_k} \frac{\psi_k^2(y)\psi_j^2(x)}{2\vert x-y\vert}\, dx\, dy,
+\end{equation}
+and understand that $k\neq j$ expresses that an electron does not interact with itself and that the factor 2 accounts for the double presence in the sum over all $k\neq j$.
+
+%A ground state can alternatively be characterized as a minimizer of the \emph{Rayleigh quotient}
+%\begin{equation}
+%R(\psi )=\frac{TE(\psi )}{\int\psi^2\, dx}
+%\end{equation}
+%over wave functions $\psi$ satisfying the free boundary condition (2.2).
+
+A minimising wave function $\Psi =\sum_j\Psi_j\in H^1(\Re^3_\epsilon)$ satisfies the following system of one-electron Schr\"odinger equations expressing vanishing of the gradient of $TE(\psi )$ with respect to free variation of $\psi_j$ over $H^1(\Omega_j)$ under the side condition $\int\psi_j^2\,dx=1$ for $j=1,...,N$:
+\begin{equation}\label{Hj}
+H_j\Psi_j\equiv -(\frac{1}{2}\Delta+W+2\sum_{k\neq j}V_k)\Psi_j = E_j\Psi_j\,\mbox{in }\Omega_j,\, \frac{\partial\Psi_j}{\partial n}=0\,\mbox{on }\partial\Omega_j
+\end{equation}
+with $\partial\Omega_j$ the boundary of $\Omega_j$ and $\frac{\partial}{\partial n}$ signifying derivation normal to the boundary,  where $E_j$ acts as a Lagrange multiplier for  $\int\Psi_j^2\,dx=1$. We observe the presence of the homogeneous Neumann condition  
+\begin{equation}\label{dpsidn}
+\frac{\partial\Psi_j}{\partial n} = 0 \,\mbox{on}\,\partial\Omega_j\, ,
+\end{equation}
+as a variationally imposed condition reflecting free variation of $\psi_j$ in $\Omega_j$. Further, the factor 2 in $2\sum_{k\neq j}V_k$ reflects the presence of $\psi_j$ in the equations for $\psi_k$ with $k\neq j$ through the potential $V_j$. 
+
+%\frac{\partial\Psi_j}{\partial n} = 0 \,\mbox{on}\,\partial\Omega_j \quad\mbox{and}\quad \frac{\partial\Psi_j}{\partial n} = 0 \mbox{on}\,S_\epsilon
+
+We understand that the homogeneous Neumann condition is imposed on the free boundary between electrons and also on the kernel boundary. 
+We can thus formulate the effective boundary condition to be satisfied on the free boundary $\Gamma$ 
+ \begin{equation}\label{dpsidn}
+\Psi \,\mbox{is continuous and}\, \frac{\partial\Psi}{\partial n} = 0.
+ \end{equation}
+The free boundary thus carries both a homogeneous Neumann condition and a Dirichlet condition
+asking continuity which makes a connection to what is referred to as a \emph{Bernoulli free boundary problem} for the Laplacian in a domain with a combined Neumann and Dirichlet condition on a part of the boundary.  
+
+We observe that the total energy $TE(\Psi )$ of a minimising $\Psi =\sum_j\Psi_j$ with eigenvalues $E_j$ is not given as
+$\sum_jE_j$ because of the factor 2 of the electronic potential in (\ref{Hj}).
+ 
+
+
+
+
+
+%We observe that by multiplication in (\ref{Hj}) and integration over $\Omega_j$ including integration by parts, we have
+%\begin{equation}
+%TE(\psi_j)\equiv\int_{\Omega_j}\psi H_j\psi_j\, dx=K(\psi_j)+PK(\psi_j)+PE(\psi_j)=E_j\int_{\Omega_j}\psi_j^2\, dx=E_j
+%\end{equation}
+%where now
+%\begin{equation} 
+%K(\psi_j)=\frac{1}{2}\int_{\Omega_j}\vert\nabla\psi_j (x)\vert^2\, dx,
+%\end{equation}
+%\begin{equation}
+%PK(\psi_j )=\int_{\Omega_j}W(x)\psi_j^2(x)\, dx,
+%\end{equation}
+%\begin{equation}
+%PE(\psi_j)=\int_{\Omega_j}\sum_{k\neq j} V_k(x)\psi_j^2(x)\, dx,
+%\end{equation}
+%from which follows as stated
+%\begin{equation}
+%TE(\psi )=\sum_jTE(\psi_j)=\sum_jE_j\equiv E.
+%\end{equation} 
+%A minimizer $\psi =\sum_j\psi_j$ is thus characterized by satisfying (\ref{Hj}) with $E=\sum_jE_j$ minimal while satisfying the free boundary condition of continuity of $\psi$ across $\Gamma$.  
+Below we show computations of $\psi$ by minimization of $TE(\psi )$ by a gradient method with the gradient with respect to $\psi_j$ given by $H_j-E_j$ and updating the free boundary $\Gamma$ to reach continuity of $\psi$ across $\Gamma$.    
+
+The  Hamiltonian $H_j$ can be interpreted as a sum of forces acting on a wave function $\psi_j$ from (i) charge concentration, (ii) kernel attraction, (iii) mutual electron repulsion without self-repulsion. 
+
+We refer to this model as \emph{realistic quantum mechanics} or realQM as modeling an objective reality the existence of which is not depending on being subject to observation. This is in distinction to standard quantum mechanics or stdQM in which the wave function is interpreted as a probability distribution reflecting what can be known about a ground state by observation. realQM thus concerns what \emph{is} or \emph{can be} as ontology, while stdQM in the spirit of Niels Bohr concerns what \emph{is known} or \emph{can be known} as epistemology. realQM naturally extends to \emph{ionic ground states} with $N\neq Z$.
+
+%realQM is a multi-species continuum mechanical model for a set of distributed non-overlapping electron charge densities which interact by forces from Coulombic repulsion without self-repulsion, from Coulombic attraction from a pointwise kernel and from an effect of charge concentration.,
+
+The only parameter in realQM is the kernel charge $Z$ and realQM thus defines a length scale of atom size (scaling with $\sqrt{h}$ with $h$ Planck's constant) as the diameter of the effective domain of the charge distribution (where it is not vanishingly small). 
+
+realQM thus specifies a relation between electron charge and electron size (in an atom), and the mass of an electron does not enter into the model. This means that naming $K(t)$ "kinetic energy" is a misnomer, since kinetic energy in classical terms as $\frac{mv^2}{2}=\frac{p^2}{2m}$ is defined in terms of mass $m$ and velocity $v$, or momentum $p=mv$ and $m$.  Instead $K(t)=\frac{1}{2}\int\vert\nabla\psi\vert^2\,dx$ is to be viewed as a form of "compression energy" measured by the spatial gradient of the wave function. An electron is then viewed as a "cloud of negative charge" which can be "compressed" by Coulombic forces. 
+
+On the other hand, stdQM was "derived" by ad hoc "quantization" of $\frac{p^2}{2m}$ into $\frac{h}{2m}\vert\nabla\psi\vert^2$ with $h$ Planck's constant and $m$ "electron mass", thus ad hoc associating $K(t)$ to "kinetic energy". This connected to pre-quantum atom models as swarms of particle-like electrons orbiting a positive kernel.  But as we said above associating motion to the electrons of an atom contradicts observation, since an electron in accelerated motion radiates energy, which an atom in ground state is not seen to do. 
+
+For simplicity, we anyway keep the name "kinetic energy" given to $K(t)$ understanding that it connects to "compression energy" 
+rather than electron "motion" and "mass".
+
+It is natural to view the minimisation of the total energy $E(\psi )$ over functions $\psi$ satsifying the normalization condition (\ref{normalization}) and the free boundary condition (\ref{dpsidn}), as a \emph{packing problem} asking for a continuous distribution of given total electron charge which minimizes total energy.
+
+\section{Natural Neumann Boundary Condition}
+
+The homogeneous Neumann condition $\frac{\partial\Psi_j}{\partial n_j} = 0$ on $\Gamma_j$ for the electron wave functions $\Psi_j(x)$, is a \emph{natural boundary condition} variationally imposed by minimisation of $TE(\psi_j)$ from the presence of $K(\psi_j)$ when $\psi_j$ is free to vary in $H^1(\Omega_j)$ and thus on $\Gamma_j$. 
+
+In the formulation of realQM as minimization of $TE(\psi )$ over all wave functions $\psi =\sum_j\psi_j$ satisfying (\ref{dpsidn}), we thus do not have to explicitly impose $\frac{\partial\psi_j}{\partial n_j} = 0$ $\Gamma_j$, but can leave it to be implicitly imposed by minimisation over $\psi_j$ with $\psi_j$ free to vary on $\Gamma_j$. 
+
+The free boundary condition can then in explicit form be reduced to asking for continuity of $\psi$ across inter-electron boundaries, 
+and the homogeneous Neumann condition can be seen as a direct consequence of the form of the kinetic energy $K(\psi )$ and as such most natural.
+
+\section{Kernel Radius as Model Parameter}
+
+The model of realQM includes the radius of the kernel as a parameter, which we allows calibration the model to observation for two-electron atoms/ions as the innermost shell of all atoms, as shown in the next chapter on the Helium atom as a benchmark of the functionality of realQM. 
+
+In stdQM the kernel is assumed to act like a point source with zero radius with an associated singular kernel potential $-\frac{Z}{\vert x\vert}$ and the model is essentially parameterfree.
+ 
+In both physics and mathematics the presence of a singularity is matter which will have to handled with care, and the way to do that is to regularise the problem
+like giving the kernel a small positive radius $\epsilon$ and then study the behavior as $\epsilon$ tends to zero.  
+
+With positive kernel diameter we are free to choose the boundary condition as the electron meets the kernel, which may be a Dirichlet, Neumann or Robin boundary condition.
+We have in realQM chosen the same homogeneous Neumann condition on the kernel as that between electrons, but the other options are thinkable, see next section. 
+
+On the other hand, with zero kernel radius only a certain Robin condition is possible. 
+
+We find for Helium that realQM with zero kernel radius gives a too small energy, while realQM with homogeneous Neumann condition can be fitted exactly to observation with small positive radius. The calibration only concerns the two innermost electrons meeting the kernel, and not the other electrons. In this sense realQM is almost parameter-free.  
+
+\section{Robin Boundary Condition}
+
+The homogeneous Neumann condition may be replaced by a Robin boundary condition of the form $\frac{\partial\Psi}{\partial r}=-Z\Psi$ for a kernel radius which is zero or (small) positive.
+For zero kernel radius this is implied by the Schr\"odinger equation from the presence of the kernel potential term $-\frac{Z}{r}\Psi$ and the contribution $-\frac{1}{r}\frac{\partial\Psi}{\partial r}$ in the Laplacian $-\frac{1}{2r^2}\frac{\partial}{\partial  r}(r^2\frac{\partial\Psi}{\partial r})$. 
+
+A homogeneous Neumann condition corresponds to energy minimization with the wave function free to vary on the boundary, and thus computed energies (for positive kernel radius) with instead the Robin condition, are slightly larger with corresponding slightly smaller radius matching observation.   
+     
+
+\section{Condensed Formulation: Ground States}
+
+We now formulate realQM in condensed form as follows: Find $\Psi =\sum_j\Psi_j\in H^1(\Re^3_\epsilon)$ on a partition $\{\Omega_j\}$ with $\Psi_j\in H^1(\Omega_j)$ and $\int_{\Omega_j}\Psi_j^2dx=1$,  which mimimises the total energy $TE(\Psi )$ given by (\ref{totE}) under a free boundary condition of charge continuity.
+
+The condition of minimality with respect to variation with respect to $\Psi_j$ takes the form:
+\begin{equation}\label{Hj2}
+H_j\Psi_j\equiv -(\frac{1}{2}\Delta+W+2\sum_{k\neq j}V_k)\Psi_j = E_j\Psi_j\,\mbox{in }\Omega_j,\, \frac{\partial\Psi_j}{\partial n}=0\,\mbox{on }\partial\Omega_j.
+\end{equation}
+where $E_j$ occurs as a Lagrange multiplier of the normalisation $\int_{\Omega_j}\Psi_j^2dx=1$ and $V_k$ is defined by (\ref{Vk}) with $\psi$ replaced by $\Psi$. We write (\ref{Hj2}) in condensed form as the eigenvalue problem
+\begin{equation}
+H\Psi =E\Psi
+\end{equation}
+where $H\Psi =H_j\Psi_j$ and $E\Psi =E_j\Psi_j$ in $\Omega_j$.
+
+We may compare the 3d Ansatz of realQM on the summation form $\Psi (x)=\sum_j\Psi_j(x)$ with the $\Psi_j(x)$ having local supports, with the basic multi-d Ansatz used in stdQM, which has the product form
+\begin{equation}
+\Psi (x_1,...,x_N)=\Psi_1(x_1)\times\Psi_2(x_2)....\times\Psi_N(x_N)
+\end{equation}
+where the $\Psi_j$ have global supports. 
+
+\section{Free Boundary Condition by Level set Method}
+
+The Bernoulli free boundary is succesively modified to meet continuity of charge density.  On a fixed background grid the motion of the free boundary is monitored using a level set technique,  where the characteristic functions 
+$\chi_j$ of the electron domains $\Omega_j$ are updated according to the following conservation law expressing motion of the 
+boundary $\Gamma_j$ of $\Omega_j$ in normal direction depending on the sign of $\beta$
+\begin{equation} 
+\dot\chi_j +\beta\vert\nabla\chi_j\vert =0
+\end{equation}
+where $\beta =\psi_j-\psi_i$ is the jump of wave function in $\Omega_j$ and a neighboring domain $\Omega_i$.  The effect of the update is that jumps are being reduced towards continuity of electron density across the free bondary $\Gamma$.
+
+The conservation law in regularised form is solved by time-stepping as part of a gradient method for energy minimisation with successive explicit updates of (i) electron densities, (ii) electron potentials and (iii) characteristic functions in essentially a three-line code.  
+
+Computations for simple molecules can be run on a mobile or tablet with a 3d grid with 1 million nodes. 
+
+\section{Three Line Code}
+The ground state of minimal energy of an atom or molecule with fixed kernel positions is computed by explicit time stepping of the following equations on a uniform 3d mesh of a cube containing the atom/molecule as a gradient method : For $j=1,...,N$
+\begin{equation}\label{Hj2}
+\dot \Psi_j + H_j=0\quad\mbox{in }\Omega_j,\, \frac{\partial\Psi_j}{\partial n}=0\quad\mbox{on}\quad\partial\Omega_j
+\end{equation} 
+\begin{equation}\label{Hj2}
+\dot V_j -\Delta V_j=2\pi\Psi_j^2\quad\mbox{in }\Re^3,
+\end{equation} 
+\begin{equation}\label{Hj2}
+\dot\chi_j +\beta\vert\nabla\chi_j\vert=0\quad\mbox{in }\Re^3,
+\end{equation} 
+where the dot signifies derivation with respect to time,  and in each time step $\Psi_j$ is normalised to unit charge.
+Homogeneous Dirichlet conditions are used on the boundary of the cube.  The only parameter is the mesh size.  
+The corresponding computer code consits of three lines.  The gradient method can be extened to kernel position.
+See code repository with typical computations performed on a uniform grid with 1 million mesh points. 
+
+\section{realQM Excited States}
+
+More generally we may seek excited states as stationary points $(\Psi ,E)$ with $\Psi =\sum_1^N\Psi_j$ and $E=(E_1,...,E_N)$ of the Lagrangian
+\begin{equation}
+L(\psi ,\lambda )=TE(\psi )-\sum_1^N\lambda_j(\int_{\Omega_j}\psi_j^2dx-1)
+\end{equation}
+with corresponding equations expressing stationarity with respect to $\psi_j$ for $j=1,...,N$:
+\begin{equation}\label{Hj}
+H_j\Psi_j\equiv -(\frac{1}{2}\Delta+W+2\sum_{k\neq j}V_k)\Psi_j = E_j\Psi_j\,\mbox{in }\Omega_j,\, \frac{\partial\Psi_j}{\partial n_j}=0\,\mbox{on }\Gamma_j .
+\end{equation}
+This gives a very rich structure of excited states of different total energies with single electrons or groups of electrons excited to higher energies.
+
+\section{Physics of realQM}
+
+We have seen that the ground/excited states of an atom in realQM appear as minimum/stationary points of a total energy as the sum of kernel potential and electron potential energies and kinetic energy, which have specific physical form and meaning and thereby serves as "interpretation of realQM".  
+
+ 
+
+\section{Formal Time Dependency}
+
+
+A ground/excited state $(\Psi ,E)$ with $\Psi =\sum_j\Psi_j$ and $E=(E_1,...,E_N)$ can formally be extended to a time dependent wave function 
+\begin{equation}
+\Phi (x,t)=\sum\Phi_j(x,t)=\sum_j\exp(iE_jt)\Psi_j(x)
+\end{equation}
+as solution of the following \emph{time dependent Schr\"odinger equation in complex form}:
+\begin{equation}\label{timeS}
+i\dot\Phi+ H\Phi =0
+\end{equation}
+with 
+\begin{equation}
+i\dot\Phi+ H\Phi =i\dot\Phi_j+ H\Phi_j =0\quad\mbox{in }\Omega_j
+\end{equation}
+where $t$ is viewed as a time variable and $\dot\psi = \frac{\partial\psi}{\partial t}$ is the derivative with respect to $t$. 
+
+We observe that the charge density $\vert\Phi (x,t)\vert^2=\Psi (x)^2$ does not vary with time and thus that the physical meaning of the time variation (if any) is something else than variation of charge density. 
+
+Why is then the time-dependent form $i\dot\Phi +H\Phi =0$ introduced with solution $\Phi (x,t)=\exp(iEt)\Psi (x)$, when it does not seem to contain more physics than the eigenvalue problem $H\Psi =E\Psi$? We offer motivation in the next section.
+
+\section{Radiation}
+
+The reason to extend Schr\"odinger's equation to time dependency, is to connect \emph{energy/eigenvalue} $E$ of an eigenfunction  $\Psi (x)$ satisfying $H\Psi =E\Psi$ to \emph{frequency} $E$ through the factor $\exp(iEt)$ of a wave function $\Phi (x,t)=\exp(iEt)\Psi (x)$ satisfying $\dot\Phi +H\Phi =0$. In short, to connect energy to frequency.
+
+This is motivated by the observation that \emph{atomic radiation} can occur at frequencies which appear as differences $E-\bar E$ between superpositions $\Phi +\bar\Phi$ of ground/excited states $\Phi (x,t) =\exp(iEt)\Psi (x)$ and $\bar\Phi (x,t) =\exp(i\bar Et)\bar\Psi (x)$ with different energies $E>\bar E$.  
+
+Here $E-\bar E$ appears as the \emph{beat frequency} of the superposition $\Phi +\bar\Phi$ with charge density
+\begin{equation}
+\vert\exp(iEt)\Psi +\exp(i\bar Et)\bar\Psi\vert^2 = \vert\exp(i(E-\bar E)t)\Psi +\bar\Psi\vert^2
+\end{equation}
+showing time dependency of frequency $E-\bar E$ and thus capability to radiate according to the Abraham-Lorentz law, to which
+we will return below. 
+
+Here the superposition $\Phi +\bar\Phi$ can be seen as a solution to the time-dependent Schr\"odinger equation (\ref{timeS}) 
+with Hamiltonian $H$ as the "mean-value" of the Hamiltonians for $\Phi$ and $\bar\Phi$, which connects the energy difference $E-\bar E$ to a beat frequency $E-\bar E$.  This way realQM offers a model of charge oscillation from two states in superposition, and thus may contain real physics. 
+
+This is to be compared with the Schr\"odinger equation of stdQM, which does not have a physical meaning and where the oscillation between energy levels is associated with of electrons "jumping" back and forth, a concept which made Schr\"odinger
+very upset:  
+\begin{itemize}
+\item\emph{If we have to go on with these damned quantum jumps, then I'm sorry that I ever got involved}.
+\end{itemize}
+
+In realQM we thus find eigenfunctions $\Psi =\sum_j\Psi_j$ of a stationary Hamiltonian $H$ satisfying $H\Psi =E\Psi$ in the sense of $H_j\Psi_j=E_j\Psi_j$ of different total energies $TE(\Psi )$ and expect superpositions of such states to show charge oscillations at beat frequencies with capability of radiation. The job of the time dependent Schr\"odinger equation is then to 
+offer physics underlying these oscillations.  
+
+This connects to the way Schr\"odinger approached mathematical modeling of the atom when starting with wave functions and then seeking an equation satisfied by the wave functions, thus proceeding from solutions to equation rather than from equation to solutions as the normal approach with the equation formulated on physical principles.
+
+This is reflected in the absence of any derivation of Schr\"odinger's equation from basic physical principles, which is a main defect of stdQM. Starting from solutions and then finding equations satisfied by the solutions can hide the physics, while starting with the equation requires physics to formulate the equation. 
+
+One can argue that starting from solutions is against the true spirit of mathematical modeling of physics, which normally proceeds from equations based on general physical principles to solutions with specific data.  
+
+\section{What Can We Expect?}
+We end this shortcut to realQM recalling the dead-lock of stdQM \cite{bowman}:
+\begin{itemize}
+\item\emph{Quantum mechanics is the greatest, the most profound of revolutions in our modern view of the physical world. Even for experts, acheiving a deep conceptual understanding of quantum mechanics can be an elusive goal. Quantum mechanics remains stubbornly recondite, notoriously abstract. Disconcerting, perhaps - but then, as the gateway to a radically new view of physical reality, why should we expect anything less?}
+\end{itemize} 
+Yes, we could expect more than notorious abstraction and that may be the new view of realQM. 
+
+In short, we can view the atomic model of realQM as a classical continuum mechanical model of a collection of electrons as distributed non-overlapping negative charge densities around a kernel as a positive point charge which interact by Coulombic forces and electronic compression forces.    
+
+
+
+
+ 
+%This is used in computations of ground state reported below by an iterative gradient method with individual gradient minimization of $E(\psi_j)$ for all $j$, coupled with update of the free boundary to reach continuity of $\psi$. 
+
+
+
+
+
+\section{Helium}
+
+As a first test case with two electrons sharing the volume around a kernel, we now consider realQM for Helium with $N=2$ seeking a minimiser among wave functions $\psi =\psi_1+\psi_2$ arguing that by symmetry we may assume that $\psi_1$ is supported by the half-space $\Omega_1=\{x:x_1\ge 0\}$ and $\psi_2$ by
+$\Omega_2=\{x:x_1\le 0\}$ with the plane $\Gamma_1=\{x:x_1=0\}$ as free boundary, all outside a kernel of positive radius.  More precisely, we assume by symmetry that $\psi_2(x_1,x_2,x_3)=\psi_1(-x_1,x_2,x_3)$ for $x_1\le 0$, which allows restriction of attention to $\psi_1$.
+
+The ground state $\Psi_1$ then appears as the minimiser over $H^1(\Omega_1)$ of the total energy 
+\begin{equation}
+TE(\psi_1)=\frac{1}{2}\int_{\Omega_1}\vert\nabla \psi_1\vert^2dx+\int_{\Omega_1}W\psi_1^2dx+\int_{\Omega_1}V_2\psi_1^2dx
+\end{equation}
+under the normalisation
+\begin{equation}
+\int_{\Omega_1}\psi_1^2(x)dx=1
+\end{equation}
+where the electron potential $V_2(x)$ for $x\in\Omega_1$ is given by
+\begin{equation}\label{potential2}
+V_2(x)=\int_{\Omega_2}\frac{\psi_1^2(-y_1,y_2,y_3)}{2\vert x-y\vert}dy.
+\end{equation}
+We observe that $V_2$ is the solution of the equation $-\Delta V_2=2\pi f$ in $\Re^3$ with $f(x)=\psi_1^2(-x_1,x_2,x_3)$ for $x_1<0$ and $f(x)=0$ else, which gives an alternative way of computing $V_2$ other then direct integration as in (\ref{potential2}). 
+
+The condition of stationarity with respect to variations of $\Psi_1$ takes the form of the eigenvalue problem
+\begin{equation}
+H\Psi_1=E_1\Psi_1\quad\mbox{in }\Omega_1,\quad\frac{\partial\Psi_1}{\partial n}=0\quad\mbox{on } \Gamma_1,
+\end{equation} 
+for the Hamiltonian 
+\begin{equation}
+H = -\frac{1}{2}\Delta+W+2V_2
+\end{equation}
+with $V_2$ given by (\ref{potential2}) with $\psi_1=\Psi_1$.
+We compute stationary points by a gradient method, and the total energy  as $2TE(\Psi_1)$. We note that this is different from $2E_1$ because of the factor 2 multiplying $V_2$ giving a double account of electronic potential energy in $2E_1$.  
+
+\section{Time Dependence}
+
+The ground state $(\Psi ,E)$ with $\Psi =\sum_1^2\Psi_j$ and $E=(E_1,E_2)$ with $E_1=E_2$ can formallly be extended
+to a time dependent solution $\Phi (x,t)=\sum_j\exp(iE_jt)\Psi_j (x)$ of the time dependent Schr\"odinger equation
+\begin{equation}
+i\dot\Phi_j+H_j\Phi_j =0,\quad j=1,2. 
+\end{equation}
+With $E_1=E_2$ the charge density $\vert\Phi (x,t)\vert^2$ is again independent of time, and the time-dependency fictional.
+ 
+\section{Excited States}
+More generally, we may seek a symmetric ground/excited state  $\Psi_1(x)$ as a stationary point  $(\Psi_1,E_1 )$ of the Lagrangian
+\begin{equation}
+L(\psi_1 ,\lambda ) = TE(\psi_1)- \lambda (\int_{\Omega_1}\psi_1^2(x)dx - 1)
+\end{equation}
+with the condition of stationarity with respect to $\psi_1$ taking the form of the eigenvalue problem
+\begin{equation}
+H\Psi_1=E_1\Psi_1\quad\mbox{in }\Omega_1,\quad\frac{\partial\Psi}{\partial n}=0\quad\mbox{on } \Gamma_1,
+\end{equation} 
+for the Hamiltonian 
+\begin{equation}
+H = -\frac{1}{2}\Delta+W+2V_2
+\end{equation}
+We compute stationary points by a gradient method, and the total energy  as $2TE(\Psi_1)$.
+
+Stationary points as non-symmetric excited states $\Psi =\Psi_1+\Psi_2$ with eigenvalues $E_1\neq E_2$ of $\Psi_1$ and 
+$\Psi_2$ with different time-dependency, are also possible, with potential of radiation as discussed in Chapter 6. 
+
+\section{RealQM for Molecules}
+\section{Stability of Matter by RealQM}
+
+\begin{thebibliography}{9}
+\bibitem{3Dcube}https://colab.research.google.com/github/johanjan/MOOC-HPFEM-source/blob/master/DigiMat\_Pro\_Fluid\_3D\_adaptive\_cube.ipynb
+\bibitem{abdelrahman} A. A. Abdel-Rahman, W. Chakroun, Wind Engineering 21(3):125-137, Jan 1997.
+\bibitem{abbott} I. H. Abbott, Theory of Wing Sections, McGraw-Hill 1949, Dover 1959.
+\bibitem{achenbach} E. Achenbach, Experiments on the flow past spheres
+at very high Reynolds numbers, J . Fluid Mech. (1972), vol. 54, part 3 , pp. 565-575.
+\bibitem{ackroyd} J. A. D. Ackroyd, B. P. Axcell and A.L. Ruban, \emph{Early Developments in Modern Aerodynamics}, Butterworth.Heinemann, 2001.
+\bibitem{alam} M. F. Alam, D. Thompson and D. K. Walters, Critical Assessment of Hybrid RANS-LES Modeling for Attached and Separated Flow, in Turbulence Modelling Approaches, Current State, Development Prospects, Applications, (ed) K. Volkov, DOI: 10.5772/intechopen.68387.
+\bibitem{anderson1} J. D. Anderson, Fundamentals of Aerodynamics, 5th edition, McGraw-Hill. 
+\bibitem{anderson} J. D. Anderson, \emph{A History of Aerodynamics and Its Impact on Flying Machins}, Cambridge University Press, 1997.
+\bibitem{anderson2} J. D. Anderson, Ludwig Prandtl's Boundary Layer, Physics Today, Dec 2005.
+\bibitem{highlift} 3rd AIAA CFD High Lift Prediction Workshop, 2017, https://hiliftpw.larc.nasa.gov/index-workshop3.html.
+\bibitem{blackbody} https://computationalblackbody.wordpress.com.
+\bibitem{dragprediction1} 6th AIAA CFD Drag Prediction Workshop 2016, https://aiaa-dpw.larc.nasa.gov/Workshop6/workshop6.html.
+\bibitem{dragprediction2} 6th AIAA CFD Drag Prediction Workshop 2016, Presentations.
+\bibitem{airbuschallenge} D. Hills, The Airbus Challenge, http://conf.uni-obuda.hu/EADS2008/Hills.pdf.
+\bibitem{benim} Benim, Cagan and Nahavandi, RANS Predictions of Turbulent Flow Past a Circular Cylinder over the Critical Regime, Proceedings of the 5th IASME / WSEAS International Conference on Fluid Mechanics and Aerodynamics, Athens, Greece, August 25-27, 2007. 
+\bibitem{birk} L. Birk, Fundamentals of Ship Hydrodynamics - Fluid Mechanics, Ship Resistance and Propulsion, John Wiley, 2019.
+\bibitem{birkhoff} G. Birkhoff, Hydrodynamics, 
+Princeton University Press, 1950.
+\bibitem{bloor} D. Bloor, The Enigma of the Airfoil, Rival Theories in Aerodynamics, 1909-1930, University of Chicago Press, 2011.
+\bibitem{calero} J. C. Calero, \emph{The Genesis of Fluid Mechanics 1640-1780}, Springer 2008.
+\bibitem{chang} K. Chang, Staying Aloft; What Does Keep Them Up There?, New York Times, Dec 9 2003.
+\bibitem{clay} Clay Mathematics Institute Millennium Problem on Navier-Stokes Equations, https://www.claymath.org/millennium-problems/navier–stokes-equation.
+%\bibitem{chanute} O. Chanute, \emph{Progress in Flying Machines}, Long  Beach, CA: Lorenz and Herweg,
+%1976 (originally published 1894).
+\bibitem{cowley} S. Cowley, Laminar boundary layer theory: A 20th century
+paradox?, Proceedings of ICTAM 2000, eds. H. Aref and J.W. Phillips, 
+389-411, Kluwer (2001).
+\bibitem{davidson} E. Bodenschatz and M. Eckert, Prandtl and the G\"ottingen school, Chapter 2 in P. A. Davidson et al, A Voyage Through Turbulence, Cambridge University Press, 2011.
+\bibitem{deck} S. Deck et al, High-fidelity simulations of unsteady civil aircraft aerodynamics: stakes and perspectives. Application of zonal detached eddy simulation, Phil.Trans.R.Soc.A 372:20130325.
+\bibitem{epple} M. Epple, Kaiser Wilhelm Institute of Fluid Dynamics, in The Kaiser Wilhelm Society under National Socialism (eds S. Heim, C. Sachse and M. Walker, Cambridge University Press, 2009. 
+%\bibitem{dpw} 3rd CFD AIAA Drag Prediction Workshop,
+%aaac.larc.nasa.gov/tfcab/cfdlarc/aiaa-dpw.
+\bibitem{fenics} The FEniCS Project, www.fenics.org.
+\bibitem{feynman} R. Feynman, The Feynman Lectures on Physics, Vol 2.
+\bibitem{dAlembertsParadox} D'Alembert's Paradox, https://www.youtube.com/watch?v=QPTjuS5G3dY\&t=5s.
+\bibitem{wikidAlembert} Wikipedia on d'Alembert's Paradox with reference to \cite{dAlembert}. 
+%en.wikipedia.org/wiki/D'Alembert's$\_$paradox.
+\bibitem{euler} L. Euler, Principes g\'en\'eraux du mouvement generaux des fluides, 1757, Euler Archive - All Worlds 226.
+\bibitem{EulerCFD1} EulerCFD1 https://www.csc.kth.se/~jjan/publications/dfs-flight-drag-preprint-2019-11-10-02.pdf
+\bibitem{EulerCFD10} EulerCFD10 https://www.csc.kth.se/~jjan/publications/hilift-book-chapter-preprint2017.pdf
+%\bibitem{digimat} Digital Math.
+\bibitem{eckert} M. Eckert, Ludwig Prandtl and the growth of fluid mechanics in Germany, Comptes Rendu M\'ecanique, Volume 345, Issue 7, Pages 457-476, July 2017, Elsevier.
+\bibitem{eckert2} M. Eckert, Ludwig Prandtl, A Life for Fluid Mechanics and Aeronautical Research, Springer 2018.
+\bibitem{eckert3} M. Eckert, The Dawn of Fluid Dynamics: the discipline between science and technology, Wiley-VCH, 2006.
+\bibitem{eckert4} M. Eckert, The Turbulence Problem, A Persistent Riddle in Historical Pespective, Springer 2019.
+\bibitem{darrigol} O. Darrigol, Worlds of Flow, A History of Hydrodynamics from Bernoullis to Prandtl, Oxford University Press 2005.
+\bibitem{dogrul} A. Dogrul et al, Scale effect on ship resistance components and form factor, Ocean Engineering
+Volume 209, 1 August 2020, 107428.
+\bibitem{fenics} FEniCS https://fenicsproject.org.
+\bibitem{Fellman} E. A. Fellman, Euler, Birkhauser 2007.
+\bibitem{goldstein} S. Goldstein, Fluid mechanics in the first half of this century, in Annual Review
+of Fluid Mechanics, Vol 1, ed. W. R. Sears and M. Van Dyke, pp 1-28, Palo Alto, CA: Annuak Reviews Inc.
+\bibitem{grimberg} G. Grimberg, W. Pauls and U. Frisch, Genesis of d'Alembert's paradox and analytical elaboration of the drag problem, Physica D, 2008.
+\bibitem{hackborn} W. W. Hackborn, Euler's Discovery and Resolution of D'Alembert's Paradox, in Research in History and Philosophy of Mathematics (eds Zack and Schlimm, Birkhauser, 2018.
+\bibitem{HiLift} 4th AIAA CFD High Lift Prediction Workshop (HLPW-4), https://hiliftpw.larc.nasa.gov
+%\bibitem{gregory} N. Gregory and C.L. O'Reilly,  
+%Low-Speed Aerodynamic Characteristics of NACA 0012 
+%Aerofoil Section, including the Effects of Upper-Surface 
+%Roughness Simulating Hoar Frost, Aeronautical Research Council Reports and Memoranda,
+%http://aerade.cranfield.ac.uk/ara/arc/rm/3726.pdf.
+\bibitem{hoerner} S. F. Hoerner, Fluid-Dynamic Drag, Hoerner Fluid Dynamics 1965.
+\bibitem{mathsecret} J. Hoffman and C. Johnson, Mathematical Secret of Flight, Normat, Vol. 57, pp.145-169, 2009.
+\bibitem{ambsflow} J. Hoffman and C. Johnson, 
+\emph{Computational Turbulent Incompressible Flow}, Springer, 2007,
+www.bodysoulmath.org/books.
+\bibitem{ambsthermo} J. Hoffman, C. Johnson and M. Nazarov, \emph{Computational Thermodynamics}, 2012, 
+https://www.dropbox.com/s/pt4up03axk52ahs/ambsthermo.pdf?dl=0.
+\bibitem{dAlembert} J. Hoffman and C. Johnson, Resolution
+of d'Alembert's paradox, Journal of Mathematical Fluid Mechanics, 2010. https://secretofflight.wordpress.com/dalemberts-paradox-2/
+\bibitem{blowup} J. Hoffman and C. Johnson, Blowup of incompressible Euler solutions, 
+BIT Numerical Mathematics, Vol 48, 2, June 2008, pp 285-307.
+\bibitem{ittc} International Towing Tank Conference ITTC, 1978 Preformnace Prediction Method, https://ittc.info/media/1593/75-02-03-014.pdf.
+%\bibitem{ittc} ITTC https://ittc.info/media/3640/volumeiii-resistancecommittee.pdf
+\bibitem{jacobs} E. N. Jacobs and A. Sherman, Section Characteristics as Affected by Variations of the Reynols Number, NACA Report 586.  
+\bibitem{newtheoryflight} J. Jansson, J. Hoffman and C. Johnson, New Theory of Flight,  J. of Mathematical Fluid Mechanics, 2016.
+\bibitem{jansson1} Johan Hoffman, Johan Jansson, Niyazi Cem Degirmenci, Jeannette Hiromi SpÃ¼hler, Rodrigo Vilela de Abreu, Niclas Jansson, AurÃ©lien Larcher, FEniCS-HPC: Coupled Multiphysics in Computational Fluid Dynamics, Lecture Notes in Computer Science, 2017
+\bibitem{jansson2} Johan Jansson, Johan Hoffman, Direct FEM parallel-in-time computation of turbulent flow, KTH-Diva, 2017
+\bibitem{jansson3} Johan Jansson, Johan Hoffman, Time-resolved Adaptive Direct FEM Simulation of High-lift Aircraft Configurations, KTH Diva, 2017.
+\bibitem{jansson4} Van Dang Nguyen, Johan Jansson, Massimiliano Leoni, Barbel Janssen, Anders Goude, Johan Hoffman, Modelling of rotating vertical axis turbines using a multiphase finite element method, MARINE 2017, 2017
+%\bibitem{jansson5} P. Valero-Lara, E. Krishnasamy, Johan Jansson, Towards HPC-embedded. Case study: Kalray and message-passing on NoC, Scalable Computing, 2017
+\bibitem{jansson6} Johan Hoffman, Johan Jansson, Niclas Jansson, FEniCS-HPC: Automated predictive high-performance finite element computing with applications in aerodynamics, Lecture Notes in Computer Science, 2016
+\bibitem{jansson7} Johan Hoffman, Johan Jansson, Niclas Jansson, Rodrigo Vilela de Abreu, Claes Johnson, Computability and Adaptivity in CFD, Encyclopedia of Computational Mechanics, 2016
+\bibitem{F1} J. Jansson, Drag and Lift of a F1 Racing Car, to appear.
+\bibitem{janjohnscott2} J. Jansson, C. Johnson and R. Scott, Predictive aerodynamics - Euler was right
+- Real Flight Simulation in the Digital Math framework, http://digimat.tech/paper-euler-short/
+\bibitem{janjohnscott1} J. Jansson, C. Johnson, Linde van Beers and R. Scott, HiLiftPW4 Snapshot of development from Digital Math (KTH), https://www.csc.kth.se/~jjan/hiliftpw4/hiliftpw4-presentation-prelim09.html
+\bibitem{secretofflight} J. Jansson and C. Johnson, The Secret of Flight https://secretofflight.wordpress.com/book/
+%\bibitem{separation} J. Hoffman and C. Johnson, 
+%Separation in slightly viscous flow, to be submitted to Physics of Fluids,
+%prel. version available on http:/www.csc.kth.se/cgjoh.
+%\bibitem{knoldAlembert} J. Hoffman and C. Johnson: D'Alembert's paradox, new resolution, http://knol.google.com/k/claes-johnson/dalemberts-paradox/yvfu3xg7d7wt/2.
+%\bibitem{knolflying} J. Hoffman and C. Johnson: Why it is possible to fly,
+%http://knol.google.com/k/claes-johnson/why-it-is-possible-to-fly/yvfu3xg7d7wt/18.
+%\bibitem{car} J. Hoffman and M. Nazarov, Computation of
+%drag of a car, xxxxEffect of Swim Suit Design on Passive Drag
+%\bibitem{hoffmanx} J. Hoffman, x
+\bibitem{kolmogorov} Scholarpedia, Turbulence, http://www.scholarpedia.org/article/Turbulence.
+\bibitem{korkmaz} K.B. Korkmaz, S. Werner and R. Bensow, Verification and Validation of CFD Based Form Factors as a Combined CFD/EFD Method, J. of Marine Science and Engineering 2021, 9, 75.
+\bibitem{lanchester} F. W. Lanchester, Aircraft in Warfare, 1923. https://www.youtube.com/watch?v=Dl8zOCxO67A
+\bibitem{larsson} L. Larsson and H. C. Raven, Ship Resistance and Flow, Goddwill Books, 2000.
+\bibitem{larsson2} L. Larsson and F. Stern (eds), Numerical Ship Hydrodynamics, An Assessment of the Gothenburg 2010 Workshop, Springer 2014.
+\bibitem{lehmkuhl} O. Lehmkuhl et al, Unsteady forces on a cylinder at critical Reynolds number.
+\bibitem{lombardi} G. Lombardi, M.V. Salvetti and D. Pinelli, 
+Numerical Evaluation of Airfoil Friction Drag, J. Aircraft, vol. 37, no. 2, March–April,
+2000, pp. 354–356.
+\bibitem{mclean} D. McLean, Understanding Aerodynamics, Arguing from the Real Physics, Wiley, Boeing 2013.
+\bibitem{meier} G. E. A. Meier (ed), One Hundered Years of Boundary Layer Researchm IUTAM Symposium, Springer 2006.
+\bibitem{mollendorf} J. C. Mollendorf et al, Effect of Swim Suit Design on Passive Drag, Medicine and Science in Sports and Exercise · June 2004.
+%\bibitem{nasa2030vision} J. Slotnik et al, CFD Visiosn 2030 Study: A Path to Revolutionary Computational Aerosciences, NASA/CR-2014-218178.
+\bibitem{nichols} R. H. Nichols, Turbulence Models and Their Application to Complex Flows, University of Alabama at Birmingham, https://academia.edu/resource/work/28754641.
+%\bibitem{langley} Experiments in Aerodynamics, Smithsonian Contributions to Knowledge no. 801,
+%Washinton, DC, Smithsonian Institution.
+%\bibitem{lanchester} F. W. Lanchester, \emph{Aerodynamics}, 1907. 
+
+\bibitem{masters} Listen to the Masters: https://secretofflight.wordpress.com/historic-videos/.
+\bibitem{mccroskey}W. J. McCroskey, A Critical Assessment of Wind 
+Tunnel Results for the NACA 
+0012 Airfoil, NASA Technical Memorandum 10001, Technical Report 87-A-5, 
+Aeroflightdynamics Directorate, U.S. Army Aviation Research and 
+Technology Activity, Ames Research Center, Moffett Field, California. 
+\bibitem{menon} R. Menon, Nobels neglect of fluid dynamics, Phyics Today, Vol 74, Issue 1, Jan 01, 2021, p 10.
+\bibitem{moin} P. Moin and J. Kim, Tackling Turbulence with
+Supercomputers, Scientific American Magazine, 1997.  
+\bibitem{molland} A. Molland, The Maritime Engineering Reference Book : A Guide to Ship Design, Construction and Operation, Elsevier, 2008.
+\bibitem{moonesun} M. Moonesun et al, CFD Analysis of the Bare Hull Form of Submarines for Minimizing the Resistence, Int J Maritime Technology, Vol. 3, Winter 2015, p 1-16. 
+\bibitem{nasa} NASA Turbulence Modeling Resource, Langley Research Center.
+\bibitem{navier} C. L. Navier, M\'emoires de L'Académie Royale des Sciences de L'Institut de France, VI, 389 (1827). 
+\bibitem{newtheoryofflight} New Theory of Flight, https://www.youtube.com/watch?v=t7e\_6bkUFzE\&t=1s.
+%\bibitem{vonmises} R. von Mises, Theory of Flight, McGraw-Hill, 1945.
+%\bibitem{Nasa} http://www.grc.nasa.gov/WWW/K-12/airplane/lift1.html
+%\bibitem{pilot} http://www.planeandpilotmag.com/aircraft/specifications/diamond/2007-diamond-star-da40-xl/289.html
+\bibitem{niklas} K. Niklas and H. Pruszko, Full-scale CFD simulations for the determination of ship resistance as a rational, alternative method to towing tank experiments, Ocean Engineering, Vol. 190, October 15, 2019, 106435.
+\bibitem{oertel} H. Oertel (ed), Prandtl's Essentials of Fluid Mechanics, Springer, 2004.
+\bibitem{oswatitsch} K. Oswatische and K. Wieghardt, Ludwig Prandtl and his Kaiser-Wilhem-Institute, Annu Rev. Fluid Mech. 1987, 19:1-26.
+\bibitem{patton} P. R. Patton, Isaac Newton’s theory of inertially caused pressure resistance, reinstated, https://b2streamlines.com/Preprints/20201105NewtonDragShort.pdf.
+\bibitem{pendergast} D. Pendergast et al, The influence of drag on human locomotion in water, UHM 2005, Vol. 32, No. 1.
+\bibitem{pompeo} F. Pompeo, Nazi Science: Ludwig Prandtl, life and national identity, 
+\bibitem{prandtl} L. Prandtl, On Motion of Fluids with Very Little 
+Viscosity, 1904, Verhandlungen des dritten internationalen Mathematiker-Kongresses in Heidelberg 1904, A. Krazer, ed., Teubner, Leipzig, Germany (1905), p. 484. English trans. in Early Developments of Modern Aerodynamics, J. A. K. Ackroyd, B. P. Axcell, A. I. Ruban, eds., Butterworth-Heinemann,
+Oxford, UK (2001), p. 77.
+\bibitem{prandtl3} L. Prandtl and O Tietjens, 
+\emph{Applied Hydro- and Aeromechanics}, 1934, Dover 1957.
+\bibitem{prandtl2} L. Prandtl, F\"uhrer durch die Str\"omungslehre, 1942.
+\bibitem{father} Prandtl: Father of Modern Fluid Mechanics,
+http://www.eng.vt.edu/fluids/msc/\\prandtl.htm. 
+\bibitem{renilson} M. Renilson, \emph{Submarine Hydrodynamics}, Springer 2015. 
+\bibitem{rizzi} A. Eberle, A. Rizzi, E. H. Hirschel, Numerical Solutions of the Euler Equations for Steady Flow Problems, Notes on Numerical Fluid Mechanics, Vol 34, Vieweg 1992.
+\bibitem{schlichting} H. Schlichting, Boundary Layer Theory, McGraw-Hill, 1979.
+\bibitem{seifert} J. Seifert, A Review of the Magnus effect in aeronautics, Progress in Aerospace Sciences 55 (2012), 17-45.
+\bibitem{slotnik} Slotnick J, Khodadoust A, Alonso J, Darmofal D, Gropp W, Lurie E, Mavriplis D. 2013
+CFD vision 2030 study: a path to revolutionary computational aerosciences. Technical
+report, NASA Langley Research Center, NASA/CR-2014-218178. http://ntrs.nasa.
+gov/archive/nasa/casi.ntrs.nasa.gov/20140003093.pdf/.
+\bibitem{stokes} G. G. Stokes, On the steady motion of incompressible fluids, Transactions Cambridge Philosophical Society, 1842. 
+\bibitem{sspa} SSPA https://www.sspa.se/ship-design-and-hydrodynamics/skin-friction-database.
+\bibitem{sukas} \"O. F. Sukas et al, Computation of total resistance of ships and submarines by RANSE based CFD. 
+\bibitem{swanson} W. M. Swanson, The Magnus Effect: A summary of Investigations to Date, Journal of Basic Engineering, vol 83, no. 3, pp. 461-470, 1961.
+\bibitem{tani} I. Tani, History of Boundary Layer Theory, Ann. Rev. Fluid Mech. 1977.9:87-111.
+\bibitem{tazzioli} R. Tazzioli, D'Alembert's paradox 1900-1914: Levi-Civita and his Italian and French followers, Comptes Rendus M\'ecanique, Vol. 345, Issue 7, July 2019, pages 488-497.
+\bibitem{thwaites} B. Thwaites (ed), \emph{Incompressible Aerodynamics}, An Account of the Theory and
+Observation of the Steady Flow of Incompressible Fluid pas Aerofoils, Wings and other Bodies, Fluid Motions Memoirs, Clarendon Press, Oxford 1960, Dover 1987.
+\bibitem{truesdell} C. Truesdell, Rational Fluid Mechanics, 1687-1765: Editor's Introduction to Vol. II, 12 of Euler's Works, Orell Füssli, 1954.
+\bibitem{saintvenant} B. Saint-Venant, Note \`a joindre au m\'emoire  sur la dynamique des fluides, Comptes Rendu des Seances de l'Acad\'emi des Sciences 17:240, 1830,
+\bibitem{secret} Secret of Flight, https://secretofflight.wordpress.com
+%\bibitem{fagesimmons} A. Fage and L.F. Simmons, An investigation
+%of the air-flow pattern in the wake of an airfoil of finite
+%span, Rep.Memor.aero.REs.Coun.,Lond.951, 1925. 
+%\bibitem{ambsflow} J. Hoffman and C. Johnson, Computational Turbulent
+%Incompressible Flow, Springer 2007, home page at www.bodysoulmath.org/books.
+%\bibitem{separation} J. Hoffman and C. Johnson, Flow separation in fluids
+%with very small viscosity, Phi Preprint, submitted to JFM?
+\bibitem{sciam} The Enigma of Aerodynamic Lift, Scientific American 322, 2, 44-51 (Feb 2020).
+\bibitem{uzun} D. Uzun et al, A CFD study: Influence of biofouling on a full-scale submarine, Applied Ocean Research, Vol. 109, April 2021.
+\bibitem{white} F. M. White, Fluid Mechanics, 8th ed, McGraw-Hill.
+\bibitem{yamauchi} G. K. Yamauchi and W. Johnson, Trends of Reynolds Number Effects on Two-Dimensional Airfoil Characteristics for Helicopter Rotor Analyses, NACA TM 84363. 
+\end{thebibliography} 
+\end{document}
+
+
+The \emph{Hamiltonian} $H_{std}$ for StdQM takes the following form for an atom with kernel of positive charge $Z$ at the origin of a 3d Euclidean coordinate system $\Re^3$ surrounded by $N=Z$ electrons with the indices $i$ and $j$ summing from $1$ to $N$: 
+
+\begin{displaymath}
+H_{std}= \sum_i(-\frac{1}{2}\Delta_i -\frac{Z}{\vert x_i\vert} +\sum_{j\neq i}\frac{1}{2\vert x_i-x_j\vert})
+\end{displaymath}
+where each $x_i$ is the 3d coordinate for a copy of $\Re^3$ and $\Delta_i$ the Laplacian differential operator with respect to $x_i$. The Hamiltonian $H_{std}$ acts on wave functions $\psi (x_1,x_2,...x_N)$ depending on $N$ 3d spatial variables $x_i$,  each $x_i$ serving to represent one electron with presence over the whole of its own copy of $\Re^3$,  thus based on electronic wave functions having global supports in different copies of $\Re^3$,  yet meeting in $2\vert x_i-x_j\vert$ where the factor 2 cancels double count. The Hamiltonian includes Coulomb interaction between point charges as classical physics,  while the Laplacian represents modern quantum physics.  The Hamiltonian is visibly parameter-free,  and so fulfills Einstein's specification of an ideal mathematical model capable of delivering information about physics without experimental input.  
+
+The Hamiltonian $H_{real}$ of RealQM,  inspired by the above quotes by Schr\"odinger (1926) and Lieb (2005) in search of an alternative to StdQM,  takes the form 
+\begin{displaymath}
+H_{real}= \sum_i(-\frac{1}{2}\Delta -\frac{Z}{\vert x_i\vert} +\sum_{j\neq i}\frac{1}{2\vert x_i-x_j\vert}) 
+\end{displaymath}
+which formally looks like that of StdQM above,  but has a fundamentally different meaning: Physical space $\Re^3$ with 3d coordinate $x$ and Laplacian $\Delta$ is partitioned into non-overlapping domains $\Omega_i$ with boundary $\Gamma_i$,  each serving as support of a one-electron charge density.  The Hamiltonian $H_{real}$ acts on a wave function $\psi (x)=\sum_{i=1}^N\psi_i(x)$ as a sum of one-electron wave functions $\psi_i(x)$ with support in $\Omega_i$ and corresponding normalised charge $\int\psi_i^2(x)dx=1$. 
+
+\section{Checklist StdQM vs RealQM}
+We here very briefy compare basic aspects of StdQM and RealQM,  with more developed expositions in  \cite{RealQM} and links in the code repository:
+\begin{itemize}
+\item StdQM and RealQM build on the same parameter-free Hamiltonian with different realisations.
+\item StdQM is linear with probabilistic non-physical interpretation. 
+\item RealQM is non-linear with deterministic physical interpretation.
+\item StdQM needs radical dimensional reduction to computable form introducing modeling issues/parameters.
+\item RealQM in basic form is computable in parameter-free form. 
+\item StdQM has anti-symmetry and Pauli Exclusion Principle PEP/spin as additional physics.
+\item RealQM does not include/need PEP/spin.  
+\item StdQM: electrons without identity have global overlapping supports.
+\item RealQM: electrons with identity have local non-overlapping supports.  
+\item RealQM is observer independent.  No collapse of wave function for observation.
+\item RealQM has no electron self-repulsion and exchange-correlation is not an issue.
+\item RealQM explains shell structure and the Periodic Table as an electron packing problem,  not in terms of s,  p,  d Hydrogen eigenfunctions.
+\item RealQM explains covalent bonding as the result of accumulation of charge density between atomic kernels without increase of kinetic energy. 
+\item RealQM confirms stability of matter in directly formally visible form by presence of electron kinetic energies.
+\item StdQM computes excited states from superposition of wave functions. 
+\item RealQM computes excited states from shifts of charge density between shells. 
+\end{itemize} 
+\begin{abstract} 
+Real Quantum Mechanics RealQM \cite{RealQM} gives a generalisation of Schr\"odinger's equation for the Hydrogen atom with $N=1$ electron to atoms with $N>1$ electrons taking the form of a \emph{non-linear system} of $N$ \emph{one-electron wave functions} with \emph{non-overlapping supports} depending on a common 3d spatial coordinate.  RealQM is a \emph{Bernoulli free boundary problem} where one-electron wave functions meet at a common boundary with \emph{continuity and zero normal derivative}.  RealQM offers an explanation of covalent bonding as a fundamental mechanism of chemistry based on electron charge accumulation between atomic kernels without increase of kinetic energy from charge concentration.  RealQM thus explains covalent binding of H2 and also non-binding of Au2 from large radius of inner shell electrons preventing valence electron accumulation between kernels.  The standard explanation referring to relativity effects from high speed electrons inside an Au atom lacks appears far-fetched. 
+\end{abstract} 
+\begin{abstract} 
+Real Quantum Mechanics RealQM gives a generalisation of Schr\"odinger's equation for the Hydrogen atom with $N=1$ electron to atoms with $N>1$ electrons taking the form of a \emph{non-linear system} of $N$ \emph{one-electron wave functions} with \emph{non-overlapping supports} depending on a common 3d spatial coordinate.  RealQM involves a \emph{free boundary} where one-electron wave functions meet with \emph{continuity}.  The computational complexity of RealQM scales linearly with $N$.  We here consider an analogous model for a nucleus which only builds on Coulomb force thus without need of a strong force.
+\end{abstract}  
+\section{RealQM vs StdQM}
+This note is part of a series of articles \cite{articles} covering different aspects of \emph{Real Quantum Mechanics RealQM} as an alternative to \emph{Standard Quantum Mechanics StdQM} as the current text book canon based on \emph{Schr\"odinger's Equation SE} in its form \emph{StdSE} of StdQM.  RealQM gives a generalisation of SE for the Hydrogen atom with $N=1$ electron,  to atoms and molecules with $N>1$ electrons starting with formally the same Hamiltonian as StdQM,  but with a fundamentally different interpretation taking as \emph{RealSE} the form of a \emph{non-linear system} of $N$ \emph{one-electron wave functions} with \emph{non-overlapping supports} depending on a \emph{common 3d spatial coordinate}.  RealSE involves a \emph{free boundary} where one-electron wave functions meet with \emph{continuity}. The computational complexity of RealSE scales linearly with $N$ while that of StdQM in non-compressed form is exponential.  RealQM captures the total binding energy of atoms in good agreement with observations showing scaling with  $Z^2$ where $Z=N$ is the kernel charge.
+
+\begin{abstract} 
+Real Quantum Mechanics RealQM \cite{RealQM} gives a generalisation of Schr\"odinger's equation for the Hydrogen atom with $N=1$ electron to atoms with $N>1$ electrons taking the form of a \emph{non-linear system} of $N$ \emph{one-electron wave functions} with \emph{non-overlapping supports} depending on a common 3d spatial coordinate.  RealQM is a \emph{Bernoulli free boundary problem} where one-electron wave functions meet at a common boundary with \emph{continuity and zero normal derivative}.  RealQM offers an explanation of covalent bonding as a fundamental mechanism of chemistry based on electron charge accumulation between atomic kernels without increase of kinetic energy from charge concentration.  
+\end{abstract}  
+
+
+\section{Restart from 1926: RealQM}
+
+RealQM offers a reduction into one common spatial coordinate $x\in\Re^3$ for a collection of one-electron non-overlapping charge densities over a subdivision of physical 3d space into domains $\Omega_i$ with wave functions $\Psi_i(x)$ depending on $x\in\Omega_i$. The computational complexity is linear in $N$ making RealQM computable for large $N$ possibly opening to ab initio computational protein folding.
+
+RealQM can be seen as an elaboration of DFT where electrons have identity by occupying non-overlapping subdomains in a partition of physical 3d space and so has clear concrete physical meaning.  
+
+QM is generally viewed to be "strange" and "weird" and "non-intuitive" or "non-physical" all of which can be traced back to the idea of a wave function $\Psi (x)$ depending on $x\in\Re^{3N}$ asking for  dimensional reductions to 3d physical space and physical meaning. RealQM starts directly with a physical model in 3d physical space and so does not need to struggle with the multi-dimensional unphysical form of QM. 
+
+RealQM could have been formulated in 1926, if Schrödinger had been able to take the lead, but he was overpowered by Born-Heisenberg-Bohr. Will RealQM succeed this time? 
+
+
+
+%The shift from classical physics to modern physics came with the new matrix-mechanics by Werner Heisenberg in 1925 and the new wave mechanics by Erwin Schr\"odinger in 1926,  which turned out to be essentially equivalent although formally different.  Schr\"odinger's wave mechanics was formulated as \emph{Schr\"odinger's Equation SE},  which serves as the basic mathematical model of modern physics here referred to as \emph{Standard Quantum Mechanics StdQM}.  SE in stationary eigenvalue form starts from a \emph{Hamiltonian} as a certain linear operator acting on a \emph{wave function} $\Psi (x_1,...,x_N)$ depending on $N$ 3d Euclidean coordinates $x_1$,...,$x_N$,  for an atom or molecule with $N$ electrons.  
+%The wave function $\Psi (x_1,...,x_N)$ is restricted to be \emph{anti-symmetric} to model electrons as fermions.  
+%The 3N-dimensionality of SE makes computational solution possible only for very small $N$.  \emph{Density Functional Theory DFT} is a compression of SE into a common electron density depending on a single 3d coordinate asking for additional modeling and restriction to ground states \cite{piela,koch}. The software for quantum chemistry based on reduced forms of SE such as Hartree-Fock is very rich and consumes more super computer power than any other area of physics.  The physical interpretation of StdQM as a statistical model is subject to ongoing debate since 100 years,  without conclusive consensus \cite{bell}. The real test of the functionality of StdQM is ab initio modeling of quantum chemistry as a seemingly still largely open basic problem of modern physics. 
+
+Real Quantum Mechanics RealQM \cite{RealQM} gives a generalisation of Schr\"odinger's equation for the Hydrogen atom with $N=1$ electron to atoms and molecules with $N>1$ electrons,  which is different from that of StdQM.  RealQM is based on formally the same Hamiltonian as StdQM,  but with a fundamentally different interpretation taking the form of a \emph{non-linear system} of $N$ \emph{one-electron wave functions} with \emph{non-overlapping supports} depending on a \emph{common 3d spatial coordinate}.  RealQM is a \emph{Bernoulli free boundary problem} where one-electron wave functions meet at a common boundary with \emph{continuity and zero normal derivative}.  The computational complexity of RealQM is linear in $N$,  while that of StdQM is exponential.  RealQM can be seen as an expanded form of DFT with individual non-overlapping electron densities starting from a fundamentally different interpretation of the Hamiltonian than StdQM/DFT.  RealQM as based on non-overlapping electron can be compared with Bader's \emph{Atoms in Molcules AIM} based on basins of influence of kernels \cite{bader}.  RealQM thus connects to both DFT and AIM,  but carries a new idea,  which does not seem to have been explored alhough very natural and apparently functional. 
+
+RealQM for ground states of atoms,  ions and molecules is implemented in a three-line code for explicit time-stepping towards stationary state on a uniform 3d grid with 1 million mesh points.  A collection of bench mark cases is collected in a Code Repository \cite{coderepository} including p5js codes to inspect,  execute and modify.  RealQM meets Schr\"odinger's demand of "Anschaulichkeit" or physical reality.  RealQM shows good agreement with observations.  RealQM is parameter-free modulo mesh size,  and so opens to ab initio computational modeling in quantum chemistry. 
+
+A RealQM ground state appears as the solution to an \emph{electron packing problem} with electrons occupying different volumes in space depending on proximity to kernels and other electrons. The shell structure of an atom then naturally emerges with 2 electrons filling two halves of a 1st shell surrounding the kernel,  $2\times 4$ filling a 2nd shell with the basic pattern of $2n^2$ electrons filling shell $n=1,2,3,..,$ realised in the periodicity 2,  8,  8,  18,  18,  32,..., of the periodic table.  The factor 2 then emerges as a reflection of the 2 half-shell electrons in the 1st shell,  as a a different expression of Pauli's "Zweideutigkeit" of spin,  and the factor $n^2$ from dividing the surface of a half-shell into $n^2$ pieces.  RealQM thus does not rely on the s,  p,  d-Hydrogen eigenmodes of StdQM.  More generally,  RealQM appears to offer an explaination of chemical bonding in terms of electron packing.  RealQM has the same form as classical models of continuum mechanics and thus opens to a unified continuum theory for all scales from micro to macro.  
+
+casuality
+determinism
+locality
+separability. 
+RealQM can be seen as the model Schrödinger was working towards after formulation his ground-breaking Schrödinger Equation SE capturing the spectrum of the H atom with one electron, as an extension to systems with many electrons. RealQM has shown to capture basic aspects of atoms and molecules.  
+
+But history took another turn with a generalisation breaking with the above classical principles which became StdQM formulated in wave functions defined over $3N$ dimensional unphysical configuration space for a system with $N>1$ electrons. Schrödinger protested but was silenced by Bohr-Born-Heisenberg laying a foundation with is the same today. 
+
+Let us consider the basic problem of formation of the H2 molecule from two neutral H atoms being drawn towards each other to find a stable configuration at a kernel distance of 1.4 atomic units under release of 0.17 Hartree as binding energy. 
+
+RealQM models the dynamic formation of H2 by computing the forces acting on the kernels under Coulomb interaction between electrons and kernels and between kernel and kernel, and finding a balance at the distance 1.4 under release of 0.17 Hartree. The is a casual process driven by physical forces.
+
+StdQM approaches the problem in a different way according to Born-Oppenheimer, by first locking kernel positions and then computing the corresponding electronic energy, which is added to a kernel-kernel potential and then differentiated with respect to kernel positions, followed by updating kernel positions in a process towards energy minimum. This is a non-casual process driven by non-physical forces.
+
+The key difference is:
+RealQM: electron have local support and so build electronic potentials with physical forces.  
+StdQM: electrons have non-local support and so only build electronic energies without physical forces.
+It thus appears that RealQM opens a new approach to Molecular Dynamics with possibly new capabilities in protein folding.
+
+
+RealQM represents a model which Schr\"odinger could have formulated in 1926 facing the challenge of generalising his equation from $N=1$ to $N>1$,  but did not do.  The reason was probably the similarity between SE and Heisenberg's multi-dimensional matrix mechanics quickly adopted by Born and Bohr to be the quantum mechanics of the 20th century with the statistical \emph{Born-Heisenberg-Bohr BHB} so called \emph{Copenhagen Interpretation CI}.  Schr\"odinger never accepted StdQM/CI and in fact already from 1927 refused to teach it.
+But BHB took over and Schr\"odinger had to leave the scene (together with Einstein) to return only in 1954 to find that BHB still ruled crowned  by the Nobel Prize in Physics to Born.  
+%Altogether,  RealQM appears to have something essential to offer,  but it remains to see if this holds up to critical evaluation.
+
+%An outline is as follows: We first recall SE for the Hydrogen atom,  and then proceed to present RealQM as a very natural generalisation to atoms and molecules with direct physical meaning.   We start focussing on \emph{ground states} of minimal energy,  but also discuss excited states and time dependency.  We then turn to computation showing that a computer code for explicit time-stepping towards the ground state of an atom or molecule essentially consists of three lines of code: (i) update of wave functions, (ii) update of potentials and (iii) update of the free boundary.  The codes can directly be tested on line from a repository including atoms,  ions  and molecules  showing that RealQM delivers results of significane. 
+%Reduction of StdQM to computational form such as DFT intoduces parameters, which are difficult to determine.  
+A configuration space $\Re^{3N}$ was repugnant to Schr\"odinger and so he desperately sought a way to compress the wave function over configuration space to $\Re^3$.  
+
+
+Schrödinger thus suggested a compression of $\Psi (x_1,...,x_N )$ into a sum of wave functions $\Psi_i(x)$ with $x\in\Re^3$, where $\Psi_i(x)$ is formed by identifying $R_i$ with $\Re^3$ and averaging over all $x_j$ with $j\neq i$. 
+
+We next consider $Z=3$ corresponding to 6Li assuming octahedreal particle configuration with protons at (1,0,0), (-1,0,0), (0,1,0), (0,-1,0), (0,0,1) and (0,0,-1) assuming 3 electrons around (0,0,0) at a mutual distance of 0.5.  We have
+\begin{itemize}
+\item proton-electron attraction $<-\frac{6\times 3}{1}= -18$    (average distance proton electron = 1)
+\item proton-proton repulsion $=(\frac{1}{2}+\frac{5}{\sqrt{2}})3 < 12.5$
+\item electron-electron repulsion $=\frac{3\times 2}{2}=3$ 
+\item total energy as (total potential energy)/2 $<-2.5$
+\end{itemize} 
+again clearly negative.     
+ 
+We thus find that a particle system of Z electrons forming a nucleus kernel surrounded by 2Z protons is stable under Coulomb attraction-repulsion,  for $Z=1,2,3$, where the small electron mass vs proton mass plays a crucial role to allow domination of electron-electron repulsion by proton-electron attraction using that the distance between electrons is comparable to the distance between protons and electrons. 
+
+
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=8.0cm]{4N4P} 
+} 
+\caption{RealQM Nucleus 4 proton 4 neutron 8Be.}
+\label{fig2} 
+\end{figure}
+\begin{figure}[bhpt] 
+\centerline{ 
+\includegraphics[height=8.0cm]{8N8P} 
+} 
+\caption{RealQM Nucleus 8 proton 8 neutron 16O.}
+\label{fig3} 
+\end{figure}
+
+
+
+
