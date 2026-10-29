@@ -81,7 +81,35 @@
   var q    = new URLSearchParams(location.search);
   var N    = parseInt(q.get('n') || '200', 10);
   var scr  = parseFloat(q.get('box')   || '16');
-  var rcCl = parseFloat(q.get('rc_cl') || '0.5');
+  // ---- ?x=Cl | N | Br : the central atom, SAME topology for all of them ----
+  //
+  // This is the point of the comparison, and the risk in it.  In the reduced-valence
+  // construction NO2 and ClO2 are built IDENTICALLY -- X at +3 with a 'third' split,
+  // two O at +2 with 'hemi', seven one-electron domains -- because the pseudo-kernel
+  // keeps only the bonding valence and discards core size, principal quantum number
+  // and Z.  Any two X with the same assigned valence therefore collapse onto one
+  // another.  Experimentally they do not: NO2 is 134.1 deg at 1.193 A, ClO2 is 117.4
+  // deg at 1.470 A, a 17 degree and 0.28 A difference.
+  //
+  // The only place element identity can still enter is r_c, the inner cutoff, which
+  // stands for the core radius -- and nitrogen's core is much smaller than chlorine's.
+  // So the test is:
+  //
+  //     at fixed topology, can r_c alone carry 117 -> 134 deg and 1.470 -> 1.193 A?
+  //
+  // If it can, r_c is carrying the chemistry.  If it cannot, the construction is blind
+  // to the difference between a second-row and a third-row centre, which matters more
+  // than anything ClO2 alone can settle.  r_c defaults below are the menu values;
+  // ?rc_x= drives the ladder that actually asks the question.
+  var XTAB = {
+    Cl: { rc: 0.5, R: 1.470, ang: 117.4 },   // microwave
+    N:  { rc: 0.4, R: 1.193, ang: 134.1 },   // menu has N at Z=3, rc 0.4
+    Br: { rc: 0.6, R: 1.649, ang: 114.4 }    // approximate -- check before quoting
+  };
+  var X    = q.get('x') || 'Cl';
+  if (!XTAB[X]) X = 'Cl';
+  var XP   = XTAB[X];
+  var rcCl = parseFloat(q.get('rc_x') || q.get('rc_cl') || String(XP.rc));
   var rcO  = parseFloat(q.get('rc_o')  || '0.5');   // mol_fast_menu: O at Z=2 uses rc 0.5
   var steps= parseInt(q.get('steps')   || '32000', 10);
   var dyn  = q.get('dyn') === '1';
@@ -107,8 +135,8 @@
 
   // --- experimental geometry (microwave): r(Cl-O) = 1.470 A, O-Cl-O = 117.4 deg ---
   var A2AU = 1 / 0.529177210903;
-  var R    = parseFloat(q.get('r')     || '1.470') * A2AU;
-  var ANG  = parseFloat(q.get('angle') || '117.4');
+  var R    = parseFloat(q.get('r')     || String(XP.R))   * A2AU;
+  var ANG  = parseFloat(q.get('angle') || String(XP.ang));
   var half = ANG * Math.PI / 360;
   var h    = scr / N;
   var c    = N / 2;                                  // fractional centre, NOT rounded
@@ -172,15 +200,15 @@
   var mode = q.get('mode') || 'mol';
 
   var spec;
-  if (mode === 'cl') {
-    spec = [ { el:'Cl', pos:[0,0,0], ne:3, Znuc:3, rc:rcCl, split:'third',
+  if (mode === 'x' || mode === 'cl') {
+    spec = [ { el:X, pos:[0,0,0], ne:3, Znuc:3, rc:rcCl, split:'third',
                axis:clAxis, rot:clRot, labels:clLabels } ];
   } else if (mode === 'o') {
     spec = [ { el:'O', pos:[0,0,0], ne:2, Znuc:2, rc:rcO, split:'hemi',
                axis:[0,0,1], rot:0, labels:['hemisphere 0','hemisphere 1'] } ];
   } else {
     spec = [
-      { el:'Cl', pos:posAu.Cl, ne:3, Znuc:3, rc:rcCl, split:'third',
+      { el:X, pos:posAu.Cl, ne:3, Znuc:3, rc:rcCl, split:'third',
         axis:clAxis, rot:clRot, labels:clLabels },
       { el:'O',  pos:posAu.Oa, ne:2, Znuc:2, rc:rcO,  split:'hemi',
         axis:[-sh,0,-ch], rot:0, labels:['far side', 'bond side, toward Cl'] },
@@ -275,7 +303,7 @@
     var u  = [ Math.cos(az)*B.e1[0] + Math.sin(az)*B.e2[0],
                Math.cos(az)*B.e1[1] + Math.sin(az)*B.e2[1],
                Math.cos(az)*B.e1[2] + Math.sin(az)*B.e2[2] ];
-    secLines += '    Cl sector ' + m + ' centre = ('
+    secLines += '    ' + X + ' sector ' + m + ' centre = ('
               + u[0].toFixed(3) + ', ' + u[1].toFixed(3) + ', ' + u[2].toFixed(3) + ')'
               + '   |y| = ' + Math.abs(u[1]).toFixed(3)
               + '   (' + clLabels[m] + ')\n';
@@ -287,8 +315,9 @@
             + ',  -z -> sector ' + sectorOf(dirMz) + '\n';
 
   document.getElementById('log').innerHTML =
-    '<b class="k">ClO2 -- chlorine dioxide, RealQM</b>\n' +
-    'reduced bonding valence: <b class="g">Cl +3 with 3 electrons</b> (third split), ' +
+    '<b class="k">' + X + 'O2 -- RealQM, reduced bonding valence</b>'
+      + '   [experimental: ' + XP.R.toFixed(3) + ' A, ' + XP.ang.toFixed(1) + ' deg]\n' +
+    '<b class="g">' + X + ' +3 with 3 electrons</b> (third split), ' +
       '<b class="g">O +2 with 2 electrons</b> each (hemi split)\n' +
     '-> <b class="g">' + Zel.length + ' one-electron domains</b>, kernel +' +
       Znuc.reduce(function(s,z){return s+z;},0).toFixed(3) + ', net ' +
@@ -379,12 +408,12 @@
       + '  E=' + (E === undefined ? 'n/a' : E.toFixed(6))
       + (conv ? ' CONV' : '')
       + '  dE=' + (isFinite(dE) ? dE.toExponential(1) : 'n/a')
-      + (g ? '  Cl-O=' + g.ra.toFixed(4) + '/' + g.rb.toFixed(4) + ' au ('
+      + (g ? '  ' + X + '-O=' + g.ra.toFixed(4) + '/' + g.rb.toFixed(4) + ' au ('
              + (g.ra/A2AU).toFixed(4) + '/' + (g.rb/A2AU).toFixed(4) + ' A)'
              + '  ang=' + g.ang.toFixed(3) : '  geom n/a')
       + '  | 7e ' + radical + ' n=' + N + ' rc=' + rcCl + '/' + rcO;
     out.textContent = txt;
-    document.title = 'CLO2 ' + txt;
+    document.title = X.toUpperCase() + 'O2 ' + txt;
     try { localStorage.setItem('clo2_live', txt); } catch (e) {}
   }, 3000);
 
