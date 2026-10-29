@@ -177,12 +177,21 @@
   // -- 2.78 -> 7.00 au with the angle collapsing 117 -> 73 -- which is the protocol and
   // not the molecule.  Setting CONVERGENCE_THRESHOLD switches the gate to three
   // consecutive frames within tolerance (line 6141), which is what should decide it.
-  if (dyn) {
-    window.USER_NUC_SUBSTEPS   = 2;
-    window.CONVERGENCE_THRESHOLD = parseFloat(q.get('conv') || '1e-5');
-  } else {
-    window.NO_AUTO_DYNAMICS = true;
-  }
+  // CONVERGENCE_THRESHOLD is NOT the mechanism: on convergence molecule.js:6154 sets
+  // phase = 1, and phase 1 is "done" (line 6167 -- `phase = 1; // done`).  It is the
+  // sweep hook: converge, report, halt.  Line 6135 also skips the dynamics auto-enable
+  // whenever it is set, so setting it disables nuclear motion and replaces it with a
+  // stop.  That produced 27 identical readings of E = -9.69418 which looked exactly
+  // like a converged relaxation and was a dead solver.
+  //
+  // So: suppress the 10000-step auto-enable (far too early -- 10000 steps is a few
+  // seconds here, against ~190 s to electronic convergence), and release the nuclei
+  // from this page by the 'd' key the solver already exposes (line 6988) once E has
+  // actually stopped moving.
+  var convTol = parseFloat(q.get('conv') || '2e-6');
+  var convNeed = parseInt(q.get('convhold') || '5', 10);
+  window.NO_AUTO_DYNAMICS = true;
+  if (dyn) window.USER_NUC_SUBSTEPS = 2;
 
   // ---- the geometry actually built, from the kernel cells ----
   var gCl = cell(posAu.Cl), gOa = cell(posAu.Oa), gOb = cell(posAu.Ob);
@@ -283,18 +292,40 @@
     var A=Math.hypot(wa[0],wa[1],wa[2]), B=Math.hypot(wb[0],wb[1],wb[2]);
     return { ra:ra, rb:rb, ang:Math.acos(Math.max(-1,Math.min(1,dt/(A*B))))*180/Math.PI };
   }
+  // The readout prints the STEP COUNTER as well as E.  A frozen E with the steps still
+  // advancing is convergence; a frozen E with the steps frozen is a halted solver, and
+  // the two are indistinguishable without this.  Three runs on this page were read as
+  // results before that distinction was available.
+  var prevE = null, hold = 0, released = false, lastSteps = -1, stuck = 0;
   setInterval(function () {
-    var E = window._E, g = geomNow();
+    var E = window._E, g = geomNow(), st = window._phaseSteps;
+    var dE = (E !== undefined && prevE !== null) ? Math.abs(E - prevE) : NaN;
+
+    if (st === lastSteps) stuck++; else { stuck = 0; lastSteps = st; }
+
+    // release the nuclei once E has genuinely stopped moving
+    if (dyn && !released && isFinite(dE) && dE < convTol) {
+      if (++hold >= convNeed) {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key:'d', bubbles:true }));
+        released = true;
+      }
+    } else if (dyn && !released) { hold = 0; }
+    if (E !== undefined) prevE = E;
+
     var txt = 't=' + ((Date.now()-t0)/1000).toFixed(0) + 's'
-      + '  E=' + (E === undefined ? 'n/a' : E.toFixed(5))
+      + '  step=' + (st === undefined ? '?' : st)
+      + (stuck >= 3 ? ' <HALTED>' : '')
+      + '  dyn=' + (window._dynOn ? 'ON' : 'off')
+      + '  E=' + (E === undefined ? 'n/a' : E.toFixed(6))
+      + '  dE=' + (isFinite(dE) ? dE.toExponential(1) : 'n/a')
       + (g ? '  Cl-O=' + g.ra.toFixed(4) + '/' + g.rb.toFixed(4) + ' au ('
              + (g.ra/A2AU).toFixed(4) + '/' + (g.rb/A2AU).toFixed(4) + ' A)'
-             + '  O-Cl-O=' + g.ang.toFixed(3) + ' deg' : '  geom n/a')
-      + '  | 7e n=' + N + ' box=' + scr + ' rc=' + rcCl + '/' + rcO + ' dyn=' + (dyn?1:0);
+             + '  ang=' + g.ang.toFixed(3) : '  geom n/a')
+      + '  | 7e ' + radical + ' n=' + N + ' rc=' + rcCl + '/' + rcO;
     out.textContent = txt;
     document.title = 'CLO2 ' + txt;
     try { localStorage.setItem('clo2_live', txt); } catch (e) {}
-  }, 2000);
+  }, 3000);
 
   var s = document.createElement('script');
   s.src = 'molecule.js?t=' + Date.now();
