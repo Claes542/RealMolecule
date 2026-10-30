@@ -1,4 +1,81 @@
 <!DOCTYPE html>
+<!--
+  mol_fast_h2o_tetra.html -- H2O as five one-electron domains.
+  =================================================================================
+  THE MODEL
+
+      O   Z=3  rc=0.5  split 'third'  idx 0,1,2  axis [0,0,1]  fixed
+            idx 0 -> bond to H1     idx 1 -> lone pair     idx 2 -> bond to H2
+      H   Z=1  rc=0                                           x2, free to move
+      NORM_TARGETS = [1,1,1,1,1]
+
+  Oxygen is a SCREENED PSEUDO-KERNEL at +3, not a bare +8: the core is absorbed and only
+  the bonding valence is carried, which is the house convention (C=4, N=3, O=2, F=5,
+  Cl=7).  Its three valence electrons are three 120-degree angular sectors about an axis
+  normal to the molecular plane -- two aimed at the hydrogens, one at the lone pair.  The
+  kernel charge is declared once (Z:3 on the first sibling, Z:0 on the other two) and the
+  three domains share it.  The oxygen is pinned and the hydrogens relax, so the ANGLE IS
+  AN OUTPUT while the bond length starts at its experimental value (var bond = 1.814) and
+  is NOT independently measured here -- do not quote 1.814 back as a result.
+
+  WHAT THE SOLVER INTEGRATES.  Each domain carries an amplitude u and a territory field w.
+  w is the free boundary, moved as a front,
+      dw = W_DIFF*dt*|c|*lap(w) + W_ADV*dt*c*|grad w|,
+  and u is the density amplitude, moved with a w-weighted Laplacian and (K - V_other)*u*w.
+  EVERY TERM OF THE u-UPDATE IS GATED BY w, and all the configuration questions below come
+  from that one design choice.
+
+  THE CONFIGS, and every fix ships OFF because "every existing page in this collection was
+  tuned against the unweighted behaviour" -- 63 pages load mol_fast.js, 3 set the first,
+  1 sets the rest.
+
+    USER_WEIGHTED_DENSITY  ?wd=1      off   whether w weights the DENSITY integrals.  Off:
+                                            only the kinetic energy carries w, the other
+                                            three count u^2 unweighted, and the domains
+                                            OVERLAP.  On: density is u^2*w everywhere and
+                                            normalisation enforces int u^2 w = target,
+                                            which also makes charge conservation automatic.
+    USER_U_DECAY           ?udec=d    0     where w=0 the u-update is identically zero, so
+                                            u stays FROZEN at its seed and is counted as
+                                            real charge.  This multiplies u by (1-d) each
+                                            step where w<0.5.  MEASURED: d=0.02 gives
+                                            E=+0.912, i.e. unbound -- it strips charge
+                                            faster than the dynamics replace it.  Leave off
+                                            until calibrated against per-domain charge.
+    USER_W_FLOOR           ?wfloor=f  0     a retreating domain leaves a diffusive residue
+                                            that advection later regrows from.  Zeroes w
+                                            below f.
+    USER_W_ADV             --         1     front speed.  Raising it destabilises u: the
+                                            w-gated kinetic coefficients jump 0<->1 within
+                                            a step.  W_ADV=4 diverged to E=1.2e6 with 2370
+                                            units of charge instead of 3.
+    USER_W_DIFF            --         0.05  front smoothing.  Self-limiting, since the
+                                            advection goes as |grad w|.
+    split_fix              ?sfix=0    on    re-imposes the angular split EVERY STEP, pinning
+                                            the sectors.  Off = free after the initial
+                                            partition, which is the stated model: only r_c
+                                            imposed, outer boundaries free by non-overlap.
+
+  MEASURED 2026-10-30, relaxing from 104.5 deg, sampled every 2 min from the live mirror:
+
+      config          E (Ha)              H-O-H
+      defaults        -7.018 -> -7.209    103.24 - 103.35
+      wd=1            -4.417              103.32
+      udec=0.02       +0.912  (unbound)   103.44
+
+  EIGHT HARTREE OF SPREAD IN THE ENERGY, TWO TENTHS OF A DEGREE IN THE ANGLE.  The angle is
+  insensitive to the partition treatment; the energy is worthless under it.  That is the
+  regime claim demonstrated by varying the MODEL rather than the mesh, and it is why the
+  recommended setting is ?wd=1 for anything structural and no setting at all for energies
+  (mol_fast.js itself says: absolute energies -> essence_solver.html or h2_p5_original.html).
+
+  PROVENANCE, because it was missing.  Until 2026-10-30 mol_fast.js computed this angle,
+  drew it on the canvas and never set window._angle, so the reporter below recorded
+  angle: null in every run and printed angle=?.  The 103.0 deg in an earlier version of
+  this header and the 101.6 deg in realqm_universality.tex were read off the canvas by eye,
+  with no record of which of the six settings above produced them.  The live mirror now
+  writes E, angle, dipole and the active flags to localStorage every four seconds.
+-->
 <html><head>
   <meta charset="utf-8">
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
