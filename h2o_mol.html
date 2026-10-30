@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<!--
+  h2o_mol.html -- H2O on molecule.js, the FAITHFUL solver.
+  =================================================================================
+  WHY THIS PAGE EXISTS.  The water result in the record -- the relaxed angle, the
+  dipole, the lone pair appearing unbidden -- was obtained on mol_fast.js, and ClO2 was
+  run on molecule.js.  Comparing them conflates the solver with the molecule, because
+  the two differ in exactly the place that matters here:
+
+      mol_fast.js    domains OVERLAP.  Where w = 0 the u-update is identically zero, so
+                     u stays frozen at its seed and that charge is counted in three of
+                     the four integrals.  The partition reaches only the kinetic energy.
+      molecule.js    one U field, labelled cells, true non-overlap.
+
+  So "water works and ClO2 does not" has never been tested.  This page is the same
+  construction as mol_fast_h2o_tetra.html, on the same solver as clo2.html.
+
+  THE MODEL, identical to the mol_fast page:
+
+      O   kernel +3,  3 valence electrons   'third' split, three 120 deg sectors
+      H   kernel +1,  1 valence electron    no split                        x2
+
+      5 one-electron domains, kernel +5, net 0.
+
+  Oxygen is a screened pseudo-kernel carrying only the bonding valence (the house
+  convention: C=4, N=3, O=2, F=5, Cl=7); its three electrons are two bond sectors and a
+  lone-pair sector.  Hydrogen is a bare proton with r_c = 0.
+
+  SECTOR ORIENTATION, derived not assumed -- the same derivation as clo2.html.  For
+  splitType 3 the shader builds e1 = (a1,-a0,0) and e2 = a x e1 (molecule.js:461-474).
+  With the molecule in the xz-plane and the split axis along +y that gives e1 = x and
+  e2 = -z, so a direction's azimuth is atan2(-p_z, p_x).  Setting splitRot to the azimuth
+  of H(a) puts sector 1 on the H(a) bond, sector 0 on the H(b) bond and sector 2 on the
+  lone pair, pointing -z away from both hydrogens.  The page PRINTS the realised sector
+  directions, because a mis-aimed sector never shows up in a bond length.
+
+  KERNEL SOFTENING is set by the collapse criterion rather than left at its default.  With
+  eps = c*h, collapse sets in once Z*h/c exceeds about 0.1; here Z_max = 3, so
+  c >= 3h/0.1, computed from box and n so it tracks the mesh.  Overridable with ?soft=.
+  Getting this wrong is what left ClO2 with a monotone E(R) and no minimum at all.
+
+  LADDERS before any number is quoted:  ?steps=  ?n=  ?rc_o=  ?soft=
+  Kernel positions are FRACTIONAL -- Math.round on a kernel position costs 39.5 kcal/mol
+  in NH3 and destroys T_d.
+
+  ?dyn=1 releases the nuclei via the key molecule.js already binds, but only once the
+  electrons have stopped moving: the built-in release at 10000 steps fires far too early
+  for this kind of system and moves nuclei on an unrelaxed density.
+-->
+<meta charset="utf-8">
+<title>H2O on molecule.js</title>
+<style>
+  body { background:#0b0e12; color:#cfd8dc; font:13px/1.6 -apple-system,Segoe UI,sans-serif; margin:0; padding:14px }
+  pre.box { white-space:pre-wrap; background:#0f141a; border:1px solid #243; padding:10px 13px;
+            border-radius:6px; max-width:940px }
+  #log  { border-left:3px solid #80cbc4 }
+  #live { border-left:3px solid #ffb74d; margin-top:10px }
+  b.k { color:#80cbc4 } b.w { color:#ffb74d } b.g { color:#a5d6a7 }
+</style>
+<pre class="box" id="log">loading...</pre>
+
+<script>
+(function () {
+  var q     = new URLSearchParams(location.search);
+  var N     = parseInt(q.get('n') || '160', 10);
+  var scr   = parseFloat(q.get('box')  || '16');
+  var rcO   = parseFloat(q.get('rc_o') || '0.5');
+  var steps = parseInt(q.get('steps')  || '400000', 10);
+  var dyn   = q.get('dyn') === '1';
+
+  var h = scr / N, c = N / 2;                         // fractional centre, NOT rounded
+  var softAuto = Math.max(1, Math.ceil(3 * h / 0.1)); // collapse criterion, Z_max = 3
+  var soft = parseFloat(q.get('soft') || String(softAuto));
+  window.USER_SOFT = soft;
+
+  // experimental geometry: O-H = 1.814 a0, H-O-H = 104.5 deg
+  var R    = parseFloat(q.get('r')     || '1.814');   // already in bohr
+  var ANG  = parseFloat(q.get('angle') || '104.5');
+  var half = ANG * Math.PI / 360;
+  var sh = Math.sin(half), ch = Math.cos(half);
+  var pos = { O:[0,0,0], Ha:[ +R*sh, 0, +R*ch ], Hb:[ -R*sh, 0, +R*ch ] };
+  function cell(p) { return [ c + p[0]/h, c + p[1]/h, c + p[2]/h ]; }
+
+  var rot = Math.atan2(-ch, sh);                      // azimuth of H(a) in the shader's basis
+  var labels = ['bond to H(b)', 'bond to H(a)', 'lone pair, -z, away from both H'];
+
+  var spec = [
+    { el:'O', pos:pos.O,  ne:3, Znuc:3, rc:rcO, split:'third', axis:[0,1,0], rot:rot, lab:labels },
+    { el:'H', pos:pos.Ha, ne:1, Znuc:1, rc:0.0, split:'sphere', axis:[0,0,1], rot:0, lab:['H(a) 1s'] },
+    { el:'H', pos:pos.Hb, ne:1, Znuc:1, rc:0.0, split:'sphere', axis:[0,0,1], rot:0, lab:['H(b) 1s'] }
+  ];
+
+  var atoms=[], Zel=[], Znuc=[], rcA=[], stype=[], sidx=[], saxis=[], srot=[], names=[];
+  spec.forEach(function (a) {
+    var g = cell(a.pos);
+    for (var m = 0; m < a.ne; m++) {
+      atoms.push({ i:g[0], j:g[1], k:g[2], Z:1, el:a.el });
+      Zel.push(1); Znuc.push(a.Znuc / a.ne); rcA.push(a.rc);
+      stype.push(a.split); sidx.push(m); saxis.push(a.axis); srot.push(a.rot);
+      names.push(a.el + ' ' + m + ': ' + a.lab[m]);
+    }
+  });
+
+  window.USER_NN = N;  window.USER_SCREEN = scr;  window.USER_STEPS = steps;
+  window.USER_ATOMS = atoms;  window.USER_Z = Zel;  window.USER_Z_NUC = Znuc;
+  window.USER_RC = rcA;  window.USER_SPLIT_TYPE = stype;  window.USER_SPLIT_IDX = sidx;
+  window.USER_SPLIT_AXIS = saxis;  window.USER_SPLIT_ROT = srot;
+  window._atomNames = names;
+  window.NO_AUTO_DYNAMICS = true;                     // release on convergence, not step count
+  if (dyn) window.USER_NUC_SUBSTEPS = 2;
+  var convTol  = parseFloat(q.get('conv') || '2e-6');
+  var convNeed = parseInt(q.get('convhold') || '5', 10);
+
+  // ---- geometry actually built ----
+  var gO = cell(pos.O), gA = cell(pos.Ha), gB = cell(pos.Hb);
+  function d(p,r){ return Math.hypot(p[0]-r[0],p[1]-r[1],p[2]-r[2]) * h; }
+  var rA = d(gO,gA), rB = d(gO,gB);
+  var va=[gA[0]-gO[0],gA[1]-gO[1],gA[2]-gO[2]], vb=[gB[0]-gO[0],gB[1]-gO[1],gB[2]-gO[2]];
+  var dp=va[0]*vb[0]+va[1]*vb[1]+va[2]*vb[2];
+  var angBuilt = Math.acos(dp/(Math.hypot(va[0],va[1],va[2])*Math.hypot(vb[0],vb[1],vb[2])))*180/Math.PI;
+
+  // ---- sector geometry actually built, reproducing the shader's own basis ----
+  function basis(a){
+    var L=Math.hypot(a[0],a[1],a[2]); a=[a[0]/L,a[1]/L,a[2]/L];
+    var e1=(Math.abs(a[2])<0.9)?[a[1],-a[0],0]:[0,a[2],-a[1]];
+    var l=Math.hypot(e1[0],e1[1],e1[2]); e1=[e1[0]/l,e1[1]/l,e1[2]/l];
+    var e2=[a[1]*e1[2]-a[2]*e1[1], a[2]*e1[0]-a[0]*e1[2], a[0]*e1[1]-a[1]*e1[0]];
+    return {e1:e1,e2:e2};
+  }
+  var B = basis([0,1,0]), secLines = '';
+  for (var m=0;m<3;m++){
+    var az = -Math.PI + (m+0.5)*(2*Math.PI/3) + rot;
+    var u = [Math.cos(az)*B.e1[0]+Math.sin(az)*B.e2[0],
+             Math.cos(az)*B.e1[1]+Math.sin(az)*B.e2[1],
+             Math.cos(az)*B.e1[2]+Math.sin(az)*B.e2[2]];
+    secLines += '    O sector ' + m + ' = (' + u[0].toFixed(3) + ', ' + u[1].toFixed(3)
+              + ', ' + u[2].toFixed(3) + ')   |y| = ' + Math.abs(u[1]).toFixed(3)
+              + '   (' + labels[m] + ')\n';
+  }
+
+  document.getElementById('log').innerHTML =
+    '<b class="k">H2O on molecule.js</b>  &mdash; the faithful solver: one U field, labelled cells,\n' +
+    'true non-overlap.  Same construction as mol_fast_h2o_tetra.html, same solver as clo2.html.\n\n' +
+    '<b class="g">O +3 with 3 electrons</b> (third split), <b class="g">2 H at +1</b> &mdash; ' +
+      Zel.length + ' one-electron domains, kernel +' +
+      Znuc.reduce(function(s,z){return s+z;},0).toFixed(2) + ', net 0\n' +
+    'grid ' + N + '^3, box ' + scr + ' au, h = ' + h.toFixed(4) + ', steps ' + steps + '\n' +
+    'r_c: O ' + rcO + ', H 0   |   softening eps = ' + soft.toFixed(2) + '*h, so Z*h/c = ' +
+      (3*h/soft).toFixed(3) + ' <b class="w">(collapse above ~0.1)</b>\n' +
+    'nuclei ' + (dyn ? '<b class="w">released once E stops moving</b>' : 'held (add ?dyn=1)') + '\n' +
+    '\n<b class="k">nuclear geometry built</b>\n' +
+    '  O-H     ' + rA.toFixed(4) + ' / ' + rB.toFixed(4) + ' a0   [target ' + R.toFixed(3) + ']\n' +
+    '  H-O-H   ' + angBuilt.toFixed(3) + ' deg   [target ' + ANG.toFixed(1) + ']\n' +
+    '\n<b class="k">electron geometry built</b> (sector centres, checked not assumed)\n' + secLines +
+    '\n<b class="w">the comparison this page is for</b>  mol_fast gives 103.3 deg on the same\n' +
+    '  construction with OVERLAPPING domains.  If molecule.js agrees, the water geometry is\n' +
+    '  robust to the partition treatment and ClO2 failing is about ClO2.  If it does not, the\n' +
+    '  two cases agree after all and both are about the construction.\n' +
+    '\nloading molecule.js ...';
+
+  // ---- live readout: step counter distinguishes convergence from a halt ----
+  var out = document.createElement('pre');
+  out.className = 'box'; out.id = 'live';
+  out.textContent = 'waiting for the solver ...';
+  document.body.appendChild(out);
+
+  var t0 = Date.now(), prevE = null, hold = 0, released = false, lastSteps = -1, stuck = 0;
+  function geomNow() {
+    var P = window._nucPos;
+    if (!P || !P[4]) return null;
+    var o = P[0], a = P[3], b = P[4];        // 0-2 O thirds, 3 H(a), 4 H(b)
+    function dc(p,r){ return Math.hypot(p[0]-r[0],p[1]-r[1],p[2]-r[2]); }
+    var wa=[a[0]-o[0],a[1]-o[1],a[2]-o[2]], wb=[b[0]-o[0],b[1]-o[1],b[2]-o[2]];
+    var dt=wa[0]*wb[0]+wa[1]*wb[1]+wa[2]*wb[2];
+    return { ra:dc(o,a)*h, rb:dc(o,b)*h,
+             ang:Math.acos(Math.max(-1,Math.min(1,dt/(Math.hypot(wa[0],wa[1],wa[2])*Math.hypot(wb[0],wb[1],wb[2])))))*180/Math.PI };
+  }
+  setInterval(function () {
+    var E = window._E, g = geomNow(), st = window._phaseSteps;
+    var dE = (E !== undefined && prevE !== null) ? Math.abs(E - prevE) : NaN;
+    if (typeof st === 'number') { if (st === lastSteps) stuck++; else { stuck = 0; lastSteps = st; } }
+    else stuck = -1;
+    var conv = false;
+    if (isFinite(dE) && dE < convTol) {
+      if (++hold >= convNeed) {
+        conv = true;
+        if (dyn && !released) {
+          window.dispatchEvent(new KeyboardEvent('keydown', { key:'d', bubbles:true }));
+          released = true;
+        }
+      }
+    } else hold = 0;
+    if (E !== undefined) prevE = E;
+    var txt = 't=' + ((Date.now()-t0)/1000).toFixed(0) + 's'
+      + '  step=' + (st === undefined ? '?' : st)
+      + (stuck >= 3 ? ' <HALTED>' : (stuck < 0 ? ' <not started>' : ''))
+      + '  dyn=' + (window._dynOn ? 'ON' : 'off')
+      + '  E=' + (E === undefined ? 'n/a' : E.toFixed(6)) + (conv ? ' CONV' : '')
+      + '  dE=' + (isFinite(dE) ? dE.toExponential(1) : 'n/a')
+      + (g ? '  O-H=' + g.ra.toFixed(4) + '/' + g.rb.toFixed(4) + ' a0  ang=' + g.ang.toFixed(3)
+           : '  geom n/a')
+      + '  | 5e n=' + N + ' rc=' + rcO + ' soft=' + soft;
+    out.textContent = txt;
+    document.title = 'H2OMOL ' + txt;
+    try { localStorage.setItem('h2o_mol_live', txt); } catch (e) {}
+  }, 3000);
+
+  var s = document.createElement('script');
+  s.src = 'molecule.js?t=' + Date.now();
+  s.onerror = function () { out.textContent += '\nfailed to load molecule.js'; };
+  s.onload  = function () {
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    document.head.appendChild(p);
+  };
+  document.head.appendChild(s);
+})();
+</script>
