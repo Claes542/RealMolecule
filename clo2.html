@@ -101,10 +101,15 @@
   // to the difference between a second-row and a third-row centre, which matters more
   // than anything ClO2 alone can settle.  r_c defaults below are the menu values;
   // ?rc_x= drives the ladder that actually asks the question.
+  // Zx is the centre's kernel charge, and it is NOT 3 for every X.  The house convention
+  // assigns C=4, N=3, O=2, F=5, Cl=7; the bonding reading used here takes Cl as +3 (two
+  // bonds plus the odd electron) and C as +4 (four bonding electrons).  The split reading
+  // needs a split with Zx sectors: 'third' for 3, 'tetra' for 4.
   var XTAB = {
-    Cl: { rc: 0.5, R: 1.470, ang: 117.4 },   // microwave
-    N:  { rc: 0.4, R: 1.193, ang: 134.1 },   // menu has N at Z=3, rc 0.4
-    Br: { rc: 0.6, R: 1.649, ang: 114.4 }    // approximate -- check before quoting
+    Cl: { Zx: 3, rc: 0.5, R: 1.470, ang: 117.4, split: 'third' },  // microwave
+    N:  { Zx: 3, rc: 0.4, R: 1.193, ang: 134.1, split: 'third' },  // menu: N at Z=3, rc 0.4
+    Br: { Zx: 3, rc: 0.6, R: 1.649, ang: 114.4, split: 'third' },  // approximate
+    C:  { Zx: 4, rc: 0.4, R: 1.162, ang: 180.0, split: 'tetra'  }  // CO2: linear, C rc 0.4
   };
   var X    = q.get('x') || 'Cl';
   if (!XTAB[X]) X = 'Cl';
@@ -148,7 +153,7 @@
   // With Z_max = 3 and h = 0.1 that is c = 3.  Overridable with ?soft=, and ?soft=1
   // recovers the old behaviour for comparison.
   var hTmp  = parseFloat(q.get('box') || '16') / N;
-  var softAuto = Math.max(1, Math.ceil(3 * hTmp / 0.1));
+  var softAuto = Math.max(1, Math.ceil(XP.Zx * hTmp / 0.1));
   var soft  = parseFloat(q.get('soft') || String(softAuto));
   window.USER_SOFT = soft;
 
@@ -191,7 +196,8 @@
   if (radical === 'plane') {
     clAxis = [0,1,0];
     clRot  = Math.atan2(-ch, sh);                    // = -31.30 deg at 117.4
-    clLabels = ['bond to O(b)', 'bond to O(a)', 'radical lobe, IN plane, along -z'];
+    clLabels = ['bond to O(b)', 'bond to O(a)', 'radical lobe, IN plane, along -z',
+                'sector 3'];
   } else {
     clAxis = [0,0,1];
     clRot  = 0;                                      // puts sector 1 centre on +y
@@ -249,8 +255,9 @@
   var spec;
   if (occ === 'hom') {
     var homAll = [
-      { el:X,   pos:posAu.Cl, ne:1, Zel:3, Znuc:3, rc:rcCl, split:'sphere',
-        axis:[0,0,1], rot:0, labels:[X + ' +3, three electrons in one shared density'] },
+      { el:X,   pos:posAu.Cl, ne:1, Zel:XP.Zx, Znuc:XP.Zx, rc:rcCl, split:'sphere',
+        axis:[0,0,1], rot:0,
+        labels:[X + ' +' + XP.Zx + ', ' + XP.Zx + ' electrons in one shared density'] },
       { el:'O', pos:posAu.Oa, ne:1, Zel:2, Znuc:2, rc:rcO,  split:'sphere',
         axis:[0,0,1], rot:0, labels:['O(a) +2, two electrons shared'] },
       { el:'O', pos:posAu.Ob, ne:1, Zel:2, Znuc:2, rc:rcO,  split:'sphere',
@@ -259,14 +266,14 @@
     spec = (mode === 'x' || mode === 'cl') ? [homAll[0]]
          : (mode === 'o' ? [homAll[1]] : homAll);
   } else if (mode === 'x' || mode === 'cl') {
-    spec = [ { el:X, pos:[0,0,0], ne:3, Znuc:3, rc:rcCl, split:'third',
+    spec = [ { el:X, pos:[0,0,0], ne:XP.Zx, Znuc:XP.Zx, rc:rcCl, split:XP.split,
                axis:clAxis, rot:clRot, labels:clLabels } ];
   } else if (mode === 'o') {
     spec = [ { el:'O', pos:[0,0,0], ne:2, Znuc:2, rc:rcO, split:'hemi',
                axis:[0,0,1], rot:0, labels:['hemisphere 0','hemisphere 1'] } ];
   } else {
     spec = [
-      { el:X, pos:posAu.Cl, ne:3, Znuc:3, rc:rcCl, split:'third',
+      { el:X, pos:posAu.Cl, ne:XP.Zx, Znuc:XP.Zx, rc:rcCl, split:XP.split,
         axis:clAxis, rot:clRot, labels:clLabels },
       { el:'O',  pos:posAu.Oa, ne:2, Znuc:2, rc:rcO,  split:'hemi',
         axis:[-sh,0,-ch], rot:0, labels:['far side', 'bond side, toward Cl'] },
