@@ -212,6 +212,19 @@
       + '  dyn=' + (window._dynOn ? 'ON' : 'off')
       + '  E=' + (E === undefined ? 'n/a' : E.toFixed(6)) + (conv ? ' CONV' : '')
       + '  dE=' + (isFinite(dE) ? dE.toExponential(1) : 'n/a')
+      // ENERGY COMPONENTS.  V_ee is the term molecule.js documents as broken -- 0.048
+      // against an exact 0.1667 at R=6, i.e. 0.29x, "under counted -> OVER-binds", cause
+      // NOT FOUND after three failed hypotheses.  That figure was established on the direct
+      // per-electron Poisson path; with NELEC > 5 these runs use total-Poisson + SIC
+      // instead, and the error there is unmeasured.  It matters because V_ee is the only
+      // term that acts at the equilibrium separation AND grows on contraction: the clamp
+      // (r < r_c), the kernel softening (dead in recomputeK) and the nuclear softening
+      // (eps = 0.4 au) are all short-range and inactive at R ~ 2.8 au.  So if E(R) is
+      // monotone, an under-counted V_ee is the candidate that fits.
+      + (window._E_ee !== undefined
+          ? '  [T=' + window._E_T.toFixed(4) + ' V_eK=' + window._E_eK.toFixed(4)
+            + ' V_ee=' + window._E_ee.toFixed(4) + ' V_KK=' + window._E_KK.toFixed(4) + ']'
+          : '')
       + (g ? '  O-H=' + g.ra.toFixed(4) + '/' + g.rb.toFixed(4) + ' a0  ang=' + g.ang.toFixed(3)
            : '  geom n/a')
       + '  | 5e n=' + N + ' rc=' + rcO + ' soft=' + soft;
