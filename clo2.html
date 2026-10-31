@@ -114,7 +114,26 @@
   var steps= parseInt(q.get('steps')   || '32000', 10);
   var dyn  = q.get('dyn') === '1';
 
-  // ---- KERNEL SOFTENING, set by the collapse criterion, not by taste ----
+  // ---- KERNEL SOFTENING -- and it does NOT act on a clamped pseudo-kernel ----
+  //
+  // WITHDRAWN 2026-10-31.  This block was added on the reading that ClO2's monotone E(R) was
+  // electron collapse onto an under-softened kernel, with Z*h/c = 0.3 as the diagnosis.  That
+  // is wrong for this construction.  recomputeK (molecule.js:1962) does
+  //     r_eff = select(max(r, R_SING), max(r, rc), rc > 0)
+  // so with r_c > 0 the potential is CLAMPED -- a flat plateau at Z/r_c inside r_c, 6 Ha for
+  // Cl at +3 and 4 Ha for each O -- and no singularity is sampled at all.  Worse, soft_k is
+  // declared in that shader (line 1953) and never read, so USER_SOFT does nothing to the
+  // electron-kernel potential.  Measured: at R = 1.470 A, soft=1 gives -9.693 and soft=4
+  // gives -9.705.  A 0.012 Ha difference, i.e. none.
+  //
+  // The criterion is still right for a BARE kernel (r_c = 0), where R_SING is the only floor.
+  // It is kept here because the page supports r_c = 0, and because reporting Z*h/c costs
+  // nothing and makes the condition visible.
+  //
+  // The standing candidate for the monotone E(R) is the clamp itself: a flat-bottomed well
+  // lets charge accumulate at no kinetic cost, where real 1/r charges kinetic energy for
+  // every increment of localisation.  The experiment is USER_FULL_RC, which removes the
+  // plateau instead of shielding a singularity.
   //
   // molecule.js records the criterion: with softening eps = c*h, charge concentrating
   // in one cell gains ~Z/eps while the kinetic penalty is capped at ~1/h^2, so collapse
