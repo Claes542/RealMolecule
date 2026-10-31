@@ -61,28 +61,51 @@ window.NO_AUTO_DYNAMICS = true;
 window.CONVERGENCE_THRESHOLD = parseFloat(_q.get('conv') || '0.01');
 
 function updateTable() {
+  // Rewritten 2026-10-31.  The old table had TWO hardcoded columns, E(R=5) and E(R=7), and
+  // printed "running bond n/2" -- it could only ever display a binding energy between two
+  // fixed separations.  The sweep handler itself is generic and collects every bond length,
+  // so the data were there and the display was throwing them away.  This prints the whole
+  // E(R) curve, flags the minimum, and shows each point's step count so an unconverged or
+  // halted point cannot be mistaken for a converged one.
   var div = document.getElementById('results');
-  var html = '<b style="color:#0cf">X2 (Z=2) vs r_c</b><br>';
-  html += '<span style="color:#888;font-size:11px">+2 kernel, 4 electrons, 150^3 / 15 au</span><br><br>';
-  html += '<table style="border-collapse:collapse"><tr style="color:#0cf;border-bottom:1px solid #444">';
-  html += '<th style="padding:3px 8px">r_c</th><th>E(R=5)</th><th>E(R=7)</th><th>E_bind</th><th>eV</th></tr>';
-
-  for (var r = 0; r < rcValues.length; r++) {
-    var rc = rcValues[r];
-    var res = allResults[r];
-    if (res && res.length >= 2) {
-      var E5 = res[0].E, E8 = res[1].E;
-      var eb = E5 - E8;
-      html += '<tr><td style="padding:3px 8px">' + rc.toFixed(2) + '</td><td>' + E5.toFixed(4) + '</td><td>' + E8.toFixed(4) + '</td><td>' + eb.toFixed(4) + '</td><td>' + (eb*27.211).toFixed(2) + '</td></tr>';
-    } else if (r === rcIdx) {
-      html += '<tr style="color:#666"><td style="padding:3px 8px">' + rc.toFixed(2) + '</td><td colspan="4">running bond ' + (bondIdx+1) + '/2</td></tr>';
-    } else {
-      html += '<tr style="color:#444"><td style="padding:3px 8px">' + rc.toFixed(2) + '</td><td colspan="4">pending</td></tr>';
-    }
+  var html = '<b style="color:#0cf">X2 (Z=2) vs R</b><br>';
+  html += '<span style="color:#888;font-size:11px">+2 kernel each, 4 electrons, two CLAMPED '
+        + 'kernels, r_c=' + currentRc().toFixed(2) + ', ' + N + '^3 / ' + scr + ' au, h='
+        + hg.toFixed(3) + '</span><br>';
+  html += '<span style="color:#888;font-size:11px">does the force vanish anywhere? a real '
+        + 'Z=2 diatomic bond is near 2.3 au</span><br><br>';
+  var res = (allResults[rcIdx] && allResults[rcIdx].length) ? allResults[rcIdx] : currentResults;
+  html += '<table style="border-collapse:collapse"><tr style="color:#0cf;border-bottom:1px solid #444">'
+        + '<th style="padding:3px 10px">R (au)</th><th style="padding:3px 10px">E (Ha)</th>'
+        + '<th style="padding:3px 10px">dE</th><th style="padding:3px 10px">steps</th></tr>';
+  var lo = null;
+  for (var k = 0; k < res.length; k++) if (lo === null || res[k].E < res[lo].E) lo = k;
+  for (var k = 0; k < res.length; k++) {
+    var d = (k > 0) ? (res[k].E - res[k-1].E) : NaN;
+    var isMin = (k === lo && k > 0 && k < res.length - 1);
+    html += '<tr' + (isMin ? ' style="color:#0f0;font-weight:bold"' : '') + '>'
+          + '<td style="padding:3px 10px">' + res[k].bond.toFixed(2) + '</td>'
+          + '<td style="padding:3px 10px">' + res[k].E.toFixed(5) + '</td>'
+          + '<td style="padding:3px 10px">' + (isFinite(d) ? (d>0?'+':'') + d.toFixed(5) : '--') + '</td>'
+          + '<td style="padding:3px 10px">' + res[k].steps + '</td>'
+          + (isMin ? '<td style="color:#0f0">&lt;-- MINIMUM</td>' : '') + '</tr>';
   }
+  if (bondIdx < bondLengths.length)
+    html += '<tr style="color:#666"><td style="padding:3px 10px">'
+          + bondLengths[bondIdx].toFixed(2) + '</td><td colspan="3">running '
+          + (bondIdx+1) + '/' + bondLengths.length + '</td></tr>';
   html += '</table>';
+  // INTERIOR minimum or not -- the one thing the run is for, stated outright.
+  if (res.length === bondLengths.length) {
+    html += (lo > 0 && lo < res.length - 1)
+      ? '<br><b style="color:#0f0">INTERIOR MINIMUM at R = ' + res[lo].bond.toFixed(2) + ' au</b>'
+      : '<br><b style="color:#f80">NO INTERIOR MINIMUM -- lowest point is at the '
+        + (lo === 0 ? 'INNER' : 'OUTER') + ' end of the scan</b>';
+  }
   div.innerHTML = html;
+  try { localStorage.setItem('x2_z2_curve', JSON.stringify(res)); } catch (e) {}
 }
+
 updateTable();
 
 window.onSweepDone = function(Emin, steps) {
