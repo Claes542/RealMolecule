@@ -80,6 +80,16 @@
   window.USER_CURV_REG = CURV;
   window.USER_BETA = BETA;
   window.USER_JACOBI_DIRECT = parseInt(q.get('jac') || '10');
+  // ?pot=sic -- force the TOTAL-POISSON + SIC path instead of the per-electron direct one.
+  // With two electrons NELEC <= 5, so molecule.js takes the direct path (line 347) and this
+  // page has only ever measured V_ee there: 0.17 at jac=0, 0.042 at jac=10 against the exact
+  // 1/R.  But any system with more than five domains -- ClO2's seven, a peptide's hundreds --
+  // runs on total-Poisson + SIC instead, and V_ee has never been checked on that path at all.
+  // Since V_ee is the only term that acts at the equilibrium separation AND grows under
+  // contraction, an error there is the standing candidate for ClO2's monotone E(R).
+  // Default unchanged.
+  if (q.get('pot') === 'sic') window.USER_DIRECT_POTHER = false;
+  else if (q.get('pot') === 'direct') window.USER_DIRECT_POTHER = true;
   // rhodiag=1 -> molecule.js reports integral(rho_other) in document.title at step 200.
   // It must be 1.0 (exactly one other electron).
   if (q.get('rhodiag')) window.USER_RHO_DIAG = 1;
