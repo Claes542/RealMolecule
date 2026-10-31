@@ -2373,7 +2373,17 @@ let forceSumsBuf, forceSumsReadBuf;
 let gradPtotalPL, recomputeK_PL;
 let gradPtotalBG = [], recomputeK_BG;
 // LOBPCG state
-let useLOBPCG = false;  // toggle: false = imaginary time, true = LOBPCG
+// USER_LOBPCG / USER_CHEB: pick the inner solver AT CONSTRUCTION.  Both were previously
+// hardcoded false and reachable only by the 'l' and 'c' keys, so no driver page could ask
+// for them and every run in the collection used plain imaginary-time relaxation.  That is
+// the expensive choice: dt = dv*h^2, so steps-to-converge goes as (L/h)^2 = n^2 while the
+// work per step goes as n^3 -- O(n^5) overall, which is why halving the mesh costs 32x and
+// why a 240^3 run does not finish.  Chebyshev damps the slow mode the relaxation is waiting
+// on; LOBPCG replaces the relaxation with an eigensolve and has no n^2 factor at all.
+// Defaults are unchanged -- unset, both are false and the behaviour is exactly as before --
+// and they are set here rather than toggled mid-run because the mid-run keyboard toggle is
+// what halted the loop when it was used for nuclear dynamics.
+let useLOBPCG = !!(typeof window !== 'undefined' && window.USER_LOBPCG);  // toggle: false = imaginary time, true = LOBPCG
 const LOBPCG_ITERS = 10;  // LOBPCG iterations per SCF step
 let applyH_PL, lobpcgResidualPL, lobpcgInnerPL, lobpcgFinalizePL, lobpcgUpdatePL;
 let applyH_BG_X, applyH_BG_W, applyH_BG_P;
@@ -2383,7 +2393,7 @@ let HX_buf, W_lobpcg_buf, HW_buf, P_lobpcg_buf, HP_buf;
 let lobpcgPartialsBuf, lobpcgSumsBuf, lobpcgSumsReadBuf;
 let lambdaBuf, coeffBuf, lobpcgNumWGBuf;
 // Chebyshev state
-let useCheb = false;
+let useCheb = !!(typeof window !== 'undefined' && window.USER_CHEB) && !useLOBPCG;
 let chebOmega = 1.0;  // Chebyshev ω recurrence state
 let chebyshevStepPL, chebyshevStepBG = [];
 let U_prev_buf, chebParamsBuf;

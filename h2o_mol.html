@@ -116,6 +116,11 @@
   // shared site the instant dynamics is enabled -- which is what halted the first runs of
   // this page the moment the nuclei were released.
   window.USER_COINCIDENT_GROUPS = [[0,1,2]];   // the three O thirds share one kernel
+  // ?cheb=1 or ?lobpcg=1 -- the inner solver.  Plain imaginary-time relaxation is O(n^5):
+  // dt = dv*h^2 puts steps-to-converge at n^2 and work per step at n^3.  Chebyshev damps
+  // the slow mode; LOBPCG replaces the relaxation entirely.  Both default off.
+  if (q.get('lobpcg') === '1') window.USER_LOBPCG = true;
+  else if (q.get('cheb') === '1') window.USER_CHEB = true;
   window.NO_AUTO_DYNAMICS = true;                     // release on convergence, not step count
   if (dyn) window.USER_NUC_SUBSTEPS = 2;
   var convTol  = parseFloat(q.get('conv') || '2e-6');

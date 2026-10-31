@@ -319,6 +319,11 @@
     window.USER_COINCIDENT_GROUPS = (mode === 'mol') ? [[0,1,2],[3,4],[5,6]]
                                   : (mode === 'o' ? [[0,1]] : [[0,1,2]]);
   }
+  // ?cheb=1 or ?lobpcg=1 -- the inner solver.  Plain imaginary-time relaxation is O(n^5):
+  // dt = dv*h^2 puts steps-to-converge at n^2 and work per step at n^3.  Chebyshev damps
+  // the slow mode; LOBPCG replaces the relaxation entirely.  Both default off.
+  if (q.get('lobpcg') === '1') window.USER_LOBPCG = true;
+  else if (q.get('cheb') === '1') window.USER_CHEB = true;
   window.NO_AUTO_DYNAMICS = true;
   if (dyn) window.USER_NUC_SUBSTEPS = 2;
 
