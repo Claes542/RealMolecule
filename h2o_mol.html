@@ -106,6 +106,16 @@
   window.USER_RC = rcA;  window.USER_SPLIT_TYPE = stype;  window.USER_SPLIT_IDX = sidx;
   window.USER_SPLIT_AXIS = saxis;  window.USER_SPLIT_ROT = srot;
   window._atomNames = names;
+
+  // COINCIDENT GROUPS.  The split siblings sit at ONE position and share one kernel, but
+  // molecule.js treats them as independent nuclei unless told otherwise:
+  // "sum member forces onto the first member so the shared site feels the total force;
+  //  others are snapped back to it after integration.  No-op unless USER_COINCIDENT_GROUPS
+  //  is set." (molecule.js:5889)
+  // Without it each sibling feels only its own partial force and is free to drift off the
+  // shared site the instant dynamics is enabled -- which is what halted the first runs of
+  // this page the moment the nuclei were released.
+  window.USER_COINCIDENT_GROUPS = [[0,1,2]];   // the three O thirds share one kernel
   window.NO_AUTO_DYNAMICS = true;                     // release on convergence, not step count
   if (dyn) window.USER_NUC_SUBSTEPS = 2;
   var convTol  = parseFloat(q.get('conv') || '2e-6');
