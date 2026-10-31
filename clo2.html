@@ -199,8 +199,47 @@
   // the fragment energies comparable with the molecule's at the same box size.
   var mode = q.get('mode') || 'mol';
 
+  // ---- ?occ=split (default) | hom : the two readings of a shared shell ----
+  //
+  // SPLIT is what the non-overlap condition prescribes: the valence divided into disjoint
+  // one-electron domains, one per angular sector.  HOM is what the accurate atomic
+  // calculations do: all N_s electrons in ONE shared density with the self-repulsion
+  // reduced by (N_s-1)/N_s, which is exactly what USER_MULTI_OCC applies -- 2/3 for a
+  // charge-3 domain, 1/2 for charge-2.  Nothing in the theory fixes the choice, and on
+  // helium the two bracket the exact energy from either side.
+  //
+  // WHY IT IS WORTH TRYING HERE.  The split runs collapsed: E(R) monotone inward, no
+  // minimum, which is an OVER-binding failure -- charge piling onto the kernels faster
+  // than the restoring force can resist.  The hom end under-binds rather than over-binds
+  // (for a closed two-electron shell it is Hartree, hence Hartree-Fock, and misses exactly
+  // the correlation energy).  So the end that failed and the end that might work are
+  // opposite ends of the same bracket, and hom is the one with less collapse pressure.
+  // It is also three domains instead of seven, so it converges far faster.
+  //
+  // CONSISTENCY, which matters for comparing the two: with three domains NELEC <= 5, so
+  // molecule.js would switch to the per-electron direct Poisson path (line 347) while the
+  // seven-domain split runs used total-Poisson + SIC.  That would make the bracket a
+  // comparison of two different Poisson treatments.  USER_DIRECT_POTHER = false pins both
+  // ends to the same machinery.
+  var occ = (q.get('occ') === 'hom') ? 'hom' : 'split';
+  if (occ === 'hom') {
+    window.USER_MULTI_OCC      = true;
+    window.USER_DIRECT_POTHER  = false;
+  }
+
   var spec;
-  if (mode === 'x' || mode === 'cl') {
+  if (occ === 'hom') {
+    var homAll = [
+      { el:X,   pos:posAu.Cl, ne:1, Zel:3, Znuc:3, rc:rcCl, split:'sphere',
+        axis:[0,0,1], rot:0, labels:[X + ' +3, three electrons in one shared density'] },
+      { el:'O', pos:posAu.Oa, ne:1, Zel:2, Znuc:2, rc:rcO,  split:'sphere',
+        axis:[0,0,1], rot:0, labels:['O(a) +2, two electrons shared'] },
+      { el:'O', pos:posAu.Ob, ne:1, Zel:2, Znuc:2, rc:rcO,  split:'sphere',
+        axis:[0,0,1], rot:0, labels:['O(b) +2, two electrons shared'] }
+    ];
+    spec = (mode === 'x' || mode === 'cl') ? [homAll[0]]
+         : (mode === 'o' ? [homAll[1]] : homAll);
+  } else if (mode === 'x' || mode === 'cl') {
     spec = [ { el:X, pos:[0,0,0], ne:3, Znuc:3, rc:rcCl, split:'third',
                axis:clAxis, rot:clRot, labels:clLabels } ];
   } else if (mode === 'o') {
@@ -222,8 +261,8 @@
     var g = cell(a.pos);
     for (var m = 0; m < a.ne; m++) {
       atoms.push({ i:g[0], j:g[1], k:g[2], Z:1, el:a.el });
-      Zel.push(1);
-      Znuc.push(a.Znuc / a.ne);        // spread evenly; sums to a.Znuc
+      Zel.push(a.Zel || 1);                 // hom: the domain's own electron count
+      Znuc.push(a.Znuc / a.ne);             // spread evenly; sums to a.Znuc
       rcA.push(a.rc);
       stype.push(a.split); sidx.push(m); saxis.push(a.axis); srot.push(a.rot);
       names.push(a.el + ' ' + m + ': ' + a.labels[m]);
@@ -275,8 +314,11 @@
   // shared site the instant dynamics is enabled -- which is what halted the first runs of
   // this page the moment the nuclei were released.
   // The two O 'hemi' pairs each share a kernel too, so all three sites are grouped.
-  window.USER_COINCIDENT_GROUPS = (mode === 'mol') ? [[0,1,2],[3,4],[5,6]]
-                                : (mode === 'o' ? [[0,1]] : [[0,1,2]]);
+  // hom has one domain per atom, so there are no co-located siblings to group.
+  if (occ === 'split') {
+    window.USER_COINCIDENT_GROUPS = (mode === 'mol') ? [[0,1,2],[3,4],[5,6]]
+                                  : (mode === 'o' ? [[0,1]] : [[0,1,2]]);
+  }
   window.NO_AUTO_DYNAMICS = true;
   if (dyn) window.USER_NUC_SUBSTEPS = 2;
 
@@ -337,6 +379,10 @@
       '  &mdash; <b class="w">7 is odd, so the radical survives the reduction</b>\n' +
     'grid ' + N + '^3, box ' + scr + ' au, h = ' + h.toFixed(4) + ' au, steps ' + steps + '\n' +
     'r_c: Cl ' + rcCl + ', O ' + rcO + '   (inputs -- run the r_c ladder)\n' +
+    'reading: <b class="g">' + occ.toUpperCase() + '</b>'
+      + (occ === 'hom' ? '  (one shared density per atom, self-repulsion x (N-1)/N'
+                       + ' -- 2/3 on ' + X + ', 1/2 on each O)' : '  (one-electron domains)')
+      + '\n' +
     'kernel softening eps = ' + soft.toFixed(2) + '*h  ->  Z*h/c = '
       + (3*h/soft).toFixed(3) + '  <b class="w">(collapse sets in above ~0.1)</b>\n' +
     'nuclei ' + (dyn ? '<b class="w">released by the built-in schedule at step 10000</b>'
@@ -425,7 +471,7 @@
              + '  ang=' + g.ang.toFixed(3) : '  geom n/a')
       + '  | 7e ' + radical + ' n=' + N + ' rc=' + rcCl + '/' + rcO;
     out.textContent = txt;
-    document.title = X.toUpperCase() + 'O2 ' + txt;
+    document.title = X.toUpperCase() + 'O2 ' + occ + ' ' + txt;
     try { localStorage.setItem('clo2_live', txt); } catch (e) {}
   }, 3000);
 
