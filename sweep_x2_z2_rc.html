@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="results" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.85);border:1px solid #444;padding:10px;z-index:100;font-size:13px;max-height:90vh;overflow-y:auto;min-width:420px"></div>
+<script>
+// X2 with +2 kernel per atom (4 electrons total) vs r_c
+// Compare E(R=5) and E(R=8) to get binding energy
+// 15 au screen, 150^3 grid
+
+// ?rc= and ?bonds= -- so the scan can be driven without editing the file.  Defaults are
+// the previous hardcoded values, so an unparameterised load behaves exactly as before.
+//
+// WHY THE DEFAULTS WERE NOT A BOND-LENGTH SCAN.  R = 5 and 7 au are both far outside any
+// real Z=2 diatomic bond, which sits near 2.3 au (O2 is 1.21 A = 2.28 au).  Those two points
+// give a BINDING ENERGY between two long separations; they cannot show whether E(R) has a
+// minimum.  This is the minimal test of the open question as of 2026-10-31: two identical
+// CLAMPED heavy kernels, one Z, one r_c, one covalent bond, no angle -- does the force
+// vanish anywhere?  ClO2, NO2 and O3 all failed it, and every geometry that works in the
+// collection has hydrogen (r_c = 0, unclamped) on at least one side of the bond.
+var _q = new URLSearchParams(location.search);
+var rcValues = [parseFloat(_q.get('rc') || '0.5')];
+var bondLengths = (_q.get('bonds') || '5.0,7.0').split(',').map(parseFloat);
+
+var rcIdx = 0;
+var bondIdx = 0;
+var allResults = [];
+var currentResults = [];
+
+var N = 200, scr = 12;  // h=0.06, better kernel resolution
+var hg = scr / N;
+var ci = Math.round(N / 2);
+
+function currentRc() { return rcValues[rcIdx]; }
+
+function makeAtoms(bond) {
+  var halfCells = Math.round(0.5 * bond / hg);
+  return [
+    { i: ci - halfCells, j: ci, Z: 2, el: 'X' },
+    { i: ci + halfCells, j: ci, Z: 2, el: 'X' }
+  ];
+}
+
+// Restore
+(function() {
+  var saved = sessionStorage.getItem('x2_z2_rc_progress');
+  if (saved) {
+    var state = JSON.parse(saved);
+    rcIdx = state.rcIdx;
+    allResults = state.allResults;
+    sessionStorage.removeItem('x2_z2_rc_progress');
+  }
+})();
+
+window.USER_NN = N;
+window.USER_SCREEN = scr;
+window.USER_ATOMS = makeAtoms(bondLengths[0]);
+window.USER_STEPS = 50000;
+window.USER_Z = [2, 2];
+window.USER_RC = [currentRc(), currentRc()];
+window.USER_DYNAMICS = false;
+window.NO_AUTO_DYNAMICS = true;
+window.CONVERGENCE_THRESHOLD = parseFloat(_q.get('conv') || '0.01');
+
+function updateTable() {
+  var div = document.getElementById('results');
+  var html = '<b style="color:#0cf">X2 (Z=2) vs r_c</b><br>';
+  html += '<span style="color:#888;font-size:11px">+2 kernel, 4 electrons, 150^3 / 15 au</span><br><br>';
+  html += '<table style="border-collapse:collapse"><tr style="color:#0cf;border-bottom:1px solid #444">';
+  html += '<th style="padding:3px 8px">r_c</th><th>E(R=5)</th><th>E(R=7)</th><th>E_bind</th><th>eV</th></tr>';
+
+  for (var r = 0; r < rcValues.length; r++) {
+    var rc = rcValues[r];
+    var res = allResults[r];
+    if (res && res.length >= 2) {
+      var E5 = res[0].E, E8 = res[1].E;
+      var eb = E5 - E8;
+      html += '<tr><td style="padding:3px 8px">' + rc.toFixed(2) + '</td><td>' + E5.toFixed(4) + '</td><td>' + E8.toFixed(4) + '</td><td>' + eb.toFixed(4) + '</td><td>' + (eb*27.211).toFixed(2) + '</td></tr>';
+    } else if (r === rcIdx) {
+      html += '<tr style="color:#666"><td style="padding:3px 8px">' + rc.toFixed(2) + '</td><td colspan="4">running bond ' + (bondIdx+1) + '/2</td></tr>';
+    } else {
+      html += '<tr style="color:#444"><td style="padding:3px 8px">' + rc.toFixed(2) + '</td><td colspan="4">pending</td></tr>';
+    }
+  }
+  html += '</table>';
+  div.innerHTML = html;
+}
+updateTable();
+
+window.onSweepDone = function(Emin, steps) {
+  currentResults.push({ bond: bondLengths[bondIdx], E: Emin, steps: steps });
+  console.log('r_c=' + currentRc() + ' R=' + bondLengths[bondIdx] + ' E=' + Emin.toFixed(6));
+  updateTable();
+  bondIdx++;
+  if (bondIdx < bondLengths.length) {
+    var atoms = makeAtoms(bondLengths[bondIdx]);
+    window.restartWithPositions(atoms.map(function(a) { return [a.i, a.j]; }));
+  } else {
+    allResults[rcIdx] = currentResults.slice();
+    rcIdx++;
+    bondIdx = 0;
+    currentResults = [];
+    updateTable();
+    if (rcIdx < rcValues.length) {
+      sessionStorage.setItem('x2_z2_rc_progress', JSON.stringify({ rcIdx: rcIdx, allResults: allResults }));
+      location.reload();
+    } else {
+      console.log('=== COMPLETE ===');
+    }
+  }
+};
+
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function() {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
