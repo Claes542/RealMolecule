@@ -371,11 +371,17 @@
   document.getElementById('log').innerHTML =
     '<b class="k">' + X + 'O2 -- RealQM, reduced bonding valence</b>'
       + '   [experimental: ' + XP.R.toFixed(3) + ' A, ' + XP.ang.toFixed(1) + ' deg]\n' +
-    '<b class="g">' + X + ' +3 with 3 electrons</b> (third split), ' +
-      '<b class="g">O +2 with 2 electrons</b> each (hemi split)\n' +
-    '-> <b class="g">' + Zel.length + ' one-electron domains</b>, kernel +' +
+    (occ === 'hom'
+       ? '<b class="g">' + X + ' +3, three electrons in ONE density</b>, '
+       : '<b class="g">' + X + ' +3 with 3 electrons</b> (third split), ') +
+      (occ === 'hom' ? '<b class="g">each O +2, two electrons shared</b>\n'
+                   : '<b class="g">O +2 with 2 electrons</b> each (hemi split)\n') +
+    '-> <b class="g">' + Zel.reduce(function(a,b){return a+b;},0) + ' electrons in '
+      + Zel.length + (occ === 'hom' ? ' shared domains' : ' one-electron domains')
+      + '</b>, kernel +' +
       Znuc.reduce(function(s,z){return s+z;},0).toFixed(3) + ', net ' +
-      (Znuc.reduce(function(s,z){return s+z;},0) - Zel.length).toFixed(3) +
+      (Znuc.reduce(function(s,z){return s+z;},0)
+         - Zel.reduce(function(a,b){return a+b;},0)).toFixed(3) +
       '  &mdash; <b class="w">7 is odd, so the radical survives the reduction</b>\n' +
     'grid ' + N + '^3, box ' + scr + ' au, h = ' + h.toFixed(4) + ' au, steps ' + steps + '\n' +
     'r_c: Cl ' + rcCl + ', O ' + rcO + '   (inputs -- run the r_c ladder)\n' +
@@ -418,8 +424,11 @@
   var t0 = Date.now();
   function geomNow() {
     var P = window._nucPos;
-    if (!P || !P[5]) return null;
-    var cl = P[0], oa = P[3], ob = P[5];     // 0-2 Cl thirds, 3-4 O(a) hemis, 5-6 O(b)
+    // hom: one domain per atom, so Cl=0, O(a)=1, O(b)=2.
+    // split: Cl thirds 0-2, O(a) hemis 3-4, O(b) hemis 5-6.
+    var iA = (occ === 'hom') ? 1 : 3, iB = (occ === 'hom') ? 2 : 5;
+    if (!P || !P[iB]) return null;
+    var cl = P[0], oa = P[iA], ob = P[iB];
     function dc(p,r){ var a=p[0]-r[0], b=p[1]-r[1], e=p[2]-r[2];
                       return Math.sqrt(a*a+b*b+e*e); }
     var ra = dc(cl,oa)*h, rb = dc(cl,ob)*h;
