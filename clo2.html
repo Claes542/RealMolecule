@@ -343,6 +343,18 @@
   // the slow mode; LOBPCG replaces the relaxation entirely.  Both default off.
   if (q.get('lobpcg') === '1') window.USER_LOBPCG = true;
   else if (q.get('cheb') === '1') window.USER_CHEB = true;
+  // ?fullrc=1 -- USER_FULL_RC: exclude EVERY domain from inside EVERY core, not merely its
+  // own label's (molecule.js:310, rcAllLoopWGSL removes a cell lying inside any core).
+  //
+  // This is the test of the standing candidate for the monotone E(R).  With r_c > 0 the
+  // kernel potential is CLAMPED at Z/r_c -- a flat plateau, 6 Ha for Cl at +3 and 4 Ha for
+  // each O.  A flat-bottomed well lets charge accumulate at no kinetic cost, whereas real
+  // 1/r charges kinetic energy for every increment of localisation and the two balance at
+  // the cusp.  So as the kernels approach, their plateaus overlap and an electron in the
+  // overlap sees Z1/rc1 + Z2/rc2 deepening with nothing opposing it.  FULL_RC removes the
+  // plateau from every domain rather than shielding a singularity, which is also what the
+  // stated model describes: only the inner cutoff imposed, outer boundaries free.
+  if (q.get('fullrc') === '1') window.USER_FULL_RC = true;
   window.NO_AUTO_DYNAMICS = true;
   if (dyn) window.USER_NUC_SUBSTEPS = 2;
 
