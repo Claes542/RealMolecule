@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="results" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.85);border:1px solid #444;padding:10px;z-index:100;font-size:13px;max-height:90vh;overflow-y:auto;min-width:400px"></div>
+<script>
+// Two-phase X2 sweep:
+// Phase 1: single X atom, get E(X) for each r_c
+// Phase 2: X2 bond sweep near equilibrium, E_bind = E_min - 2*E(X)
+
+var rcValues = [0.3, 0.4, 0.5];
+var bondLengths = [1.6, 1.8, 2.0, 2.2, 2.5, 3.0];  // au — all near equilibrium
+
+var phase = 0;  // 0=single atom, 1=molecule
+var rcIdx = 0;
+var bondIdx = 0;
+var atomE = {};       // atomE[rc] = E(X)
+var allResults = [];  // allResults[rcIdx] = [{bond, E, steps}, ...]
+var currentResults = [];
+
+var N = 200, scr = 8;
+var hg = scr / N;
+var ci = Math.round(N / 2);
+
+function currentRc() { return rcValues[rcIdx]; }
+
+function makeAtomsPhase0() {
+  // 2 atoms at R=6 au — well-separated, E/2 = E(X)
+  var halfCells = Math.round(0.5 * 6.0 / hg);
+  return [
+    { i: ci - halfCells, j: ci, Z: 1, el: 'X' },
+    { i: ci + halfCells, j: ci, Z: 1, el: 'X' }
+  ];
+}
+
+function makeAtomsPhase1(bond) {
+  var halfCells = Math.round(0.5 * bond / hg);
+  return [
+    { i: ci - halfCells, j: ci, Z: 1, el: 'X' },
+    { i: ci + halfCells, j: ci, Z: 1, el: 'X' }
+  ];
+}
+
+// Restore progress
+(function() {
+  var saved = sessionStorage.getItem('x2_atom_ref_progress');
+  if (saved) {
+    var state = JSON.parse(saved);
+    phase = state.phase;
+    rcIdx = state.rcIdx;
+    atomE = state.atomE;
+    allResults = state.allResults;
+    sessionStorage.removeItem('x2_atom_ref_progress');
+    console.log('Restored: phase=' + phase + ' rcIdx=' + rcIdx);
+  }
+})();
+
+window.USER_NN = N;
+window.USER_SCREEN = scr;
+window.USER_STEPS = 50000;
+window.USER_Z = [1, 1];
+window.USER_RC = [currentRc(), currentRc()];
+window.USER_DYNAMICS = false;
+window.NO_AUTO_DYNAMICS = true;
+window.CONVERGENCE_THRESHOLD = 0.01;
+
+if (phase === 0) {
+  window.USER_ATOMS = makeAtomsPhase0();
+} else {
+  window.USER_ATOMS = makeAtomsPhase1(bondLengths[0]);
+}
+
+function updateTable() {
+  var div = document.getElementById('results');
+  var html = '<b style="color:#0cf">X2 (Z=1) Binding Energy</b><br>';
+  html += '<span style="color:#888;font-size:11px">E_bind = E(R_min) - 2*E(X), 200^3 on 8 au</span><br><br>';
+
+  // Phase 1 results
+  html += '<b style="color:#ff0;font-size:11px">Atom E(X):</b><br><table style="border-collapse:collapse;font-size:11px">';
+  for (var r = 0; r < rcValues.length; r++) {
+    var rc = rcValues[r];
+    var e = atomE[rc.toFixed(1)];
+    html += '<tr><td style="padding:2px 8px">r_c=' + rc.toFixed(1) + '</td><td>' + (e !== undefined ? e.toFixed(4) : '...') + '</td></tr>';
+  }
+  html += '</table><br>';
+
+  html += '<table style="border-collapse:collapse"><tr style="color:#0cf;border-bottom:1px solid #444">';
+  html += '<th style="padding:3px 8px">r_c</th><th>R_min</th><th>E_min</th><th>E_bind (Ha)</th><th>E_bind (eV)</th></tr>';
+
+  for (var r = 0; r < allResults.length; r++) {
+    var res = allResults[r];
+    var rc = rcValues[r];
+    var bestE = Infinity, bestR = 0, bestI = -1;
+    for (var i = 0; i < res.length; i++) {
+      if (res[i].E < bestE) { bestE = res[i].E; bestR = res[i].bond; bestI = i; }
+    }
+    // INTERIOR or ENDPOINT.  argmin over a scan is not a minimum: if E(R) is monotone the
+    // argmin is simply the end of the window, and reporting it as R_min is how a descending
+    // curve gets mistaken for an equilibrium.  A vanishing force needs E to rise on BOTH
+    // sides.  (2026-10-31: ClO2, NO2 and O3 all gave monotone E(R) and the question is
+    // whether a clamped-kernel bond has an equilibrium at all.)
+    var interior = (bestI > 0 && bestI < res.length - 1 && res.length === bondLengths.length);
+    var endLabel = interior ? '' : (bestI <= 0 ? ' (INNER END - no min)' : ' (OUTER END - no min)');
+    var ref = atomE[rc.toFixed(1)];
+    var ebind = ref !== undefined ? bestE - 2 * ref : 0;
+    html += '<tr><td style="padding:3px 8px">' + rc.toFixed(1) + '</td>';
+    html += '<td' + (interior ? ' style="color:#0f0;font-weight:bold"' : ' style="color:#f80"')
+          + '>' + bestR.toFixed(1) + endLabel + '</td>';
+    html += '<td>' + bestE.toFixed(4) + '</td>';
+    html += '<td>' + (ref !== undefined ? ebind.toFixed(4) : '...') + '</td>';
+    html += '<td>' + (ref !== undefined ? (ebind * 27.211).toFixed(2) : '...') + '</td></tr>';
+  }
+
+  if (phase === 0) {
+    html += '<tr style="color:#666"><td style="padding:3px 8px">' + currentRc().toFixed(1) + '</td><td colspan="4">phase 1: single atom...</td></tr>';
+  } else if (rcIdx < rcValues.length) {
+    html += '<tr style="color:#666"><td style="padding:3px 8px">' + currentRc().toFixed(1) + '</td><td colspan="4">phase 2: bond ' + (bondIdx + 1) + '/' + bondLengths.length + '</td></tr>';
+  }
+  html += '</table>';
+
+  div.innerHTML = html;
+}
+updateTable();
+
+function saveProgress() {
+  sessionStorage.setItem('x2_atom_ref_progress', JSON.stringify({
+    phase: phase,
+    rcIdx: rcIdx,
+    atomE: atomE,
+    allResults: allResults
+  }));
+}
+
+window.onSweepDone = function(Emin, steps) {
+  if (phase === 0) {
+    // Phase 1: 2 well-separated atoms; E(X) = Emin/2
+    atomE[currentRc().toFixed(1)] = Emin / 2;
+    console.log('Phase 1: r_c=' + currentRc().toFixed(1) + ' E(X)=' + (Emin/2).toFixed(6) + ' (from 2 atoms at R=6: ' + Emin.toFixed(6) + ')');
+    rcIdx++;
+    updateTable();
+    if (rcIdx < rcValues.length) {
+      // Next r_c in phase 1 — need reload
+      saveProgress();
+      location.reload();
+    } else {
+      // Done phase 1, start phase 2
+      phase = 1;
+      rcIdx = 0;
+      saveProgress();
+      location.reload();
+    }
+  } else {
+    // Phase 2: molecule
+    currentResults.push({ bond: bondLengths[bondIdx], E: Emin, steps: steps });
+    console.log('Phase 2: r_c=' + currentRc().toFixed(1) + ' R=' + bondLengths[bondIdx].toFixed(1) + ' E=' + Emin.toFixed(6));
+    updateTable();
+    bondIdx++;
+    if (bondIdx < bondLengths.length) {
+      var atoms = makeAtomsPhase1(bondLengths[bondIdx]);
+      var positions = atoms.map(function(a) { return [a.i, a.j, Math.round(N/2)]; });
+      window.restartWithPositions(positions);
+    } else {
+      allResults[rcIdx] = currentResults.slice();
+      rcIdx++;
+      bondIdx = 0;
+      currentResults = [];
+      updateTable();
+      if (rcIdx < rcValues.length) {
+        saveProgress();
+        location.reload();
+      } else {
+        console.log('=== COMPLETE ===');
+      }
+    }
+  }
+};
+
+var s = document.createElement('script');
+s.src = 'molecule_h2.js?t=' + Date.now();
+s.onload = function() {
+  var p5s = document.createElement('script');
+  p5s.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p5s);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
