@@ -153,6 +153,15 @@
     // HOUSE CONVENTION for the reduced bonding valence: O = 2, N = 3, C = 4, Cl = 3 (as ClO2 runs
     // it). So ?z=2 with two kernels is the reduced O2: 4 electrons, 2 per domain -- the same
     // construction clo2.html uses for its oxygens.
+    // ?frad= -- FORCE_RADIUS in grid cells (mol_fast default 4).  The force is the electronic
+    // field AVERAGED over this sphere, so it carries an O(a^2 rho) bias; the physical value is the
+    // a->0 limit and must be found as a PLATEAU, not taken at one radius.
+    if (qp.get('frad')) window.USER_FORCE_RADIUS = parseFloat(qp.get('frad'));
+    // ?forcevol=1 -- VOLUME-INTEGRAL force, the exact derivative of the discretised V_eK, with no
+    // averaging radius at all.  The point-gradient force it replaces has no plateau: at fixed
+    // R=1.68 it runs -0.050/-0.032/-0.006/+0.027 for frad=2/4/6/8, i.e. its SIGN is the smoothing
+    // radius.  The volume form must instead cross zero at the ENERGY minimum of the same runs.
+    if (qp.get('forcevol')) window.USER_FORCE_VOLUME = true;
     var zK = parseFloat(qp.get('z') || '1');
     var rcCore = parseFloat(qp.get('rc') || '0');
     var dj = Math.round(sep / h);
@@ -192,8 +201,45 @@
     var triPos = [[0, triSign * triR],
                   [-sep / 2, -triSign * triR / 2],
                   [ sep / 2, -triSign * triR / 2]];
+
+    // ?geom=iso&ang=THETA -- ISOCELES X3: apex angle THETA degrees, BOTH legs of length sep.
+    //
+    // THE POINT. Three centres is the blocker for molecules, and it is NOT the core model: every
+    // three-centre system tried descends monotonically through its experimental bond with BARE
+    // kernels (H3 linear, O3) as well as with a core (ClO2, CO2), at Z = 1..4, odd and closed
+    // shell. The single exception is the EQUILATERAL triangle, which does give an interior minimum
+    // (2.031 au) where collinear H3 gives none. So the discriminator looks like SYMMETRY, not
+    // chemistry -- and this family interpolates continuously between the two:
+    //
+    //     THETA =  60 deg  ->  equilateral triangle   (minimum EXISTS)
+    //     THETA = 180 deg  ->  collinear, spacing sep (NO minimum)
+    //
+    // Sweeping THETA finds the angle at which the minimum dies, which converts "three centres
+    // fail" into a statement about WHAT fails. Both endpoints are NULL TESTS: ang=60 must
+    // reproduce geom=tri exactly and ang=180 must reproduce geom=lin with nat=3, so the
+    // construction is checked against two existing paths before any new angle is believed.
+    //
+    // Apex A at the origin, legs down-left and down-right, then translated so the CENTROID sits at
+    // the box centre (otherwise the system drifts across the grid as THETA varies and the egg-box
+    // error is confounded with the angle). Positions are fractional -- never rounded to cells,
+    // which costs 39.5 kcal/mol in NH3 and destroys the symmetry being tested.
+    var angDeg = parseFloat(qp.get('ang') || '60');
+    var half = 0.5 * angDeg * Math.PI / 180;
+    var isoRaw = [[0, 0],
+                  [-sep * Math.sin(half), -sep * Math.cos(half)],
+                  [ sep * Math.sin(half), -sep * Math.cos(half)]];
+    var isoCy = (isoRaw[0][1] + isoRaw[1][1] + isoRaw[2][1]) / 3;
+    var isoPos = isoRaw.map(function (p) { return [p[0], p[1] - isoCy]; });
+    // realised base separation, reported so the geometry ACTUALLY BUILT can be read off
+    var isoBase = 2 * sep * Math.sin(half);
+
     window.USER_NUCLEI =
         (nat === 1) ? [ { i: N2, j: N2, k: N2, Z: zK, rc: rcCore, fixed: true } ]
+      : (nat === 3 && geom === 'iso')
+                    ? isoPos.map(function (p) {
+                        return { i: N2 + p[0] / h, j: N2 + p[1] / h, k: N2,
+                                 Z: zK, rc: rcCore, fixed: true };
+                      })
       : (nat === 3 && (geom === 'tri' || geom === 'tri2'))
                     ? triPos.map(function (p) {
                         return { i: N2 + p[0] / h, j: N2 + p[1] / h, k: N2,
@@ -399,6 +445,22 @@
           + (window._E_T !== undefined
               ? ' [T=' + window._E_T.toFixed(4) + ' VeK=' + window._E_eK.toFixed(4)
                 + ' Vee=' + window._E_ee.toFixed(4) + ' VKK=' + window._E_KK.toFixed(4) + ']'
+              : '')
+          // GEOMETRY ACTUALLY BUILT: for the isoceles family report the apex angle and the
+          // REALISED base separation, so a run is never read back from its intent alone.
+          + (geom === 'iso' ? ' ang=' + angDeg.toFixed(1) + 'deg base=' + isoBase.toFixed(4) : '')
+          // FORCES.  At the MEASURED geometry the true force is ZERO by definition, so a residual
+          // is pure model error -- no reference calculation and no minimum-finding needed, and it
+          // converts to a bond error as dR ~ F/k with the measured force constant.
+          // Fsum is Newton's third law: an isolated molecule's forces MUST sum to zero, so |Fsum|
+          // is a free measure of the numerical noise floor in the force itself.
+          + (window.nucForce && window.nucForce.length
+              ? ' F=[' + window.nucForce.map(function (f) {
+                    return f.map(function (c) { return c.toFixed(5); }).join(',');
+                  }).join(' | ') + ']'
+                + ' Fsum=' + [0, 1, 2].map(function (d2) {
+                    return window.nucForce.reduce(function (t, f) { return t + f[d2]; }, 0).toFixed(6);
+                  }).join(',')
               : '')
           + ' | n=' + N + ' box=' + scr + ' h=' + h.toFixed(4) + ' ' + window.USER_NORM_TARGETS.reduce(function(a,b){return a+b;},0) + 'e'
           + ' wd=' + (window.USER_WEIGHTED_DENSITY ? 1 : 0)

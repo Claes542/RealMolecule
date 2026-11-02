@@ -758,7 +758,98 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
 
   // --- Nuclear force: F_α = Z_α · ∇V_H(R_α) where V_H = 2·Σ_m P_m ---
   // Per-atom, sphere-averaged finite-difference gradient of total P.
-  const FORCE_RADIUS = 4;  // grid cells
+  // FORCE_RADIUS is the radius, IN GRID CELLS, of the sphere over which grad V_H is AVERAGED
+  // before being used as the force at the nucleus.  It is a smoothing kernel, not a Gauss surface,
+  // so averaging over radius a biases the result by O(a^2 * lap V_H) = O(-4 pi a^2 rho) -- and rho
+  // is LARGEST at the nucleus, so the bias grows as a^2 and is systematic, not random.  The
+  // physical force is the a -> 0 limit; small a is grid-noisy; a correct setting therefore shows a
+  // PLATEAU in between, and the plateau is what must be measured rather than assumed.
+  // For reference, molecule.js uses Math.round(3.0/h) -- a 3 au sphere, which for any bond shorter
+  // than 6 au averages the field across the NEIGHBOURING nucleus as well.  That is the likely
+  // origin of the recorded gradP-vs--dE/dR sign disagreement.
+  const FORCE_RADIUS = (typeof window !== 'undefined' && window.USER_FORCE_RADIUS !== undefined)
+                       ? Math.max(1, Math.round(Number(window.USER_FORCE_RADIUS))) : 4;  // grid cells
+  // --- VOLUME-INTEGRAL FORCE: the exact derivative of the DISCRETISED energy ---
+  //
+  // WHY THIS EXISTS.  The sphere-averaged point gradient below has NO PLATEAU -- measured on H2 at
+  // fixed R = 1.68, varying ONLY the averaging radius, the force runs -0.050 / -0.032 / -0.006 /
+  // +0.027 for frad = 2/4/6/8.  The SIGN is set by the smoothing radius, so it is not a physical
+  // force, and it cannot reproduce -dE/dR at any radius.  Causes: grad V_H is unresolved at the
+  // cusp on this mesh, and the smoothing bias is O(a^2 * grad rho) with grad rho largest there.
+  //
+  // THE FIX.  V_eK = -sum_a Z_a INT rho / r_soft, with r_soft = sqrt(|r-R_a|^2 + (SOFT*h)^2) and
+  // rho = wd*u^2 -- exactly as the reduce shader forms it.  Differentiating THAT sum analytically,
+  //
+  //     F_a = -dV_eK/dR_a = Z_a INT rho(r) (r - R_a) / r_soft^3 dV
+  //
+  // which is a VOLUME integral with no free radius, no point evaluation at the cusp, and -- because
+  // it differentiates the same softened kernel the energy is built from -- agreement with -dE/dR
+  // holds BY CONSTRUCTION, up to the Pulay term from the moving partition.
+  // One workgroup per atom; each strides the whole interior and reduces in shared memory.
+  const forceVolWGSL = `
+${paramStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> U: array<f32>;
+@group(0) @binding(2) var<storage, read> W: array<f32>;
+@group(0) @binding(3) var<storage, read_write> forceSums: array<f32>;
+
+var<workgroup> sx: array<f32, 256>;
+var<workgroup> sy: array<f32, 256>;
+var<workgroup> sz: array<f32, 256>;
+
+@compute @workgroup_size(256)
+fn main(@builtin(workgroup_id) wgid: vec3<u32>, @builtin(local_invocation_id) l: vec3<u32>) {
+  let atom = wgid.x;
+  let lid = l.x;
+  var ax: f32 = 0.0; var ay: f32 = 0.0; var az: f32 = 0.0;
+  let Z_a = p.atoms[atom].w;
+  if (Z_a > 0.0) {
+    let NM = p.NN - 1u;
+    let tot = NM * NM * NM;
+    let eps2 = ${SOFT_SQ.toFixed(6)} * p.h2;
+    for (var t: u32 = lid; t < tot; t += 256u) {
+      let k = (t % NM) + 1u;
+      let j = ((t / NM) % NM) + 1u;
+      let i = (t / (NM * NM)) + 1u;
+      let id = i * p.S2 + j * p.S + k;
+      var rho: f32 = 0.0;
+      for (var m: u32 = 0u; m < ${NELEC}u; m++) {
+        let o = m * p.S3;
+        let v = U[o + id];
+        let wd = mix(1.0, W[o + id], ${W_DENS.toFixed(1)});
+        rho += wd * v * v;
+      }
+      let dx = (f32(i) - p.atoms[atom].x) * p.h;
+      let dy = (f32(j) - p.atoms[atom].y) * p.h;
+      let dz = (f32(k) - p.atoms[atom].z) * p.h;
+      let r2 = dx*dx + dy*dy + dz*dz + eps2;
+      let inv3 = 1.0 / (r2 * sqrt(r2));
+      let g = rho * inv3;
+      ax += g * dx; ay += g * dy; az += g * dz;
+    }
+  }
+  sx[lid] = ax; sy[lid] = ay; sz[lid] = az;
+  workgroupBarrier();
+  var stride: u32 = 128u;
+  loop {
+    if (stride == 0u) { break; }
+    if (lid < stride) {
+      sx[lid] += sx[lid + stride];
+      sy[lid] += sy[lid + stride];
+      sz[lid] += sz[lid + stride];
+    }
+    workgroupBarrier();
+    stride = stride / 2u;
+  }
+  if (lid == 0u) {
+    let c = Z_a * p.h3;
+    forceSums[atom * 3u] = c * sx[0];
+    forceSums[atom * 3u + 1u] = c * sy[0];
+    forceSums[atom * 3u + 2u] = c * sz[0];
+  }
+}
+`;
+
   const forceWGSL = `
 ${paramStructWGSL}
 @group(0) @binding(0) var<uniform> p: P;
@@ -1067,6 +1158,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let device, paramsBuf, K_buf, sumsBuf, sumsReadBuf, sliceBuf, sliceReadBuf, partialsBuf, numWGBuf;
   let U_buf = [], W_buf = [], P_buf = [];
   let updatePL, reducePL, finalizePL, normalizePL, extractPL, forcePL, recomputeKPL;
+  let forceVolPL; const forceVolBG = [];
+  // ?forcevol / USER_FORCE_VOLUME: use the volume-integral force instead of the point gradient.
+  const FORCE_VOLUME = (typeof window !== 'undefined' && !!window.USER_FORCE_VOLUME);
   let updateBG = [], reduceBG = [], finalizeBG, normalizeBG = [], extractBG = [];
   let forceBG = [], recomputeKBG;
   let forceBuf, forceReadBuf;
@@ -1532,6 +1626,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     normalizePL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: normalizeMod, entryPoint: 'main' } });
     extractPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: extractMod, entryPoint: 'main' } });
     forcePL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: forceMod, entryPoint: 'main' } });
+    const forceVolMod = device.createShaderModule({ code: forceVolWGSL });
+    forceVolPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: forceVolMod, entryPoint: 'main' } });
     recomputeKPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: recomputeKMod, entryPoint: 'main' } });
     rhoSourcePL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: rhoSourceMod, entryPoint: 'main' } });
     residualPmPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: residualPmMod, entryPoint: 'main' } });
@@ -1583,6 +1679,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         { binding: 0, resource: { buffer: paramsBuf } },
         { binding: 1, resource: { buffer: P_buf[c] } },
         { binding: 2, resource: { buffer: forceBuf } },
+      ]});
+      forceVolBG[c] = device.createBindGroup({ layout: forceVolPL.getBindGroupLayout(0), entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: U_buf[c] } },
+        { binding: 2, resource: { buffer: W_buf[c] } },
+        { binding: 3, resource: { buffer: forceBuf } },
       ]});
     }
     recomputeKBG = device.createBindGroup({ layout: recomputeKPL.getBindGroupLayout(0), entries: [
@@ -2070,8 +2172,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     forcesReadbackPending = true;
     const enc = device.createCommandEncoder();
     let cp = enc.beginComputePass();
-    cp.setPipeline(forcePL);
-    cp.setBindGroup(0, forceBG[cur]);
+    cp.setPipeline(FORCE_VOLUME ? forceVolPL : forcePL);
+    cp.setBindGroup(0, FORCE_VOLUME ? forceVolBG[cur] : forceBG[cur]);
     cp.dispatchWorkgroups(N_ATOMS);
     cp.end();
     enc.copyBufferToBuffer(forceBuf, 0, forceReadBuf, 0, N_ATOMS * 3 * 4);
