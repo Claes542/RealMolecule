@@ -3139,6 +3139,13 @@ function draw() {
         console.log("=== Dynamics auto-enabled at step " + phaseSteps + " ===");
       }
 
+      // Publish the energy COMPONENTS, not just the total. T is core-dominated (lithium's 1s pair
+      // carries ~5.4 Ha of ~7.5), so comparing T against 2x the free atom's at large separation is
+      // a sensitive test of whether the inner core is being disturbed in the molecule -- which the
+      // whole error-cancellation premise of E_bind depends on. The total E alone cannot show it.
+      window._T = E_T; window._VeK = E_eK; window._Vee = E_ee; window._VKK = E_KK;
+      window._dip = dipole_au; window._steps = phaseSteps;
+
       // Adaptive convergence check
       if (!dynamicsEnabled && window.CONVERGENCE_THRESHOLD && phaseSteps > 200) {
         if (window._prevE !== undefined && Math.abs(E - window._prevE) < window.CONVERGENCE_THRESHOLD && isFinite(E)) {

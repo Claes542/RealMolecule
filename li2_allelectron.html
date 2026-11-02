@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#000;color:#fff;font-family:monospace">
+<div id="results" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.88);border:1px solid #444;padding:12px;z-index:100;font-size:13px;max-height:94vh;overflow-y:auto;min-width:470px"></div>
+<script>
+// Li2, ALL-ELECTRON, FOUR DOMAINS, NOTHING FITTED
+//
+// THE CONSTRUCTION. Two entries per site in USER_ATOMS: a homogenised inner shell holding two
+// electrons and a valence domain holding one. Since molecule_h2.js sums Z/r over entries at a
+// site for the kernel potential while USER_Z is the per-domain OCCUPATION, two entries with
+// Z=2 and Z=1 give a kernel of charge 3 -- lithium -- carrying three electrons. Six electrons
+// in four domains, r_c = 0 throughout. No pseudo-kernel, no cutoff, no calibration: Z=3 per
+// atom is the only supplied number. The (n-1)/n SIC factor (molecule_h2.js:452) keeps the real
+// intra-domain pair repulsion of the two-electron core while removing the fake self-interaction.
+//
+// ROBIN_K = 0, i.e. pure Neumann at every interface. molecule_h2.js DEFAULTS TO 1.0 and only two
+// of 720 pages set it, so leaving it unset would silently impose an uncalibrated Pauli-like pull.
+// Neumann is the right choice between electrons: the Coulomb repulsion already prevents density
+// piling against a free boundary, and the measured sign confirms it -- in helium the pair
+// repulsion comes out 4% LOW, not high, so the densities are too far apart rather than too close.
+// The over-binding to expect is therefore lost OVERLAP, not interface accumulation.
+//
+// COMMENSURATE SEPARATIONS ONLY. molecule_h2.js declares the kernel position as u32 and writes it
+// through a Uint32Array, so a fractional cell index is TRUNCATED by the solver. A continuously
+// swept separation snaps to multiples of 2h and the energy curve becomes a staircase; the
+// axisymmetric H2 study measured that at ~0.07 Ha/bohr, the size of the force near equilibrium,
+// and it produced a wrong bond length before it was caught. So the kernels sit at ci +- m for
+// integer m and D = 2*m*h is exact at every sampled point.
+//
+// WHAT TO EXPECT, stated in advance. Li2's binding energy is 0.039 Ha on totals near 15 Ha --
+// 0.26%, which is HALF the residual the model carries on atomic totals. It is obtainable only if
+// the error cancels between atom and dimer, which it should, both being the same six electrons in
+// the same four domains merely moved. The BOND LENGTH is the robust observable, as it was for H2
+// (1.368 against 1.401). Reference, CHECK BEFORE QUOTING: R_e = 5.051 au, D_e = 0.0390 Ha.
+
+// ?n= grid size (default 200). At 200^3 one point runs ~1 h and the six-point scan ~9 h; n=120
+// gives h = 0.117 (mol_fast's mesh) for 4.6x fewer cells, so the scan lands in ~2 h. What this
+// run is FOR -- where the core/valence boundary sits -- is far less mesh-sensitive than an energy
+// difference, so the coarse pass is the right first instrument.
+var N = parseInt(new URLSearchParams(location.search).get('n') || '200', 10);
+var scr = 14;
+var hg = scr / N;
+var ci = Math.round(N / 2);
+// Separations are given as TARGET D in au and converted to an INTEGER cell offset m, so that
+// D = 2*m*hg is exactly representable at ANY N -- molecule_h2.js declares the kernel index as u32
+// and TRUNCATES a fractional one, a staircase worth ~0.07 Ha/bohr. The realised D is reported.
+var D_TARGETS = [4.20, 4.62, 5.04, 5.46, 5.88];
+var M_SCAN = [0];
+D_TARGETS.forEach(function (D) {
+  var m = Math.round(D / (2 * hg));
+  if (M_SCAN.indexOf(m) < 0) M_SCAN.push(m);
+});
+// keyed by N so a run at one grid size never inherits another's accumulated energies
+var SKEY = 'li2ae_n' + N;
+
+var st = JSON.parse(sessionStorage.getItem(SKEY) || 'null') || { idx: 0, E: [] };
+var m = M_SCAN[st.idx];
+
+function domains(m) {
+  if (m === 0) return [ { i: ci, j: ci, Z: 2, el: 'Li' },      // homogenised inner shell
+                        { i: ci, j: ci, Z: 1, el: 'Li' } ];    // valence
+  return [ { i: ci - m, j: ci, Z: 2, el: 'Li' },
+           { i: ci - m, j: ci, Z: 1, el: 'Li' },
+           { i: ci + m, j: ci, Z: 2, el: 'Li' },
+           { i: ci + m, j: ci, Z: 1, el: 'Li' } ];
+}
+var doms = domains(m);
+
+window.USER_NN = N;
+window.USER_SCREEN = scr;
+window.USER_ATOMS = doms;
+window.USER_Z = doms.map(function (d) { return d.Z; });   // per-domain OCCUPATION
+window.USER_RC = doms.map(function () { return 0; });     // no cutoff anywhere
+window.ROBIN_K = 0;                                       // pure Neumann -- do NOT inherit the 1.0 default
+window.USER_STEPS = 80000;
+window.USER_DYNAMICS = false;
+window.NO_AUTO_DYNAMICS = true;
+window.CONVERGENCE_THRESHOLD = 0.002;
+
+function show() {
+  var h = '<b style="color:#0cf">Li&#8322; all-electron, four domains, nothing fitted</b><br>'
+    + '<span style="color:#888;font-size:11px">Z=[2,1] per site &rarr; kernel +3, 3 e&#8315; per atom; '
+    + 'r_c=0; ROBIN_K=0 (Neumann)<br>N=' + N + ', box ' + scr + ' au, h=' + hg.toFixed(3)
+    + ' &mdash; D = 2mh is exact, never truncated</span><br><br>';
+  h += '<table style="border-collapse:collapse"><tr style="color:#0cf">'
+    + '<th style="padding:2px 9px">m</th><th>D (au)</th><th>E (Ha)</th><th>E_bind</th></tr>';
+  var E0 = st.E[0];
+  for (var a = 0; a < M_SCAN.length; a++) {
+    var mm = M_SCAN[a], D = mm === 0 ? null : 2 * mm * hg, e = st.E[a];
+    var eb = (a > 0 && e !== undefined && E0 !== undefined) ? (2 * E0 - e) : undefined;
+    h += '<tr' + (a === st.idx ? ' style="color:#ff0"' : (e === undefined ? ' style="color:#444"' : '')) + '>'
+      + '<td style="padding:2px 9px">' + (mm === 0 ? 'atom' : mm) + '</td>'
+      + '<td>' + (D === null ? '&mdash;' : D.toFixed(3)) + '</td>'
+      + '<td>' + (e !== undefined ? e.toFixed(5) : '...') + '</td>'
+      + '<td>' + (eb !== undefined ? (eb >= 0 ? '+' : '') + eb.toFixed(5) : '') + '</td></tr>';
+  }
+  h += '</table><br><span style="color:#888;font-size:11px">atom reference: Table 1 gives Li at '
+    + '&minus;7.522 (+0.6%). Li&#8322; reference R_e=5.051 au, D_e=0.0390 Ha &mdash; CHECK.<br>'
+    + 'E_bind is 0.26% of the total, so it depends on error cancelling between atom and dimer.'
+    + '</span>';
+  document.getElementById('results').innerHTML = h;
+  // Title and localStorage carry the accumulated energies so the run can be read from outside:
+  // AppleScript's JS context sees the DOM and localStorage ONLY -- window.* page globals always
+  // read undefined, and sessionStorage is not reachable either, so st.E alone is invisible.
+  var done = st.E.map(function (e, a) {
+    return (M_SCAN[a] === 0 ? 'atom' : 'D' + (2 * M_SCAN[a] * hg).toFixed(2))
+           + '=' + (e === undefined ? '-' : e.toFixed(6));
+  }).join(' ');
+  try { localStorage.setItem('__li2ae', JSON.stringify({ idx: st.idx, M: M_SCAN, hg: hg, E: st.E, C: st.C || [] })); }
+  catch (err) {}
+  document.title = 'LI2AE idx' + st.idx + '/' + M_SCAN.length
+    + (m === 0 ? ' atom' : ' D=' + (2 * m * hg).toFixed(2))
+    + (done ? ' | ' + done : '');
+}
+show();
+
+window.onSweepDone = function (E, steps) {
+  st.E[st.idx] = E;
+  // Record the COMPONENTS too. T is core-dominated, so T(dimer) vs 2*T(atom) at the largest
+  // separation says whether the inner core is being disturbed -- the condition E_bind's error
+  // cancellation silently assumes. Without this the run can only report a total.
+  st.C = st.C || [];
+  st.C[st.idx] = { T: window._T, VeK: window._VeK, Vee: window._Vee, VKK: window._VKK,
+                   steps: steps };
+  console.log('LI2AE ' + (m === 0 ? 'atom' : 'D=' + (2 * m * hg).toFixed(3)) + ' E=' + E.toFixed(6)
+              + (st.idx > 0 && st.E[0] !== undefined ? '  E_bind=' + (2 * st.E[0] - E).toFixed(6) : ''));
+  st.idx++;
+  show();
+  if (st.idx >= M_SCAN.length) {
+    console.log('=== LI2AE DONE ===');
+    for (var a = 0; a < M_SCAN.length; a++)
+      console.log('  ' + (M_SCAN[a] === 0 ? 'atom     ' : 'D=' + (2 * M_SCAN[a] * hg).toFixed(3))
+                  + '  E=' + st.E[a] + (a > 0 ? '  E_bind=' + (2 * st.E[0] - st.E[a]) : ''));
+    sessionStorage.removeItem(SKEY); return;
+  }
+  sessionStorage.setItem(SKEY, JSON.stringify(st));
+  location.reload();
+};
+
+var s = document.createElement('script');
+s.src = 'molecule_h2.js?t=' + Date.now();
+s.onload = function () {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

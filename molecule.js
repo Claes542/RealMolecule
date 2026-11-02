@@ -6092,6 +6092,19 @@ function draw() {
   noStroke();
 
   if (gpuError) {
+    // Mirror it to localStorage as well as the canvas. The error is currently reachable ONLY as
+    // canvas text, which an AppleScript driver cannot read -- AppleScript JS sees the DOM and
+    // localStorage, never canvas pixels or page globals -- so a scripted run shows a frozen step
+    // count and nothing else, which is exactly how the silent dynamics halt has presented. Done
+    // here rather than in the catch at 6181 so it also covers the other routes that set gpuError:
+    // numerical instability (4648), LOBPCG instability (5238), device lost (2924).
+    // Same idiom as the existing __bufstate / __bufdispatch probes.
+    try {
+      if (localStorage.getItem('__gpuerror') !== gpuError) {
+        localStorage.setItem('__gpuerror', gpuError);
+        localStorage.setItem('__gpuerror_step', String(window._phaseSteps));
+      }
+    } catch (_) {}
     fill(200, 0, 0);
     textSize(11);
     text("GPU Error:", 10, 180);

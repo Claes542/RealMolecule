@@ -12,7 +12,11 @@
   URL <b>?sep=N</b> for separation in au (default 1.40).<br>
   <span id="convergence" style="color:#888">|ΔE/Δt|=waiting...</span>
 </div>
-<div id="scanTable" style="position:fixed;top:170px;right:10px;background:rgba(0,0,0,0.85);padding:10px;border:1px solid #333;border-radius:6px;max-width:440px;font-size:12px;z-index:100;color:#ddd">
+<!-- R-sweep table moved down from top:170px so the 3D plot above it is not covered.
+     430px was too far, so half the move: 170 + (430-170)/2 = 300px.
+     The mol_fast canvas is 620x620 (mol_fast.js:2129) and these panels sit over it at
+     right:10px with max-width 440px, so on a narrow window the table ate the upper plot. -->
+<div id="scanTable" style="position:fixed;top:300px;right:10px;background:rgba(0,0,0,0.85);padding:10px;border:1px solid #333;border-radius:6px;max-width:440px;font-size:12px;z-index:100;color:#ddd">
   <b>R-sweep table</b>
   <button id="recordBtn" style="margin-left:6px;padding:2px 8px">Record current R, E</button>
   <button id="exportBtn" style="margin-left:4px;padding:2px 8px">Export CSV</button>
@@ -31,22 +35,385 @@
     document.body.insertBefore(pre, document.body.firstChild);
   };
   (function() {
-    var N = 200, scr = 12, h = scr / N, N2 = Math.round(N / 2);
+    // ?n= ?box= ?steps= -- the grid was hardcoded at N=200, box=12.
+    //
+    // COST IS O(N^5): mol_fast.js:59-63 sets dt = dv*h^2 with dv = 0.12, so steps-to-converge goes
+    // as N^2 and work per step as N^3.  N=200 took ~11 min/point here (156 steps/s, and the old
+    // hardcoded 100000-step cap was reached BEFORE conv=2e-6, so every point hit the cap).  Going
+    // to N=100 is 32x cheaper and is the right mesh for finding out WHETHER there is a minimum;
+    // refine afterwards once the answer is known.
+    //
+    // At N=100, box=12 the step is h=0.12 and R_SING = 2h = 0.24 clamps the bare -1/r kernel,
+    // which is a coarse regularisation for hydrogen (density scale 1 a0) -- Z*h = 0.12, just over
+    // the Z*h <~ 0.1 guideline.  Absolute energies therefore carry real discretisation error; the
+    // bond length is a difference WITHIN one composition, where it largely cancels.
+    //
+    // COMMENSURATE SEPARATIONS: di = round(sep/h/2), so request sep = 2*k*h only (0.24*k at
+    // N=100) and the snap is a no-op with the grid phase held fixed across the sweep.
+    var qp = new URLSearchParams(location.search);
+    var N = parseInt(qp.get('n') || '200', 10);
+    var scr = parseFloat(qp.get('box') || '12');
+    var h = scr / N, N2 = Math.round(N / 2);
     var urlSep = parseFloat(new URLSearchParams(location.search).get('sep'));
     var sep = isFinite(urlSep) ? urlSep : 1.4;  // au
     var di = Math.round(sep / h / 2);
 
     window.USER_NN = N;
     window.USER_SCREEN = scr;
-    window.USER_STEPS = 100000;
-    window.USER_NUCLEI = [
-      { i: N2 - di, j: N2, k: N2, Z: 1, rc: 0.0, fixed: true },
-      { i: N2 + di, j: N2, k: N2, Z: 1, rc: 0.0, fixed: true }
-    ];
-    window.USER_NORM_TARGETS = [1, 1];
+    window.USER_STEPS = parseInt(qp.get('steps') || '100000', 10);
+    // ?nat=1 -- A SINGLE H, for the D_e REFERENCE.
+    //
+    // D_e = 2E(H) - E(H2) is a difference ACROSS compositions, where the errors do NOT cancel, so
+    // E(H) must come from the SAME CODE, SAME MESH and SAME FLAGS as E(H2) -- the rule that makes
+    // the published dimer series trustworthy. mol_fast_H.html exists but hardcodes N=200 and
+    // carries none of these flags, so it cannot serve.
+    //
+    // Why it matters here: at this mesh the TOTAL energy looks accurate to 4-14% while the bond is
+    // off by 11-38%, but that flatters the total -- -1.17 Ha is mostly two hydrogen atoms, and the
+    // molecular content D_e = 0.1745 Ha is only 15% of it. So a 5% error in E is 34% of D_e, and
+    // 7% is 52%. The total cannot be used as evidence that the energetics are good.
+    // ?nat=1 single H | 2 (default) H2 | 3 symmetric linear H3
+    //
+    // nat=3 IS THE THREE-CENTRE TEST, run in the consistent formulation established on H2.
+    // Basic H2 result taken as the baseline (wd=1 + wkinw=1, soft=1, 100^3):
+    //     E(H) -0.487606 (+2.5%)   E(H2) -1.124621   D_e 0.1494 vs 0.1745 (-14.4%)
+    //     R_e 1.720 (+22.8%)
+    // so the reference for an H3 barrier in THIS scheme is
+    //     E(H) + E(H2) = -1.612227   (exact -1.6745; the H+H2 saddle sits +0.015 above that)
+    //
+    // Why it matters: EVERY three-centre system tried so far descends monotonically inward through
+    // its experimental bond -- H3 and linear O3 with BARE kernels and no core model, plus ClO2, CO2
+    // and bent O3 -- while two centres always yields a bond. Nothing is common to the failures but
+    // the centre count. Those runs were all on molecule.js with the GATED/unweighted functional,
+    // which has no convergent limit; this repeats the test in the formulation that does.
+    //
+    // GEOMETRY. nat=2 puts kernels at N2 +- di with di = round(sep/h/2), so sep is the FULL
+    // separation. nat=3 puts them at N2-dj, N2, N2+dj with dj = round(sep/h), so sep is the bond
+    // length PER BOND. Commensurate choices are therefore sep = k*h = 0.12k at this mesh.
+    // Reference: the symmetric linear H+H2 saddle is at R = 1.76 au, which is 14.67 cells -- NOT
+    // commensurate, so bracket it with 1.68 (k=14) and 1.92 (k=16).
+    // ?nat=N -- N kernels. 1 = single H, 2 = H2, 3 = H3 (linear, or ?geom=tri), N>3 = LINEAR CHAIN.
+    //
+    // THE CHAIN IS THE TEST WITH AN EXACT ANSWER. real_plasma_numerics/h_chain_benchmark.py
+    // generates HF/PBE/CCSD/FCI for H_N at a = 1.4/1.8/2.4/3.0/4.0/6.0 bohr in sto-6g, and FCI is
+    // EXACT within that basis -- the only multi-centre reference in this repo that is not either
+    // experiment (bond lengths only) or the model's own fragments. Its own closing line names the
+    // RealQM side: "RealQM runs the same geometries with bare protons (rc = 0) in chain_slide.html".
+    // FCI, N=4:  1.4 -2.15739  1.8 -2.19038  2.4 -2.09127  3.0 -1.98791  4.0 -1.90583  6.0 -1.88466
+    // FCI, N=6:  1.4 -3.17161  1.8 -3.26674  2.4 -3.13610  3.0 -2.98309  4.0 -2.85907  6.0 -2.82700
+    // E(H) in sto-6g = -0.471039 (basis deficit from -0.5), so COHESIVE energies must be referred
+    // to each method's OWN atom: FCI equilibrium a=1.8, 2.083 eV/atom (N=4), 1.998 (N=6).
+    // PBE-FCI grows -1.5 -> +23 eV (N=4) and -2.7 -> +33 eV (N=6) across the scan, so the standard
+    // column is in its WORST regime exactly where this construction is aimed.
+    //
+    // WHY H_N IS THE RIGHT MODEL MOLECULE, in h_chain_benchmark.py's own words: "one electron per
+    // site with no pseudopotential, so no free radius to argue about -- the parameter-choice
+    // objection disappears entirely". Measured today, that objection is severe: core-model and r_c
+    // choices swing X2 bonds 25-40% and binding by factors of two, and r_c is not even an element
+    // constant (it depends on the bonding reading). H_N removes that whole axis, and removes the
+    // Zx ambiguity too (one element, one electron per site, nothing to choose).
+    //
+    // COMMENSURABILITY: a chain of EVEN N has kernels at +-a/2, +-3a/2, ..., so a must be 2kh;
+    // ODD N has them at 0, +-a, ..., so a = kh. **h = 0.10 makes ALL SIX FCI spacings commensurate
+    // for even N** (a/0.2 = 7,9,12,15,20,30), which h=0.12 does not (only 2.4 and 6.0).
+    //
+    // BOX: span = (N-1)*a, so the box must exceed that plus ~6 au of margin. The STRETCHED end is
+    // therefore the expensive one -- H4 at a=6 spans 18 au and needs box ~24 (N=240 at h=0.1,
+    // 1.4e7 cells) -- so the Mott regime, where the construction should most outperform DFT, costs
+    // the most. Bonded end first.
+    var nat = parseInt(qp.get('nat') || '2', 10);
+    if (!(nat >= 1 && nat <= 8)) nat = 2;
+    // linear chain of nat kernels, spacing sep, centred: offsets (i - (nat-1)/2)*sep
+    var chainPos = [];
+    for (var ic = 0; ic < nat; ic++) chainPos.push((ic - (nat - 1) / 2) * sep);
+    // ?rc= -- pseudo-kernel core radius on every kernel (default 0 = bare).
+    // mol_fast's rc is a THIRD core model: u and w are cut to zero inside rc over a 3h-wide
+    // SMOOTHSTEP ramp (updateWGSL: edge = rc - 3h, t = clamp((r-edge)/(rc-edge),0,1)), i.e.
+    // SOFTENED hard depletion -- neither the sharp hard depletion of x2_R_sweep.py nor the
+    // potential clamp of x2_clamp.py.
+    //
+    // Why sweep it here. On the axisymmetric solver, with r_c interpolated to each measured IE,
+    // the two sharp models differ enormously on the alkali dimers:
+    //     hard depletion  mean |bond| 8.3%   mean |binding| 86%
+    //     clamp           mean |bond| 4.0%   mean |binding| 10%
+    // so the famous factor-two binding error is a property of HARD DEPLETION, not of the
+    // construction. The question for this arm is where a SMOOTHED core lands between them, in the
+    // one formulation whose errors shrink under refinement (?wd=1&wkinw=1).
+    // ?z=N -- KERNEL CHARGE and electrons per domain (default 1 = hydrogen).
+    //
+    // This takes the page past hydrogen to the SECOND-ROW DEPTHS, which is the clamp's one
+    // untested regime and the one real molecules occupy: Z_x/r_c is 0.21-0.33 Ha for the alkalis
+    // but 2.54 (O), 2.71 (Cl), 3.20 (N), 2.66 (C) -- ten times deeper. The axisymmetric x2_clamp
+    // is MONOVALENT (one electron per site), so Z_x = 2 was unreachable until mol_fast got a clamp.
+    //
+    // mol_fast handles multi-occupancy natively: selfN = the norm target, fm = 1/selfN, and
+    // E_ee = sum_m int (P_tot - f_m P_m) u_m^2, which leaves exactly the n(n-1)/2 intra-domain
+    // pairs -- the house i!=j rule, no (Z-1)/Z fudge.
+    //
+    // HOUSE CONVENTION for the reduced bonding valence: O = 2, N = 3, C = 4, Cl = 3 (as ClO2 runs
+    // it). So ?z=2 with two kernels is the reduced O2: 4 electrons, 2 per domain -- the same
+    // construction clo2.html uses for its oxygens.
+    var zK = parseFloat(qp.get('z') || '1');
+    var rcCore = parseFloat(qp.get('rc') || '0');
+    var dj = Math.round(sep / h);
+
+    // ?geom=tri -- EQUILATERAL TRIANGLE of three kernels, side = sep. Needs nat=3.
+    //
+    // WHY THIS GEOMETRY IS THE POINT OF mol_fast. The axisymmetric solver is EXACT for two domains
+    // on an axis but structurally cannot do a triangle; mol_fast exists for the geometries axisym
+    // cannot reach. Competing with it on H2 was only ever calibration.
+    //
+    // WHAT IS NEW HERE: a TRIPLE JUNCTION. Every test so far -- dimers, linear H3/O3/CO2, bent
+    // ClO2 -- has only TWO-domain interfaces. An equilateral triangle makes three domains meet
+    // along a common line, a topology nothing in the repo has probed. The 3-fold symmetry is also
+    // a free null test: the three realised bond lengths and the three domain charges must come out
+    // equal, and any splitting is instrumentation or a symmetry-breaking instability.
+    //
+    // SPECIES CAVEAT: this is NEUTRAL X3 (3 kernels, 3 electrons) because mol_fast sets
+    // NELEC = N_ATOMS with no bare-kernel (Z_nuc) support. For X=H that is neutral H3, which is
+    // UNSTABLE -- h3_triangle.html says so: "H3 neutral is unstable but useful as test of 3-domain
+    // symmetry. H3+ cation (2 electrons) is bound: R=1.66 au, D_e=4.4 eV". So there is no
+    // experimental geometry to score against here; what is tested is symmetry, whether a minimum
+    // exists at all, and E against 3E(H). H3+ would need bare-kernel support mol_fast lacks.
+    //
+    // COMMENSURABILITY IS IMPOSSIBLE for an equilateral triangle: with one vertex on +y the
+    // x-offsets are +-sep/2 (commensurate if sep = 2kh) but the y-offsets are sep/sqrt(3) and
+    // -sep/(2 sqrt(3)), irrational multiples of h. So the grid phase CANNOT be held fixed across a
+    // scan and some egg-box noise is unavoidable -- unlike the collinear scans. Positions are left
+    // FRACTIONAL (no Math.round) so at least no snapping error is added on top.
+    var geom = qp.get('geom') || 'lin';
+    var triR = sep / Math.sqrt(3);          // circumradius of an equilateral triangle of side sep
+    // ?geom=tri2 is the SAME triangle rotated 60 deg (vertex DOWN instead of up). Physically
+    // identical, so E must be identical -- and because commensurability is impossible for a
+    // triangle, any difference IS the grid-induced symmetry violation. That makes the pair a free
+    // measurement of the egg-box noise floor for this geometry, which is the one thing a collinear
+    // scan cannot supply here.
+    var triSign = (geom === 'tri2') ? -1 : 1;
+    var triPos = [[0, triSign * triR],
+                  [-sep / 2, -triSign * triR / 2],
+                  [ sep / 2, -triSign * triR / 2]];
+    window.USER_NUCLEI =
+        (nat === 1) ? [ { i: N2, j: N2, k: N2, Z: zK, rc: rcCore, fixed: true } ]
+      : (nat === 3 && (geom === 'tri' || geom === 'tri2'))
+                    ? triPos.map(function (p) {
+                        return { i: N2 + p[0] / h, j: N2 + p[1] / h, k: N2,
+                                 Z: zK, rc: rcCore, fixed: true };
+                      })
+      :               chainPos.map(function (o) {
+                        return { i: N2 + o / h, j: N2, k: N2, Z: zK, rc: rcCore, fixed: true };
+                      });
+    window.USER_NORM_TARGETS = chainPos.map(function () { return zK; });
+    var sepRealN = sep;   // positions are fractional and exact; sep IS the realised spacing
     window.USER_DYNAMICS = false;  // both H locked
 
+    // ?wd=1 -- USER_WEIGHTED_DENSITY.  THE TEST OF THE OVERLAP DEFECT.
+    //
+    // mol_fast.js:141-147: the reduction gates only the KINETIC term by w and "integrates the
+    // norm, V_eK and the dipole over ALL space -- and since the u-update carries a factor w, a
+    // domain's amplitude is FROZEN at its seed value wherever it lost the territory competition.
+    // Those frozen tails are then counted as real charge, so the domains overlap in everything
+    // except the kinetic energy."  With ?wd=1 "the density is u^2*w throughout, normalisation
+    // enforces int u^2 w = target, and the partition is genuine".  Default OFF because "every
+    // existing page in this collection was tuned against the unweighted behaviour" -- 64 pages
+    // load mol_fast.js and only 4 set this.
+    //
+    // WHY IT SHOULD MATTER HERE.  The frozen tails gain V_eK attraction from BOTH kernels (those
+    // integrals run over all space) while paying NO kinetic cost (kinetic is w-gated), so charge
+    // is delocalised for free and the drive to localise into a tight bond is weakened -- which
+    // lengthens the bond.  Measured at wd=0 on this page, n=100 box=12, commensurate sep=0.24k:
+    //     0.96 -1.014185   1.20 -1.091335   1.44 -1.115953   1.68 -1.116159
+    //     1.92 -1.104652   2.16 -1.087745      -> parabola minimum R = 1.5642 au, +11.7%
+    // against 1.368 (-2.3%) from the axisymmetric solver and 1.350 (-3.6%) from x2_R_sweep.py,
+    // and squarely inside the empty-core model's +6..+21% band -- the other construction with
+    // weakened exclusion.  So if ?wd=1 pulls the minimum in toward 1.40, the +11.7% was this
+    // defect and not the two-centre construction.
+    //
+    // NOT ?udec=: that decays the frozen tails instead of weighting them out, does not conserve
+    // charge, and is measured to UNBIND (d=0.02 -> E=+0.912).  wd is the principled fix.
+    if (qp.get('wd') === '1') window.USER_WEIGHTED_DENSITY = true;
+    // ?uzero=1 -- USER_U_ZERO_INIT: zero u outside its own Voronoi cell at INIT, which is exactly
+    // what the original p5 does (h2_p5_original.html hard-zeroes u[m] outside its half-space).
+    // The cheapest of the three routes to a genuine partition: wd=1 reweights every integral,
+    // udec= bleeds the tails during the run and unbinds, uzero removes charge that was never
+    // legitimately there in the first place.
+    if (qp.get('uzero') === '1') window.USER_U_ZERO_INIT = true;
+    // ?wdiff= ?wadv= -- THE INTERFACE DIFFUSENESS, which is the remaining suspect for the long bond.
+    //
+    // Measured at this mesh: the two IMPOSED-midplane codes give H2 at 1.350 (-3.6%) and 1.368
+    // (-2.3%); the two FREE-DIFFUSE-FRONT codes give 1.562 (mol_fast wd=0) and 1.549 (original p5).
+    // The frozen-tail defect accounts for only 0.013 of that 0.148 a0 gap, so the diffuse front
+    // itself owns the rest.  A w ramping 1->0 over several cells is PARTIAL exclusion across a slab
+    // rather than a surface condition, and project_h1_continuity measures masking as ~5x
+    // under-stiff and mesh-dependent -- under-stiff interface -> weaker repulsion -> longer bond.
+    //
+    // So sweeping W_DIFF is a direct test: if the bond tracks diffuseness, the +11% has a named
+    // cause and a dial.  Reference values -- mol_fast default 0.05; the ORIGINAL p5's EFFECTIVE
+    // value is 0.2, because its literal coefficient 2 multiplies c[m] = 0.1*(u_self - u_other),
+    // i.e. a factor 0.1 that is easy to miss.  Its advection is likewise 10 x 0.1 = 1.0, which is
+    // EXACTLY mol_fast's W_ADV default -- so the fronts were deliberately matched and only the
+    // diffusion differs, by 4x.
+    if (qp.get('wdiff')) window.USER_W_DIFF = parseFloat(qp.get('wdiff'));
+    if (qp.get('wadv'))  window.USER_W_ADV  = parseFloat(qp.get('wadv'));
+    if (qp.get('wkin'))  window.USER_W_KIN_GATE = parseFloat(qp.get('wkin'));
+    if (qp.get('dv'))    window.USER_DV = parseFloat(qp.get('dv'));
+    // ?rinit= -- initial territory extent in au (mol_fast default 3.0). Beyond it every w is 0,
+    // so u leaks into an unowned halo and steals normalisation from the core; see the long note at
+    // mol_fast.js R_init. Set it past the box half-width to remove the halo entirely.
+    if (qp.get('rinit')) window.USER_R_INIT = parseFloat(qp.get('rinit'));
+
+    // ?p5=1 -- THE FAITHFUL-p5 CONFIGURATION, in one flag.
+    //
+    // Everything below is a measured difference against h2_p5_original.html, not a guess:
+    //   uzero=1   u is zeroed wherever w is zero at init. p5 hard-zeroes u outside each
+    //             electron's half-space, which is why its UNWEIGHTED integrals are correct and
+    //             why it has no frozen tails. This is the only PHYSICAL difference.
+    //   wd=0      keep the integrals unweighted -- correct once u is zeroed, and measurably
+    //             BETTER than wd=1, which sits 0.25 Ha from p5 against wd=0's 0.11 and has a
+    //             9x steeper R-dependence (so it moves the bond far more).
+    //   wdiff=0.2 p5's EFFECTIVE diffusion: literal coefficient 2 times the 0.1 inside
+    //             c[m] = 0.1*(u_self - u_other). mol_fast's default is 0.05.
+    //   wadv=1    already the default, and already equal to p5's 10 x 0.1 = 1.0 -- the fronts
+    //             were deliberately matched.
+    //   wkin=0.5  p5 gates the kinetic energy at w > 0.5; mol_fast inherited 0.1 from h2o.js.
+    //   dv=0.1    p5 uses d = 0.1; mol_fast defaults 0.12.
+    //
+    // STILL NOT MATCHED, and deliberately left out:
+    //   - p5's 3-cell DEAD GAP at the midplane (w = 0 for both domains at init). mol_fast's
+    //     best-wins assigns every cell, so the fronts start touching along the Voronoi surface
+    //     instead of having to advance into neutral ground. For a SYMMETRIC dimer symmetry puts
+    //     the interface at the midplane, which is exactly where best-wins puts it, so this should
+    //     matter least here -- it is the first thing to add if ?p5=1 still misses p5's curve.
+    //   - the outer cutoff convention: p5 zeroes w for rc > 3.5 about the MOLECULAR CENTRE;
+    //     mol_fast caps initial territory at R_init = 3 au from each winner's OWN nucleus.
+    if (qp.get('p5') === '1') {
+      window.USER_U_ZERO_INIT = true;
+      window.USER_WEIGHTED_DENSITY = false;
+      window.USER_W_DIFF = 0.2;
+      window.USER_W_ADV = 1.0;
+      window.USER_W_KIN_GATE = 0.5;
+      window.USER_DV = 0.1;
+      // KERNEL SOFTENING -- the term that actually carries the 0.124 Ha offset.
+      // p5 uses r_soft = sqrt(r^2 + h^2), i.e. an effective floor of h; mol_fast defaults
+      // SOFT_MULT = 2 giving sqrt(r^2 + 4h^2), a floor of 2h. So p5's well is TWICE as deep
+      // (K_max 8.333 vs 4.167 at h=0.12). Measured consequence at sep=1.44, mol_fast vs p5:
+      //   T     0.7983 vs 0.8711   (shallower well -> less curvature)
+      //   V_eK -3.0941 vs -3.2593  (shallower well -> weaker attraction)  <-- dominates
+      //   V_ee  0.5050 vs 0.4704
+      //   V_KK  0.6944 vs 0.6944   (identical, exact -- kernels agree on the nuclear term)
+      // Both signs are what a shallower kernel predicts, and nothing else left over is big
+      // enough to carry 0.124 Ha. NOTE USER_SOFT is LIVE in mol_fast (mol_fast.js:1195 "MUST
+      // match the shader") -- unlike molecule.js, where soft_k is declared and never read.
+      window.USER_SOFT = 1.0;
+    }
+
+    // ?soft= -- kernel softening multiplier, in units of h: the floor is SOFT*h, so
+    // r_soft = sqrt(r^2 + (SOFT*h)^2).  mol_fast default 2; p5's equivalent is 1.  Parsed AFTER
+    // the ?p5=1 block so it OVERRIDES the p5 default.
+    //
+    // CRITICAL FOR MESH LADDERS: because the floor is SOFT*h, refining the mesh SHARPENS THE
+    // KERNEL at the same time, confounding resolution with softening.  To vary resolution alone,
+    // hold the PHYSICAL floor fixed by passing soft = eps/h, e.g. eps = 0.12 au gives
+    // soft 1.0 at N=100, 1.5 at N=150, 2.0 at N=200 (box 12).
+    //
+    // The softening is the dominant lever on absolute energy here: going from soft=2 to soft=1 at
+    // sep=0.96 moved E by 0.231 Ha (-1.010997 -> -1.241666), taking it from 0.123 Ha ABOVE p5's
+    // -1.134160 to 0.107 BELOW.  So two large effects were offsetting at soft=2, and ?p5=1 now
+    // brackets p5 rather than reproducing it.
+    if (qp.get('soft')) window.USER_SOFT = parseFloat(qp.get('soft'));
+
+    // ?wkinw=1 -- USER_W_KIN_WEIGHT: compute the KINETIC energy as the functional the dynamics
+    // actually minimise, T = 1/2 sum_faces w_face (du)^2 h, instead of hard-gating it on w.
+    //
+    // THE POINT. The u-update's flux term is gradient descent on exactly that w-weighted kinetic
+    // form, and its potential term is the gradient of int w (K-V) u^2. So the minimised functional
+    // has EVERY term weighted by w. The code instead gates the kinetic term (`W > 0.1` here,
+    // `w > 0.5` in h2_p5_original) and, at wd=0, leaves the potentials unweighted -- two
+    // inconsistencies with the dynamics, in OPPOSITE directions.
+    //
+    // This explains why ?wd=1 alone is WORSE, not better: it corrects the potentials and leaves the
+    // kinetic term gated, so it is HALF consistent. Measured H2 bond at n=100 box=12:
+    //     default (wd=0, gated)   1.564 au  +11.7%
+    //     wd=1    (half fixed)    1.934 au  +38.0%
+    // The consistent scheme is ?wd=1&wkinw=1: no gate threshold to pick, no frozen tails (density
+    // is u^2 w so u outside w contributes nothing), and the reported energy IS the functional being
+    // minimised. The only regularisation left is the interface sharpness W_DIFF, which has a
+    // defined limit -- sharpen w and it approaches the true disjoint-domain problem -- so it becomes
+    // a CONVERGENCE parameter instead of a fitted one.
+    if (qp.get('wkinw') === '1') window.USER_W_KIN_WEIGHT = true;
+    // ?clamp=1 -- USER_CLAMP_RC: r_c CLAMPS THE KERNEL (V = -Z/max(r,r_c), density admitted)
+    // instead of depleting the density over a 3h smoothstep. See the long note in mol_fast.js.
+    // The clamp is the best core model measured (alkali dimers, r_c from the IE: bonds 4.0%,
+    // binding 10%, vs hard depletion 8.3% and 86%), and mol_fast is the only solver here that
+    // scales past two centres -- this flag combines them for the first time.
+    // NULL TEST: at r_c = 0 the clamp is max(r_soft, 0) = r_soft, so ?clamp=1 MUST give exactly
+    // the same answer as ?clamp=0. Check that before reading any clamp result.
+    if (qp.get('clamp') === '1') window.USER_CLAMP_RC = true;
+    if (qp.get('wfloor')) window.USER_W_FLOOR = parseFloat(qp.get('wfloor'));
+
     console.log('H2 scan: sep=' + sep + ' au');
+
+    // ---- TITLE READOUT, so a scan harness can scrape this page ----
+    //
+    // The page had no document.title update and mol_fast exposes its state only as page globals
+    // (window._E, window._tStep), which an AppleScript driver CANNOT read -- AppleScript JS sees
+    // the DOM and localStorage, never page globals.  So every scripted run of this page would have
+    // reported nothing.  Stamping it into the title fixes that, and CONV is stamped on the page's
+    // own convergence test so a harness need not guess when to stop.
+    //
+    // REALISED SEPARATION, not the requested one.  `di = Math.round(sep/h/2)` SNAPS the half
+    // separation to an integer cell count, so ?sep=1.40 at h=0.06 actually builds
+    // 2*12*0.06 = 1.44 au.  Line ~112 records the REQUESTED sep in the table, which mislabels
+    // every row by up to h.  The title reports sepReal.
+    //
+    // The snapping is, however, accidentally RIGHT for a scan: because di is an integer every
+    // realised separation is an exact even multiple of h, so the grid phase is CONSTANT across the
+    // sweep.  That is what tools/x2_R_sweep.py means by scanning only commensurate D = (2i+1)h,
+    // "otherwise the egg-crate noise is the size of the binding itself" -- noise that showed up as
+    // a 0.05 Ha alternating slope in the linear-O3 scan, where R was stepped in Angstrom on a
+    // 0.1 a0 grid and every point landed at a different sub-cell offset.
+    // So: request only sep = 2*k*h (= 0.12*k here) and the snap is a no-op.
+    var sepReal = 2 * di * h;
+    (function () {
+      var t0 = Date.now(), prevE = null, hold = 0, lastStep = -1, stuck = 0;
+      var convTol = parseFloat(new URLSearchParams(location.search).get('conv') || '2e-6');
+      var convNeed = parseInt(new URLSearchParams(location.search).get('convhold') || '5', 10);
+      setInterval(function () {
+        var E = window._E, st = window._tStep;
+        var dE = (E !== undefined && prevE !== null) ? Math.abs(E - prevE) : NaN;
+        if (typeof st === 'number') { if (st === lastStep) stuck++; else { stuck = 0; lastStep = st; } }
+        else stuck = -1;
+        var conv = false;
+        if (isFinite(dE) && dE < convTol) { if (++hold >= convNeed) conv = true; } else hold = 0;
+        if (E !== undefined) prevE = E;
+        document.title = 'H2MF t=' + ((Date.now() - t0) / 1000).toFixed(0) + 's'
+          + ' step=' + (st === undefined ? '?' : st)
+          + (stuck >= 10 ? ' <HALTED>' : (stuck < 0 ? ' <not started>' : ''))
+          + ' sep_req=' + sep.toFixed(4) + ' sep_real=' + sepRealN.toFixed(4) + 'au'
+          + ' E=' + (E === undefined ? 'n/a' : E.toFixed(6))
+          + (conv ? ' CONV' : '')
+          + ' dE=' + (isFinite(dE) ? dE.toExponential(1) : 'n/a')
+          // COMPONENTS, so a disagreement with another solver can be localised to the kinetic or
+          // the potential side. V_KK is EXACTLY checkable (sum Z_a Z_b / R over pairs; 1/0.96 =
+          // 1.0417 for H2 at the innermost point), so it is the first term to compare. These were
+          // locals drawn only to mol_fast's canvas until 2026-11-01.
+          + (window._E_T !== undefined
+              ? ' [T=' + window._E_T.toFixed(4) + ' VeK=' + window._E_eK.toFixed(4)
+                + ' Vee=' + window._E_ee.toFixed(4) + ' VKK=' + window._E_KK.toFixed(4) + ']'
+              : '')
+          + ' | n=' + N + ' box=' + scr + ' h=' + h.toFixed(4) + ' ' + window.USER_NORM_TARGETS.reduce(function(a,b){return a+b;},0) + 'e'
+          + ' wd=' + (window.USER_WEIGHTED_DENSITY ? 1 : 0)
+          + ' uzero=' + (window.USER_U_ZERO_INIT ? 1 : 0)
+          + ' wdiff=' + (window.USER_W_DIFF !== undefined ? window.USER_W_DIFF : 0.05)
+          + ' wadv=' + (window.USER_W_ADV !== undefined ? window.USER_W_ADV : 1)
+          + ' wkin=' + (window.USER_W_KIN_GATE !== undefined ? window.USER_W_KIN_GATE : 0.1)
+          + ' dv=' + (window.USER_DV !== undefined ? window.USER_DV : 0.12)
+          + ' ' + geom + (window.USER_CLAMP_RC ? ' CLAMP' : '') + ' Z=' + zK + ' rc=' + rcCore
+          + ' rinit=' + (window.USER_R_INIT !== undefined ? window.USER_R_INIT : 3)
+          + ' soft=' + (window.USER_SOFT !== undefined ? window.USER_SOFT : 2)
+          + ' wkinw=' + (window.USER_W_KIN_WEIGHT ? 1 : 0)
+          + ' nat=' + nat;
+      }, 3000);
+    })();
   })();
 
   var loadEl = document.getElementById('loadStatus');

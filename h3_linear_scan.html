@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+<title>H3 linear scan</title>
+<style>
+  body { margin:0; background:#07090c; color:#cfe; font:13px/1.5 ui-monospace,Menlo,monospace; }
+  pre.box { white-space:pre-wrap; background:#0f141a; border:1px solid #243;
+            padding:10px 13px; margin:10px; border-radius:6px; }
+  b.g { color:#7fd; } b.w { color:#fd7; }
+</style>
+</head><body>
+<pre class="box" id="log">loading...</pre>
+<script>
+/*
+  SYMMETRIC LINEAR H-H-H, SCANNED IN R.  Three bare +1 kernels, one electron each.
+
+  WHY THIS SYSTEM.  Everything argued about for XO2 -- clamp vs hard depletion vs empty core,
+  what Zx means, whether r_c is calibrated -- is ABSENT HERE: r_c = 0 on every kernel, so there is
+  no core model at all.  What is left is the single question the XO2 work could not separate out:
+  does the construction work at THREE CENTRES?  The two-centre case is validated -- H2 is the R=0
+  row of the published dimer series (tools/x2_R_sweep.py), bond 1.350 against 1.401, 3.6% -- and H2
+  and H3 share every ingredient except the third centre.
+
+  A LEGITIMATE POSITIVE TEST, despite H3 being a transition state rather than a bound molecule.
+  The H + H2 -> H2 + H saddle is a maximum only along the ASYMMETRIC stretch.  Constrained to
+  symmetric linear geometry, as here, R = 1.76 au is a true minimum in R.  So "is there a minimum,
+  and is it at 1.76" has a definite answer.
+      reference:  R(H-H) = 1.76 au at the saddle;  barrier 0.42 eV = 0.015 Ha above H + H2
+      (both from h3_linear.html, which carries them as USER_REFERENCE)
+
+  WHAT THIS PAGE FIXES relative to the three existing H3 pages (h3_linear, h3_triangle, test_h3),
+  none of which scans anything:
+    1. KERNEL POSITIONS ARE FRACTIONAL.  h3_linear.html does `d = Math.round(R/h)`, which at
+       R=1.76, h=0.05 gives 35 instead of 35.2 -- a realised bond of 1.75, not 1.76.  Rounding
+       kernels to integer cells is worth 39.5 kcal/mol in NH3 and destroys T_d there, and it is
+       exactly the error that makes a scan meaningless: every R gets a different rounding error, so
+       the curve acquires a sawtooth the size of the quantity being measured.
+    2. CONVERGENCE.  Those pages set CONVERGENCE_THRESHOLD = 0.005 Ha, 2500x looser than the 2e-6
+       used today, AND setting it hands molecule.js a sweep-halt (it sets phase = 1, "done") rather
+       than a convergence criterion.  This page runs its own test instead and stamps CONV in the
+       title so a scan harness can scrape it.
+    3. STEPS.  Those pages stop at USER_STEPS = 20000.  ClO2 and CO2 needed 80k-120k before dE
+       settled, and a 4000-step run drifts ~11 kcal/mol per 50 steps, so 20000 is not converged.
+
+  params:  ?r= (au, per bond, default 1.76)  ?n=  ?box=  ?steps=  ?conv=  ?convhold=
+*/
+(function () {
+  var q    = new URLSearchParams(location.search);
+  var N    = parseInt(q.get('n')    || '200', 10);
+  var scr  = parseFloat(q.get('box')  || '10');
+  var R    = parseFloat(q.get('r')    || '1.76');       // au, per bond
+  var steps= parseInt(q.get('steps')|| '400000', 10);
+  var convTol  = parseFloat(q.get('conv')     || '2e-6');
+  var convNeed = parseInt(q.get('convhold') || '5', 10);
+
+  // ?cheb=1 or ?lobpcg=1 -- THE INNER SOLVER, and the mesh ladder is unaffordable without one.
+  // Plain imaginary-time relaxation is O(n^5): molecule.js:255 sets dt = dv*h^2, and
+  // molecule.js:2379 states the consequence -- "steps-to-converge goes as (L/h)^2 = n^2" -- so
+  // n^3 work per step times n^2 steps.  With dv = 0.12 and N = 160 that predicts ~25600 steps and
+  // the three repeats here took 17400-25450, i.e. exactly the designed scaling.  Three electrons
+  // do not help: the cost is set by the GRID, not the system.  A ladder N = 120 -> 240 is a factor
+  // of 32 at full price.  Chebyshev damps the slow mode (spectral bounds already set up at
+  // molecule.js:4135, dt*lambda_max ~ 6*dv ~ 0.72); LOBPCG replaces the relaxation entirely.
+  // Both default OFF so the accelerated result can be MEASURED against the plain one first --
+  // an accelerator that changes the converged energy is a bug, and that has to be checked at a
+  // geometry where the plain answer is already known (R=1.30: E = -1.954349..-1.954528).
+  if (q.get('lobpcg') === '1') window.USER_LOBPCG = true;
+  else if (q.get('cheb') === '1') window.USER_CHEB = true;
+
+  var h  = scr / N;
+  var c  = N / 2;                       // fractional centre, NOT rounded
+
+  // ?nat=3 (default) H3 | 2 = H2 at separation R | 1 = a single H.
+  //
+  // The fragments are here so the barrier reference is SAME-CODE, SAME-MESH.  h3_linear.html
+  // differences against E(H) = -0.4986 and E(H2) = -1.19 taken from other runs on other meshes;
+  // a barrier is already a difference ACROSS compositions, where the errors do not cancel, so
+  // importing the references from elsewhere adds a second uncancelled error on top.  The house
+  // rule is that E(X) and E(X2) must come from the same code on the same mesh, which is what
+  // makes the published dimer bond lengths trustworthy.
+  //
+  // ?nat=2 is also the CONTROL THIS SOLVER HAS NEVER HAD.  The validated H2 bond (1.350 against
+  // 1.401, from the offline axisymmetric code) was never reproduced in molecule.js, so nothing
+  // establishes that molecule.js gets a two-centre geometry right.  Scanning nat=2 in R gives its
+  // bond length against a known 1.401 a0, at the same mesh as the H3 run -- so if H3 fails while
+  // H2 succeeds the third centre is implicated, and if H2 fails too the solver is.
+  var nat = parseInt(q.get('nat') || '3', 10);
+  if (nat !== 1 && nat !== 2) nat = 3;
+
+  // H1 -- H2 -- H3 along x, middle kernel at the box centre, outer two at +-R.
+  // NO Math.round: the cell coordinate is fractional and molecule.js reads posI/posJ/posK as f32.
+  var pos = nat === 3 ? [ [-R,0,0], [0,0,0], [+R,0,0] ]
+          : nat === 2 ? [ [-R/2,0,0], [+R/2,0,0] ]
+          :             [ [0,0,0] ];
+  function cell(p) { return [ c + p[0]/h, c + p[1]/h, c + p[2]/h ]; }
+
+  window.USER_NN     = N;
+  window.USER_SCREEN = scr;
+  window.USER_ATOMS  = pos.map(function (p, n) {
+    var g = cell(p);
+    return { i: g[0], j: g[1], k: g[2], Z: 1, el: 'H' + (n + 1) };
+  });
+  var ones = pos.map(function () { return 1; });
+  window.USER_Z      = ones;            // one electron per domain
+  window.USER_Z_NUC  = ones.slice();
+  window.USER_RC     = pos.map(function () { return 0; });  // BARE kernels -- no core model here
+  window.USER_STEPS  = steps;
+  window.USER_DYNAMICS    = false;      // geometry is the scan variable, held at the input
+  window.NO_AUTO_DYNAMICS = true;
+  // deliberately NOT setting CONVERGENCE_THRESHOLD -- see note 2 above
+  window.USER_BOND_PAIRS  = nat === 3 ? [[0,1,"H1-H2:"],[1,2,"H2-H3:"],[0,2,"H1-H3:"]]
+                          : nat === 2 ? [[0,1,"H1-H2:"]] : [];
+
+  // ---- readout.  Realised geometry is read back from _nucPos, not from the input, because the
+  // house rule is to check the geometry that was actually built. ----
+  var out = document.getElementById('log');
+  out.textContent =
+    (nat === 3 ? 'SYMMETRIC LINEAR H3, scanned in R.  Three BARE +1 kernels (r_c = 0), one electron each.\n'
+              : nat === 2 ? 'H2 CONTROL, scanned in R.  Two BARE +1 kernels (r_c = 0), one electron each.\n'
+              : 'SINGLE H, fragment reference.  One BARE +1 kernel (r_c = 0), one electron.\n') +
+    'No core model is involved, so this isolates the construction itself.\n\n' +
+    (nat === 1
+       ? 'geometry         : a single kernel, no R\n'
+       : 'input ' + (nat === 3 ? 'R per bond' : 'separation')
+         + ' : ' + R.toFixed(4) + ' au'
+         + (nat === 3 ? '   (reference: 1.76 au at the H+H2 saddle)\n'
+                      : '   (reference: H2 bond 1.401 a0)\n')) +
+    'grid             : ' + N + '^3, box ' + scr + ' au, h = ' + h.toFixed(5) + ' au\n' +
+    'kernel cells     : ' + pos.map(function (p) { return cell(p)[0].toFixed(3); }).join(' / ')
+                          + '   (fractional, unsnapped)\n' +
+    (nat === 1 ? ''
+       : 'R in cells       : ' + (R/h).toFixed(3) + '   -- snapping this to '
+         + Math.round(R/h) + ' would give R = ' + (Math.round(R/h)*h).toFixed(4) + ' au\n') +
+    'convergence      : dE < ' + convTol + ' held for ' + convNeed + ' readings, max '
+                          + steps + ' steps\n\n' +
+    'barrier reference: E(H3) - E(H) - E(H2); experiment 0.42 eV = 0.015 Ha above H + H2\n' +
+    'Difference the fragments from THIS page at THIS mesh (?nat=1 and ?nat=2), not the -0.4986 and\n' +
+    '-1.19 recorded on h3_linear.html, which come from other runs on other meshes. A barrier is\n' +
+    'already a difference ACROSS compositions where the errors do not cancel; imported references\n' +
+    'add a second uncancelled error. The GEOMETRY is the result here, the barrier a byproduct.\n';
+
+  var live = document.createElement('pre');
+  live.className = 'box'; live.id = 'live'; live.textContent = 'starting...';
+  document.body.appendChild(live);
+
+  var t0 = Date.now(), prevE = null, hold = 0, lastSteps = -1, stuck = 0;
+  function dc(p, r) { var a=p[0]-r[0], b=p[1]-r[1], e=p[2]-r[2];
+                      return Math.sqrt(a*a+b*b+e*e)*h; }
+  function geomNow() {
+    var P = window._nucPos;
+    if (!P || !P[nat-1]) return null;
+    if (nat === 1) return { };
+    if (nat === 2) return { r12: dc(P[0],P[1]) };
+    return { r12: dc(P[0],P[1]), r23: dc(P[1],P[2]), r13: dc(P[0],P[2]) };
+  }
+  function geomStr(g) {
+    if (!g) return '  geom n/a';
+    if (nat === 1) return '  single kernel';
+    if (nat === 2) return '  H1-H2=' + g.r12.toFixed(4) + ' au';
+    return '  H1-H2=' + g.r12.toFixed(4) + ' H2-H3=' + g.r23.toFixed(4)
+           + ' H1-H3=' + g.r13.toFixed(4) + ' au';
+  }
+
+  // ---- THE FORCE at the held geometry ----
+  // molecule.js computes nuclear forces every step whether or not dynamics is on -- dynamics only
+  // INTEGRATES them -- and exports _nucForce (what the integrator uses) plus the _nucForceElec and
+  // _nucForceNuc parts.  So the force is readable without moving anything: no dynamics, hence none
+  // of the silent-halt problem, and "which way does the bond want to go" is answered in one run.
+  //
+  // f_r = force on H3 projected onto the H2->H3 unit vector: f_r > 0 pushes the bond LONGER,
+  // f_r < 0 pulls it SHORTER, f_r = 0 is equilibrium.  Reported for H3, which by the symmetry of
+  // the construction should mirror H1; any asymmetry between them is an instrumentation check,
+  // since the input geometry is exactly symmetric.
+  //
+  // THIS SCAN VALIDATES THE FORCE AGAINST THE ENERGY: F = -dE/dR must hold, so the five E(R)
+  // points and the five f_r values are two independent measurements of the same curve.  If they
+  // disagree, one of them is wrong and no geometry conclusion follows from either.
+  // NOTE WHICH FIELD.  _nucForce is populated INSIDE moveNuclei (molecule.js:5242), which runs
+  // only `if (dynamicsEnabled)`, so with dynamics off it stays at its initial ZEROS -- reading it
+  // gave f_r = 0.00000 while its own el/nuc parts were -0.08161 and +0.55477.  _nucForceTotal is
+  // assembled from the elec and nuc parts BEFORE the dynamics branch and is the one valid at a
+  // held geometry.  Printing the components is what caught this; keep printing them.
+  function forceNow() {
+    if (nat === 1) return null;                   // a single kernel has no bond to push
+    var P = window._nucPos, F = window._nucForceTotal;
+    var iF = nat - 1, iO = nat === 3 ? 1 : 0;     // outer kernel, and the one it is measured from
+    if (!P || !F || !P[iF] || !F[iF]) return null;
+    var ux = P[iF][0]-P[iO][0], uy = P[iF][1]-P[iO][1], uz = P[iF][2]-P[iO][2];
+    var L = Math.hypot(ux, uy, uz);
+    if (!(L > 0)) return null;
+    ux /= L; uy /= L; uz /= L;
+    function proj(G, i) { var g = G && G[i]; return g ? g[0]*ux + g[1]*uy + g[2]*uz : NaN; }
+    return { tot: proj(F,iF), el: proj(window._nucForceElec,iF),
+             nu: proj(window._nucForceNuc,iF), mirror: proj(F,0) };
+  }
+  setInterval(function () {
+    var E = window._E, g = geomNow(), st = window._phaseSteps;
+    var dE = (E !== undefined && prevE !== null) ? Math.abs(E - prevE) : NaN;
+    if (typeof st === 'number') { if (st === lastSteps) stuck++; else { stuck = 0; lastSteps = st; } }
+    else stuck = -1;
+    var conv = false;
+    if (isFinite(dE) && dE < convTol) { if (++hold >= convNeed) conv = true; } else hold = 0;
+    if (E !== undefined) prevE = E;
+    var txt = 't=' + ((Date.now()-t0)/1000).toFixed(0) + 's'
+      + '  step=' + (st === undefined ? '?' : st)
+      + (stuck >= 10 ? ' <HALTED>' : (stuck < 0 ? ' <not started>' : ''))
+      + '  R=' + R.toFixed(4) + 'au'
+      + '  E=' + (E === undefined ? 'n/a' : E.toFixed(6))
+      + (conv ? ' CONV' : '')
+      + '  dE=' + (isFinite(dE) ? dE.toExponential(1) : 'n/a')
+      + (window._E_ee !== undefined
+          ? '  [T=' + window._E_T.toFixed(4) + ' V_eK=' + window._E_eK.toFixed(4)
+            + ' V_ee=' + window._E_ee.toFixed(4) + ' V_KK=' + window._E_KK.toFixed(4) + ']'
+          : '')
+      + geomStr(g)
+      + (function () {
+          var f = forceNow();
+          // f_r > 0 pushes the bond LONGER, < 0 SHORTER, 0 is equilibrium.  'mir' is the same
+          // projection on H1: the input geometry is exactly symmetric, so mir should be -f_r and
+          // any departure is an instrumentation fault rather than physics.
+          return f ? '  f_r=' + f.tot.toFixed(5)
+                     + ' (el ' + f.el.toFixed(5) + ' + nuc ' + f.nu.toFixed(5) + ')'
+                     + (f.tot > 0 ? ' ->LONGER' : ' ->SHORTER')
+                     + ' mir=' + f.mirror.toFixed(5)
+                   : '';
+        })()
+      + '  | ' + nat + 'e nat=' + nat + ' n=' + N + ' rc=0';
+    live.textContent = txt;
+    document.title = 'H3 ' + txt;
+  }, 3000);
+})();
+</script>
+<script>
+  var s = document.createElement('script');
+  s.src = 'molecule.js?t=' + Date.now();
+  s.onload = function () {
+    var p = document.createElement('script');
+    p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    document.body.appendChild(p);
+  };
+  document.body.appendChild(s);
+</script>
+</body></html>

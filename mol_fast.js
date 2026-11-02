@@ -147,6 +147,83 @@ struct P {
   // partition is genuine. Default OFF: every existing page in this collection was tuned against
   // the unweighted behaviour.
   const W_DENS = (typeof window !== 'undefined' && window.USER_WEIGHTED_DENSITY) ? 1.0 : 0.0;
+  // USER_U_ZERO_INIT: zero u outside its own Voronoi cell AT INITIALISATION, as the original p5
+  // solver does. See the long note at the u-init block. Default OFF, like every other fix here.
+  const U_ZERO_INIT = (typeof window !== 'undefined' && !!window.USER_U_ZERO_INIT);
+  // USER_W_KIN_GATE: the w threshold above which a cell contributes KINETIC energy. Hardcoded 0.1
+  // here (inherited from h2o.js); the ORIGINAL p5 uses 0.5 (`if (w[m][i][j][k] > 0.5)`). On a
+  // DIFFUSE w the choice decides how many interface cells pay kinetic cost, which is exactly what
+  // sets a bond length -- so it is not a cosmetic threshold. Note BOTH values are inconsistent
+  // with the u-UPDATE, which uses the SMOOTH face-averaged w rather than any gate: the reported
+  // functional is not the one the dynamics minimise (project_diagnostic_mirrors_solver). Exposing
+  // it makes the p5 value reachable and the inconsistency measurable.
+  const W_KIN_GATE = (typeof window !== 'undefined' && window.USER_W_KIN_GATE !== undefined)
+                     ? Number(window.USER_W_KIN_GATE) : 0.1;
+  // USER_W_KIN_WEIGHT: compute the kinetic energy as the functional the DYNAMICS ACTUALLY
+  // MINIMISE, instead of hard-gating it on w.
+  //
+  // The u-update's flux term is
+  //     hd*((uip-uc)*(wip+nw)/2 - (uc-uim)*(nw+wim)/2) + ...
+  // which is exactly gradient descent on  T = 1/2 sum_faces w_face (du)^2 h,  and the potential
+  // term  dt*(K - Vother)*uc*wc  is the gradient of  int w (K-V) u^2.  So the minimised functional
+  // is  E = sum_m [ 1/2 int w|grad u|^2 - int w K u^2 + ... ]  with  int w u^2 = 1  -- EVERY term
+  // weighted by w.
+  //
+  // What the code computes instead: the kinetic term HARD-GATED (`if W > 0.1` here, `w > 0.5` in
+  // h2_p5_original), and at wd=0 the potentials UNWEIGHTED. Both disagree with the dynamics, in
+  // OPPOSITE directions -- the reported energy is not the functional being minimised, which is
+  // exactly project_diagnostic_mirrors_solver.
+  //
+  // THIS EXPLAINS THE wd=1 ANOMALY. ?wd=1 weights the potentials correctly but leaves the kinetic
+  // term gated, so it is HALF consistent -- worse than being uniformly wrong. Measured on H2 at
+  // n=100 box=12: wd=1 puts the bond at 1.934 au (+38.0%) against the default's 1.564 (+11.7%).
+  //
+  // With W_KIN_WEIGHT + wd=1 the scheme is fully consistent: no gate threshold to choose, no
+  // frozen tails (density is u^2 w, so u outside w contributes nothing), and the reported energy
+  // IS the minimised functional. The only regularisation left is the interface sharpness W_DIFF,
+  // which then has a defined limit -- sharpening w approaches the true disjoint-domain problem --
+  // so it becomes a CONVERGENCE parameter rather than a fitted one.
+  //
+  // Default OFF: it changes every energy this file has ever produced.
+  const W_KIN_WEIGHT = (typeof window !== 'undefined' && !!window.USER_W_KIN_WEIGHT);
+  // USER_CLAMP_RC: make r_c CLAMP THE KERNEL instead of depleting the density.
+  //
+  //   clamp off (default):  u and w are cut to zero inside r_c over a 3h smoothstep
+  //                         -> SOFTENED HARD DEPLETION
+  //   clamp on:             V = -Z/max(r, r_c), density ADMITTED inside, u and w untouched
+  //                         -> the CLAMP
+  //
+  // WHY. Measured on the alkali dimers with r_c calibrated to each measured IE
+  // (tools/x2_rc_sweep_both.py, axisymmetric, continuous r_c sweep):
+  //     hard depletion   mean |bond| 8.3%   mean |binding| 86%
+  //     clamp            mean |bond| 4.0%   mean |binding| 10%   (Cs +1%, Li -3%)
+  // So the famous "factor 2 over" on dimer binding is a property of HARD DEPLETION, not of the
+  // construction. And mol_fast's own smooth ramp measured WORSE than both sharp models at matched
+  // IE -- longer bond AND weaker binding, i.e. outside the bracket rather than between.
+  //
+  // So the best core model and the only solver that scales past two centres were not combined.
+  // This flag combines them. It is the experiment, not a settled improvement.
+  //
+  // CAVEATS that travel with it: the clamp is validated only at SHALLOW plateaus (Z_x/r_c =
+  // 0.21-0.33 Ha for the alkalis, against 2.5-3.2 Ha for O/Cl/N/C -- ten times deeper and
+  // untested), and its r_c is NOT a radius (it tracks Z_x/depth, so carbon's comes out twice
+  // oxygen's because its kernel charge is, not because its core is bigger), so unlike hard
+  // depletion it has no geometric check against the measured ionic radius.
+  const CLAMP_RC = (typeof window !== 'undefined' && !!window.USER_CLAMP_RC);
+  // Built as a plain string rather than a nested template literal inside reduceWGSL -- nesting
+  // backticks inside a backtick string is legal JS but easy to break on the next edit.
+  const kinTermWGSL = W_KIN_WEIGHT ? `
+      // FACE-AVERAGED w, matching the u-update's flux EXACTLY:  T = 1/2 sum_faces w_face (du)^2 h
+      let wcT = W[o + id];
+      let wfa = 0.5 * (W[o + id + p.S2] + wcT);
+      let wfb = 0.5 * (W[o + id + p.S]  + wcT);
+      let wfc = 0.5 * (W[o + id + 1u]   + wcT);
+      T += k_mult_T * ${KINETIC_COEFF.toFixed(6)} * (wfa*a*a + wfb*b*b + wfc*c*c) * p.h;
+  ` : `
+      if (W[o + id] > ${W_KIN_GATE.toFixed(6)}) {
+        T += k_mult_T * ${KINETIC_COEFF.toFixed(6)} * (a * a + b * b + c * c) * p.h;
+      }
+  `;
   // INTERFACE DIFFUSION. The w front is  dw = DIFF*dt*|cm|*lap(w) + dt*cm*|grad w|. The first term
   // smooths the interface and the second advects it; since the advection is proportional to
   // |grad w|, a broad interface moves SLOWER, so over-smoothing is self-defeating. Default 0.05
@@ -346,7 +423,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dym = f32(j) - atom_m.y;
     let dzm = f32(k) - atom_m.z;
     let r_m = sqrt(dxm*dxm + dym*dym + dzm*dzm) * p.h;
-    if (rc_m > 0.0 && r_m < rc_m) {
+    if (${CLAMP_RC ? 'false' : 'true'} && rc_m > 0.0 && r_m < rc_m) {
       let edge = rc_m - 3.0 * p.h;
       let t = clamp((r_m - edge) / (rc_m - edge), 0.0, 1.0);
       nw = min(nw, t * t * (3.0 - 2.0 * t));
@@ -459,7 +536,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let dz = f32(k) - atom.z;
     let r  = sqrt(dx*dx + dy*dy + dz*dz) * p.h;
     let rc_a = p.rcs[a].x;
-    if (rc_a > 0.0 && r < rc_a) {
+    if (${CLAMP_RC ? 'false' : 'true'} && rc_a > 0.0 && r < rc_a) {
       let edge = rc_a - 3.0 * p.h;
       let t = clamp((r - edge) / (rc_a - edge), 0.0, 1.0);
       nw = min(nw, t * t * (3.0 - 2.0 * t));
@@ -578,14 +655,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
       // wd = 1 normally; = w when USER_WEIGHTED_DENSITY, so density is u^2*w in EVERY integral
       let wd = mix(1.0, W[o + id], ${W_DENS.toFixed(1)});
       sn[lid * NRED + m] = wd * v * v * p.h3;
-      if (W[o + id] > 0.1) {
-        let a = U[o + id + p.S2] - v;
-        let b = U[o + id + p.S]  - v;
-        let c = U[o + id + 1u]   - v;
-        let selfN_T = p.rcs[m].y;
-        let k_mult_T = select(1.0, ${KC_MULTI.toFixed(6)}, selfN_T > 1.0);
-        T += k_mult_T * ${KINETIC_COEFF.toFixed(6)} * (a * a + b * b + c * c) * p.h;
-      }
+      let selfN_T = p.rcs[m].y;
+      let k_mult_T = select(1.0, ${KC_MULTI.toFixed(6)}, selfN_T > 1.0);
+      let a = U[o + id + p.S2] - v;
+      let b = U[o + id + p.S]  - v;
+      let c = U[o + id + 1u]   - v;
+${kinTermWGSL}
       VeK -= wd * K[id] * v * v * p.h3;
       // Electronic dipole contribution: -∫ρ_m·r dV  (electron charge = -1)
       let rho_cell = wd * v * v * p.h3;
@@ -769,7 +844,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let di = (f32(i) - p.atoms[a].x) * p.h;
     let dj = (f32(j) - p.atoms[a].y) * p.h;
     let dk = (f32(k) - p.atoms[a].z) * p.h;
-    let r_soft = sqrt(di*di + dj*dj + dk*dk + ${SOFT_SQ.toFixed(6)} * p.h2);  // softening ε² = (SOFT·h)²
+    var r_soft = sqrt(di*di + dj*dj + dk*dk + ${SOFT_SQ.toFixed(6)} * p.h2);  // softening ε² = (SOFT·h)²
+${CLAMP_RC ? '    let rcK = p.rcs[a].x;\n    if (rcK > 0.0) { r_soft = max(r_soft, rcK); }' : ''}
     // FROZEN CORE SCREENING. With CORE_Z > 0 the kernel carries the full nuclear charge screened by
     // a fixed spherical core density, so V -> -(Z - core_n)/r outside and deepens smoothly inward.
     // No wall anywhere: the core's EXTENT is expressed as a potential, which is what lets the bond
@@ -1181,7 +1257,30 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     const Wd = new Float32Array(NELEC * S3);
     const Pd = new Float32Array(NELEC * S3);
     const soft = SOFT_SQ * h2v;  // kernel-smoothing ε² = (SOFT·h)² — MUST match the shader
-    const R_init = 3.0;  // au — initial u/w extent
+    // USER_R_INIT: initial u/w extent, au. Hardcoded 3.0 until 2026-11-01.
+    //
+    // WHY IT MATTERS MORE THAN IT LOOKS. Territory is capped at R_init from each winner's own
+    // nucleus, so in a box of 12 au everything beyond ~R_init+|z_nuc| is UNOWNED (w = 0 for every
+    // domain) -- this file's own comment calls it "a vacuum shell created by initialisation",
+    // permanent because "neither field can move first", with the consequence that "the OUTERMOST
+    // electron is silently truncated" (measured on Li: valence centroid 0.80 au where <r>_2s ~ 4.7).
+    //
+    // But normalisation is int u^2 = target over ALL SPACE, so amplitude that leaks into that
+    // unowned halo -- and it does leak, because the u-update's diffusion flux is face-averaged in w,
+    // so a w=0 cell beside a w>0 cell has face weight 0.5 -- STEALS NORMALISATION FROM THE CORE.
+    // That dilutes the density exactly where V_eK is earned.
+    //
+    // Measured at H2 sep=1.44, ?p5=1 against the original p5 at the same mesh:
+    //     V_KK  0.6944 vs 0.6944  (identical, exact -- kernels agree)
+    //     T     0.7983 vs 0.8711  (-0.073, less curvature)
+    //     V_eK -3.0941 vs -3.2593 (+0.165, WEAKER attraction)  <-- dominates
+    //     V_ee  0.5050 vs 0.4704  (+0.035, more overlap)
+    //     E    -1.0964 vs -1.2234 (+0.127)
+    // i.e. a MORE SPREAD OUT density, which is what a stolen normalisation produces. A few percent
+    // of the norm off a V_eK of -3.26 is ~0.16 Ha. Raising R_init to cover the box is the direct
+    // test; `outer: true` per nucleus is the other route this file already provides.
+    const R_init = (typeof window !== 'undefined' && window.USER_R_INIT !== undefined)
+                   ? Number(window.USER_R_INIT) : 3.0;
 
     for (let i = 0; i <= NN; i++) {
       for (let j = 0; j <= NN; j++) {
@@ -1196,7 +1295,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             const dx = (i - nuclei[a].i) * hv;
             const dy = (j - nuclei[a].j) * hv;
             const dz = (k - nuclei[a].k) * hv;
-            const r_soft = Math.sqrt(dx * dx + dy * dy + dz * dz + soft);
+            let r_soft = Math.sqrt(dx * dx + dy * dy + dz * dz + soft);
+            // CLAMP: floor the kernel radius at r_c, so V = -Z/max(r, r_c) inside the core
+            if (CLAMP_RC && nuclei[a].rc > 0) r_soft = Math.max(r_soft, nuclei[a].rc);
             const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
             // screened by the frozen core density when core_Z > 0, else the bare kernel
             if (nuclei[a].core_Z > 0) {
@@ -1252,11 +1353,33 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
           for (let m = 0; m < N_ATOMS; m++) {
             const rc_m = nuclei[m].rc;
             let uCut = uList[m];
-            if (rc_m > 0 && rList[m] < rc_m) {
+            // CLAMP_RC: the clamp acts on the KERNEL, not the density, so skip the cut
+            if (!CLAMP_RC && rc_m > 0 && rList[m] < rc_m) {
               const edge = rc_m - 3 * hv;
               const t = Math.max(0, Math.min(1, (rList[m] - edge) / (rc_m - edge)));
               uCut *= t * t * (3 - 2 * t);
             }
+            // USER_U_ZERO_INIT: apply the SAME Voronoi partition to u that w-init already applies
+            // below, i.e. zero u for every domain except the winner at this cell.
+            //
+            // This is what the ORIGINAL p5 solver does -- h2_p5_original.html seeds
+            // u[m] = exp(-r_m) everywhere and then hard-zeroes it outside each electron's own
+            // half-space -- and it is the reason the original has no frozen-tail problem. Where
+            // w = 0 the amplitude update vanishes, so u is frozen there; frozen at ZERO is
+            // harmless, frozen at a nonzero seed is not, because the norm, V_eK, V_ee and the
+            // dipole are all integrated UNWEIGHTED (reduceWGSL: `v*v*p.h3`, inherited from
+            // h2o.js). Those frozen seeds are then counted as real charge, which is the overlap
+            // described at mol_fast.js:141-147.
+            //
+            // Note this is NOT a defect of the w design: each u has its own w, each w advects
+            // independently, the w's may overlap in a transition layer, and u genuinely FOLLOWS
+            // its territory because the diffusion flux is face-averaged in w -- so u can grow
+            // into newly-won cells. The only thing wrong is nonzero u where w = 0 at t = 0.
+            //
+            // Cheaper and safer than the two existing options: USER_WEIGHTED_DENSITY (?wd=1)
+            // reweights every integral, and USER_U_DECAY (?udec=) bleeds the tails during the run,
+            // does not conserve charge, and is measured to unbind (d=0.02 -> E=+0.912). Zeroing at
+            // init loses no charge, because the charge was never legitimately there.
             Ud[m * S3 + id] = uCut;
           }
           // w-init: best-wins hard partition (only the winner gets w=1; others 0).
@@ -1278,7 +1401,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             const rc_b = nuclei[bestM].rc;
             const ro_b = nuclei[bestM].r_out || 0;
             let wCut = 1.0;
-            if (rc_b > 0 && rList[bestM] < rc_b) {
+            if (!CLAMP_RC && rc_b > 0 && rList[bestM] < rc_b) {
               const edge = rc_b - 3 * hv;
               const t = Math.max(0, Math.min(1, (rList[bestM] - edge) / (rc_b - edge)));
               wCut = t * t * (3 - 2 * t);
@@ -1287,6 +1410,17 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
               wCut = 0;  // hard cutoff at r_out + 1 cell
             }
             Wd[bestM * S3 + id] = wCut;
+          }
+          // USER_U_ZERO_INIT -- see the long note at the u-init block above. Applied HERE, after
+          // w-init, so the condition MIRRORS w exactly: u is zeroed wherever w is zero. Doing it
+          // in the u loop would have used `m === bestM` alone and left the winner's tail alive
+          // beyond R_init -- precisely the outer region this file documents as "UNOWNED (w = 0
+          // for every domain) ... the OUTERMOST electron is silently truncated", i.e. the one
+          // place a frozen tail does the most damage.
+          if (U_ZERO_INIT) {
+            for (let m = 0; m < N_ATOMS; m++) {
+              if (Wd[m * S3 + id] <= 0) { Ud[m * S3 + id] = 0; }
+            }
           }
           // P_m init = 0.5·Z_m / (r_m + h²)
           // The Hartree potential generated by electron m's OWN density,
@@ -1580,6 +1714,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     E_ee = sums[NELEC + 2];
     E = E_T + E_eK + E_ee + E_KK;
     window._E = E;  // expose for convergence monitoring
+    // Export the COMPONENTS too. They existed only as locals drawn to the canvas (line ~2158),
+    // which an AppleScript driver cannot read -- the same blind spot that left h2_p5_original and
+    // this page unscannable. Without them a disagreement in E cannot be localised to the kinetic
+    // or the potential side, and V_KK in particular is EXACTLY checkable (Z_a Z_b / R summed over
+    // pairs), so it is the first thing to compare when two solvers disagree.
+    window._E_T = E_T; window._E_eK = E_eK; window._E_ee = E_ee; window._E_KK = E_KK;
     // Dipole: μ = Σ_a Z_a·R_a + μ_elec (electron part already summed with minus sign)
     let dipNx = 0, dipNy = 0, dipNz = 0;
     for (let a = 0; a < N_ATOMS; a++) {

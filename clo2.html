@@ -122,6 +122,28 @@
   var X    = q.get('x') || 'Cl';
   if (!XTAB[X]) X = 'Cl';
   var XP   = XTAB[X];
+
+  // ?zx=N -- OVERRIDE THE CENTRE'S KERNEL CHARGE.  Zx is a modelling choice, not an element
+  // property: the house convention table (C=4, N=3, O=2, F=5, Cl=7) is a default that pages depart
+  // from whenever the bonding reading demands.  mol_fast_co2.html carries both readings explicitly,
+  // "arch 1 = C+4/O+3 (10 e-), 2 = C+2/O+2/O+2 (6 e-)", and the water pages run O at +3 to carry a
+  // lone pair while citing a convention that lists O=2.
+  //
+  // For CO2, C at +2 is the better-posed construction:
+  //   - 6 electrons total (C+2 and two O+2), still CLOSED SHELL, and fewer to converge
+  //   - ONE mutual pair on the centre instead of six, so the hom shared spherical shell is not
+  //     being asked to stand in for 2s2 2p2 with the whole error loaded onto r_c
+  //   - r_c calibrated to carbon's measured IE1 = 11.260 eV falls from 1.33246 (Zx=4) to 0.80628
+  //     (Zx=2), which moves CORE CONTACT R_C + R_O from 1.87957 a0 = 0.994 A -- the very edge of a
+  //     scan window whose target is 1.162 A -- out to 1.35339 a0 = 0.716 A.  A minimum near the
+  //     measured bond then cannot be the two cores colliding.
+  // Each Zx needs the matching angular split if ?occ=split is used; hom ignores it (one shared
+  // spherical density per atom), which is why hom is the reading this override is aimed at.
+  var zxOv = parseInt(q.get('zx') || '0', 10);
+  if (zxOv > 0 && zxOv !== XP.Zx) {
+    var SPL = { 1: 'sphere', 2: 'hemi', 3: 'third', 4: 'tetra' };
+    XP = { Zx: zxOv, rc: XP.rc, R: XP.R, ang: XP.ang, split: SPL[zxOv] || 'sphere' };
+  }
   var rcCl = parseFloat(q.get('rc_x') || q.get('rc_cl') || String(XP.rc));
   var rcO  = parseFloat(q.get('rc_o')  || '0.5');   // mol_fast_menu: O at Z=2 uses rc 0.5
   var steps= parseInt(q.get('steps')   || '32000', 10);
@@ -308,6 +330,8 @@
   window.USER_STEPS      = steps;
   window.USER_ATOMS      = atoms;
   window.USER_Z          = Zel;
+  // total electrons, for the readout -- computed so it tracks ?x= and ?zx= (see the title line)
+  var nElec = Zel.reduce(function(a,b){ return a + b; }, 0);
   window.USER_Z_NUC      = Znuc;
   window.USER_RC         = rcA;
   window.USER_SPLIT_TYPE = stype;
@@ -338,6 +362,20 @@
   // actually stopped moving.
   var convTol = parseFloat(q.get('conv') || '2e-6');
   var convNeed = parseInt(q.get('convhold') || '5', 10);
+
+  // THE FORCE MEASUREMENT IS ?dyn=1 AND IT IS ALREADY IMPLEMENTED BELOW (line ~528): the title
+  // loop's own test, dE < convTol held for convNeed readings, releases the nuclei.  That gate is
+  // better than any step count because it keys on actual convergence -- releasing early
+  // integrates forces from a density still expanding out of an over-bound seed, which is the
+  // 2.78 -> 8.46 au artefact.  Do not add a step-count knob for this; `NO_AUTO_DYNAMICS = true`
+  // below deliberately disables molecule.js's 10000-step auto-enable, which is far too early here
+  // (a few seconds, against ~120k steps / ~1100 s to electronic convergence as measured
+  // 2026-10-31: E ran -10.87 -> -9.718582 with dE -> 0 at step 123050).
+  //
+  // Why the force and not the energy: writing E = E_true + delta(R) gives F = F_true - delta'(R),
+  // so the geometry is set by delta' ALONE -- the error must be FLAT in R, not small.  A scan
+  // differences separately-converged energies at ~120k steps each and then infers a minimum;
+  // ?dyn=1 reads the force directly in one run.
 
   // COINCIDENT GROUPS.  The split siblings sit at ONE position and share one kernel, but
   // molecule.js treats them as independent nuclei unless told otherwise:
@@ -473,6 +511,41 @@
   document.body.appendChild(out);
 
   var t0 = Date.now();
+  // ---- THE FORCE, read at the FIXED input geometry ----
+  //
+  // molecule.js computes the nuclear forces every step whether or not dynamics is enabled --
+  // dynamics only INTEGRATES them -- and exports them: _nucForce (what the integrator uses),
+  // _nucForceElec and _nucForceNuc (the electronic and kernel-kernel parts).  So the force can be
+  // read at a held geometry without moving anything, which:
+  //   - answers "which way does the bond want to go" in ONE run instead of a five-point scan,
+  //   - gives the Elec vs Nuc balance, i.e. WHY,
+  //   - needs no nuclear motion, so the dynamics halt is irrelevant.
+  //
+  // Sign convention here: f_r is the force on O(a) PROJECTED ONTO the Cl->O(a) unit vector, so
+  // f_r > 0 means the bond is pushed LONGER and f_r < 0 means it is pulled SHORTER.  Equilibrium
+  // is f_r = 0.
+  //
+  // VALIDATION, and it must be done before the number is trusted: F = -dE/dR.  The two converged
+  // hom points at rc=0.5/0.5 give E(1.35) = -9.830895 and E(1.47) = -9.730522, so along the
+  // symmetric stretch dE/dR ~ 0.100373 / 0.2268 au ~ 0.44 Ha/a0, with E RISING outward.  The
+  // projected force at 1.47 should therefore be NEGATIVE and of that order.  A force that
+  // disagrees with the energy slope is a bug in one of the two, not a result.
+  function forceNow() {
+    // _nucForce is filled INSIDE moveNuclei (molecule.js:5242), which runs only when dynamics is
+    // enabled, so at a HELD geometry it is all zeros.  _nucForceTotal is assembled from the elec
+    // and nuc parts before the dynamics branch and is the field valid here.
+    var P = window._nucPos, F = window._nucForceTotal;
+    if (!P || !F || !P[2] || !F[2]) return null;
+    var iA = (occ === 'hom') ? 1 : 3;
+    var cl = P[0], oa = P[iA];
+    var ux = oa[0]-cl[0], uy = oa[1]-cl[1], uz = oa[2]-cl[2];
+    var L = Math.hypot(ux, uy, uz);
+    if (!(L > 0)) return null;
+    ux /= L; uy /= L; uz /= L;
+    function proj(G) { var g = G && G[iA]; return g ? g[0]*ux + g[1]*uy + g[2]*uz : NaN; }
+    return { tot: proj(F), el: proj(window._nucForceElec), nu: proj(window._nucForceNuc) };
+  }
+
   function geomNow() {
     var P = window._nucPos;
     // hom: one domain per atom, so Cl=0, O(a)=1, O(b)=2.
@@ -542,7 +615,22 @@
       + (g ? '  ' + X + '-O=' + g.ra.toFixed(4) + '/' + g.rb.toFixed(4) + ' au ('
              + (g.ra/A2AU).toFixed(4) + '/' + (g.rb/A2AU).toFixed(4) + ' A)'
              + '  ang=' + g.ang.toFixed(3) : '  geom n/a')
-      + '  | 7e ' + radical + ' n=' + N + ' rc=' + rcCl + '/' + rcO;
+      // ELECTRON COUNT IS COMPUTED, NOT HARDCODED.  This read '7e' literally -- correct only for
+      // ClO2 at Cl+3/O+2/O+2 -- and stayed '7e' under ?x=C and ?zx=2, where the construction is
+      // C+2/O+2/O+2 = 6.  That nearly caused a valid CO2 run to be thrown away as contaminated.
+      // The independent check is V_KK, which needs no label: C+2 with two O+2 at R=1.7952 au gives
+      // (4/R)*2 + 4/(2R) = 5.5705 against the 5.5700 reported, so the kernels were right all along.
+      // 'radical' is likewise only meaningful for an ODD count, so only show it for one.
+      + (function () {
+          var f = forceNow();
+          // f_r > 0 pushes the bond LONGER, f_r < 0 pulls it SHORTER, 0 is equilibrium.
+          return f ? '  f_r=' + f.tot.toFixed(5)
+                     + ' (el ' + f.el.toFixed(5) + ' + nuc ' + f.nu.toFixed(5) + ')'
+                     + (f.tot > 0 ? ' ->LONGER' : ' ->SHORTER')
+                   : '';
+        })()
+      + '  | ' + nElec + 'e' + (nElec % 2 ? ' ' + radical : '')
+      + ' n=' + N + ' rc=' + rcCl + '/' + rcO;
     out.textContent = txt;
     document.title = X.toUpperCase() + 'O2 ' + occ + ' ' + txt;
     try { localStorage.setItem('clo2_live', txt); } catch (e) {}

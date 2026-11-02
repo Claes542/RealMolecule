@@ -234,6 +234,25 @@ function draw() {
   fill(255);
   text("V_ne = " + Vne.toFixed(4) + "   R = " + _R.toFixed(3) + " au", 10, 445);
   text("(ref: E(R=1.4)=-1.17 Ha)", 250, 360);
+
+  // ---- TITLE READOUT.  Everything above goes to the CANVAS ONLY, which an AppleScript driver
+  // cannot read -- it sees the DOM and localStorage, never canvas pixels or page globals.  So this
+  // page could never be scanned by a script, which is why its results have never been tabulated
+  // against mol_fast or the axisymmetric solver.  Also stamps a convergence flag so a harness
+  // knows when to stop, and reports the REALISED R = D*h, D being an integer cell count, so every
+  // point is automatically commensurate (the rule in tools/x2_R_sweep.py).
+  if (typeof window._p5prevE === 'undefined') { window._p5prevE = null; window._p5hold = 0; }
+  var _dE = (window._p5prevE === null) ? NaN : Math.abs(E - window._p5prevE);
+  if (isFinite(_dE) && _dE < 1e-5) { window._p5hold++; } else { window._p5hold = 0; }
+  window._p5prevE = E;
+  document.title = 'H2P5 step=' + t
+    + ' R=' + actualR.toFixed(4) + 'au D=' + D + 'cells'
+    + ' E=' + E.toFixed(6)
+    + (window._p5hold >= 5 ? ' CONV' : '')
+    + ' dE=' + (isFinite(_dE) ? _dE.toExponential(1) : 'n/a')
+    + ' [T=' + Ek.toFixed(4) + ' Vee+VeK=' + Ep.toFixed(4) + ' VKK=' + window._V_KK.toFixed(4) + ']'
+    + ' Vee=' + Vee.toFixed(4) + ' exact=' + (1/_R).toFixed(4)
+    + ' | N=' + N + ' box=' + BOXAU + ' h=' + h.toFixed(4) + ' ORIGINAL-P5';
 }
 </script>
 </body>
