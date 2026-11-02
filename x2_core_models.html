@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<title>The two-centre test — where the pseudo-atom core model works, and where it stops</title>
+<style>
+ body{margin:0;background:#0a0e12;color:#dde3e8;font:15px/1.65 -apple-system,Segoe UI,Helvetica,Arial,sans-serif}
+ .wrap{max-width:980px;margin:0 auto;padding:36px 22px 90px}
+ h1{color:#80d8ff;font-size:27px;line-height:1.25;margin:0 0 4px}
+ h2{color:#80d8ff;font-size:19px;margin:34px 0 8px;border-bottom:1px solid #1d2a33;padding-bottom:5px}
+ h3{color:#9fd8a0;font-size:16px;margin:22px 0 6px}
+ .sub{color:#8a98a3;font-style:italic;margin:0 0 20px}
+ table{border-collapse:collapse;margin:12px 0;font-size:13.5px;width:100%}
+ th,td{border:1px solid #243039;padding:5px 9px;text-align:right}
+ th{background:#111a21;color:#80d8ff;font-weight:600}
+ td:first-child,th:first-child{text-align:left}
+ .ok{color:#66bb6a}.bad{color:#ef5350}.warn{color:#ffca28}
+ code{background:#121a20;padding:1px 5px;border-radius:3px;font-size:13px;color:#a5d6a7}
+ .box{background:#101820;border-left:3px solid #80d8ff;padding:11px 15px;margin:16px 0;border-radius:0 5px 5px 0}
+ .caveat{border-left-color:#ef5350}
+ .scroll{overflow-x:auto}
+ ul{padding-left:22px}
+ .foot{color:#7b8891;font-size:13px;margin-top:40px;border-top:1px solid #1d2a33;padding-top:14px}
+</style></head><body><div class="wrap">
+
+<h1>The two-centre test</h1>
+<p class="sub">Where the pseudo-atom core model works, and where it stops — measured on X<sub>2</sub></p>
+
+<p>RealQM replaces an atom's filled core by a <b>pseudo-kernel</b>: a reduced charge Z<sub>x</sub> carrying
+only the bonding valence, with the core represented by one number, r<sub>c</sub>. Everything downstream —
+molecules, crystals, proteins — rests on that substitution. This page reports what the substitution actually
+delivers, measured on the one class where the model produces a <i>computed</i> bond length.</p>
+
+<div class="box">
+<b>The result in one line.</b> The pseudo-atom works in a <b>shallow, monovalent corner</b> — alkali
+dimers, bonds to a few percent — and fails in <b>three independent ways</b> outside it. No choice of
+r<sub>c</sub> repairs this, because the bond error <i>changes sign</i> with core depth.
+</div>
+
+<h2>Why X<sub>2</sub></h2>
+<p>Diatomics are the only systems here with a computed geometry: one scan coordinate, an interior minimum
+that can be bracketed, and E(X) available on the same mesh so the discretisation cancels in
+E<sub>bind</sub> = 2E(X) − E(X<sub>2</sub>). Three-centre systems fail separately and for reasons not yet
+understood — H<sub>3</sub> linear, O<sub>3</sub>, ClO<sub>2</sub> and CO<sub>2</sub> all descend
+monotonically through their experimental bond, across Z = 1…4, with and without a core, odd and
+closed-shell. Water's angle survives only because its bond is supplied as an input. So X<sub>2</sub> is
+where the core model can be tested, and it is where every statement below was measured.</p>
+
+<h2>Three core models, and what r<sub>c</sub> actually is</h2>
+<table><tr><th>model</th><th>construction</th></tr>
+<tr><td>hard depletion</td><td>density ≡ 0 for r &lt; R, free (Neumann) surface at R</td></tr>
+<tr><td>clamp</td><td>V = −Z/max(r, r<sub>c</sub>) — a plateau; density admitted inside</td></tr>
+<tr><td>empty core</td><td>V = 0 inside r<sub>c</sub></td></tr>
+</table>
+
+<p><b>r<sub>c</sub> is not a radius.</b> One knob sets a plateau whose <i>depth</i> is Z<sub>x</sub>/r<sub>c</sub>,
+and the ionisation energy pins the depth; the extent then merely follows as Z<sub>x</sub>/depth. Carbon's
+r<sub>c</sub> is twice oxygen's because its kernel charge is twice as large, not because its core is bigger.
+Nor is it an element constant — it is a constant of <i>(element, bonding reading)</i>: O at +2 and O at +3
+are different pseudo-atoms with different radii. And no conversion carries between the models: the
+hard/clamp ratio runs 0.66 at Z<sub>x</sub> = 1, 0.70 at 2, 0.78–0.81 at 3, 0.88 at 4.</p>
+
+<h2>The calibration</h2>
+<p>r<sub>c</sub> is fixed per element by requiring the pseudo-atom to reproduce that element's
+<b>measured first ionisation energy</b>, IE₁ = E(Z<sub>x</sub>−1) − E(Z<sub>x</sub>), computed in the same
+construction on the same mesh so the discretisation largely cancels, then bisected on r<sub>c</sub>.
+Z<sub>x</sub> electrons share one spherical density, pairs counted n(n−1)/2 by the i ≠ j rule — no (Z−1)/Z
+factor and no kinetic fudge. The radial code verifies E(H) = −0.49999583 against −0.5 and the hydrogenic
+Hartree integral 0.62500417 against 5Z/8, both to 4.2e−06; radii are converged to 5.7e−06 and agree with an
+independent 2D axisymmetric fit to ≤0.2%.</p>
+
+<p>The measured IE is the model's <b>one empirical input</b>. That is the cost: the atom is no longer a
+prediction, so only bonds and binding remain as tests.</p>
+
+<h2>1. The shallow corner — where it works</h2>
+<p>Alkali dimers, each r<sub>c</sub> fitted to its own element's IE, same mesh for atom and dimer.
+Plateau depth Z<sub>x</sub>/r<sub>c</sub> = 0.21–0.33 Ha throughout.</p>
+<div class="scroll"><table>
+<tr><th>model</th><th>mean |bond| err</th><th>binding err (Li, Na, K, Rb, Cs)</th></tr>
+<tr><td><b>clamp</b></td><td class="ok"><b>4.0%</b></td><td class="ok"><b>−3, +22, +10, +11, +1%</b></td></tr>
+<tr><td>hard depletion</td><td>8.3%</td><td class="bad">+43, +87, +98, +102, +98%</td></tr>
+<tr><td>empty core</td><td>11.4%</td><td class="bad">−47, −52, −53, −64, −68%</td></tr>
+</table></div>
+<p>This is the result the method is usually quoted on, and it is real: swapping only the core model, at the
+same calibration, takes binding from +86% to +10% and bonds from 8.3% to 4.0%. The penetration of valence
+into the clamped core (Cs 51%, Cl 26%, O 16%) is a feature of the working model, not a defect.</p>
+
+<h2>2. Depth — where it inverts</h2>
+<p>The alkali plateaus are all shallow. To vary <i>depth alone</i> the halogens are the right probe: they are
+singly bonded, so Z<sub>x</sub> = 1 is the <b>complete</b> bonding valence with nothing truncated, yet the
+plateau is deep because the atomic IE is large. Same monovalent code, same calibration, real molecules.</p>
+<div class="scroll"><table>
+<tr><th>system</th><th>1/r<sub>c</sub> (Ha)</th><th>cells per r<sub>c</sub></th><th>D<sub>min</sub></th><th>R<sub>e</sub> exp</th><th>bond err</th><th>binding err</th></tr>
+<tr><td>K<sub>2</sub></td><td>0.24</td><td>24</td><td>7.525</td><td>7.379</td><td class="ok">+2.0%</td><td>+17.0%</td></tr>
+<tr><td>Na<sub>2</sub></td><td>0.31</td><td>19</td><td>6.125</td><td>5.818</td><td class="ok">+5.3%</td><td>+24.9%</td></tr>
+<tr><td>Li<sub>2</sub></td><td>0.33</td><td>17 → 35</td><td>5.688</td><td>5.051</td><td class="ok">+12.6%</td><td class="ok">−3.2%</td></tr>
+<tr><td>I<sub>2</sub></td><td>1.29</td><td>4.5 → 8.8</td><td>2.188</td><td>5.038</td><td class="bad">−56.6%</td><td class="bad">+166.7%</td></tr>
+<tr><td>Cl<sub>2</sub></td><td>4.19</td><td>1.6 → 2.7</td><td>1.487</td><td>3.756</td><td class="bad">−60.4%</td><td class="bad">+167.1%</td></tr>
+</table></div>
+
+<p>Three features make this a verdict rather than a bad run:</p>
+<ul>
+<li><b>Mesh-converged, and refinement moves every row <i>away</i> from experiment.</b> Halving h changes the
+bond by 1.5% (Li<sub>2</sub>), 3.8% (I<sub>2</sub>), 5.6% (Cl<sub>2</sub>) and never toward the measurement.</li>
+<li><b>The bond error changes sign</b> — too long when shallow, far too short when deep. No single
+prescription for r<sub>c</sub> can be right at both ends, so this is not a calibration miss.</li>
+<li><b>The binding error saturates.</b> I<sub>2</sub> +166.7% and Cl<sub>2</sub> +167.1% agree to 0.4 points
+across a 3.3× difference in depth: a deep clamped plateau over-binds by ≈2.7× regardless of how deep.</li>
+</ul>
+
+<p><b>Mechanism.</b> The clamp admits density inside r<sub>c</sub>, so two <i>equivalent</i> domains facing
+each other across the midplane meet no Pauli repulsion between their cores. Nothing resists approach but
+V<sub>KK</sub> = Z²/D, which arrests the contraction only at ≈45% of the true bond. Shallow plateaus are too
+weak for this to dominate; deep ones are not. The same mechanism is on record for RealQM crystals, which all
+contract.</p>
+
+<h2>3. The second row — where both models fail</h2>
+<p>Z<sub>x</sub> &gt; 1, IE-calibrated radii, one axisymmetric code, commensurate scans.</p>
+<div class="scroll"><table>
+<tr><th>system</th><th>model</th><th>r<sub>c</sub> / R</th><th>D<sub>min</sub></th><th>R<sub>e</sub> exp</th><th>bond</th><th>E<sub>b</sub></th><th>D<sub>e</sub> exp</th><th>binding</th></tr>
+<tr><td>O<sub>2</sub></td><td>hard</td><td>0.54711</td><td>1.925</td><td>2.282</td><td class="bad">−15.6%</td><td>16.44 eV</td><td>5.12</td><td class="bad">+221%</td></tr>
+<tr><td>O<sub>2</sub></td><td>clamp</td><td>0.78683</td><td>1.925</td><td>2.282</td><td class="bad">−15.6%</td><td>12.14 eV</td><td>5.12</td><td class="bad">+137%</td></tr>
+<tr><td>N<sub>2</sub></td><td>hard</td><td>0.72670</td><td colspan="2">no bond — repulsive to 10.7 a₀</td><td class="bad">—</td><td>unbound</td><td>9.76</td><td class="bad">—</td></tr>
+<tr><td>N<sub>2</sub></td><td>clamp</td><td>0.93741</td><td>4.025</td><td>2.074</td><td class="bad">+94.1%</td><td>4.86 eV</td><td>9.76</td><td class="bad">−50%</td></tr>
+<tr><td>C<sub>2</sub></td><td>hard</td><td>1.33246</td><td colspan="2">geometrically impossible</td><td class="bad">—</td><td>—</td><td>6.21</td><td class="bad">—</td></tr>
+<tr><td>C<sub>2</sub></td><td>clamp</td><td>1.50648</td><td>6.825*</td><td>2.348</td><td class="bad">+190.7%*</td><td>unbound</td><td>6.21</td><td class="bad">—</td></tr>
+</table></div>
+<p style="font-size:13px;color:#8a98a3">* minimum at a scan edge — not an interior minimum, and not to be read as a bond.</p>
+
+<p>O<sub>2</sub> lands on the <i>same</i> 15.6%-short bond in both models and over-binds by 2.4–3.2×.
+N<sub>2</sub> is either unbound entirely or bonded at nearly twice the right length. C<sub>2</sub> cannot be
+set up at all in hard depletion, and is unbound in the clamp.</p>
+
+<h2>Two structural results</h2>
+
+<h3>A ceiling of one Rydberg</h3>
+<p>A monovalent clamped kernel cannot reproduce an ionisation energy above <b>13.6057 eV</b> — its
+r<sub>c</sub> → 0 limit is hydrogen. Fluorine (17.42 eV) has <b>no solution at any r<sub>c</sub></b>; neither
+would nitrogen (14.53) or oxygen (13.618, over by 0.012). So <b>Z<sub>x</sub> &gt; 1 for the second row is
+forced by the construction</b>, not a house convention — and F<sub>2</sub> cannot be built monovalently at
+all.</p>
+
+<h3>Calibrated cores do not fit organic bonds</h3>
+<p>Hard depletion forbids core interpenetration, so a bond requires R<sub>A</sub> + R<sub>B</sub> &lt; d.
+At the IE-calibrated radii:</p>
+<div class="scroll"><table>
+<tr><th>bond</th><th>d (Å)</th><th>d (a₀)</th><th>ΣR calibrated</th><th></th></tr>
+<tr><td>C–C single</td><td>1.54</td><td>2.910</td><td>2.665</td><td class="warn">fits, margin 0.245 ≈ 2h</td></tr>
+<tr><td>C=C aromatic</td><td>1.39</td><td>2.627</td><td>2.665</td><td class="bad">impossible</td></tr>
+<tr><td>C=C alkene</td><td>1.34</td><td>2.532</td><td>2.665</td><td class="bad">impossible</td></tr>
+<tr><td>C–N peptide</td><td>1.33</td><td>2.513</td><td>2.059</td><td class="ok">fits</td></tr>
+<tr><td>C=O carbonyl</td><td>1.23</td><td>2.324</td><td>1.880</td><td class="ok">fits</td></tr>
+</table></div>
+<p><b>Aromatic and double-bonded carbon cannot be represented at all</b> — Phe, Tyr, Trp, His, every C=C.
+This is arithmetic, prior to any energy calculation. It also shows what the calibration is: the IE sets a
+<i>depth</i> that scales with Z<sub>x</sub>, and hard depletion then reads that number as an <i>excluded
+volume</i>. <b>The IE calibration and hard depletion are mutually incompatible for carbon.</b></p>
+
+<div class="box caveat">
+<b>Consequence for protein-scale work.</b> The protein pages run C 0.3, N 0.3, O 0.4–0.8 — four-fold smaller
+than the calibrated radii, and calibrated to nothing. They work <i>because</i> of that: the calibrated values
+would make the bonds geometrically impossible. Recalibrating the protein stack is therefore not an
+improvement to be applied on principle, and the existing results stand on their own validation against
+PySCF, not on the core model's provenance.
+</div>
+
+<h2>What this means</h2>
+<p>The honest scope of the pseudo-atom route, measured rather than asserted:</p>
+<ul>
+<li><b>Works:</b> two-centre bond lengths in the shallow monovalent regime, to a few percent, with the bond
+<i>computed</i> — only the IE was consumed.</li>
+<li><b>Works:</b> same-composition energy differences at fixed geometry, where errors cancel. This is the
+mode the protein and active-site work actually operates in.</li>
+<li><b>Fails:</b> any core deeper than ≈1.3 Ha, in both models and in different directions.</li>
+<li><b>Fails:</b> carbon, on geometry alone in hard depletion.</li>
+<li><b>Fails:</b> geometry beyond two centres, independently of the core model.</li>
+<li><b>Not addressed here:</b> absolute energies, dispersion-bound systems, proton affinity.</li>
+</ul>
+<p>The open problem is sharply stated: <b>a core model for the second row</b>. Hard depletion treats
+r<sub>c</sub> as excluded volume and breaks on geometry; the clamp treats it as a penetrable plateau and
+over-binds by ≈2.7× because equivalent cores feel no exclusion. Neither interpretation of one number can be
+right for both, which suggests the single parameter is the problem rather than its value.</p>
+
+<h2>Method notes</h2>
+<ul>
+<li><b>Commensurate separations only.</b> Kernels must land on cell centres; otherwise egg-crate noise is the
+size of the binding itself (0.05 Ha in a linear-O<sub>3</sub> scan; a staircase of ~0.07 Ha/bohr where kernel
+indices are truncated).</li>
+<li><b>An edge flag is a withdrawal.</b> A minimum at a scan boundary is not a bond. Three halogen rows and
+the C<sub>2</sub> row were withdrawn on this ground.</li>
+<li><b>Cells per r<sub>c</sub>.</b> An unresolved plateau announces itself as disagreement between codes — Cl
+at 1.6 cells had two codes 20% apart; at 2.7 cells, 3.5%; Li at 17 cells, 0.04%.</li>
+<li><b>Mesh and box ladders before any number.</b> D<sub>min</sub> proved box-insensitive (L 14 → 17.5
+unchanged); E<sub>bind</sub> carries ≈2.4%.</li>
+<li><b>Same mesh for atom and dimer</b>, so the difference cancels discretisation — the rule that differences
+within one composition cancel their errors.</li>
+</ul>
+
+<h2>Code</h2>
+<p>All offline, no basis set, no fitted parameter beyond the IE. Each occupancy generalisation was validated
+against its monovalent parent before use.</p>
+<ul>
+<li><code>tools/rc_calibrate.py</code> — radial FEM, bisects r<sub>c</sub> on the measured IE, both core models</li>
+<li><code>tools/x2_clamp.py</code>, <code>tools/x2_R_sweep.py</code>, <code>tools/x2_emptycore.py</code> — monovalent dimers, the three models; agree to 8.9e−16 at r<sub>c</sub> = 0</li>
+<li><code>tools/x2_clamp_occ.py</code>, <code>tools/x2_hard_occ.py</code> — n electrons per domain, reaching Z<sub>x</sub> = 2, 3, 4; n = 1 reproduces the parents to ≤2.3e−14 and ≤6.6e−15</li>
+<li><code>tools/x2_depth_ladder.py</code>, <code>tools/x2_contract_check.py</code> — the depth ladder and its mesh convergence</li>
+<li><code>tools/x2_rc_sweep_both.py</code> — r<sub>c</sub> swept continuously in both sharp models on one grid</li>
+</ul>
+
+<p class="foot">Measured values (IE, R<sub>e</sub>, D<sub>e</sub>) are literature references used as targets and
+are flagged unverified in the source files; they are the one external input. Energies are in Hartree,
+distances in bohr unless stated.</p>
+
+</div></body></html>

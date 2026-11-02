@@ -234,7 +234,9 @@ footer a { color: #4fc3f7; text-decoration: none; }
     <a href="#news-atoms-pt" style="color:#90caf9"><b>The periodic table from two packings (revised, to IJQC)</b></a> ·
     <a href="#news-validation" style="color:#80d8ff">What validation means &mdash; periodic table + protein folding</a> ·
     <a href="#news-feasibility" style="color:#80d8ff">RealQM vs DFT &mdash; feasibility across problem classes</a> ·
-    <a href="#news-water2" style="color:#80d8ff">Two structures of liquid water &mdash; what drives LDL / HDL</a><br>
+    <a href="#news-x2cores" style="color:#80d8ff">The two-centre test &mdash; where the pseudo-atom core model works, and where it stops</a> &middot;
+    <a href="#news-water2" style="color:#80d8ff">Two structures of liquid water &mdash; what drives LDL / HDL</a> &middot;
+    <a href="#news-waterviscosity" style="color:#80d8ff">Viscosity of water from shear &mdash; stiff-but-fast, and the thermostat floor</a><br>
 
     <b style="color:#ff7043">Nucleus</b> ·
     <a href="#nucleus-coulomb" style="color:#d0b8a8"><b>Nucleus with Coulomb alone</b> (RealNucleus)</a> ·
@@ -4906,6 +4908,56 @@ P_j += dt&middot;(&Delta;P_j + 2&pi;&middot;u_{1&minus;j}&sup2;)              <s
       </div>
       <span class="tag tag-small">feasibility vs accuracy &middot; investment</span>
     </div>
+    <div id="news-x2cores" class="card" style="border-color:#ffab40;background:#16100a;grid-column:1/-1;padding:18px">
+      <h3 style="color:#ffab40">Validation &middot; The two-centre test &mdash; where the pseudo-atom core model works, and where it stops</h3>
+      <div class="desc" style="margin-top:6px">
+        RealQM replaces a filled core by a <b>pseudo-kernel</b>: reduced charge Z<sub>x</sub> plus one number,
+        r<sub>c</sub>, fitted to the element's <b>measured ionisation energy</b>. Molecules, crystals and
+        proteins all rest on that substitution. X<sub>2</sub> is the only class that tests it, being the only
+        one with a <i>computed</i> bond length. <b>Verdict: it works in a shallow, monovalent corner and fails
+        in three independent ways outside it &mdash; and no value of r<sub>c</sub> repairs that, because the
+        bond error changes sign with core depth.</b><br>
+        <b>Where it works.</b> Alkali dimers (depth Z<sub>x</sub>/r<sub>c</sub> = 0.21&ndash;0.33&nbsp;Ha):
+        clamp bonds <b>4.0%</b> mean and binding <b>&minus;3..+22%</b>, against hard depletion 8.3%/+86% and
+        the empty core 11.4%/&minus;57%. Swapping only the core model, at one calibration, closes the
+        factor-two binding error.<br>
+        <b>Where it inverts.</b> The halogens vary <i>depth alone</i> &mdash; singly bonded, so Z<sub>x</sub>=1
+        is the complete bonding valence, yet deep because the IE is large. Bond error runs
+        K<sub>2</sub> +2.0%, Na<sub>2</sub> +5.3%, Li<sub>2</sub> +12.6% &rarr; <b>I<sub>2</sub>
+        &minus;56.6%, Cl<sub>2</sub> &minus;60.4%</b>, with binding <b>saturating at +167%</b> (I<sub>2</sub>
+        and Cl<sub>2</sub> agree to 0.4 points across 3.3&times; in depth). Mesh refinement moves every row
+        <i>away</i> from experiment. Mechanism: the clamp admits density inside r<sub>c</sub>, so two
+        <i>equivalent</i> cores across the midplane feel no Pauli repulsion &mdash; only Z&sup2;/D arrests the
+        contraction, at ~45% of the bond. The same mechanism makes every RealQM crystal contract.<br>
+        <b>The second row &mdash; both models fail.</b> O<sub>2</sub> gives the <i>same</i> 15.6%-short bond in
+        both and over-binds 2.4&ndash;3.2&times;; N<sub>2</sub> is <b>purely repulsive</b> in hard depletion
+        and bonded at <b>+94%</b> in the clamp; C<sub>2</sub> is <b>geometrically impossible</b> in hard
+        depletion and unbound in the clamp.<br>
+        <b>Two structural results.</b> A monovalent clamped kernel cannot reproduce an IE above
+        <b>13.6057&nbsp;eV</b> (one Rydberg, its r<sub>c</sub>&rarr;0 limit) &mdash; fluorine has no solution at
+        any r<sub>c</sub>, so <b>Z<sub>x</sub>&gt;1 for the second row is forced, not conventional</b>. And
+        calibrated hard-depletion cores <b>do not fit organic bonds</b>: &Sigma;R = 2.665&nbsp;a&#8320; against
+        an aromatic C=C of 2.627, so <b>aromatic and double-bonded carbon cannot be represented at all</b> &mdash;
+        arithmetic, before any energy. The IE sets a <i>depth</i> scaling with Z<sub>x</sub>; hard depletion
+        then reads that number as an <i>excluded volume</i>. The two are incompatible for carbon.<br>
+        <b>Why r<sub>c</sub> is not a radius.</b> One knob sets a plateau of depth Z<sub>x</sub>/r<sub>c</sub>
+        and the IE pins the depth; extent merely follows. Carbon's radius is twice oxygen's because its kernel
+        charge is. It is a constant of <i>(element, bonding reading)</i>, not of the element, and no conversion
+        carries between core models.<br>
+        <b>Bearing on protein-scale work.</b> Those pages run C&nbsp;0.3, N&nbsp;0.3 &mdash; four-fold smaller
+        than calibrated, and calibrated to nothing. They work <i>because</i> of that; the calibrated radii
+        would make the bonds impossible. So recalibration is not an improvement to apply on principle, and the
+        existing results stand on their PySCF validation.<br>
+        <b>Open problem, sharply stated:</b> a core model for the second row. Hard depletion treats
+        r<sub>c</sub> as excluded volume and breaks on geometry; the clamp treats it as a penetrable plateau
+        and over-binds &asymp;2.7&times;. Neither reading of one number can be right for both &mdash; which
+        suggests the single parameter is the problem, not its value.
+      </div>
+      <div style="margin-top:8px">
+        <a href="x2_core_models.html" style="color:#ffab40">&#128196; Full page &mdash; the two-centre test, tables and method notes</a>
+      </div>
+      <span class="tag tag-small">parameter-free except the IE &middot; scope measured, not asserted</span>
+    </div>
     <div id="news-water2" class="card" style="border-color:#80d8ff;background:#0a1014;grid-column:1/-1;padding:18px">
       <h3 style="color:#80d8ff">Validation &middot; Two structures of liquid water &mdash; what RealQM can and can't show, and why</h3>
       <div class="desc" style="margin-top:6px">
@@ -4923,17 +4975,9 @@ P_j += dt&middot;(&Delta;P_j + 2&pi;&middot;u_{1&minus;j}&sup2;)              <s
         split) <b>dissociates the H-bond</b> &mdash; fragmenting the coherent acceptor cloud breaks binding. So the
         parameter-free verdict on the <i>origin</i> question: <b>spontaneous LDL needs directional lone-pair
         <i>acceptors</i>; donors alone are not enough &mdash; and HDL is the default isotropic-packing structure.</b>
-        <b>Transport extension:</b> a shear (NEMD) measurement reads viscosity from the velocity profile
-        (&eta; = &gamma;/(dv<sub>x</sub>/dy)); the fluid part <b>thins on heating (correct sign) but too
-        gently</b>, the weak-H-bond signature again. And by Maxwell &eta;≈G<sub>&infin;</sub>&tau;, the
-        <b>same isotropy that denies LDL also gives low viscosity</b> (a soft acceptor ⇒ facile H-bond
-        switching) &mdash; no-LDL and low-viscosity as <b>dual consequences of one property</b>. Model units,
-        sign/trend only (a clean G<sub>&infin;</sub>/&tau; split needs equilibrium Green&ndash;Kubo).
-        <b>Regime, not precise values:</b> viscosity and compressibility both land in the right regime
-        parameter-free &mdash; water <b>runny + stiff</b> (soft acceptor → low η; hard electron exclusion →
-        low compressibility). Macroscopically water is near-inviscid and near-incompressible, so large-scale
-        flow depends on these being <b>small</b> more than on exact values &mdash; which the model captures,
-        even where the precise coefficients stay elusive.
+        <b>Transport follows from the same isotropy</b> &mdash; the soft acceptor that denies LDL also gives
+        water its low viscosity: see
+        <a href="#news-waterviscosity" style="color:#26c6da">Viscosity of water from shear</a>.
       </div>
       <div style="margin-top:8px">
         <a href="water_two_structures.html" style="color:#80d8ff">&#128196; Full page &mdash; the two structures, and what carves them</a> &middot;
@@ -4944,6 +4988,60 @@ P_j += dt&middot;(&Delta;P_j + 2&pi;&middot;u_{1&minus;j}&sup2;)              <s
         <a href="water_viscosity_shear.html" style="color:#66bb6a">&#9654; shear viscosity</a>
       </div>
       <span class="tag tag-small">parameter-free diagnostic &middot; isotropy = binding = no spontaneous LDL</span>
+    </div>
+    <div id="news-waterviscosity" class="card" style="border-color:#26c6da;background:#08161a;grid-column:1/-1;padding:18px">
+      <h3 style="color:#26c6da">Validation &middot; Viscosity of water from shear &mdash; stiff-but-fast, and the thermostat floor</h3>
+      <div class="desc" style="margin-top:6px">
+        A transport-level test of the same parameter-free water, and the one that reaches beyond structure:
+        viscous flow in water proceeds by hydrogen bonds <b>breaking</b> with old neighbours and
+        <b>re-forming</b> with new ones as layers slide, so the activation energy for flow should sit near
+        the hydrogen-bond energy. That makes &eta; a direct probe of the bond, not of the packing.<br>
+        <b>The measurement.</b> Reduced Z=2 water (the version that H-bonds), <b>inertial</b> dynamics with
+        real momentum rather than overdamped Brownian, confined by a soft wall with a Langevin thermostat.
+        A body force F<sub>x</sub> = m&gamma;(y&minus;y<sub>c</sub>) drives a Couette-like flow; in steady
+        state the input power equals the viscous dissipation, P = &eta;&gamma;<sup>2</sup>V, so at fixed
+        &gamma; and V the dissipation rate is &prop; &eta;. Viscosity is read off the velocity profile as
+        &eta; = &gamma;/(dv<sub>x</sub>/dy), a <b>parabolic</b> profile being the signature of viscous
+        momentum transport. Grid 200, box 30&nbsp;au, &gamma; = 3&times;10<sup>&minus;4</sup>, T = 1700
+        model units (this water melts near 1300).<br>
+        <b>The pitfall, and how it was caught.</b> Under a strong <i>local</i> thermostat every molecule
+        reaches a terminal velocity set by the thermostat friction &Gamma;, not by the fluid &mdash; so the
+        naive number is a <b>thermostat floor</b>, not a viscosity. It was identified by its scaling:
+        weakening the thermostat fourfold (&gamma;<sub>L</sub> 0.02&nbsp;&rarr;&nbsp;0.005) moved the floor
+        in proportion while the temperature-dependent part stood out as genuine fluid response, widening the
+        spread across temperature from &asymp;1.7 to 2.4.<br>
+        <b>Result.</b> Fluid viscosity &asymp; 7&times;10<sup>&minus;3</sup> model units at the cold liquid
+        end, thinning toward the floor on heating: the <b>correct sign</b> &mdash; water thins on heating
+        &mdash; but a <b>shallow slope</b>, i.e. too small an apparent activation energy, the weak-H-bond
+        signature once again.<br>
+        <b>Why water's viscosity is small, and the link to LDL.</b> Maxwell's &eta; &asymp;
+        G<sub>&infin;</sub>&tau; separates two ways a viscosity can be small &mdash; a <i>soft</i> network
+        (small G<sub>&infin;</sub>) or <i>fast</i> structural relaxation (small &tau;). Water is
+        <b>stiff-but-fast</b>, not soft. So the angularly soft acceptor both denies spontaneous LDL
+        <i>and</i> enables facile partner-switching: <b>no-LDL and low viscosity are dual consequences of
+        one property</b>. Water ends up <b>runny and stiff at once</b> &mdash; soft acceptor &rarr; low
+        &eta;; hard, non-overlapping electron domains &rarr; low compressibility &mdash; both from Coulomb
+        and electron exclusion alone.<br>
+        <b>What did not work, stated plainly.</b> Splitting G<sub>&infin;</sub> from &tau; under
+        <i>driven</i> shear proved unreliable: weakening the thermostat enough to expose the fluid response
+        let the shear pump energy in faster than it was removed and the run away in kinetic temperature
+        &mdash; the classic non-equilibrium-MD thermostat dilemma. The static route failed too: a bulk
+        modulus K = &rho;&nbsp;dP/d&rho; from the virial was dominated by <b>intramolecular</b> bond and
+        exclusion stress, which contributes a pressure &prop; &rho; whose derivative overwhelms K, so the
+        intermolecular liquid modulus could not be separated from per-atom total forces. Clean values need
+        equilibrium Green&ndash;Kubo.<br>
+        <b>Caveats.</b> Model time &mdash; no calibrated Pa&middot;s; under-coordinated weak-H-bond water;
+        a confined droplet with a body force and <b>no periodic (Lees&ndash;Edwards) boundaries</b>. This is
+        a <b>qualitative trend probe</b>: the sign, the relative thinning and the thermostat decomposition
+        carry meaning; the absolute coefficient does not.
+      </div>
+      <div style="margin-top:8px">
+        <a href="water_viscosity_shear.html" style="color:#66bb6a">&#9654; shear-viscosity probe</a> &middot;
+        <a href="water_two_structures.html" style="color:#26c6da">&#128196; Full page &mdash; water article</a> &middot;
+        <a href="water_two_structures.pdf" style="color:#90caf9">&#128196; PDF article</a> &middot;
+        <a href="#news-water2" style="color:#26c6da">LDL / HDL card</a>
+      </div>
+      <span class="tag tag-water">transport</span><span class="tag tag-small">correct sign, shallow slope &middot; model units only</span>
     </div>
     <div id="news-alpha" class="card" style="border-color:#ffb74d;background:#12100a;grid-column:1/-1;padding:18px">
       <h3 style="color:#ffb74d">Cosmology &middot; The Fine-Structure Constant as a Size Ratio</h3>
