@@ -1795,6 +1795,98 @@ fn main(@builtin(global_invocation_id) g: vec3<u32>) {
 const USE_GRADP_FORCE = window.USER_GRADP_FORCE !== undefined ? window.USER_GRADP_FORCE : true;  // default on
 const FORCE_RADIUS = USE_GRADP_FORCE ? Math.max(5, Math.round(3.0 / hGrid)) : 0;  // 3 au local sphere
 
+// VOLUME-INTEGRAL NUCLEAR FORCE -- the analytic derivative of the discretised V_eK.
+//
+// WHY THE POINT GRADIENT IS WRONG.  Differencing grad V at the nucleus samples the WORST-resolved
+// point in the problem: truncation error is O(h^2 grad^3 V) and grad^3 V is largest exactly at the
+// cusp.  Averaging over a sphere of radius a does not fix it -- <grad V> = grad V(0) +
+// (a^2/10) grad(lap V) and lap V = -4 pi rho by Poisson, so the bias is O(a^2 grad rho) with
+// grad rho largest at the nucleus too.  Measured on mol_fast's identical scheme at FIXED H2
+// geometry, varying only that radius: -0.050 / -0.032 / -0.006 / +0.027 for a = 0.24..0.96 a0.
+// No plateau; the SIGN is set by the smoothing radius.
+//
+// AND THE PHYSICS IS ELSEWHERE.  The force comes from the ASYMMETRY of the density -- charge
+// displaced into the bond.  Near the nucleus the density is nearly spherical and a spherical
+// distribution exerts zero net force, so the badly-resolved cusp contributes almost nothing to
+// the true answer while the well-resolved bonding region contributes nearly all of it.  A point
+// gradient weights these exactly the wrong way round.
+//
+// THE VOLUME FORM.  V_eK = -sum_a Z_a INT rho / r_eff with r_eff = max(r, R_SING) for a bare
+// kernel and max(r, rc) for a pseudo-kernel.  Differentiating,
+//
+//     F_a = Z_a INT rho(r) (r - R_a) / r^3 dV ,   over r > r_clamp ONLY
+//
+// Inside the clamp the potential is FLAT, so those cells contribute exactly zero -- not a softened
+// value, zero.  (Their density is zero anyway: isInsideRc / isInsideAnalytical exclude them.)
+// Spread over the whole grid, errors average down instead of concentrating, and because this
+// differentiates the SAME discretised energy the solver evaluates, it agrees with -dE/dR by
+// construction up to the moving-partition (Pulay) term.
+// Positions are used FRACTIONALLY; the gradP path rounds them to a cell, displacing the
+// evaluation point by up to half a cell in the steepest part of the field.
+// One workgroup per atom, striding the interior, shared-memory reduction.
+const volForce_WGSL = `
+${paramStructWGSL}
+${atomStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> U: array<f32>;
+@group(0) @binding(2) var<storage, read_write> forceSums: array<f32>;
+@group(0) @binding(3) var<storage, read> atoms: array<Atom>;
+
+var<workgroup> sx: array<f32, 256>;
+var<workgroup> sy: array<f32, 256>;
+var<workgroup> sz: array<f32, 256>;
+
+@compute @workgroup_size(256)
+fn main(@builtin(workgroup_id) wg: vec3<u32>, @builtin(local_invocation_id) l: vec3<u32>) {
+  let atom = wg.x;
+  let lid = l.x;
+  var ax: f32 = 0.0; var ay: f32 = 0.0; var az: f32 = 0.0;
+  let ZA = select(atoms[atom].Z, atoms[atom].Z_nuc, atoms[atom].Z <= 0.0);
+  if (ZA > 0.0) {
+    let rcA = atoms[atom].rc;
+    let rClamp = select(${R_SING}, rcA, rcA > 0.0);
+    let NM = p.NN - 1u;
+    let tot = NM * NM * NM;
+    for (var t: u32 = lid; t < tot; t += 256u) {
+      let kk = (t % NM) + 1u;
+      let jj = ((t / NM) % NM) + 1u;
+      let ii = (t / (NM * NM)) + 1u;
+      let id = ii * p.S2 + jj * p.S + kk;
+      let u = U[id];
+      let rho = u * u;
+      if (rho == 0.0) { continue; }
+      let dx = (f32(ii) - atoms[atom].posI) * p.h;
+      let dy = (f32(jj) - atoms[atom].posJ) * p.h;
+      let dz = (f32(kk) - atoms[atom].posK) * p.h;
+      let r2 = dx*dx + dy*dy + dz*dz;
+      let r = sqrt(r2);
+      if (r < rClamp) { continue; }   // potential is FLAT inside: contributes exactly zero
+      let g = rho / (r2 * r);
+      ax += g * dx; ay += g * dy; az += g * dz;
+    }
+  }
+  sx[lid] = ax; sy[lid] = ay; sz[lid] = az;
+  workgroupBarrier();
+  var stride: u32 = 128u;
+  loop {
+    if (stride == 0u) { break; }
+    if (lid < stride) {
+      sx[lid] += sx[lid + stride];
+      sy[lid] += sy[lid + stride];
+      sz[lid] += sz[lid + stride];
+    }
+    workgroupBarrier();
+    stride = stride / 2u;
+  }
+  if (lid == 0u) {
+    let c = ZA * p.h3;
+    forceSums[atom * 3u] = c * sx[0];
+    forceSums[atom * 3u + 1u] = c * sy[0];
+    forceSums[atom * 3u + 2u] = c * sz[0];
+  }
+}
+`;
+
 const gradPtotal_WGSL = USE_GRADP_FORCE ? `
 // Averaged gradient of total electron potential P in sphere around nucleus
 // F_A = 2 * Z_A * <∇P>_R — uses converged P from multigrid V-cycle
@@ -2370,6 +2462,10 @@ let computeRhoSelfBG = [], jacobiSelfBG = [], subtractPselfBG = [];
 let sicResidualBG, sicRestrictBG, sicProlongBG;
 // Nuclear dynamics GPU state
 let forceSumsBuf, forceSumsReadBuf;
+// USER_FORCE_VOLUME: use the volume-integral force instead of the point gradient. Default
+// OFF so every existing page keeps its current behaviour until the change is measured.
+const USE_VOLUME_FORCE = !!window.USER_FORCE_VOLUME;
+let volForcePL; const volForceBG = [];
 let gradPtotalPL, recomputeK_PL;
 let gradPtotalBG = [], recomputeK_BG;
 // LOBPCG state
@@ -3538,6 +3634,8 @@ async function initGPU() {
     gpuInitFinalPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: gpuInitFinalMod, entryPoint: 'main' } });
     // Nuclear dynamics pipelines
     gradPtotalPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: gradPtotalMod, entryPoint: 'main' } });
+    const volForceMod = await compileShader('volForce', volForce_WGSL);
+    volForcePL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: volForceMod, entryPoint: 'main' } });
     recomputeK_PL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: recomputeK_Mod, entryPoint: 'main' } });
     // LOBPCG pipelines
     applyH_PL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: applyH_Mod, entryPoint: 'main' } });
@@ -3852,6 +3950,13 @@ async function initGPU() {
       gradPtotalBG[c] = device.createBindGroup({ layout: gradPtotalPL.getBindGroupLayout(0), entries: [
         { binding: 0, resource: { buffer: paramsBuf } },
         { binding: 1, resource: { buffer: forceBuf } },
+        { binding: 2, resource: { buffer: forceSumsBuf } },
+        { binding: 3, resource: { buffer: atomBuf } },
+      ]});
+      // volume force reads the DENSITY (U), never the potential
+      volForceBG[c] = device.createBindGroup({ layout: volForcePL.getBindGroupLayout(0), entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: U_buf[c] } },
         { binding: 2, resource: { buffer: forceSumsBuf } },
         { binding: 3, resource: { buffer: atomBuf } },
       ]});
@@ -4213,8 +4318,8 @@ async function doSteps(n) {
     // Nuclear force computation at N_MOVE intervals — gradient of P directly
     if ((tStep + s + 1) % N_MOVE === 0) {
       cp = enc.beginComputePass();
-      cp.setPipeline(gradPtotalPL);
-      cp.setBindGroup(0, gradPtotalBG[cur]);
+      cp.setPipeline(USE_VOLUME_FORCE ? volForcePL : gradPtotalPL);
+      cp.setBindGroup(0, USE_VOLUME_FORCE ? volForceBG[cur] : gradPtotalBG[cur]);
       cp.dispatchWorkgroups(NELEC);
       cp.end();
       needForceReadback = true;
@@ -4633,7 +4738,7 @@ async function doSteps(n) {
   }
   E = E_T + E_eK + E_ee + E_KK;
   E_bind = E - E_atoms_sum;
-  window._E = E;
+  window._E = E; window._tStep = tStep;
   window._E_bind = E_bind;
   window._E_atoms_sum = E_atoms_sum;
   window._E_T = E_T;
@@ -5225,7 +5330,7 @@ async function doLOBPCGStep() {
   }
   E = E_T + E_eK + E_ee + E_KK;
   E_bind = E - E_atoms_sum;
-  window._E = E;
+  window._E = E; window._tStep = tStep;
   window._E_bind = E_bind;
   window._E_atoms_sum = E_atoms_sum;
   window._E_T = E_T;

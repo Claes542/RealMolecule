@@ -1,0 +1,434 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{authblk}
+\usepackage[margin=1in]{geometry}
+\usepackage[hidelinks]{hyperref}
+
+\title{RealQM Molecule Simulator:\\
+Small Molecules from H, C, N, O, Validated by Forces at Observed Geometries}
+
+\author[1]{Claes Johnson}
+\affil[1]{KTH Royal Institute of Technology, Stockholm, Sweden \\
+\texttt{claesjohnson@gmail.com}}
+\date{\today \\[0.4em]
+\small\textit{Mathematical formulation by the author; implementation and numerical} \\
+\small\textit{experiments developed with AI assistance (Claude, Anthropic).}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We describe a simulator for small molecules built from hydrogen, carbon, nitrogen and oxygen in
+RealQM, a parameter-free real-space model in which each electron is a unit-charge component on a
+non-overlapping spatial domain, and the validation protocol built into it. A model whose dynamics
+is defined by a force law should be validated on forces. We propose a
+protocol for this: evaluate the nuclear forces at a molecule's \emph{measured} geometry, where the
+true force vanishes by definition, so that every residual is model error read directly---without a
+reference calculation, without an energy scan, and without locating a minimum. One calculation per
+molecule replaces a scan over hundreds, and the residual converts to a bond error through
+$\Delta R \approx F/k$ with the measured force constant. We apply this across twenty configurations built from H, C, N and O. Three internal checks ride on every
+calculation, and we show that which of them carries information is decided by the molecule's
+symmetry group: the kernel--kernel energy is exact arithmetic on the geometry built; the vanishing
+of the total nuclear force is \emph{not} an identity but a convergence criterion, since it equals
+the net force of the electron cloud on the nuclei; and where symmetry cancels that sum, a per-atom
+zero at a centre of symmetry supplies a check that cancellation cannot fake. The protocol first
+exposed a defect in the force itself---a sphere-averaged potential gradient whose \emph{sign} was
+set by the averaging radius---which we replace by the analytic derivative of the discretised
+electron--kernel energy, a volume integral with no free radius. It then isolates the dominant
+error: holding geometry and symmetry fixed and varying only the central kernel charge changes the
+convergence error by a factor of sixty in methane and sixteen in hydrogen cyanide, while hydrogen
+content, box size and off-axis placement are excluded as causes by direct test. A secondary effect
+is anisotropy of the cubic grid, which cannot represent threefold or bent geometries evenly. We
+report measured verdicts on the model's valence conventions, and note that several previously
+recorded failures of three-centre systems are consistent with artefacts of an unconverged energy
+scan rather than properties of the model. The protocol's practical virtue is that it degrades
+visibly: configurations that fail announce it through their own checks instead of returning
+plausible wrong geometries.
+\end{abstract}
+
+\section{The simulator}
+\label{sec:sim}
+
+The simulator presents a list of molecules, each stored as experimental internal coordinates
+converted to Cartesian form and centred on the centroid. Selecting one builds the system, sizes the
+computational box from the molecule's own extent plus room for the electron clouds, chooses the grid
+for a target spacing, and runs. Two solvers are available: a GPU code carrying one domain per entry,
+capped at sixteen domains, and a second implementing the same model as one globally partitioned
+field, admitting two thousand (Section~\ref{sec:impl}).
+
+Three choices are built in as defaults rather than offered as options, each because it was measured
+rather than assumed. Valence charges are $Z_x = 1, 4, 3, 3$ for H, C, N, O---oxygen at $+3$ rather
+than the common $+2$, which converges five times worse at the same bond error, and carbon never at
+$+2$, which has no defence (Section~\ref{sec:zx}). The nuclear force is the volume integral of
+Section~\ref{sec:force} rather than a sampled potential gradient. And the box follows the molecule,
+after several early calculations were found to have been silently clipped by an undersized one.
+
+What distinguishes the simulator from a calculator is that it displays its own error checks
+continuously alongside the result: the kernel--kernel energy against exact arithmetic on the
+geometry actually built, and the total nuclear force as a percentage of the largest single force.
+The reasoning behind those two quantities, and why which of them carries information depends on the
+molecule's symmetry, is the subject of Section~\ref{sec:checks}. Their practical effect is that a
+calculation which cannot be trusted says so on the same screen as its answer.
+
+\section{Introduction}
+
+RealQM replaces the many-electron wavefunction by $N$ unit charge densities occupying
+non-overlapping spatial domains with free interfaces, interacting by Coulomb's law with each pair
+counted once. Nuclei enter as kernels; in molecular work a filled core is replaced by a
+\emph{pseudo-kernel} of reduced charge $Z_x$ carrying only the bonding valence. The model is
+therefore a force law: kernels move under the electrostatic force of the charge distribution, and
+a predicted geometry is wherever that force vanishes.
+
+Validating such a model is awkward by the usual routes. Scanning the energy over geometry requires
+every point of the scan to be converged, and a scan assembled from partially relaxed states returns
+a smooth but meaningless curve. Relaxing under the force requires the force to be trustworthy, which
+is the thing under test. Both routes also need many calculations per molecule, and both return an
+answer whether or not the underlying states deserve one.
+
+We propose instead to evaluate forces at the \emph{observed} geometry. The logic is elementary: at
+the measured equilibrium the true force on every nucleus is zero, so the computed residual is the
+model's error, with experiment supplying the reference. No minimum is sought, no scan is assembled,
+and a single calculation suffices per molecule. The residual is not merely a diagnostic but a
+quantitative prediction, since
+\begin{equation}
+  \Delta R \;\approx\; F/k
+\end{equation}
+with $k$ the measured force constant converts it to a bond-length error. For H$_2$,
+$k = 5.16\,\mathrm{mdyn/\AA} = 0.3314\,E_h/a_0^2$, so $F = 0.01\,E_h/a_0$ corresponds to a bond
+error of $3\%$.
+
+The protocol suits a force-law model particularly well, because it tests the model on its own
+terms: the force is primary, and agreement with $-dE/dR$ is a consistency check rather than the
+definition. We return to that distinction in Section~\ref{sec:dedr}.
+
+\section{Model and method}
+
+Each electron $m$ carries a density $u_m^2$ supported on a domain fixed by a weight $w_m$, with
+$\int w_m u_m^2 = n_m$ the domain's occupation. Domains compete for territory, so the partition has
+free internal boundaries. The energy is
+\begin{equation}
+  E = \sum_m \Big[\tfrac12\!\int\! w_m|\nabla u_m|^2 - \!\int\! w_m K u_m^2\Big]
+      + E_{ee} + \sum_{a<b} \frac{Z_a Z_b}{R_{ab}},
+  \qquad K(\mathbf r) = \sum_a \frac{Z_a}{r_{\mathrm{soft},a}},
+\end{equation}
+with every term weighted by $w$, electron--electron repulsion counting each pair once by the
+$i\neq j$ rule, and $r_{\mathrm{soft}}^2 = |\mathbf r - \mathbf R_a|^2 + (\sigma h)^2$ a kernel
+softening on the grid of spacing $h$. Calculations use a $100^3$ to $160^3$ grid, boxes of
+$12$--$24\,a_0$, bare kernels ($r_c = 0$) throughout, and $120\,000$ relaxation steps with early
+termination disabled.
+
+\subsection{The force must be the derivative of the discretised energy}
+\label{sec:force}
+
+The protocol is only as good as the force, and applying it immediately exposed that the force in
+use was not a well-defined quantity. It was computed as $Z_a\nabla V_H$ at the nucleus, finite
+differenced and averaged over a sphere of radius $a$ to suppress grid noise. Holding H$_2$ at a
+fixed separation $R = 1.68\,a_0$ and varying \emph{only} that radius gives
+
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+$a$ (bohr) & 0.24 & 0.48 & 0.72 & 0.96 \\
+$F$ ($E_h/a_0$) & $-0.05019$ & $-0.03227$ & $-0.00624$ & $+0.02706$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+There is no plateau and the \emph{sign} changes: the computed force reports the smoothing radius.
+Two causes compound. The potential gradient is unresolved at the nuclear cusp on this mesh, and
+the averaging bias is $O(a^2\nabla\rho)$ with $\nabla\rho$ largest exactly there.
+
+The remedy is to differentiate the discretised energy analytically rather than to sample its
+gradient numerically. From $V_{eK} = -\sum_a Z_a \int \rho / r_{\mathrm{soft},a}$,
+\begin{equation}
+  \mathbf F_a \;=\; -\frac{\partial V_{eK}}{\partial \mathbf R_a}
+   \;=\; Z_a \int \rho(\mathbf r)\,
+          \frac{\mathbf r - \mathbf R_a}{r_{\mathrm{soft},a}^{3}}\, dV ,
+  \label{eq:volforce}
+\end{equation}
+a volume integral with no averaging radius, no evaluation at the cusp, and---because it
+differentiates the same softened kernel from which the energy is built---agreement with $-dE/dR$ by
+construction, up to the term arising from the partition boundary moving with the nuclei.
+Validation on H$_2$, with force and energy taken from the same four calculations, places the zero
+of \eqref{eq:volforce} at $1.84$--$1.89\,a_0$ against an energy minimum at $1.963\,a_0$, agreeing
+to $4$--$6\%$; the sphere-averaged force disagreed by $0.42\,a_0$ and had the wrong sign at
+$R = 1.68$.
+
+\section{Two implementations, and what each can reach}
+\label{sec:impl}
+
+The measurements above were made with a GPU solver (\texttt{mol\_fast}) that carries one domain per
+entry and caps at sixteen domains. That cap is the binding constraint on molecular size, and its
+meaning depends on the construction: with one domain per atom carrying $Z_x$ electrons it permits
+sixteen atoms, which covers benzene, glycine, ethanol and comparable small organics; with the
+one-electron domains of the underlying construction it permits sixteen electrons, which covers
+CH$_4$ and C$_2$H$_2$ but not benzene.
+
+A second solver (\texttt{molecule.js}) implements the same model with one global field partitioned
+by labels, enforcing true non-overlap, and admits two thousand domains. It has been run on
+alpha-helices and on chignolin, so molecular size is not the obstacle there. Its force, however,
+was the sphere-averaged potential gradient of Section~\ref{sec:force}, with an averaging radius of
+$3\,a_0$---larger than most bonds, so that the sphere around one nucleus encloses its neighbour.
+We have ported \eqref{eq:volforce} to it, with two differences forced by its conventions. Its
+kernel is \emph{clamped} rather than softened, $r_{\mathrm{eff}} = \max(r, r_{\mathrm{clamp}})$, so
+the potential is exactly flat inside the clamp and those cells contribute identically zero to the
+force rather than a softened value. And the integral reads the density directly, so cells excluded
+by the core treatment carry no density and are omitted automatically.
+
+The practical consequence is a gap that has only just been closed: until this port, the solver that
+scales past sixteen domains could not be validated by the present protocol, while the solver with a
+trustworthy force could not reach molecules of interest. Both the accuracy of the ported force and
+the behaviour of the protocol at protein scale remain to be established; the cost scaling is
+discussed in Section~\ref{sec:cost}.
+
+\section{Cost}
+\label{sec:cost}
+
+A volume integral over the grid is more expensive than a point gradient, and it is worth stating by
+how much. The point gradient visits $N_{\text{atoms}} \times \tfrac43\pi R^3 \approx 270\,N$ cells
+for a four-cell sphere. The volume form visits $N_{\text{atoms}} \times S^3$, about
+$10^6 N$ on a $101^3$ grid: some four thousand times more.
+
+The relevant comparison, however, is with what the solver already does. One volume-force evaluation
+costs about the same as one update sweep of the electronic field, and \emph{less} than one
+evaluation of the potential, which requires an elliptic solve of several sweeps per electron. Forces
+are moreover not evaluated every step: once per animation frame in one implementation, every ten
+electronic steps in the other, giving overheads of well under one percent and of order ten percent
+of the update cost respectively---the latter adjustable, since nuclei move slowly compared with the
+electronic relaxation.
+
+At protein scale the $N \times S^3$ product would warrant a cutoff radius. It is worth noting that
+such a cutoff behaves oppositely to the smoothing radius it replaces: truncating a convergent
+integral has an error that \emph{falls} with radius, and distant neutral groups contribute as
+dipole$/r^3$ rather than charge$/r^2$, so a plateau in the cutoff is attainable and meaningful.
+The smoothing radius of the point gradient admitted no plateau because its bias \emph{grew} as
+$a^2$. The same word denotes a convergent truncation in one case and a divergent bias in the other.
+
+\section{Three checks, and which one applies}
+\label{sec:checks}
+
+Every calculation carries three internal checks. They are not interchangeable, and the choice
+between them is dictated by symmetry---a point we found easy to get wrong.
+
+\paragraph{Kernel--kernel energy.} $V_{KK} = \sum_{a<b} Z_aZ_b/R_{ab}$ is exact arithmetic and
+confirms the geometry \emph{actually built}, independently of any physics. Every configuration
+reported below matched its predicted value; this is how fractional kernel placement, per-bond
+spacing and coincident kernels were verified.
+
+\paragraph{Total force as a convergence criterion.} The sum of nuclear forces is \emph{not}
+automatically zero. It equals the net force the electron cloud exerts on the nuclei; only when the
+electronic state is stationary does the cloud exert no net force, and then $\sum_a \mathbf F_a = 0$
+follows by Newton's third law. The residual is therefore a direct measure of electronic
+non-convergence---and a more reliable one than any energy-based criterion, since a relaxation can
+sit on a long plateau with the energy changing imperceptibly while the state is far from settled.
+
+\paragraph{But symmetry cancels it.} In a symmetric molecule, mirror or rotational symmetry forces
+$\sum_a \mathbf F_a = 0$ regardless of accuracy. A small residual in CO$_2$ (we measure $0.06\%$ of
+the largest force) establishes only that the algorithm preserves symmetry. The sum carries
+information only in directions symmetry does not protect: every direction for a heteronuclear
+molecule, the $C_3$ axis of NH$_3$, the $C_2$ axis of water.
+
+\paragraph{Per-atom zeros.} Where symmetry is complete, the useful check is instead a single atom's
+force. An atom at a centre of symmetry---the carbon of CO$_2$ or of CH$_4$---must feel exactly
+nothing. Unlike the sum, this cannot be satisfied by cancellation among atoms, so a nonzero value
+is unambiguously error and its magnitude is the per-atom floor.
+
+\section{Results}
+
+Table~\ref{tab:main} collects the configurations. Forces are quoted with $+$ meaning outward, so a
+positive entry indicates the bond wants to lengthen. Where a configuration fails its own check we
+report the failure rather than a bond error.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{llrrrl}
+\toprule
+system & $Z_x$ & force & $\Delta R$ & $|\sum F|/|F|_{\max}$ & status \\
+\midrule
+H$_2$      & 1,1       & $+0.1383$ & $+30\%$  & $14.7\%$ & marginal \\
+N$_2$      & 3,3       & $-0.2505$ & $-8.2\%$ & $3.7\%$  & good \\
+O$_2$      & 2,2       & $-0.1682$ & $-9.7\%$ & $11.0\%$ & fair \\
+O$_2$      & 3,3       & $-0.2463$ & $-14.3\%$& $8.4\%$  & fair \\
+CO         & 4,2       & \multicolumn{2}{c}{---} & $38.5\%$ & fails \\
+CO$_2$     & 2,4,2     & $-0.1632$ & $-7.2\%$ & $0.06\%$\textsuperscript{$\ast$} & good \\
+HCN        & 1,4,3     & \multicolumn{2}{l}{C$\equiv$N $-7.8\%$, H--C $+3.5\%$} & $5.5\%$ & good \\
+HCN        & 1,2,3     & \multicolumn{2}{c}{---} & $88.7\%$ & fails \\
+H$_2$O     & 2,1,1     & \multicolumn{2}{c}{---} & $140\%$  & fails \\
+H$_2$O     & 3,1,1     & \multicolumn{2}{c}{---} & $126\%$  & fails \\
+H$_3$ lin. & 1,1,1     & $+0.0420$ & ---      & $34.9\%$ & fails \\
+H$_4$ chain& 1,1,1,1   & $+0.0316$ & ---      & $7.4$--$16\%$ & partial \\
+C$_2$H$_2$ & 1,4,4,1   & outward   & ---      & $25\%$   & fails \\
+C$_2$H$_2$ & 1,2,2,1   & outward   & ---      & $28\%$   & fails \\
+C$_2$N$_2$ & 3,4,4,3   & \multicolumn{2}{l}{N inward, C outward} & $3.2\%$ & good \\
+NH$_3$     & 3,1,1,1   & \multicolumn{2}{c}{---} & $141\%$ ($z$) & fails \\
+NH$_3$ planar & 3,1,1,1& \multicolumn{2}{c}{---} & $70\%$ ($x$) & fails \\
+\textbf{CH$_4$} & \textbf{4,1,1,1,1} & $0.036$ outward & --- & $\mathbf{0.6\%}$ & \textbf{best} \\
+CH$_4$     & 2,1,1,1,1 & \multicolumn{2}{c}{---} & $40\%$   & fails \\
+\bottomrule
+\end{tabular}
+\caption{Forces at measured geometries. \textsuperscript{$\ast$}Symmetry-enforced; carries no
+accuracy information (Section~\ref{sec:checks}). Configurations in which two different elements
+receive the same $Z_x$ are degenerate---the model cannot distinguish them---and are omitted.}
+\label{tab:main}
+\end{table}
+
+\subsection{H$_4$ against an exact reference}
+
+One configuration can be scored against an exact method rather than experiment. Full configuration
+interaction in a minimal basis places the equilibrium of the equally spaced H$_4$ chain at
+$a = 1.8\,a_0$, and the chain has one electron per site with no pseudopotential, so no core
+parameter is involved. At that geometry all four RealQM forces point outward---the model would
+expand a chain the exact method calls stationary---while over-binding by $14$--$18\%$ per atom when
+each method is referred to its own atom. Over-bound and too long is the pattern H$_2$ shows at
+$+30\%$.
+
+\section{Kernel depth decides convergence}
+
+The clearest results hold geometry, symmetry, mesh and every other input fixed and change only the
+central kernel's charge:
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+ & shallow & deep & factor \\
+\midrule
+CH$_4$ (identical $T_d$ geometry) & C+2: $40\%$   & C+4: $0.6\%$ & 60 \\
+HCN (identical geometry)          & C+2: $88.7\%$ & C+4: $5.5\%$ & 16 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A deep kernel holds its domain and fixes its boundary against the neighbours; a shallow one leaves
+the partition undetermined. The direction is worth emphasising: C+4 is the \emph{less} resolved
+kernel, at $Zh = 0.48$ against a working guideline of $Zh \lesssim 0.1$, so depth helps convergence
+more than coarse resolution hurts it.
+
+Three alternative explanations were tested and excluded.
+
+\begin{itemize}
+\item \textbf{Not hydrogen content.} CH$_4$ carries four hydrogens and is the cleanest polyatomic
+measured; HCN carries one and reaches $5.5\%$; CO at 4,2 carries none and fails at $38.5\%$.
+Hydrogen is neither necessary nor sufficient for failure.
+\item \textbf{Not the box.} The net force on water is $0.216$, $0.215$, $0.214$ in boxes of $12$,
+$18$ and $24\,a_0$ with the mesh held fixed---$0.9\%$ across a doubling of the box. The state is
+box-converged and the residual is a property of it. The control calculation on H$_2$ changes
+\emph{sign} with box and with mesh, marking its own error as stochastic.
+\item \textbf{Not off-axis placement.} Tetrahedral ligands are maximally off-axis and CH$_4$ is
+nearly exact, because the cube diagonals are a symmetry of the grid.
+\end{itemize}
+
+\subsection{Cubic-grid anisotropy}
+
+A second, smaller effect is visible in planar NH$_3$, which has $D_{3h}$ symmetry and must
+therefore give $\sum_a\mathbf F_a = 0$ in every direction; it gives $70\%$ of the largest force
+along $x$. Resolving by ligand: the one lying on the grid axis has radial force $0.0802$, the two
+off-axis ones $0.0545$ and $0.0544$. The off-axis pair agrees with itself to $0.2\%$ and differs
+from the on-axis ligand by $47\%$.
+
+A cubic grid has fourfold symmetry in its planes and threefold symmetry about its body diagonals.
+Molecular geometries that share those symmetries---linear, and tetrahedral---are represented
+evenly; threefold-in-plane and bent geometries are not. This accounts for NH$_3$ and H$_2$O being
+the two worst configurations measured and CH$_4$ among the best, and it is a property of the
+discretisation rather than of the model.
+
+\section{Valence conventions, measured}
+\label{sec:zx}
+
+$Z_x$ is a modelling choice, and the protocol makes it testable. A depth ladder at fixed mesh,
+scored both by the symmetry-breaking error and by the bond error:
+
+\begin{center}
+\begin{tabular}{lccccc}
+\toprule
+ & O+2 & O+3 & O+6 (single domain) & N+3 & N+5 \\
+\midrule
+pair asymmetry & $19.5\%$ & $\mathbf{3.7\%}$ & $1.4\%$ & $6.0\%$ & $6.1\%$ \\
+$\Delta R$     & $-6.4\%$ & $\mathbf{-7.1\%}$ & $+59\%$ & $-8.1\%$ & $-13.7\%$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+O+3 is the better oxygen: a fivefold gain in convergence over O+2 at the same bond error. N+3
+stands, full valence costing accuracy while buying no convergence. Most instructive is O+6 as a
+single six-electron domain, which converges best of all and yields a bond $59\%$ too long---it
+converges accurately to the wrong answer, which is exactly the failure mode the protocol is
+designed to make visible. So a rule of ``use the deepest $Z_x$'' is false beyond the valence
+structure the atomic model selects; depth helps only where the domain was genuinely under-bound.
+
+It is worth noting that O+3 is one of the two valence shells in the atomic configuration
+$2{+}3{+}3$ obtained independently from atomic calculations, a convergence of atomic and molecular
+evidence on the same number. Carbon admits no corresponding reduction: C+2 would freeze into the
+core the $2s$ pair that hybridises into the bonds, cannot form four bonds, and---since $Z_x$ is the
+only label distinguishing elements---makes carbon identical to O+2.
+
+\section{Relation to $-dE/dR$}
+\label{sec:dedr}
+
+In a force-law model the force is definitional and the geometry is where it vanishes, so agreement
+with the energy gradient is not required for the model to be well posed. It remains worth checking
+for three reasons. A force that is not a gradient conserves no energy, which in dynamics produces
+spurious heating indistinguishable from physical dissipation. It is a strong and free check on
+implementation: it is what exposed the sign-flipping force of Section~\ref{sec:force}, which was
+otherwise unremarkable---smooth, antisymmetric, and crossing zero at a plausible separation. And
+once the implementation is correct, the residual disagreement measures the contribution from the
+partition boundary moving with the nuclei, a term specific to a free-boundary model and not
+otherwise accessible.
+
+\section{Bearing on previously recorded three-centre failures}
+
+Earlier work in this programme recorded that every three-centre system attempted descended
+monotonically inward through its experimental bond, across nuclear charges, with and without a
+core, for odd and closed-shell systems alike. Measured by force at the observed geometry instead,
+CO$_2$ gives $-7.2\%$ and HCN $-7.8\%$: ordinary bounded errors of the same size as the diatomics,
+not a collapse. Those scans were assembled from an energy relaxation that we find oscillates by
+$\sim 0.03\,E_h$ out to $3\times10^5$ steps, read through a stopping criterion that compares
+energies between wall-clock samples and cannot detect it. The recorded failures are therefore
+consistent with artefacts of the scan rather than properties of the model, and the systems should
+be re-measured before any mechanism is proposed for them.
+
+\section{Limitations}
+
+The bond errors reported here are not competitive with established electronic structure methods,
+and are not offered as such; they measure where a parameter-free real-space construction currently
+stands. Several specific limitations bound the numbers.
+
+All calculations use bare kernels, so the deepest, $Z = 4$, sits at $Zh = 0.48$, far above the
+resolution guideline. No $\Delta R$ quoted here carries a mesh ladder, and the percentages should
+be read as indicative; the directions, the error bars and the convergence ranking are robust to
+this, since they rest on comparisons at fixed mesh.
+
+The convergence problem is characterised but not solved. We can now measure electronic
+non-convergence, attribute it principally to shallow kernels, and exclude three rival explanations;
+we cannot yet remove it. Configurations containing shallow kernels or threefold and bent geometries
+remain unusable, which includes water and ammonia---a serious limitation for any application to
+hydrogen-bonded systems.
+
+Finally, the construction pins the electron count of each domain, so charge transfer between
+unlike atoms is representable only through the shape of each domain and not through its occupation.
+For homonuclear systems this costs nothing; for a heteronuclear molecule it constrains precisely
+the asymmetry that defines it.
+
+\section{Conclusion}
+
+Evaluating forces at observed geometries gives a validation protocol for a force-law molecular
+model that requires no reference calculation, no energy scan and no minimum-finding, and that
+converts directly to a bond-length error. Applied to RealQM it first exposed that the force in use
+was not a physical quantity, and then isolated kernel depth as the dominant source of error by
+controlled comparison, excluding hydrogen content, box size and off-axis placement by direct test.
+It produced measured verdicts on valence conventions, identified an anisotropy of the cubic grid
+affecting threefold and bent geometries, and indicated that a class of previously recorded failures
+is likely an artefact of unconverged scans.
+
+The protocol's most useful property is not any individual number but its behaviour on failure.
+Of the configurations examined, those that are unreliable announce it through their own internal
+checks---the total force exceeds the signal, or an atom at a centre of symmetry feels a force it
+cannot feel---rather than returning a plausible wrong geometry. An energy scan returns a number for
+every configuration, reliable or not. For a model under development, a method that reports its own
+failures is worth more than one that reports only results.
+
+\end{document}

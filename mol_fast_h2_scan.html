@@ -320,8 +320,24 @@
                         return { i: N2 + o / h, j: N2, k: N2, Z: zAt(ix), rc: rcCore, fixed: true };
                       });
     window.USER_NORM_TARGETS = chainPos.map(function (o, ix) { return zAt(ix); });
-    var sepRealN = sep;   // positions are fractional and exact; sep IS the realised spacing
-    window.USER_DYNAMICS = false;  // both H locked
+    // LIVE separation. With fixed kernels the requested value IS the realised one, but under
+    // ?dyn=1 the nuclei move, so read mol_fast's own array (window.nuclei) rather than the input.
+    function liveSep() {
+      var nn = window.nuclei;
+      if (!nn || nn.length < 2) return sep;
+      var dx = (nn[0].i - nn[1].i) * h, dy = (nn[0].j - nn[1].j) * h, dz = (nn[0].k - nn[1].k) * h;
+      return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+    var sepRealN = sep;
+    // ?dyn=1 -- RELEASE THE KERNELS and let them move under the force. With the volume-integral
+    // force (?forcevol=1) this is the direct test of whether the force defines a consistent
+    // geometry: started from BOTH sides of the expected minimum, the separation must relax to the
+    // SAME value, and that value must agree with the force's own zero crossing from a fixed-geometry
+    // scan. A force that is not a gradient can still have a zero, but need not relax to it from
+    // both directions.
+    var DYN = !!qp.get('dyn');
+    if (DYN) window.USER_NUCLEI.forEach(function (q) { q.fixed = false; });
+    window.USER_DYNAMICS = DYN;
 
     // ?wd=1 -- USER_WEIGHTED_DENSITY.  THE TEST OF THE OVERLAP DEFECT.
     //
@@ -505,7 +521,7 @@
         document.title = 'H2MF t=' + ((Date.now() - t0) / 1000).toFixed(0) + 's'
           + ' step=' + (st === undefined ? '?' : st)
           + (stuck >= 10 ? ' <HALTED>' : (stuck < 0 ? ' <not started>' : ''))
-          + ' sep_req=' + sep.toFixed(4) + ' sep_real=' + sepRealN.toFixed(4) + 'au'
+          + ' sep_req=' + sep.toFixed(4) + ' sep_real=' + liveSep().toFixed(4) + 'au'
           + ' E=' + (E === undefined ? 'n/a' : E.toFixed(6))
           + (conv ? ' CONV' : '')
           + ' dE=' + (isFinite(dE) ? dE.toExponential(1) : 'n/a')

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <title>molecule.js force check</title>
+  <style>body { margin:0; background:#000; color:#fff; font-family:monospace }</style>
+</head><body>
+<div id="info" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,.88);padding:10px;
+     border:1px solid #333;border-radius:6px;max-width:470px;font-size:12px;z-index:100;color:#ffa">
+  <b>molecule.js nuclear force — validation</b><br>
+  <code>?forcevol=1</code> volume integral · omit for the point gradient.<br>
+  <code>?nat=1</code> single atom (F must be <b>0</b>) · <code>?nat=2</code> symmetric pair.<br>
+  <code>?n= ?box= ?sep= ?z=</code>
+</div>
+<div id="loadStatus" style="color:#ff0;padding:20px;font-size:14px">Loading…</div>
+<script>
+  window.onerror = function (m, u, l, c) {
+    var pre = document.createElement('pre');
+    pre.style.cssText = 'color:#f66;background:#200;padding:12px;white-space:pre-wrap';
+    pre.textContent = 'ERROR: ' + m + '\n  at ' + u + ':' + l + ':' + c;
+    document.body.insertBefore(pre, document.body.firstChild);
+  };
+(function () {
+  // VALIDATING THE VOLUME-INTEGRAL FORCE PORTED INTO molecule.js.
+  //
+  // The two checks that need no reference value at all:
+  //   nat=1  a lone atom at the box centre must feel EXACTLY ZERO -- there is no second domain,
+  //          so any residual is pure numerical error and sets the floor on every force.
+  //   nat=2  a symmetric pair must give equal and opposite forces, so Fsum = 0.
+  // Both hold whatever the mesh, the box or the convergence state, which is what makes them
+  // usable as acceptance tests for the port.
+  //
+  // Positions are FRACTIONAL here. h2_find.html rounds them to a cell, and the gradP shader
+  // rounds again internally (round(atoms[atom].posI)) -- up to half a cell of displacement in the
+  // steepest part of the field, which is one of the defects the volume form removes.
+  var qp = new URLSearchParams(location.search);
+  var N   = parseInt(qp.get('n') || '120', 10);
+  var scr = parseFloat(qp.get('box') || '12');
+  var sep = parseFloat(qp.get('sep') || '1.401');
+  var nat = parseInt(qp.get('nat') || '2', 10);
+  var zK  = parseFloat(qp.get('z') || '1');
+  var h = scr / N, N2 = Math.round(N / 2);
+
+  if (qp.get('forcevol')) window.USER_FORCE_VOLUME = true;
+
+  var atoms = (nat === 1)
+    ? [ { i: N2, j: N2, k: N2, Z: zK, el: 'H' } ]
+    : [ { i: N2 - sep / (2 * h), j: N2, k: N2, Z: zK, el: 'H' },
+        { i: N2 + sep / (2 * h), j: N2, k: N2, Z: zK, el: 'H' } ];
+
+  window.USER_NN = N;
+  window.USER_SCREEN = scr;
+  window.USER_ATOMS = atoms;
+  // USER_ATOMS supplies POSITIONS; NELEC and the per-domain occupations come from USER_Z, which
+  // defaults to [2,3,1,0,0] if unset -- three domains and E = -28.8 for what was meant to be one
+  // hydrogen. Both must be given, as every working molecule.js page does.
+  window.USER_Z  = atoms.map(function (a) { return a.Z; });
+  window.USER_RC = atoms.map(function () { return 0; });   // bare kernels
+  window.INIT_ZEFF = 1;
+  window.USER_DYNAMICS = false;     // nuclei locked: the force at a GIVEN geometry is the output
+  window.NO_AUTO_DYNAMICS = true;
+  window.USER_STEPS = parseInt(qp.get('steps') || '40000', 10);
+
+  // Title readout: per-atom force, Fsum, and the exact V_KK check on the geometry built.
+  var t0 = Date.now();
+  setInterval(function () {
+    var F = (typeof window._nucForceTotal !== 'undefined') ? window._nucForceTotal : null;
+    var parts = [], sx = 0, sy = 0, sz = 0;
+    if (F) {
+      for (var a = 0; a < atoms.length; a++) {
+        var f = F[a] || [0, 0, 0];
+        sx += f[0]; sy += f[1]; sz += f[2];
+        parts.push(f.map(function (c) { return c.toFixed(6); }).join(','));
+      }
+    }
+    var vkk = (nat === 2) ? (zK * zK / sep) : 0;
+    document.title = 'MFC t=' + ((Date.now() - t0) / 1000).toFixed(0) + 's'
+      + ' step=' + (window._tStep !== undefined ? window._tStep : '?')
+      + ' E=' + (window._E !== undefined ? window._E.toFixed(6) : 'n/a')
+      + ' F=[' + parts.join(' | ') + ']'
+      + ' Fsum=' + sx.toFixed(6) + ',' + sy.toFixed(6) + ',' + sz.toFixed(6)
+      + ' VKKexp=' + vkk.toFixed(6)
+      + ' | vol=' + (window.USER_FORCE_VOLUME ? 1 : 0)
+      + ' n=' + N + ' box=' + scr + ' h=' + h.toFixed(4) + ' sep=' + sep + ' Z=' + zK
+      + ' nat=' + nat;
+  }, 1500);
+})();
+
+// molecule.js defines setup()/draw() for p5 and does nothing until p5 drives them, so p5 must be
+// loaded AFTER the solver -- the loader every working molecule.js page uses. Loading the solver
+// alone leaves no canvas and no iteration, which is exactly what the first attempt here did.
+var s = document.createElement('script');
+s.src = 'molecule.js?t=' + Date.now();
+s.onload = function () {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>

@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <title>Molecule simulator — H, C, N, O</title>
+  <style>
+    body { margin:0; background:#000; color:#fff; font-family:monospace }
+    select,button { background:#1a2228; color:#dfe; border:1px solid #456; padding:3px 6px; font-family:monospace }
+    a { color:#6cf }
+  </style>
+</head><body>
+<div id="panel" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,.9);padding:11px;
+     border:1px solid #345;border-radius:6px;max-width:500px;font-size:12px;z-index:100;color:#cde">
+  <div style="font-weight:bold;color:#8df">Molecule simulator &mdash; H, C, N, O</div>
+  <div id="picker" style="margin:7px 0"></div>
+  <div id="geom" style="color:#9ab;font-size:11px"></div>
+  <div id="checks" style="margin-top:7px"></div>
+  <div style="color:#789;font-size:11px;margin-top:7px">
+    Forces evaluated at the <b>measured</b> geometry, where the true force is zero &mdash; so each
+    residual is model error directly. <code>?mol=</code> <code>?h=</code> <code>?dyn=1</code>
+    <code>?steps=</code>
+  </div>
+</div>
+<div id="loadStatus" style="color:#ff0;padding:20px;font-size:14px">Loading…</div>
+<script>
+window.onerror = function (m, u, l, c) {
+  var pre = document.createElement('pre');
+  pre.style.cssText = 'color:#f66;background:#200;padding:12px;white-space:pre-wrap';
+  pre.textContent = 'ERROR: ' + m + '\n  at ' + u + ':' + l + ':' + c;
+  document.body.insertBefore(pre, document.body.firstChild);
+};
+// Measured geometries converted from internal coordinates to Cartesian (bohr) and centred
+// on the centroid. GENERATED, not hand-entered. Zx: H1 C4 N3 O3 -- O=3 rather than the
+// older O=2, which today measured 5x worse convergence at the same bond error.
+var MOLS = {
+  h2: { name: 'H2 hydrogen', ext: 0.700, nelec: 2, atoms: [
+      { x: -0.70014, y:  0.00000, z:  0.00000, el:'H', Z:1 },
+      { x:  0.70014, y:  0.00000, z:  0.00000, el:'H', Z:1 },
+  ]},
+  n2: { name: 'N2 nitrogen', ext: 1.037, nelec: 6, atoms: [
+      { x: -1.03746, y:  0.00000, z:  0.00000, el:'N', Z:3 },
+      { x:  1.03746, y:  0.00000, z:  0.00000, el:'N', Z:3 },
+  ]},
+  o2: { name: 'O2 oxygen', ext: 1.141, nelec: 6, atoms: [
+      { x: -1.14139, y:  0.00000, z:  0.00000, el:'O', Z:3 },
+      { x:  1.14139, y:  0.00000, z:  0.00000, el:'O', Z:3 },
+  ]},
+  co: { name: 'CO carbon monoxide', ext: 1.066, nelec: 7, atoms: [
+      { x: -1.06581, y:  0.00000, z:  0.00000, el:'C', Z:4 },
+      { x:  1.06581, y:  0.00000, z:  0.00000, el:'O', Z:3 },
+  ]},
+  co2: { name: 'CO2 carbon dioxide', ext: 2.196, nelec: 10, atoms: [
+      { x: -2.19586, y:  0.00000, z:  0.00000, el:'O', Z:3 },
+      { x:  0.00000, y:  0.00000, z:  0.00000, el:'C', Z:4 },
+      { x:  2.19586, y:  0.00000, z:  0.00000, el:'O', Z:3 },
+  ]},
+  hcn: { name: 'HCN hydrogen cyanide', ext: 2.123, nelec: 8, atoms: [
+      { x: -2.06799, y:  0.00000, z:  0.00000, el:'H', Z:1 },
+      { x: -0.05543, y:  0.00000, z:  0.00000, el:'C', Z:4 },
+      { x:  2.12342, y:  0.00000, z:  0.00000, el:'N', Z:3 },
+  ]},
+  c2h2: { name: 'C2H2 acetylene', ext: 3.145, nelec: 10, atoms: [
+      { x: -3.14450, y:  0.00000, z:  0.00000, el:'H', Z:1 },
+      { x: -1.13667, y:  0.00000, z:  0.00000, el:'C', Z:4 },
+      { x:  1.13667, y:  0.00000, z:  0.00000, el:'C', Z:4 },
+      { x:  3.14450, y:  0.00000, z:  0.00000, el:'H', Z:1 },
+  ]},
+  c2n2: { name: 'C2N2 cyanogen', ext: 3.499, nelec: 14, atoms: [
+      { x: -3.49883, y:  0.00000, z:  0.00000, el:'N', Z:3 },
+      { x: -1.31241, y:  0.00000, z:  0.00000, el:'C', Z:4 },
+      { x:  1.31241, y:  0.00000, z:  0.00000, el:'C', Z:4 },
+      { x:  3.49883, y:  0.00000, z:  0.00000, el:'N', Z:3 },
+  ]},
+  h2o: { name: 'H2O water', ext: 1.477, nelec: 5, atoms: [
+      { x:  0.00000, y:  0.73827, z:  0.00000, el:'O', Z:3 },
+      { x: -1.43024, y: -0.36914, z:  0.00000, el:'H', Z:1 },
+      { x:  1.43024, y: -0.36914, z:  0.00000, el:'H', Z:1 },
+  ]},
+  nh3: { name: 'NH3 ammonia', ext: 1.781, nelec: 6, atoms: [
+      { x:  0.00000, y: -0.00000, z: -0.54003, el:'N', Z:3 },
+      { x:  1.77167, y: -0.00000, z:  0.18001, el:'H', Z:1 },
+      { x: -0.88584, y:  1.53431, z:  0.18001, el:'H', Z:1 },
+      { x: -0.88584, y: -1.53431, z:  0.18001, el:'H', Z:1 },
+  ]},
+  ch4: { name: 'CH4 methane', ext: 2.054, nelec: 8, atoms: [
+      { x:  0.00000, y:  0.00000, z:  0.00000, el:'C', Z:4 },
+      { x:  1.18595, y:  1.18595, z:  1.18595, el:'H', Z:1 },
+      { x:  1.18595, y: -1.18595, z: -1.18595, el:'H', Z:1 },
+      { x: -1.18595, y:  1.18595, z: -1.18595, el:'H', Z:1 },
+      { x: -1.18595, y: -1.18595, z:  1.18595, el:'H', Z:1 },
+  ]},
+  h2co: { name: 'H2CO formaldehyde', ext: 2.267, nelec: 9, atoms: [
+      { x:  0.00000, y: -0.01582, z:  0.00000, el:'C', Z:4 },
+      { x:  0.00000, y:  2.26697, z:  0.00000, el:'O', Z:3 },
+      { x: -1.79334, y: -1.12557, z:  0.00000, el:'H', Z:1 },
+      { x:  1.79334, y: -1.12557, z:  0.00000, el:'H', Z:1 },
+  ]},
+};
+
+(function () {
+  // A MOLECULE SIMULATOR ON MEASURED GEOMETRIES.
+  //
+  // Each entry carries experimental internal coordinates converted to Cartesian and centred.
+  // At the measured geometry the true force on every nucleus is ZERO, so the computed force is
+  // model error read directly -- no reference calculation, no scan, no minimum-finding.
+  //
+  // WHAT THE PAGE CHECKS ON EVERY RUN, because a plausible-looking number is the failure mode:
+  //   V_KK   exact arithmetic (sum Z_a Z_b / R_ab) on the geometry ACTUALLY BUILT
+  //   Fsum   must vanish: it equals the net force of the electron cloud on the nuclei, so it is
+  //          a CONVERGENCE meter -- but symmetry cancels it, so it informs only in unprotected
+  //          directions. Symmetric molecules get a per-atom zero check instead where one applies.
+  //
+  // LIMITS, measured 2026-11: mol_fast caps at 16 domains. Shallow kernels do not converge, so
+  // C+4/N+3/O+3 and never C+2. Threefold and bent geometries (NH3, H2O) suffer cubic-grid
+  // anisotropy and are the worst cases. Absolute energies are not converged at these meshes and
+  // depend strongly on the kernel softening -- H2's bond moves 1.375 -> 1.625 as eps goes
+  // 0 -> h in an independent solver -- so read DIRECTIONS and error bars, not absolute numbers.
+  var qp  = new URLSearchParams(location.search);
+  var key = qp.get('mol') || 'ch4';
+  if (!MOLS[key]) key = 'ch4';
+  var M = MOLS[key];
+
+  // Box from the molecule's own extent: the outermost nucleus plus room for its electron cloud
+  // (~3 a0) plus margin. Undersized boxes were a real error source -- several runs were silently
+  // wall-clipped before the extents were checked.
+  var box = Math.ceil((M.ext + 3.0) * 2 + 4);
+  var hTarget = parseFloat(qp.get('h') || '0.14');
+  var N = Math.round(box / hTarget / 2) * 2;
+  var h = box / N, N2 = Math.round(N / 2);
+
+  var nuclei = M.atoms.map(function (a) {
+    return { i: N2 + a.x / h, j: N2 + a.y / h, k: N2 + a.z / h, Z: a.Z, rc: 0,
+             fixed: !qp.get('dyn') };
+  });
+  // V_KK by hand on the built geometry -- the one check nothing can satisfy accidentally
+  var vkkExp = 0;
+  for (var a = 0; a < M.atoms.length; a++)
+    for (var b = a + 1; b < M.atoms.length; b++) {
+      var A1 = M.atoms[a], B1 = M.atoms[b];
+      var d = Math.sqrt(Math.pow(A1.x-B1.x,2) + Math.pow(A1.y-B1.y,2) + Math.pow(A1.z-B1.z,2));
+      if (d > 0) vkkExp += A1.Z * B1.Z / d;
+    }
+
+  window.USER_NN = N;
+  window.USER_SCREEN = box;
+  window.USER_NUCLEI = nuclei;
+  window.USER_NORM_TARGETS = M.atoms.map(function (a) { return a.Z; });
+  window.USER_WEIGHTED_DENSITY = true;    // the consistent functional: every term weighted by w
+  window.USER_W_KIN_WEIGHT = true;
+  window.USER_SOFT = 1;
+  window.USER_FORCE_VOLUME = true;        // volume integral, not the point gradient
+  window.USER_DYNAMICS = !!qp.get('dyn');
+  window.USER_STEPS = parseInt(qp.get('steps') || '120000', 10);
+
+  // picker
+  var sel = '<select id="mol" onchange="location.search=\'?mol=\'+this.value">';
+  Object.keys(MOLS).forEach(function (k) {
+    sel += '<option value="' + k + '"' + (k === key ? ' selected' : '') + '>' + MOLS[k].name + '</option>';
+  });
+  document.getElementById('picker').innerHTML = sel + '</select>';
+  document.getElementById('geom').innerHTML =
+    M.atoms.length + ' atoms, ' + M.nelec + ' electrons &middot; Z=[' +
+    M.atoms.map(function (a) { return a.el + a.Z; }).join(' ') + ']<br>' +
+    'box ' + box + ' a<sub>0</sub>, n=' + N + ', h=' + h.toFixed(4) +
+    ' &middot; extent ' + M.ext.toFixed(2) + ' a<sub>0</sub>' +
+    (M.atoms.length > 16 ? ' <b style="color:#f66">exceeds the 16-domain cap</b>' : '');
+
+  var t0 = Date.now();
+  setInterval(function () {
+    var F = window.nucForce, rows = '', sx = 0, sy = 0, sz = 0, fmax = 0;
+    if (F) {
+      for (var a = 0; a < M.atoms.length; a++) {
+        var f = F[a] || [0,0,0], m = Math.sqrt(f[0]*f[0]+f[1]*f[1]+f[2]*f[2]);
+        sx += f[0]; sy += f[1]; sz += f[2]; fmax = Math.max(fmax, m);
+        rows += '<tr><td>' + M.atoms[a].el + a + '</td><td align=right>' + m.toFixed(5) + '</td></tr>';
+      }
+    }
+    var fs = Math.sqrt(sx*sx + sy*sy + sz*sz);
+    var rel = fmax > 0 ? 100 * fs / fmax : 0;
+    var vkk = window._E_KK;
+    var vok = (vkk !== undefined) && Math.abs(vkk - vkkExp) < 1e-3 * Math.max(1, vkkExp);
+    document.getElementById('checks').innerHTML =
+      '<table style="font-size:11px"><tr><th align=left>atom</th><th>|F|</th></tr>' + rows + '</table>'
+      + '<b>&Sigma;F</b> = ' + fs.toFixed(6) + '  (<b style="color:'
+      + (rel < 5 ? '#6c6' : rel < 20 ? '#fc6' : '#f66') + '">' + rel.toFixed(1) + '%</b> of |F|max)'
+      + '<br>V<sub>KK</sub> ' + (vkk === undefined ? '—' : vkk.toFixed(5))
+      + ' vs exact ' + vkkExp.toFixed(5)
+      + ' <b style="color:' + (vok ? '#6c6' : '#f66') + '">' + (vok ? 'OK' : 'MISMATCH') + '</b>'
+      + '<br>E = ' + (window._E === undefined ? '—' : window._E.toFixed(6));
+    document.title = 'MOLSIM ' + key + ' t=' + ((Date.now()-t0)/1000).toFixed(0) + 's'
+      + ' E=' + (window._E === undefined ? 'n/a' : window._E.toFixed(6))
+      + ' Fsum=' + fs.toFixed(6) + ' (' + rel.toFixed(1) + '%)'
+      + ' VKK=' + (vkk === undefined ? 'n/a' : vkk.toFixed(4)) + '/' + vkkExp.toFixed(4)
+      + ' | n=' + N + ' box=' + box + ' h=' + h.toFixed(4) + ' nat=' + M.atoms.length;
+  }, 1500);
+})();
+
+// BOTH solvers define setup()/draw() for p5 and sit inert until p5 drives them, so p5 must load
+// AFTER the solver. A plain <script src> for the solver alone yields no canvas, no iteration and
+// no energies -- silently, with the page looking fine. Made this mistake twice in one session.
+var s = document.createElement('script');
+s.src = 'mol_fast.js?t=' + Date.now();
+s.onload = function () {
+  var p = document.createElement('script');
+  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+  document.body.appendChild(p);
+};
+document.body.appendChild(s);
+</script>
+</body></html>
