@@ -2255,16 +2255,31 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let rotX = -0.4, rotY = 0.5;
   let dragStart = null;
 
+  // Canvas and 3D-view sizes are overridable so a driver page can leave room for its own panels.
+  // Defaults unchanged (620 / 220x280) so every existing page renders exactly as before.
+  const CANVAS_PX = (typeof window !== 'undefined' && window.USER_CANVAS_PX) || 620;
+  const VIEW3D_W = (typeof window !== 'undefined' && window.USER_VIEW3D_W) || 220;
+  const VIEW3D_H = (typeof window !== 'undefined' && window.USER_VIEW3D_H) || 280;
+  const LAYOUT_PX = 620;                       // the pixel geometry draw() is written against
+  const DRAW_SCALE = CANVAS_PX / LAYOUT_PX;    // 1 for every page that does not shrink the canvas
+
   window.setup = function () {
-    createCanvas(620, 620);
+    createCanvas(CANVAS_PX, CANVAS_PX);
     textSize(11);
-    view3D = createGraphics(220, 280, WEBGL);
+    view3D = createGraphics(VIEW3D_W, VIEW3D_H, WEBGL);
     view3D.textSize(9);
     initGPU();
   };
 
   window.draw = function () {
     background(0);
+    // The whole layout is laid out in fixed pixels for a 620-wide canvas: the 2D density image to
+    // x~380, the 3D view at x=380, the 1D line plots at y=405..535 and the readout text to y=593.
+    // Shrinking the canvas alone therefore CLIPS the line plots and the 3D view rather than making
+    // them smaller. Scaling the whole frame keeps every element, just smaller. p5 resets the
+    // transform each frame, so this needs no push/pop. DRAW_SCALE is 1 unless a page asks for a
+    // smaller canvas, so existing pages are untouched.
+    if (DRAW_SCALE !== 1) scale(DRAW_SCALE);
     if (gpuError) { fill(255,80,80); text("ERR: " + gpuError, 5, 20); return; }
     if (!gpuReady) { fill(255); text("Initializing WebGPU...", 5, 20); return; }
     if (!computing && tStep < MAX_STEPS) {

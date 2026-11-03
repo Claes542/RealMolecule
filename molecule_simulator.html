@@ -9,8 +9,12 @@
     a { color:#6cf }
   </style>
 </head><body>
-<div id="panel" style="position:fixed;top:10px;right:10px;background:rgba(0,0,0,.9);padding:11px;
-     border:1px solid #345;border-radius:6px;max-width:500px;font-size:12px;z-index:100;color:#cde">
+<!-- Panel on the LEFT and narrow; the solver's canvas is drawn at the page origin, so a panel
+     pinned top-right sat on top of the 3D view. Canvas and 3D view are also shrunk below via
+     USER_CANVAS_PX / USER_VIEW3D_*, and the page is laid out so neither overlaps the other. -->
+<div id="panel" style="position:fixed;top:8px;left:8px;background:rgba(0,0,0,.92);padding:9px 11px;
+     border:1px solid #345;border-radius:6px;width:220px;max-height:96vh;overflow-y:auto;
+     font-size:11.5px;z-index:100;color:#cde">
   <div style="font-weight:bold;color:#8df">Molecule simulator &mdash; H, C, N, O</div>
   <div id="picker" style="margin:7px 0"></div>
   <div id="geom" style="color:#9ab;font-size:11px"></div>
@@ -21,7 +25,18 @@
     <code>?steps=</code>
   </div>
 </div>
-<div id="loadStatus" style="color:#ff0;padding:20px;font-size:14px">Loading…</div>
+<div id="loadStatus" style="color:#ff0;padding:20px;font-size:14px;margin-left:258px">Loading…</div>
+<style>
+  /* p5 appends its canvases to the body. A `body > canvas` rule did NOT take (measured: the
+     canvas still began at x=0 under the panel), so target canvas directly and force it. The
+     plots are also shrunk below: panel 252 + canvas 356 = 614 fits a 627 px window side by side,
+     where the stock 620 px canvas could not. */
+  /* Target ONLY p5's main canvas. A bare `canvas` rule with display:block !important also
+     un-hid p5's offscreen createGraphics buffer (the 3D view), which then rendered a second,
+     duplicate plot below the page. The buffer is id defaultCanvas1 and must stay hidden. */
+  #defaultCanvas0 { margin-left: 258px !important; display: block !important; }
+  #defaultCanvas1 { display: none !important; }
+</style>
 <script>
 window.onerror = function (m, u, l, c) {
   var pre = document.createElement('pre');
@@ -151,6 +166,11 @@ var MOLS = {
   window.USER_FORCE_VOLUME = true;        // volume integral, not the point gradient
   window.USER_DYNAMICS = !!qp.get('dyn');
   window.USER_STEPS = parseInt(qp.get('steps') || '120000', 10);
+  // Smaller plots: the default 620 px canvas plus a 220x280 3D view crowds the readout panel.
+  // ?px= overrides. Defaults in mol_fast.js are untouched, so other pages are unaffected.
+  window.USER_CANVAS_PX = parseInt(qp.get('px') || '356', 10);
+  // the 3D view is drawn inside the scaled frame, so leave it at its native size
+  // and let the frame scaling shrink it along with everything else.
 
   // picker
   var sel = '<select id="mol" onchange="location.search=\'?mol=\'+this.value">';
@@ -167,6 +187,8 @@ var MOLS = {
 
   var t0 = Date.now();
   setInterval(function () {
+    var ls = document.getElementById('loadStatus');
+    if (ls && document.getElementById('defaultCanvas0')) ls.style.display = 'none';
     var F = window.nucForce, rows = '', sx = 0, sy = 0, sz = 0, fmax = 0;
     if (F) {
       for (var a = 0; a < M.atoms.length; a++) {

@@ -75,7 +75,7 @@ calculation which cannot be trusted says so on the same screen as its answer.
 
 \section{Introduction}
 
-RealQM replaces the many-electron wavefunction by $N$ unit charge densities occupying
+RealQM~\cite{realqm} replaces the many-electron wavefunction by $N$ unit charge densities occupying
 non-overlapping spatial domains with free interfaces, interacting by Coulomb's law with each pair
 counted once. Nuclei enter as kernels; in molecular work a filled core is replaced by a
 \emph{pseudo-kernel} of reduced charge $Z_x$ carrying only the bonding valence. The model is
@@ -123,8 +123,11 @@ termination disabled.
 \subsection{The force must be the derivative of the discretised energy}
 \label{sec:force}
 
-The protocol is only as good as the force, and applying it immediately exposed that the force in
-use was not a well-defined quantity. It was computed as $Z_a\nabla V_H$ at the nucleus, finite
+The force on a nucleus in a model of this kind is the classical electrostatic force of the charge
+distribution, the content of the electrostatic force theorem~\cite{hellmann,feynman}; in a model
+built from charge densities it is definitional rather than derived. The protocol is only as good
+as the force, and applying it immediately exposed that the force in use was not a well-defined
+quantity. It was computed as $Z_a\nabla V_H$ at the nucleus, finite
 differenced and averaged over a sphere of radius $a$ to suppress grid noise. Holding H$_2$ at a
 fixed separation $R = 1.68\,a_0$ and varying \emph{only} that radius gives
 
@@ -152,7 +155,8 @@ gradient numerically. From $V_{eK} = -\sum_a Z_a \int \rho / r_{\mathrm{soft},a}
 \end{equation}
 a volume integral with no averaging radius, no evaluation at the cusp, and---because it
 differentiates the same softened kernel from which the energy is built---agreement with $-dE/dR$ by
-construction, up to the term arising from the partition boundary moving with the nuclei.
+construction, up to the term arising from the partition boundary moving with the nuclei---the analogue here of
+the basis-set derivative term of Pulay~\cite{pulay}.
 Validation on H$_2$, with force and energy taken from the same four calculations, places the zero
 of \eqref{eq:volforce} at $1.84$--$1.89\,a_0$ against an energy minimum at $1.963\,a_0$, agreeing
 to $4$--$6\%$; the sphere-averaged force disagreed by $0.42\,a_0$ and had the wrong sign at
@@ -168,7 +172,8 @@ sixteen atoms, which covers benzene, glycine, ethanol and comparable small organ
 one-electron domains of the underlying construction it permits sixteen electrons, which covers
 CH$_4$ and C$_2$H$_2$ but not benzene.
 
-A second solver (\texttt{molecule.js}) implements the same model with one global field partitioned
+The scope of the pseudo-kernel core model itself, measured on two-centre systems, is reported
+separately~\cite{coremodels}. A second solver (\texttt{molecule.js}) implements the same model with one global field partitioned
 by labels, enforcing true non-overlap, and admits two thousand domains. It has been run on
 alpha-helices and on chignolin, so molecular size is not the obstacle there. Its force, however,
 was the sphere-averaged potential gradient of Section~\ref{sec:force}, with an averaging radius of
@@ -280,7 +285,7 @@ receive the same $Z_x$ are degenerate---the model cannot distinguish them---and 
 \subsection{H$_4$ against an exact reference}
 
 One configuration can be scored against an exact method rather than experiment. Full configuration
-interaction in a minimal basis places the equilibrium of the equally spaced H$_4$ chain at
+interaction in a minimal basis~\cite{hchain} places the equilibrium of the equally spaced H$_4$ chain at
 $a = 1.8\,a_0$, and the chain has one electron per site with no pseudopotential, so no core
 parameter is involved. At that geometry all four RealQM forces point outward---the model would
 expand a chain the exact method calls stationary---while over-binding by $14$--$18\%$ per atom when
@@ -361,10 +366,70 @@ designed to make visible. So a rule of ``use the deepest $Z_x$'' is false beyond
 structure the atomic model selects; depth helps only where the domain was genuinely under-bound.
 
 It is worth noting that O+3 is one of the two valence shells in the atomic configuration
-$2{+}3{+}3$ obtained independently from atomic calculations, a convergence of atomic and molecular
+$2{+}3{+}3$ obtained independently from atomic calculations~\cite{atoms}, a convergence of atomic and molecular
 evidence on the same number. Carbon admits no corresponding reduction: C+2 would freeze into the
 core the $2s$ pair that hybridises into the bonds, cannot form four bonds, and---since $Z_x$ is the
 only label distinguishing elements---makes carbon identical to O+2.
+
+\section{Kernel dynamics}
+\label{sec:dyn}
+
+Releasing the kernels and letting them move under the force is both the sharpest test of the force
+and the capability a simulator is finally for. It is also where the distinction between a force and
+a sampled gradient stops being academic: a force that is not the gradient of anything conserves no
+energy, so in sustained dynamics it pumps or drains the system indefinitely.
+
+Released from either side of the expected minimum, H$_2$ relaxes to
+
+\begin{center}
+\begin{tabular}{lccl}
+\toprule
+start & relaxes to & residual force & direction \\
+\midrule
+$1.40$ & $1.8502$ & $[-0.0178, +0.0057]$ & expanded \\
+$2.40$ & $2.0932$ & $[+0.0128, -0.0168]$ & contracted \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+Both move the correct way and bracket $[1.850, 2.093]$, whose midpoint $1.972$ sits $0.5\%$ from
+the energy minimum at $1.963$ and inside the force's own zero crossing of $1.84$--$1.89$ measured
+at fixed geometry. Three independent routes---force zero, energy minimum, and dynamical relaxation
+from both directions---therefore agree to a few percent, where before the force was repaired the
+first two disagreed by $27\%$ and the force pointed the wrong way at $R = 1.68$.
+
+The bracket is not a failure to converge but a measured precision. The residual energy drift between
+runs is $\sim\!0.011\,E_h$; through the curvature $k = 0.370\,E_h/a_0^2$ that corresponds to a
+displacement $\sqrt{2(0.011)/0.370} = 0.24\,a_0$, and the bracket is $0.243\,a_0$ wide. The two
+relaxations converged to exactly the precision the unconverged electronic state permits, and
+tightening the geometry requires tightening the electronics, not the dynamics.
+
+Two cautions follow, both measured rather than anticipated. The relaxed states carry energies
+about $0.011\,E_h$ \emph{above} the fixed-geometry scan at comparable separation, the electronic
+field lagging behind moving nuclei in the familiar way; so relaxation yields trustworthy geometry
+and untrustworthy energies, and the two should be taken from different calculations. And at three
+centres the electronic relaxation does not settle at all, oscillating by $\sim\!0.03\,E_h$ out to
+$3\times10^5$ steps, so kernel dynamics there would track a wandering density. Dynamics is at
+present a two-centre capability.
+
+\subsection{What the old force does in dynamics}
+
+The same relaxation under the sphere-averaged gradient settles at $1.5203$ with residual forces
+$[+0.01821, +0.00020]$---both of the same sign, so the molecule carries a net translational force
+and drifts bodily, which no isolated system may do. In sustained dynamics that is a spurious
+acceleration of the whole system, and in a thermostatted simulation it would appear as heating
+indistinguishable from physical dissipation.
+
+It also lands \emph{closer to experiment}: $1.520$ against the measured $1.401$, where the repaired
+force gives $1.97$. This is worth stating plainly because it inverts the naive test. The repaired
+force agrees with the model's own energy minimum to $0.5\%$; it reports faithfully what the model
+says, and what the model says is wrong by $40\%$. The old force was wrong \emph{about the model} in
+a way that partly compensated for the model's own error. Validating a force against experiment
+alone would have preferred the defective one; only the internal checks---the lone atom feeling
+exactly zero, the vanishing of $\sum_a \mathbf F_a$, and agreement with $-dE/dR$---reject it. Fixing
+the instrument made agreement with measurement worse and moved the error from the instrument to the
+model, which is where it can be addressed.
 
 \section{Relation to $-dE/dR$}
 \label{sec:dedr}
@@ -408,6 +473,10 @@ we cannot yet remove it. Configurations containing shallow kernels or threefold 
 remain unusable, which includes water and ammonia---a serious limitation for any application to
 hydrogen-bonded systems.
 
+Measured geometries, force constants and ionisation energies are taken from the standard
+compilations~\cite{huber,cccbdb} and are recorded as unverified in the source files; they are the
+one external input to an otherwise parameter-free calculation.
+
 Finally, the construction pins the electron count of each domain, so charge transfer between
 unlike atoms is representable only through the shape of each domain and not through its occupation.
 For homonuclear systems this costs nothing; for a heteronuclear molecule it constrains precisely
@@ -430,5 +499,54 @@ checks---the total force exceeds the signal, or an atom at a centre of symmetry 
 cannot feel---rather than returning a plausible wrong geometry. An energy scan returns a number for
 every configuration, reliable or not. For a model under development, a method that reports its own
 failures is worth more than one that reports only results.
+
+
+\begin{thebibliography}{9}
+
+\bibitem{realqm} C.\ Johnson. The RealQM programme is set out in three submitted articles:
+\emph{Quantum Mechanics as Multiphase 3D Continuum Mechanics} (RealQM), submitted to the
+\emph{Annales de la Fondation Louis de Broglie}; \emph{A 3D Multiphase Continuum Computational
+Model for Atoms}, submitted to the \emph{International Journal of Quantum Chemistry}; and
+\emph{RealNucleus: Nuclear Binding as Dual Coulomb Confinement, without a Strong or Weak Force},
+submitted to \emph{Physics Essays}.
+
+\bibitem{atoms} C.\ Johnson, \emph{RealQM for Atoms and the Periodic Table}. The shell
+configurations used here, including oxygen as $2{+}3{+}3$, are obtained there from atomic
+calculations independent of any molecular input.
+
+\bibitem{coremodels} C.\ Johnson, \emph{The Two-Centre Test: where the pseudo-kernel core model
+works, and where it stops}. Companion study measuring three core models---hard depletion, clamp
+and empty core---against the alkali and halogen dimers.
+
+\bibitem{hellmann} H.\ Hellmann, \emph{Einf\"uhrung in die Quantenchemie}, Deuticke, Leipzig
+(1937).
+
+\bibitem{feynman} R.\ P.\ Feynman, \emph{Forces in molecules}, Phys.\ Rev.\ \textbf{56}, 340
+(1939).
+
+\bibitem{pulay} P.\ Pulay, \emph{Ab initio calculation of force constants and equilibrium
+geometries in polyatomic molecules}, Mol.\ Phys.\ \textbf{17}, 197 (1969). The correction arising
+when the computational representation itself depends on nuclear position; the free partition
+boundary of the present model plays the corresponding role.
+
+\bibitem{huber} K.\ P.\ Huber and G.\ Herzberg, \emph{Molecular Spectra and Molecular Structure
+IV: Constants of Diatomic Molecules}, Van Nostrand Reinhold (1979).
+
+\bibitem{cccbdb} NIST Computational Chemistry Comparison and Benchmark Database, NIST Standard
+Reference Database 101.
+
+\bibitem{hchain} Full configuration interaction in a minimal (STO-6G) basis for equally spaced
+hydrogen chains $H_N$, generated for this work: equilibrium at $a = 1.8\,a_0$ with
+$E = -2.19038$ ($N = 4$) and $-3.26674$ ($N = 6$), each referred to its own atom
+$E(\mathrm{H}) = -0.471039$. The hydrogen chain is a standard benchmark for many-electron
+methods, having one electron per site and no pseudopotential, so no core parameter enters the
+comparison.
+
+\bibitem{code} Public code, the molecule simulator of Section~\ref{sec:sim}, and an interactive
+gallery of all experiments in the present work:
+\url{https://claes542.github.io/RealMolecule/gallery.html} (source repository:
+\url{https://github.com/Claes542/RealMolecule}).
+
+\end{thebibliography}
 
 \end{document}
