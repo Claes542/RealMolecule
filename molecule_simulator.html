@@ -53,6 +53,25 @@ window.onerror = function (m, u, l, c) {
 // The four linear additions were chosen because the measurements predict that linear
 // geometries with DEEP kernels pass: they lie on a grid axis, so no cubic-grid anisotropy,
 // and their domains are firmly held, so no shallow-kernel non-convergence.
+// WHAT SigmaF MEANS depends on the molecule's symmetry, and the distinction is easy to misread.
+// SigmaF = 0 is NOT an identity: it equals the net force of the electron cloud on the nuclei and
+// vanishes only when the electronic state is converged -- so it is a CONVERGENCE meter. But a
+// symmetric molecule has SigmaF = 0 forced by symmetry whatever the accuracy, so there it reports
+// only whether the algorithm PRESERVES symmetry and bounds nothing.
+//   'full'    every direction cancelled (CO2, CH4, N2, C2H2...) -> symmetry preservation only
+//   'axis'    one axis unprotected (H2O's C2, NH3's C3, H2CO's C=O) -> real meter along it
+//   'none'    nothing cancels (CO, HCN, N2O, HC3N) -> a genuine convergence measurement
+// Measured 2026-11-03: the asymmetric cases run 11-89% while CO2 and C3O2 read 0.1-0.2%, which is
+// symmetry being preserved, not convergence being good.
+var SYM = { h2:'full', n2:'full', o2:'full', co:'none', co2:'full', n2o:'none', hcn:'none',
+            c2h2:'full', c2n2:'full', c3o2:'full', hc3n:'none', c4h2:'full',
+            h2o:'axis', h2o_split:'axis', nh3:'axis', ch4:'full', h2co:'axis',
+            h2o_a90:'axis', h2o_a109:'axis', h2o_a120:'axis', h2o_z2:'axis' };
+var SYMNOTE = {
+  full: ['symmetry-cancelled', '#8a9', 'SigmaF is forced to zero by symmetry here, so it measures only whether the algorithm preserves symmetry — it does NOT bound the convergence error.'],
+  axis: ['partly cancelled', '#dc8', 'Symmetry cancels SigmaF except along the unique axis, so the residual IS a convergence measurement in that direction.'],
+  none: ['genuine convergence meter', '#8cf', 'No symmetry cancels SigmaF here, so the residual measures electronic non-convergence directly.'] };
+
 var MOLS = {
   h2: { name: 'H2 hydrogen', ext: 0.700, nelec: 2, atoms: [
       { x: -0.70014, y:  0.00000, z:  0.00000, el:'H', Z:1 },
@@ -119,10 +138,35 @@ var MOLS = {
       { x:  3.59142, y:  0.00000, z:  0.00000, el:'C', Z:4 },
       { x:  5.59926, y:  0.00000, z:  0.00000, el:'H', Z:1 },
   ]},
-  h2o: { name: 'H2O water', ext: 1.477, nelec: 5, atoms: [
+  h2o_split: { name: 'H2O water  [O split 3x1e]', ext: 1.477, nelec: 5, atoms: [
+      { x:  0.00000, y:  0.73827, z:  0.00000, el:'O', Z:3, sp:3, ax:[0,0,1] },
+      { x: -1.43024, y: -0.36914, z:  0.00000, el:'H', Z:1 },
+      { x:  1.43024, y: -0.36914, z:  0.00000, el:'H', Z:1 },
+  ]},
+  h2o: { name: 'H2O water  [O as one blob]', ext: 1.477, nelec: 5, atoms: [
       { x:  0.00000, y:  0.73827, z:  0.00000, el:'O', Z:3 },
       { x: -1.43024, y: -0.36914, z:  0.00000, el:'H', Z:1 },
       { x:  1.43024, y: -0.36914, z:  0.00000, el:'H', Z:1 },
+  ]},
+  h2o_a90: { name: 'H2O  angle 90 deg   [on-lattice <110>]', ext: 1.348, nelec: 5, atoms: [   // bonds on face diagonals: |x|=|y|
+      { x:  0.00000, y:  0.85270, z:  0.00000, el:'O', Z:3 },
+      { x: -1.27905, y: -0.42635, z:  0.00000, el:'H', Z:1 },
+      { x:  1.27905, y: -0.42635, z:  0.00000, el:'H', Z:1 },
+  ]},
+  h2o_a109: { name: 'H2O  angle 109.47 deg [off-lattice]', ext: 1.517, nelec: 5, atoms: [   // tetrahedral angle, no cubic orbit
+      { x:  0.00000, y:  0.69623, z:  0.00000, el:'O', Z:3 },
+      { x: -1.47692, y: -0.34811, z:  0.00000, el:'H', Z:1 },
+      { x:  1.47692, y: -0.34811, z:  0.00000, el:'H', Z:1 },
+  ]},
+  h2o_a120: { name: 'H2O  angle 120 deg  [off-lattice]', ext: 1.595, nelec: 5, atoms: [   // no cubic orbit
+      { x:  0.00000, y:  0.60295, z:  0.00000, el:'O', Z:3 },
+      { x: -1.56651, y: -0.30148, z:  0.00000, el:'H', Z:1 },
+      { x:  1.56651, y: -0.30148, z:  0.00000, el:'H', Z:1 },
+  ]},
+  h2o_z2: { name: 'H2O  O as +2 [no lone sector, depth confound]', ext: 1.477, nelec: 4, atoms: [   // Z=2: 2 electrons, 2 bonds
+      { x:  0.00000, y:  0.73829, z:  0.00000, el:'O', Z:2 },
+      { x: -1.43022, y: -0.36915, z:  0.00000, el:'H', Z:1 },
+      { x:  1.43022, y: -0.36915, z:  0.00000, el:'H', Z:1 },
   ]},
   nh3: { name: 'NH3 ammonia', ext: 1.781, nelec: 6, atoms: [
       { x:  0.00000, y: -0.00000, z: -0.54003, el:'N', Z:3 },
@@ -171,14 +215,38 @@ var MOLS = {
   // Box from the molecule's own extent: the outermost nucleus plus room for its electron cloud
   // (~3 a0) plus margin. Undersized boxes were a real error source -- several runs were silently
   // wall-clipped before the extents were checked.
-  var box = Math.ceil((M.ext + 3.0) * 2 + 4);
+  // Auto-sized from the molecule's own extent. ?box= OVERRIDES it, which is required for any
+  // comparison that varies geometry: opening water's bond angle changes the extent, which changes
+  // the auto box and therefore the mesh, so an angle ladder on the default sizing silently compares
+  // rows at different h. Rows must share a box to be read against one another.
+  var box = parseFloat(qp.get('box') || '0') || Math.ceil((M.ext + 3.0) * 2 + 4);
+  if (box < (M.ext + 3.0) * 2) console.warn('box ' + box + ' is smaller than the molecule needs');
   var hTarget = parseFloat(qp.get('h') || '0.14');
   var N = Math.round(box / hTarget / 2) * 2;
   var h = box / N, N2 = Math.round(N / 2);
 
-  var nuclei = M.atoms.map(function (a) {
-    return { i: N2 + a.x / h, j: N2 + a.y / h, k: N2 + a.z / h, Z: a.Z, rc: 0,
-             fixed: !qp.get('dyn') };
+  // An atom may carry sp:n, meaning its valence is SPLIT into n one-electron domains at that
+  // site rather than held as one n-electron blob. That is the house construction -- n unit charges
+  // give n(n-1)/2 pairs, each counted once -- and for water it is the difference between right and
+  // wrong: the recorded result is that correct polarity needs SPLIT O and r_c = 0, while a
+  // non-split blob inverts it. Only the FIRST sibling carries the kernel charge; mol_fast sums
+  // Z over entries at a site, so the others take Z:0. Angular split type follows the count.
+  var SPLIT_BY_N = { 2: 'hemi', 3: 'third', 4: 'tetra' };
+  var nuclei = [], targets = [], labels = [];
+  M.atoms.forEach(function (a) {
+    var base = { i: N2 + a.x / h, j: N2 + a.y / h, k: N2 + a.z / h, rc: 0, fixed: !qp.get('dyn') };
+    if (!a.sp) {
+      nuclei.push(Object.assign({}, base, { Z: a.Z }));
+      targets.push(a.Z); labels.push(a.el);
+    } else {
+      for (var q = 0; q < a.sp; q++) {
+        nuclei.push(Object.assign({}, base, {
+          Z: q === 0 ? a.Z : 0, split: SPLIT_BY_N[a.sp] || 'sphere', split_idx: q,
+          split_axis: a.ax || [0, 0, 1], z_init: 2.0,
+          split_fix: qp.get('sfix') === '0' ? false : true }));
+        targets.push(1); labels.push(a.el + '.' + q);
+      }
+    }
   });
   // V_KK by hand on the built geometry -- the one check nothing can satisfy accidentally
   var vkkExp = 0;
@@ -192,7 +260,7 @@ var MOLS = {
   window.USER_NN = N;
   window.USER_SCREEN = box;
   window.USER_NUCLEI = nuclei;
-  window.USER_NORM_TARGETS = M.atoms.map(function (a) { return a.Z; });
+  window.USER_NORM_TARGETS = targets;
   window.USER_WEIGHTED_DENSITY = true;    // the consistent functional: every term weighted by w
   window.USER_W_KIN_WEIGHT = true;
   window.USER_SOFT = 1;
@@ -212,11 +280,11 @@ var MOLS = {
   });
   document.getElementById('picker').innerHTML = sel + '</select>';
   document.getElementById('geom').innerHTML =
-    M.atoms.length + ' atoms, ' + M.nelec + ' electrons &middot; Z=[' +
+    M.atoms.length + ' atoms / ' + nuclei.length + ' domains, ' + M.nelec + ' electrons &middot; Z=[' +
     M.atoms.map(function (a) { return a.el + a.Z; }).join(' ') + ']<br>' +
     'box ' + box + ' a<sub>0</sub>, n=' + N + ', h=' + h.toFixed(4) +
     ' &middot; extent ' + M.ext.toFixed(2) + ' a<sub>0</sub>' +
-    (M.atoms.length > 16 ? ' <b style="color:#f66">exceeds the 16-domain cap</b>' : '');
+    (nuclei.length > 16 ? ' <b style="color:#f66">exceeds the 16-domain cap</b>' : '');
 
   var t0 = Date.now();
   setInterval(function () {
@@ -224,10 +292,10 @@ var MOLS = {
     if (ls && document.getElementById('defaultCanvas0')) ls.style.display = 'none';
     var F = window.nucForce, rows = '', sx = 0, sy = 0, sz = 0, fmax = 0;
     if (F) {
-      for (var a = 0; a < M.atoms.length; a++) {
+      for (var a = 0; a < nuclei.length; a++) {
         var f = F[a] || [0,0,0], m = Math.sqrt(f[0]*f[0]+f[1]*f[1]+f[2]*f[2]);
         sx += f[0]; sy += f[1]; sz += f[2]; fmax = Math.max(fmax, m);
-        rows += '<tr><td>' + M.atoms[a].el + a + '</td><td align=right>' + m.toFixed(5) + '</td></tr>';
+        rows += '<tr><td>' + labels[a] + '</td><td align=right>' + m.toFixed(5) + '</td></tr>';
       }
     }
     var fs = Math.sqrt(sx*sx + sy*sy + sz*sz);
@@ -238,15 +306,18 @@ var MOLS = {
       '<table style="font-size:11px"><tr><th align=left>atom</th><th>|F|</th></tr>' + rows + '</table>'
       + '<b>&Sigma;F</b> = ' + fs.toFixed(6) + '  (<b style="color:'
       + (rel < 5 ? '#6c6' : rel < 20 ? '#fc6' : '#f66') + '">' + rel.toFixed(1) + '%</b> of |F|max)'
+      + '<br><span style="color:' + SYMNOTE[SYM[key]][1] + ';font-size:10.5px" title="'
+      + SYMNOTE[SYM[key]][2] + '">&#9432; ' + SYMNOTE[SYM[key]][0] + '</span>'
       + '<br>V<sub>KK</sub> ' + (vkk === undefined ? '—' : vkk.toFixed(5))
       + ' vs exact ' + vkkExp.toFixed(5)
       + ' <b style="color:' + (vok ? '#6c6' : '#f66') + '">' + (vok ? 'OK' : 'MISMATCH') + '</b>'
       + '<br>E = ' + (window._E === undefined ? '—' : window._E.toFixed(6));
     document.title = 'MOLSIM ' + key + ' t=' + ((Date.now()-t0)/1000).toFixed(0) + 's'
+      + ' step=' + (window._tStep === undefined ? '?' : window._tStep)
       + ' E=' + (window._E === undefined ? 'n/a' : window._E.toFixed(6))
       + ' Fsum=' + fs.toFixed(6) + ' (' + rel.toFixed(1) + '%)'
       + ' VKK=' + (vkk === undefined ? 'n/a' : vkk.toFixed(4)) + '/' + vkkExp.toFixed(4)
-      + ' | n=' + N + ' box=' + box + ' h=' + h.toFixed(4) + ' nat=' + M.atoms.length;
+      + ' | n=' + N + ' box=' + box + ' h=' + h.toFixed(4) + ' nat=' + M.atoms.length + ' ndom=' + nuclei.length;
   }, 1500);
 })();
 
