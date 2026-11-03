@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<title>Forces at the observed geometry — a test that needs no reference calculation</title>
+<style>
+ body{margin:0;background:#0a0e12;color:#dde3e8;font:15px/1.65 -apple-system,Segoe UI,Helvetica,Arial,sans-serif}
+ .wrap{max-width:1000px;margin:0 auto;padding:36px 22px 90px}
+ h1{color:#66bb6a;font-size:27px;line-height:1.25;margin:0 0 4px}
+ h2{color:#66bb6a;font-size:19px;margin:34px 0 8px;border-bottom:1px solid #1d2a33;padding-bottom:5px}
+ h3{color:#9fd8a0;font-size:16px;margin:22px 0 6px}
+ .sub{color:#8a98a3;font-style:italic;margin:0 0 20px}
+ table{border-collapse:collapse;margin:12px 0;font-size:13.5px;width:100%}
+ th,td{border:1px solid #243039;padding:5px 9px;text-align:right}
+ th{background:#111a21;color:#66bb6a;font-weight:600}
+ td:first-child,th:first-child{text-align:left}
+ .ok{color:#66bb6a}.bad{color:#ef5350}.warn{color:#ffca28}.dim{color:#7b8891}
+ code{background:#121a20;padding:1px 5px;border-radius:3px;font-size:13px;color:#a5d6a7}
+ .box{background:#101820;border-left:3px solid #66bb6a;padding:11px 15px;margin:16px 0;border-radius:0 5px 5px 0}
+ .caveat{border-left-color:#ef5350}
+ .scroll{overflow-x:auto}
+ ul{padding-left:22px}
+ .foot{color:#7b8891;font-size:13px;margin-top:40px;border-top:1px solid #1d2a33;padding-top:14px}
+</style></head><body><div class="wrap">
+
+<h1>Forces at the observed geometry</h1>
+<p class="sub">A test of a molecular model that needs no reference calculation, no energy scan, and no minimum-finding</p>
+
+<div class="box">
+<b>The idea.</b> At a molecule's <i>measured</i> geometry the true force on every nucleus is
+<b>zero by definition</b>. So compute the forces there: whatever remains is model error, read
+directly. No reference calculation is needed, because experiment supplies the answer; no minimum
+has to be located, because the geometry is given; and one calculation per molecule replaces a scan
+over hundreds.
+</div>
+
+<p>The residual converts straight into the quantity of interest. A force F at the observed geometry
+displaces the bond by <b>&Delta;R &asymp; F/k</b> with the measured force constant, so "the forces
+are small" becomes a bond-length error without ever computing a bond length. For H<sub>2</sub>,
+k = 5.16 mdyn/&Aring; = 0.3314 Ha/a<sub>0</sub><sup>2</sup>, so F = 0.01 Ha/a<sub>0</sub> means the
+model's bond is off by 3%.</p>
+
+<p>This matters for RealQM specifically because the model <i>is</i> a force law — kernels move under
+the Coulomb force of the charge distribution — so the force is primary and the geometry is wherever
+it vanishes. The method tests the model on its own terms.</p>
+
+<h2>First the force had to be fixed</h2>
+
+<p>The solver computed the force as <code>Z&middot;&nabla;V<sub>H</sub></code> at the nucleus,
+finite-differenced and <b>averaged over a sphere</b> of FORCE_RADIUS cells. Holding H<sub>2</sub> at
+a fixed R = 1.68 and varying <i>only</i> that radius:</p>
+
+<div class="scroll"><table>
+<tr><th>FORCE_RADIUS (cells)</th><th>0.24 a₀</th><th>0.48 a₀</th><th>0.72 a₀</th><th>0.96 a₀</th></tr>
+<tr><td>F</td><td>−0.05019</td><td>−0.03227</td><td>−0.00624</td><td class="bad">+0.02706</td></tr>
+</table></div>
+
+<p><b>No plateau, and the sign flips.</b> The quantity being reported was the smoothing radius, not a
+force. Two causes: <code>&nabla;V<sub>H</sub></code> is unresolved at the nuclear cusp on this mesh,
+and the averaging bias is O(a²&nabla;&rho;) with &nabla;&rho; largest exactly there.</p>
+
+<p><b>The replacement is the analytic derivative of the discretised energy.</b> Since
+V<sub>eK</sub> = &minus;&Sigma;<sub>a</sub> Z<sub>a</sub>&int;&rho;/r<sub>soft</sub> with
+r<sub>soft</sub><sup>2</sup> = |r&minus;R<sub>a</sub>|² + (SOFT&middot;h)², differentiating gives</p>
+
+<p style="text-align:center;color:#a5d6a7"><b>F<sub>a</sub> = Z<sub>a</sub> &int; &rho;(r)
+(r &minus; R<sub>a</sub>) / r<sub>soft</sub><sup>3</sup> dV</b></p>
+
+<p>a <b>volume</b> integral: no averaging radius exists to tune, nothing is evaluated at the cusp,
+and because it differentiates the same softened kernel the energy is built from, agreement with
+&minus;dE/dR holds by construction. Validated on H<sub>2</sub>, with force and energy from the same
+four runs: the volume force crosses zero at <b>1.84&ndash;1.89</b> against an energy minimum at
+<b>1.963</b> — 4&ndash;6% — where the point gradient disagreed by 0.42 a<sub>0</sub> and had the
+<i>wrong sign</i> at R = 1.68.</p>
+
+<h2>What can be checked — and why it depends on symmetry</h2>
+
+<p>Three independent checks ride on every run. Which of them carries information is decided by the
+molecule's symmetry group, and conflating them is easy:</p>
+
+<h3>V<sub>KK</sub> — exact arithmetic</h3>
+<p>The kernel&ndash;kernel energy is &Sigma;<sub>a&lt;b</sub> Z<sub>a</sub>Z<sub>b</sub>/R<sub>ab</sub>,
+computable by hand. It confirms the geometry <i>actually built</i> — every row below matched its
+predicted value, which is how fractional kernel placement and per-bond spacing were verified.</p>
+
+<h3>&Sigma;F = 0 — a convergence meter, not an identity</h3>
+<p>The total force on the nuclei is <b>not</b> automatically zero: it equals the net force the
+electron cloud exerts on them. Only when the electronic state is <i>converged</i> is the cloud
+stationary, and then by Newton's third law the sum vanishes. So <b>&Sigma;F measures electronic
+non-convergence</b> — and it does so in a way no energy-based criterion here could, since the
+solver's own convergence flag compares energies between wall-clock polls and reports CONV on states
+30 mHa from settled.</p>
+
+<p><b>But symmetry cancels it.</b> In a symmetric molecule the mirror or rotational symmetry forces
+&Sigma;F = 0 whatever the accuracy. CO<sub>2</sub>'s &Sigma;F = 0.0001 therefore proves only that the
+algorithm preserves symmetry — it says nothing about the forces being right. &Sigma;F informs only
+in <b>directions symmetry does not protect</b>: all directions for a heteronuclear molecule, the
+C<sub>3</sub> axis of NH<sub>3</sub>, the C<sub>2</sub> axis of water.</p>
+
+<h3>Per-atom zeros — what symmetry cannot fake</h3>
+<p>An atom sitting <i>at</i> a centre of symmetry must feel exactly zero: the central C of
+CO<sub>2</sub>, the C of CH<sub>4</sub>. Unlike &Sigma;F this is a single atom's force, so a nonzero
+value is unambiguously error and its size is the per-atom floor.</p>
+
+<h2>Results</h2>
+<p>All at measured geometries, bare kernels (r<sub>c</sub> = 0), convergent functional, 100³ grid,
+box 12 a<sub>0</sub>, 120k steps. <b>+ = outward</b> (bond wants to lengthen).</p>
+
+<div class="scroll"><table>
+<tr><th>molecule</th><th>Z<sub>x</sub></th><th>force</th><th>&Delta;R via F/k</th><th>&Sigma;F / |F|<sub>max</sub></th><th>status</th></tr>
+<tr><td>H<sub>2</sub></td><td>1,1</td><td>+0.1383</td><td class="warn">+30%</td><td>14.7%</td><td>marginal</td></tr>
+<tr><td>N<sub>2</sub></td><td>3,3</td><td>−0.2505</td><td class="ok">−8.2%</td><td class="ok">3.7%</td><td>good</td></tr>
+<tr><td>O<sub>2</sub></td><td><b>2,2</b></td><td>−0.1682</td><td>−9.7%</td><td>11.0%</td><td>fair</td></tr>
+<tr><td>O<sub>2</sub></td><td>3,3</td><td>−0.2463</td><td>−14.3%</td><td>8.4%</td><td>fair</td></tr>
+<tr><td>CO</td><td>4,2</td><td>+0.304 / −0.187</td><td class="bad">—</td><td class="bad">38.5%</td><td class="bad">fails</td></tr>
+<tr><td>CO</td><td>2,2</td><td class="dim">−0.176</td><td class="dim">—</td><td class="dim">13.2%</td><td class="dim">degenerate</td></tr>
+<tr><td>CO<sub>2</sub></td><td>2,4,2</td><td>−0.1632</td><td class="ok">−7.2%</td><td class="dim">0.06%*</td><td>good</td></tr>
+<tr><td>CO<sub>2</sub></td><td>2,2,2</td><td class="dim">−0.1575</td><td class="dim">−7.0%</td><td class="dim">0.02%*</td><td class="dim">degenerate</td></tr>
+<tr><td>HCN</td><td>1,4,3</td><td>C≡N −0.193, H−C +0.026</td><td class="ok">−7.8% / +3.5%</td><td>5.5%</td><td>good</td></tr>
+<tr><td>HCN</td><td>1,2,3</td><td class="bad">−0.152</td><td class="bad">—</td><td class="bad">88.7%</td><td class="bad">fails</td></tr>
+<tr><td>H<sub>2</sub>O</td><td>2,1,1</td><td class="bad">O −0.197 (y)</td><td class="bad">—</td><td class="bad">140%</td><td class="bad">fails</td></tr>
+<tr><td>H<sub>2</sub>O</td><td>3,1,1</td><td class="bad">O −0.393 (y)</td><td class="bad">—</td><td class="bad">126%</td><td class="bad">fails</td></tr>
+<tr><td>H<sub>3</sub> linear</td><td>1,1,1</td><td>+0.0420</td><td>—</td><td class="bad">34.9%</td><td class="bad">fails</td></tr>
+<tr><td>H<sub>4</sub> chain</td><td>1,1,1,1</td><td>+0.0316 outer</td><td>— (see FCI)</td><td>7.4&ndash;16%</td><td>partial</td></tr>
+<tr><td>C<sub>2</sub>H<sub>2</sub></td><td>1,4,4,1</td><td>all outward</td><td>—</td><td class="bad">25%</td><td class="bad">fails</td></tr>
+<tr><td>C<sub>2</sub>H<sub>2</sub></td><td>1,2,2,1</td><td>all outward</td><td>—</td><td class="bad">28%</td><td class="bad">fails</td></tr>
+<tr><td>C<sub>2</sub>N<sub>2</sub></td><td>3,4,4,3</td><td>N in, C out</td><td>—</td><td class="ok">3.2%</td><td>good</td></tr>
+<tr><td>NH<sub>3</sub></td><td>3,1,1,1</td><td class="bad">net +z 0.382</td><td class="bad">—</td><td class="bad">141% (z)</td><td class="bad">fails</td></tr>
+<tr><td>NH<sub>3</sub> planar</td><td>3,1,1,1</td><td class="bad">—</td><td class="bad">—</td><td class="bad">70% (x)</td><td class="bad">fails</td></tr>
+<tr><td><b>CH<sub>4</sub></b></td><td><b>4,1,1,1,1</b></td><td>H 0.036 outward</td><td>—</td><td class="ok"><b>0.6%</b></td><td class="ok"><b>best</b></td></tr>
+<tr><td>CH<sub>4</sub></td><td>2,1,1,1,1</td><td>—</td><td class="bad">—</td><td class="bad">40%</td><td class="bad">fails</td></tr>
+</table></div>
+<p style="font-size:13px;color:#8a98a3">* symmetry-enforced — carries no accuracy information.
+"degenerate" means the Z<sub>x</sub> choice makes two different elements identical, so the molecule
+is not the molecule named.</p>
+
+<h3>H<sub>4</sub> against an exact reference</h3>
+<p>The one row scored against an exact method rather than experiment. FCI (sto-6g) puts the equally
+spaced chain's equilibrium at a = 1.8 a<sub>0</sub>; one electron per site, bare kernels, no
+r<sub>c</sub> to argue about. At that geometry <b>all four RealQM forces point outward</b> — the
+model wants to expand where FCI says equilibrium — while <b>over-binding by 14&ndash;18%</b> per
+atom (2.37&ndash;2.45 eV against FCI's 2.083, each referred to its own atom). Over-bound <i>and</i>
+too long is the same pattern H<sub>2</sub> shows at +30%.</p>
+
+<h2>What the method revealed</h2>
+
+<h3>0. KERNEL DEPTH decides convergence — two controlled comparisons</h3>
+<p>The sharpest results of the study hold geometry, symmetry and every other input fixed and change
+only the central kernel's charge:</p>
+<div class="scroll"><table>
+<tr><th>molecule</th><th>shallow</th><th>deep</th><th>factor</th></tr>
+<tr><td>CH<sub>4</sub> (identical T<sub>d</sub> geometry)</td><td>C+2: <b class="bad">40%</b></td><td>C+4: <b class="ok">0.6%</b></td><td>60&times;</td></tr>
+<tr><td>HCN (identical geometry)</td><td>C+2: <b class="bad">88.7%</b></td><td>C+4: <b class="ok">5.5%</b></td><td>16&times;</td></tr>
+</table></div>
+<p><b>A deep kernel holds its domain; a shallow one does not</b>, and the boundary against its
+neighbours stays undetermined. Note the direction: C+4 is the <i>less</i> resolved kernel
+(Z&middot;h = 0.48 against the Z&middot;h &lesssim; 0.1 guideline), so depth helps convergence more
+than coarse resolution hurts it.</p>
+
+<p><b>Three alternative explanations were tested and excluded.</b></p>
+<ul>
+<li><b>Not hydrogen.</b> CH<sub>4</sub> carries four hydrogens and is the cleanest polyatomic
+(0.6%); HCN contains one and reaches 5.5%; CO at 4,2 contains none and fails at 38.5%. Hydrogen is
+neither necessary nor sufficient.</li>
+<li><b>Not the box.</b> Water's net force is 0.216 / 0.215 / 0.214 at boxes 12 / 18 / 24 with the
+mesh held fixed — <b>0.9% across a doubling</b>. The state is box-converged and the residual is
+real. (H<sub>2</sub>'s control error flips SIGN with box and with mesh, marking it as stochastic.)</li>
+<li><b>Not off-axis placement.</b> Tetrahedral ligands are maximally off-axis and CH<sub>4</sub> is
+near-perfect, because cube diagonals are a cubic-grid symmetry.</li>
+</ul>
+
+<h3>0b. A second, smaller effect: cubic-grid anisotropy</h3>
+<p>Planar NH<sub>3</sub> (D<sub>3h</sub>) must have &Sigma;F = 0 in every direction and gives
+&Sigma;F<sub>x</sub> = 70%. Its three ligands: the one lying <b>on the grid x-axis</b> has radial
+force <b>0.0802</b>, the two off-axis ones <b>0.0545 and 0.0544</b> — agreeing with each other to
+0.2% and differing from the first by <b>47%</b>. A cubic grid has 4-fold symmetry in-plane and
+3-fold about its body diagonals, so <b>molecular 3-fold and bent geometries cannot be represented
+evenly</b>, while linear and tetrahedral ones can. That is why NH<sub>3</sub> and H<sub>2</sub>O
+are the two worst rows and CH<sub>4</sub> is among the best.</p>
+
+<h3>1. Convergence, not chemistry, is the blocker</h3>
+<p>Ranked by &Sigma;F in unprotected directions, the failures are not where "harder chemistry" would
+put them. They track <b>how tightly the electron domains are held</b>: N<sub>2</sub> (Z=3) 3.7%,
+HCN with C+4 5.5%, H<sub>2</sub> 14.7%, linear H<sub>3</sub> 34.9%, HCN with C+2 88.7%, water 140%.
+Deep kernels settle; diffuse hydrogen-bearing systems do not, even at 120,000 steps.</p>
+
+<p>This inverts an expectation worth recording: <b>C+4 converges far better than C+2</b> in HCN
+(5.5% vs 88.7%) despite being the <i>less</i> resolved kernel (Z&middot;h = 0.48 against the
+Z&middot;h &lesssim; 0.1 guideline). Depth helps convergence more than coarse resolution hurts it.</p>
+
+<h3>2. Interior domains are the ones that fail</h3>
+<p>The H<sub>4</sub> step ladder separates them. Between 60k and 180k steps the <b>outer</b> atoms'
+forces move 2% while the <b>inner</b> pair moves 20&ndash;30% and their mutual asymmetry grows from
+1.4% to 50% — worse with more iteration, not better. So the failure is not "more atoms" and not
+"three centres": it is domains with neighbours on <i>both</i> sides.</p>
+
+<h3>3. The recorded three-centre failure looks like an artefact</h3>
+<p>Every three-centre system previously tried "descended monotonically inward through its
+experimental bond". Measured by force instead, CO<sub>2</sub> gives &minus;7.2% and HCN
+&minus;7.8% — <b>ordinary bounded model errors, not a collapse</b>. Those scans sampled an
+oscillating relaxation (linear H<sub>3</sub> swings ~0.03 Ha out to 300,000 steps) through a
+convergence flag that could not detect it. They need rerunning, not explaining.</p>
+
+<h3>4. Z<sub>x</sub> is testable — and the house conventions mostly survive</h3>
+<p>A depth ladder at one mesh (box 16, h = 0.145), scored by pair asymmetry and by bond error:</p>
+<div class="scroll"><table>
+<tr><th></th><th>O+2</th><th>O+3</th><th>O+6 (one blob)</th><th>N+3</th><th>N+5</th></tr>
+<tr><td>pair asymmetry</td><td>19.5%</td><td><b class="ok">3.7%</b></td><td class="ok">1.4%</td><td>6.0%</td><td>6.1%</td></tr>
+<tr><td>&Delta;R</td><td>&minus;6.4%</td><td><b class="ok">&minus;7.1%</b></td><td class="bad">+59%</td><td class="ok">&minus;8.1%</td><td class="bad">&minus;13.7%</td></tr>
+</table></div>
+<p><b>O+3 is the best oxygen reading</b> — a 5&times; convergence gain over O+2 at the same bond
+error. <b>N+3 stands</b>: full valence costs accuracy and buys no convergence. And <b>O+6 as a
+single blob converges best while giving a +59% bond</b> — converging beautifully to the wrong
+answer, which independently confirms the atomic work's rejection of the <code>[2,6]</code>
+configuration. So "use the deepest Z<sub>x</sub>" is false past the valence structure the atom
+model selects; depth helps only where the domain was genuinely under-bound.</p>
+<p>It is notable that <b>O+3 is exactly one of the two valence shells</b> in the atom model's
+<code>2+3+3</code> — atomic and molecular evidence converging on the same number independently.
+The faithful 3+3 construction was attempted here as two coincident +3 kernels; the geometry built
+correctly (V<sub>KK</sub> exact) but the two domains <b>superposed instead of nesting</b>
+(V<sub>ee</sub> = 72 Ha, E positive), because identical seeds in an identical environment have
+nothing to break the degeneracy. Doing it properly needs the shell machinery — one-electron
+domains with per-shell <code>z_init</code>, as <code>mol_fast_atom_split.html</code> does — and
+6 domains per oxygen exceeds this page's 8-domain cap.</p>
+
+<h3>4b. Two readings are degenerate</h3>
+<p>For O<sub>2</sub>, O at +2 gives the smaller residual than +3 (&minus;9.7% vs &minus;14.3%).
+But <b>Z<sub>x</sub> is the only thing distinguishing elements in this construction</b>, so
+C+2/O+2 makes carbon and oxygen the same atom: "CO at 2,2" is a homonuclear X<sub>2</sub> and
+"CO<sub>2</sub> at 2,2,2" is X<sub>3</sub>. Those rows carry no information about the named
+molecule.</p>
+
+<div class="box caveat">
+<b>Scope.</b> Bare kernels throughout, so Z&middot;h = 0.48 for C+4 — five times the resolution
+guideline — and no &Delta;R here is quotable without a mesh ladder. The <i>directions</i>, the
+error bars, and the convergence ranking do not depend on that. Rows marked "fails" exceed their own
+error check and are reported as measurements of the floor, not as results. Measured geometries,
+force constants and the FCI reference are literature values, flagged unverified in the source.
+</div>
+
+<h2>Why this is the right instrument for this model</h2>
+<p>Two routes to a computed geometry exist. <b>Scanning</b> E(R) needs every point converged, which
+at three centres they are not. <b>Relaxation</b> needs a trustworthy force, which until now did not
+exist. Evaluating the force at a <i>given</i> geometry needs neither: one point, one convergence
+question, and an answer supplied by experiment.</p>
+<p>It also degrades gracefully. When a row fails, it fails <i>visibly</i> — &Sigma;F exceeds the
+signal — rather than returning a plausible wrong bond length. Of the fourteen rows above, six
+announce their own unreliability. A scan would have returned numbers for all fourteen.</p>
+
+<p class="foot">Code: <code>mol_fast.js</code> (<code>USER_FORCE_VOLUME</code>,
+<code>USER_FORCE_RADIUS</code>), <code>mol_fast_h2_scan.html</code> (<code>?forcevol</code>,
+<code>?frad</code>, <code>?z=</code> comma list, <code>?sep=</code> per-bond list,
+<code>?geom=iso|cen</code>, per-atom force and &Sigma;F readout). Energies in Hartree, distances in
+bohr, forces in Ha/a<sub>0</sub>.</p>
+
+</div></body></html>

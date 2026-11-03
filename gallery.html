@@ -235,6 +235,7 @@ footer a { color: #4fc3f7; text-decoration: none; }
     <a href="#news-validation" style="color:#80d8ff">What validation means &mdash; periodic table + protein folding</a> ·
     <a href="#news-feasibility" style="color:#80d8ff">RealQM vs DFT &mdash; feasibility across problem classes</a> ·
     <a href="#news-x2cores" style="color:#80d8ff">The two-centre test &mdash; where the pseudo-atom core model works, and where it stops</a> &middot;
+    <a href="#news-obsforce" style="color:#80d8ff">Forces at the observed geometry &mdash; a test needing no reference calculation</a> &middot;
     <a href="#news-water2" style="color:#80d8ff">Two structures of liquid water &mdash; what drives LDL / HDL</a> &middot;
     <a href="#news-waterviscosity" style="color:#80d8ff">Viscosity of water from shear &mdash; stiff-but-fast, and the thermostat floor</a><br>
 
@@ -4907,6 +4908,61 @@ P_j += dt&middot;(&Delta;P_j + 2&pi;&middot;u_{1&minus;j}&sup2;)              <s
         <a href="realqm_vs_dft_folding.html" style="color:#66bb6a">RealQM vs DFT for folding</a>
       </div>
       <span class="tag tag-small">feasibility vs accuracy &middot; investment</span>
+    </div>
+    <div id="news-obsforce" class="card" style="border-color:#66bb6a;background:#0c1510;grid-column:1/-1;padding:18px">
+      <h3 style="color:#66bb6a">Validation &middot; Forces at the observed geometry &mdash; a test that needs no reference calculation</h3>
+      <div class="desc" style="margin-top:6px">
+        At a molecule's <b>measured</b> geometry the true force on every nucleus is <b>zero by
+        definition</b>, so computing the forces there reads the model error directly &mdash; no
+        reference calculation, no energy scan, no minimum-finding, and one run per molecule instead
+        of hundreds. The residual converts to a bond error as &Delta;R &asymp; F/k with the measured
+        force constant. It suits RealQM particularly, the model <i>being</i> a force law: the
+        geometry is wherever the Coulomb force vanishes, so this tests it on its own terms.<br>
+        <b>The force had to be fixed first.</b> The existing force was grad V<sub>H</sub> at the
+        nucleus <b>averaged over a sphere</b>, and at fixed H<sub>2</sub> geometry, varying only that
+        radius, it ran &minus;0.050 / &minus;0.032 / &minus;0.006 / <b>+0.027</b> &mdash; no plateau
+        and <b>the sign set by the smoothing radius</b>. Replaced by the analytic derivative of the
+        discretised V<sub>eK</sub>, a <b>volume integral</b> with no radius to tune and nothing
+        evaluated at the cusp; it agrees with &minus;dE/dR to 4&ndash;6% where the old force
+        disagreed by 0.42&nbsp;a&#8320; and had the wrong sign.<br>
+        <b>Which check survives depends on symmetry</b> &mdash; a point that is easy to get wrong.
+        &Sigma;F = 0 is <b>not</b> an identity: it equals the net force of the electron cloud on the
+        nuclei and vanishes only when the electronic state is converged, so it is a <b>convergence
+        meter</b>. But symmetry cancels it automatically, so CO<sub>2</sub>'s 0.06% proves only that
+        the algorithm preserves symmetry. It informs in unprotected directions only. Where symmetry
+        is complete, the test instead becomes a <b>per-atom zero</b> &mdash; the central C of
+        CO<sub>2</sub> or CH<sub>4</sub> &mdash; which cancellation cannot fake.<br>
+        <b>THE RESULT: kernel depth decides convergence</b>, from two comparisons holding geometry and
+        symmetry fixed and changing only the central charge &mdash; <b>CH<sub>4</sub>: C+2 40% vs C+4
+        0.6%</b> (60&times;) and <b>HCN: C+2 88.7% vs C+4 5.5%</b> (16&times;). Three rival
+        explanations were tested and <b>excluded</b>: not hydrogen (CH<sub>4</sub> has four and is the
+        cleanest polyatomic; CO at 4,2 has none and fails at 38%), not the box (water's net force is
+        0.216/0.215/0.214 across boxes 12/18/24 at fixed mesh &mdash; 0.9% over a doubling), and not
+        off-axis placement (tetrahedral ligands are maximally off-axis and fine). A second, smaller
+        effect is <b>cubic-grid anisotropy</b>: in planar NH<sub>3</sub> the ligand on the grid axis
+        differs <b>47%</b> from the two off-axis ones, which agree to 0.2% &mdash; molecular 3-fold
+        and bent geometries cannot sit evenly on a cubic grid, which is why NH<sub>3</sub> and
+        H<sub>2</sub>O are the worst rows and CH<sub>4</sub> among the best.<br>
+        <b>Z<sub>x</sub> conventions, now measured:</b> <b>O+3 is the best oxygen reading</b> (3.7%
+        convergence vs O+2's 19.5% at the same bond error &mdash; a free 5&times;), <b>N+3 stands</b>
+        (full valence costs accuracy, buys nothing), and <b>O+6 as one blob converges best while
+        giving a +59% bond</b> &mdash; converging beautifully to the wrong answer, independently
+        confirming the atomic work's rejection of <code>[2,6]</code>. O+3 is exactly one of the two
+        valence shells of the atom model's <code>2+3+3</code>, reached from the molecular side.<br>
+        <b>And the recorded three-centre failure looks like an artefact.</b> Those systems
+        "descended monotonically inward through the experimental bond"; measured by force instead,
+        CO<sub>2</sub> gives &minus;7.2% and HCN &minus;7.8% &mdash; ordinary bounded errors. The old
+        scans sampled an oscillating relaxation through a convergence flag that compares energies
+        between wall-clock polls and could not detect it.<br>
+        <b>The method degrades gracefully</b>, which is its real virtue: of twenty-odd rows, those
+        that fail <b>announce it</b> &mdash; &Sigma;F exceeds the signal &mdash; rather than returning
+        a plausible wrong bond length. A scan would have returned numbers for all of them.
+      </div>
+      <div style="margin-top:8px">
+        <a href="forces_at_observed_geometry.html" style="color:#66bb6a">&#128196; Full page &mdash; method, all rows, and the error checks</a> &middot;
+        <a href="#news-x2cores" style="color:#66bb6a">two-centre core-model test</a>
+      </div>
+      <span class="tag tag-small">zero force by definition &middot; failures announce themselves</span>
     </div>
     <div id="news-x2cores" class="card" style="border-color:#ffab40;background:#16100a;grid-column:1/-1;padding:18px">
       <h3 style="color:#ffab40">Validation &middot; The two-centre test &mdash; where the pseudo-atom core model works, and where it stops</h3>
