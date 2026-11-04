@@ -63,7 +63,7 @@ window.onerror = function (m, u, l, c) {
 //   'none'    nothing cancels (CO, HCN, N2O, HC3N) -> a genuine convergence measurement
 // Measured 2026-11-03: the asymmetric cases run 11-89% while CO2 and C3O2 read 0.1-0.2%, which is
 // symmetry being preserved, not convergence being good.
-var SYM = { h2:'full', n2:'full', o2:'full', co:'none', co2:'full', n2o:'none', hcn:'none',
+var SYM = { h:'full', h2:'full', n2:'full', o2:'full', co:'none', co2:'full', n2o:'none', hcn:'none',
             c2h2:'full', c2n2:'full', c3o2:'full', hc3n:'none', c4h2:'full',
             h2o:'axis', h2o_split:'axis', nh3:'axis', ch4:'full', h2co:'axis',
             h2o_a90:'axis', h2o_a109:'axis', h2o_a120:'axis', h2o_z2:'axis' };
@@ -73,6 +73,9 @@ var SYMNOTE = {
   none: ['genuine convergence meter', '#8cf', 'No symmetry cancels SigmaF here, so the residual measures electronic non-convergence directly.'] };
 
 var MOLS = {
+  h: { name: 'H  single atom  [E_bind reference + null test]', ext: 0.000, nelec: 1, atoms: [
+      { x:  0.00000, y:  0.00000, z:  0.00000, el:'H', Z:1 },
+  ]},
   h2: { name: 'H2 hydrogen', ext: 0.700, nelec: 2, atoms: [
       { x: -0.70014, y:  0.00000, z:  0.00000, el:'H', Z:1 },
       { x:  0.70014, y:  0.00000, z:  0.00000, el:'H', Z:1 },
@@ -248,6 +251,55 @@ var MOLS = {
       }
     }
   });
+  // THE DISPLACEMENT METRIC. SigmaF is a force residual: symmetry-cancelled for symmetric
+  // molecules (CO2 and CH4 read ~0 whatever the accuracy), mesh-unconverged, and in arbitrary
+  // units. Displacement from the OBSERVED geometry under released kernels has none of those
+  // defects -- it is a length, in the units the model claims to predict, and it is NOT
+  // symmetry-protected: CO2 can contract symmetrically with SigmaF staying exactly zero while
+  // every bond is wrong. Reported as radial (% of each bond) and angular (degrees) SEPARATELY,
+  // because the two are in different accuracy classes: ~1% on water's angle against ~41% on H2's
+  // bond length. Requires ?dyn=1; with the kernels held every displacement is identically zero.
+  //   kernelOf[a] = the domain carrying atom a's charge. Split siblings share a site but are
+  //   separate domains that dynamics can move apart, so the atom's position is the kernel's.
+  var kernelOf = [], kd = 0;
+  M.atoms.forEach(function (at, ai) { kernelOf[ai] = kd; kd += (at.sp || 1); });
+  var startPos = kernelOf.map(function (d) {
+    return [nuclei[d].i, nuclei[d].j, nuclei[d].k];
+  });
+  // bonds = pairs closer than 3.2 a0 in the OBSERVED geometry, with the angle at every atom
+  // carrying two or more of them
+  function posAU(idx, live) {
+    var n = live ? (window._nuclei && window._nuclei[kernelOf[idx]]) : null;
+    var p = n ? [n.i, n.j, n.k] : startPos[idx];
+    return [p[0]*h, p[1]*h, p[2]*h];
+  }
+  function dist(u, v) { var d=0; for (var c=0;c<3;c++) d += (u[c]-v[c])*(u[c]-v[c]); return Math.sqrt(d); }
+  // Bonded if d < 1.3*(r_cov_i + r_cov_j), covalent radii in a0. A FLAT cutoff cannot work: it
+  // either counts water's non-bonded H-H (2.8605 a0) as a bond -- which then generates spurious
+  // O-H-H angles of 37.75 deg -- or it misses H2's genuine H-H at 1.40. The radius sum separates
+  // them: 1.3*(0.59+0.59) = 1.53, above H2's bond and below water's H...H gap.
+  var RCOV = { H: 0.59, C: 1.44, N: 1.34, O: 1.25 };
+  var bonds = [], nbr = M.atoms.map(function () { return []; });
+  for (var bi = 0; bi < M.atoms.length; bi++)
+    for (var bj = bi+1; bj < M.atoms.length; bj++) {
+      var d0 = dist(posAU(bi,false), posAU(bj,false));
+      var lim = 1.3 * ((RCOV[M.atoms[bi].el] || 1.3) + (RCOV[M.atoms[bj].el] || 1.3));
+      if (d0 < lim) { bonds.push([bi,bj,d0]); nbr[bi].push(bj); nbr[bj].push(bi); }
+    }
+  var angles = [];
+  M.atoms.forEach(function (at, ai) {
+    for (var x = 0; x < nbr[ai].length; x++)
+      for (var y = x+1; y < nbr[ai].length; y++) angles.push([nbr[ai][x], ai, nbr[ai][y]]);
+  });
+  function angleAt(tri, live) {
+    var A=posAU(tri[0],live), B=posAU(tri[1],live), C=posAU(tri[2],live), u=[],v=[];
+    for (var c=0;c<3;c++) { u.push(A[c]-B[c]); v.push(C[c]-B[c]); }
+    var du=Math.sqrt(u[0]*u[0]+u[1]*u[1]+u[2]*u[2]), dv=Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
+    var dot=(u[0]*v[0]+u[1]*v[1]+u[2]*v[2])/(du*dv);
+    return Math.acos(Math.max(-1,Math.min(1,dot))) * 180/Math.PI;
+  }
+  var angles0 = angles.map(function (t) { return angleAt(t,false); });
+
   // V_KK by hand on the built geometry -- the one check nothing can satisfy accidentally
   var vkkExp = 0;
   for (var a = 0; a < M.atoms.length; a++)
@@ -263,7 +315,30 @@ var MOLS = {
   window.USER_NORM_TARGETS = targets;
   window.USER_WEIGHTED_DENSITY = true;    // the consistent functional: every term weighted by w
   window.USER_W_KIN_WEIGHT = true;
-  window.USER_SOFT = 1;
+  // KERNEL SOFTENING, eps = SOFT*h. This was hard-coded to 1 with no recorded reason, overriding
+  // mol_fast's own default of 2. But the collapse criterion is Z*h/c <~ 0.1 with eps = c*h, and at
+  // h = 0.14 that gives Z*h/c = 0.42 for O+3 and 0.56 for C+4 -- 4 to 6 times INSIDE the collapse
+  // regime. h2o_mol.html sets soft = ceil(Z_max*h/0.1) for exactly this reason, its header noting
+  // that getting it wrong is what left ClO2 with a monotone E(R) and no minimum at all.
+  // ?soft= overrides; ?soft=auto applies the criterion from the deepest kernel actually present.
+  var zMax = Math.max.apply(null, nuclei.map(function (q) { return q.Z; }).concat([1]));
+  // MEASURED 2026-11-04: SigmaF is monotone in the ABSOLUTE softening length eps = SOFT*h, and
+  // is NOT monotone in Z*h/c -- six water runs collapse onto one curve in eps (0.140 -> 0.471,
+  // 0.175 -> 0.394, 0.280 -> 0.375, 0.420 -> 0.229, 0.700 -> 0.177, 0.980 -> 0.160) with no
+  // feature at the Z*h/c = 0.1 criterion. So eps is the quantity to control:
+  //   ?eps=<a0>  fixes the softening LENGTH, setting SOFT = eps/h. Required for any comparison
+  //              across molecules (whose boxes and therefore h differ) or across meshes -- with
+  //              SOFT held fixed instead, refining h silently sharpens the kernel and the ladder
+  //              measures eps rather than h.
+  //   ?soft=     fixes the MULTIPLE, so eps rides on h. This is the shipped default (soft=1).
+  //              NOTE it does NOT spoil the published table: hTarget is pinned at 0.14, so h spans
+  //              only 0.1389-0.1413 across the sixteen molecules (1.7%), which moves SigmaF by
+  //              ~0.8% -- the table is a valid comparison at eps ~ 0.14. What it cannot support is
+  //              an ABSOLUTE value, since water's SigmaF runs 0.16 to 0.62 over eps 0.98 to 0.08.
+  var softQ = qp.get('soft'), epsQ = qp.get('eps');
+  window.USER_SOFT = epsQ ? (parseFloat(epsQ) / h)
+                   : (softQ === 'auto') ? Math.max(1, Math.ceil(zMax * h / 0.1))
+                   : (softQ ? parseFloat(softQ) : 1);
   window.USER_FORCE_VOLUME = true;        // volume integral, not the point gradient
   window.USER_DYNAMICS = !!qp.get('dyn');
   window.USER_STEPS = parseInt(qp.get('steps') || '120000', 10);
@@ -298,6 +373,32 @@ var MOLS = {
         rows += '<tr><td>' + labels[a] + '</td><td align=right>' + m.toFixed(5) + '</td></tr>';
       }
     }
+    // DISPLACEMENT FROM THE OBSERVED GEOMETRY -- the measure of success, reported as a length.
+    var maxRad = 0, maxAng = 0;
+    function geomReport() {
+      if (!window._nuclei) return '';
+      if (!qp.get('dyn')) return '<br><span style="color:#789;font-size:10.5px">nuclei held'
+        + ' &mdash; displacement is zero by construction; add ?dyn=1 to measure it</span>';
+      var rows = '';
+      bonds.forEach(function (b) {
+        var d = dist(posAU(b[0],true), posAU(b[1],true)), pc = 100*(d-b[2])/b[2];
+        maxRad = Math.max(maxRad, Math.abs(pc));
+        rows += M.atoms[b[0]].el + '&ndash;' + M.atoms[b[1]].el + ' ' + d.toFixed(4)
+             + ' vs ' + b[2].toFixed(4) + ' (<b style="color:'
+             + (Math.abs(pc) < 2 ? '#6c6' : Math.abs(pc) < 10 ? '#fc6' : '#f66') + '">'
+             + (pc>=0?'+':'') + pc.toFixed(1) + '%</b>)<br>';
+      });
+      angles.forEach(function (t, ti) {
+        var a1 = angleAt(t,true), da = a1 - angles0[ti];
+        maxAng = Math.max(maxAng, Math.abs(da));
+        rows += M.atoms[t[0]].el + '&ndash;' + M.atoms[t[1]].el + '&ndash;' + M.atoms[t[2]].el
+             + ' ' + a1.toFixed(2) + '&deg; vs ' + angles0[ti].toFixed(2) + '&deg; (<b style="color:'
+             + (Math.abs(da) < 2 ? '#6c6' : Math.abs(da) < 10 ? '#fc6' : '#f66') + '">'
+             + (da>=0?'+':'') + da.toFixed(2) + '&deg;</b>)<br>';
+      });
+      return '<br><b>displacement from observed</b><br><span style="font-size:10.5px">'
+        + rows + '</span>';
+    }
     var fs = Math.sqrt(sx*sx + sy*sy + sz*sz);
     var rel = fmax > 0 ? 100 * fs / fmax : 0;
     var vkk = window._E_KK;
@@ -311,12 +412,15 @@ var MOLS = {
       + '<br>V<sub>KK</sub> ' + (vkk === undefined ? '—' : vkk.toFixed(5))
       + ' vs exact ' + vkkExp.toFixed(5)
       + ' <b style="color:' + (vok ? '#6c6' : '#f66') + '">' + (vok ? 'OK' : 'MISMATCH') + '</b>'
-      + '<br>E = ' + (window._E === undefined ? '—' : window._E.toFixed(6));
+      + '<br>E = ' + (window._E === undefined ? '—' : window._E.toFixed(6))
+      + geomReport();
     document.title = 'MOLSIM ' + key + ' t=' + ((Date.now()-t0)/1000).toFixed(0) + 's'
       + ' step=' + (window._tStep === undefined ? '?' : window._tStep)
       + ' E=' + (window._E === undefined ? 'n/a' : window._E.toFixed(6))
       + ' Fsum=' + fs.toFixed(6) + ' (' + rel.toFixed(1) + '%)'
       + ' VKK=' + (vkk === undefined ? 'n/a' : vkk.toFixed(4)) + '/' + vkkExp.toFixed(4)
+      + (qp.get('dyn') ? ' dR=' + maxRad.toFixed(1) + '% dAng=' + maxAng.toFixed(2) + 'deg' : '')
+      + ' soft=' + window.USER_SOFT.toFixed(2) + ' eps=' + (window.USER_SOFT*h).toFixed(3)
       + ' | n=' + N + ' box=' + box + ' h=' + h.toFixed(4) + ' nat=' + M.atoms.length + ' ndom=' + nuclei.length;
   }, 1500);
 })();
