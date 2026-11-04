@@ -243,6 +243,29 @@ var MOLS = {
   // wrong: the recorded result is that correct polarity needs SPLIT O and r_c = 0, while a
   // non-split blob inverts it. Only the FIRST sibling carries the kernel charge; mol_fast sums
   // Z over entries at a site, so the others take Z:0. Angular split type follows the count.
+  // ?sep= OVERRIDES a diatomic's separation, keeping the centroid. This is what lets the
+  // dissociation path be walked: E_bind = integral of F dR from R_e to infinity is the WORK done
+  // against the restoring force to pull the molecule apart. That route never computes a separated
+  // atom -- the composition is identical at every point and the dissociation limit is reached by
+  // the same code with the same domains -- so the atomic references' 2-2.6x over-binding, which
+  // currently cancels only by assumption, drops out by construction.
+  // It requires the force to be a TRUE GRADIENT, which the volume integral is (agreeing with
+  // -dE/dR to 4-6%) and the old sampled point-gradient was not, so this was previously unavailable.
+  if (qp.get('sep') && M.atoms.length === 2) {
+    var sepWant = parseFloat(qp.get('sep'));
+    var ax = M.atoms[0], bx = M.atoms[1];
+    var d0 = Math.sqrt(Math.pow(ax.x-bx.x,2) + Math.pow(ax.y-bx.y,2) + Math.pow(ax.z-bx.z,2));
+    var f = sepWant / d0, cx = (ax.x+bx.x)/2, cy = (ax.y+bx.y)/2, cz = (ax.z+bx.z)/2;
+    M = JSON.parse(JSON.stringify(M));          // do not mutate the shared MOLS entry
+    var P = [[ax.x,ax.y,ax.z],[bx.x,bx.y,bx.z]], C = [cx,cy,cz];
+    for (var q = 0; q < 2; q++) {
+      M.atoms[q].x = C[0] + (P[q][0]-C[0])*f;
+      M.atoms[q].y = C[1] + (P[q][1]-C[1])*f;
+      M.atoms[q].z = C[2] + (P[q][2]-C[2])*f;
+    }
+    M.ext = Math.max(M.ext, sepWant/2);
+  }
+
   var SPLIT_BY_N = { 2: 'hemi', 3: 'third', 4: 'tetra' };
   var nuclei = [], targets = [], labels = [];
   M.atoms.forEach(function (a) {
@@ -428,6 +451,24 @@ var MOLS = {
       return '<br><b>displacement from observed</b><br><span style="font-size:10.5px">'
         + rows + '</span>';
     }
+    // AXIAL FORCE for a diatomic -- the integrand of E_bind = int F dR, i.e. the component that
+    // changes the separation:  F_R = (F2 - F1).e / 2,  e the bond unit vector.
+    // SIGN: F_R > 0 pushes the atoms APART (net repulsion), F_R < 0 pulls them TOGETHER.
+    // So the work to dissociate is  E_bind = -int_{Re}^{inf} F_R dR, positive for a bound molecule.
+    // Using (F2-F1)/2 rather than one atom's force cancels any spurious NET force on the pair,
+    // which matters: mol_fast_h2_scan.html carries a constant ~0.05 Ha/bohr offset with 42-91%
+    // per-atom asymmetry, and that page's forces are unusable because of it.
+    var fax = null;
+    if (M.atoms.length === 2 && F && F[0] && F[1]) {
+      var p0 = posAU(0, !!qp.get('dyn')), p1 = posAU(1, !!qp.get('dyn')), e = [], L = 0;
+      for (var c = 0; c < 3; c++) { e.push(p1[c] - p0[c]); L += e[c]*e[c]; }
+      L = Math.sqrt(L);
+      if (L > 0) {
+        fax = 0;
+        for (var c2 = 0; c2 < 3; c2++) fax += (F[1][c2] - F[0][c2]) * (e[c2]/L);
+        fax /= 2;
+      }
+    }
     var fs = Math.sqrt(sx*sx + sy*sy + sz*sz);
     var rel = fmax > 0 ? 100 * fs / fmax : 0;
     // V_KK against exact arithmetic on the geometry ACTUALLY BUILT. With the kernels released the
@@ -460,6 +501,7 @@ var MOLS = {
       + ' step=' + (window._tStep === undefined ? '?' : window._tStep)
       + ' E=' + (window._E === undefined ? 'n/a' : window._E.toFixed(6))
       + ' Fsum=' + fs.toFixed(6) + ' (' + rel.toFixed(1) + '%)'
+      + (fax !== null ? ' Fax=' + (fax>=0?'+':'') + fax.toFixed(6) + ' R=' + L.toFixed(4) : '')
       + ' VKK=' + (vkk === undefined ? 'n/a' : vkk.toFixed(4)) + '/' + vkkRef.toFixed(4)
       + (qp.get('dyn') ? ' dR=' + maxRad.toFixed(1) + '% dAng=' + maxAng.toFixed(2) + 'deg' : '')
       + ' soft=' + window.USER_SOFT.toFixed(2) + ' eps=' + (window.USER_SOFT*h).toFixed(3)
