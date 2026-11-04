@@ -63,7 +63,7 @@ window.onerror = function (m, u, l, c) {
 //   'none'    nothing cancels (CO, HCN, N2O, HC3N) -> a genuine convergence measurement
 // Measured 2026-11-03: the asymmetric cases run 11-89% while CO2 and C3O2 read 0.1-0.2%, which is
 // symmetry being preserved, not convergence being good.
-var SYM = { h:'full', h2:'full', n2:'full', o2:'full', co:'none', co2:'full', n2o:'none', hcn:'none',
+var SYM = { h:'full', c:'full', n:'full', o:'full', h2:'full', n2:'full', o2:'full', co:'none', co2:'full', n2o:'none', hcn:'none',
             c2h2:'full', c2n2:'full', c3o2:'full', hc3n:'none', c4h2:'full',
             h2o:'axis', h2o_split:'axis', nh3:'axis', ch4:'full', h2co:'axis',
             h2o_a90:'axis', h2o_a109:'axis', h2o_a120:'axis', h2o_z2:'axis' };
@@ -75,6 +75,15 @@ var SYMNOTE = {
 var MOLS = {
   h: { name: 'H  single atom  [E_bind reference + null test]', ext: 0.000, nelec: 1, atoms: [
       { x:  0.00000, y:  0.00000, z:  0.00000, el:'H', Z:1 },
+  ]},
+  c: { name: 'C  single atom  [E_bind reference]', ext: 0.000, nelec: 4, atoms: [
+      { x:  0.00000, y:  0.00000, z:  0.00000, el:'C', Z:4 },
+  ]},
+  n: { name: 'N  single atom  [E_bind reference]', ext: 0.000, nelec: 3, atoms: [
+      { x:  0.00000, y:  0.00000, z:  0.00000, el:'N', Z:3 },
+  ]},
+  o: { name: 'O  single atom  [E_bind reference]', ext: 0.000, nelec: 3, atoms: [
+      { x:  0.00000, y:  0.00000, z:  0.00000, el:'O', Z:3 },
   ]},
   h2: { name: 'H2 hydrogen', ext: 0.700, nelec: 2, atoms: [
       { x: -0.70014, y:  0.00000, z:  0.00000, el:'H', Z:1 },
@@ -339,6 +348,26 @@ var MOLS = {
   window.USER_SOFT = epsQ ? (parseFloat(epsQ) / h)
                    : (softQ === 'auto') ? Math.max(1, Math.ceil(zMax * h / 0.1))
                    : (softQ ? parseFloat(softQ) : 1);
+  // R_init caps each domain's INITIAL territory at 3.0 au from its own nucleus, leaving everything
+  // beyond unowned (w = 0 for every domain) -- permanently, since neither u nor w can move first
+  // into it, so amplitude leaking there steals normalisation from the core.
+  //
+  // MEASURED 2026-11-04, H2 at h=0.10, eps=h, consistent scheme, ONLY R_init varied:
+  //     rinit=3.0  E=-1.134067  bond +28.3%
+  //     rinit=4.5  E=-1.138203  bond +28.2%
+  // i.e. 0.004 Ha and 0.1 percentage points. **THE HALO IS A MINOR EFFECT HERE.**
+  // mol_fast.js:1354 attributes V_eK +0.165 and E +0.127 Ha to it, but that figure comes from
+  // comparing mol_fast against the ORIGINAL P5, which differs in far more than R_init -- p5 imposes
+  // a hard symmetric midplane where mol_fast evolves a free front -- so the whole scheme difference
+  // was charged to the halo. The direct ladder the comment itself asks for gives 30x less.
+  // ?rinit= DEFAULT LEFT AT THE INHERITED 3.0 deliberately: changing it would silently shift every
+  // number measured against the old behaviour, including the sixteen-molecule table. Pass
+  // ?rinit=<au> to test, e.g. half the box to cover it.
+  window.USER_R_INIT = parseFloat(qp.get('rinit') || '3.0');
+  // ?wdiff= interface sharpness. With weighted density + weighted kinetic term this is a
+  // CONVERGENCE parameter, not a fitted one -- sharpening w approaches the true disjoint-domain
+  // problem (mol_fast.js:183). Default 0.05 is inherited, and no ladder has ever been run on it.
+  if (qp.get('wdiff')) window.USER_W_DIFF = parseFloat(qp.get('wdiff'));
   window.USER_FORCE_VOLUME = true;        // volume integral, not the point gradient
   window.USER_DYNAMICS = !!qp.get('dyn');
   window.USER_STEPS = parseInt(qp.get('steps') || '120000', 10);
@@ -401,8 +430,20 @@ var MOLS = {
     }
     var fs = Math.sqrt(sx*sx + sy*sy + sz*sz);
     var rel = fmax > 0 ? 100 * fs / fmax : 0;
-    var vkk = window._E_KK;
-    var vok = (vkk !== undefined) && Math.abs(vkk - vkkExp) < 1e-3 * Math.max(1, vkkExp);
+    // V_KK against exact arithmetic on the geometry ACTUALLY BUILT. With the kernels released the
+    // reference must be recomputed from their CURRENT positions -- comparing a relaxed V_KK against
+    // the starting geometry flagged a red MISMATCH on every dynamics run, which is a false alarm
+    // that discredits a check that in fact passes exactly (H2 held: 0.7141 vs 0.71414).
+    var vkk = window._E_KK, vkkRef = vkkExp;
+    if (qp.get('dyn') && window._nuclei) {
+      vkkRef = 0;
+      for (var p1 = 0; p1 < M.atoms.length; p1++)
+        for (var p2 = p1 + 1; p2 < M.atoms.length; p2++) {
+          var d2 = dist(posAU(p1, true), posAU(p2, true));
+          if (d2 > 0) vkkRef += M.atoms[p1].Z * M.atoms[p2].Z / d2;
+        }
+    }
+    var vok = (vkk !== undefined) && Math.abs(vkk - vkkRef) < 1e-3 * Math.max(1, vkkRef);
     document.getElementById('checks').innerHTML =
       '<table style="font-size:11px"><tr><th align=left>atom</th><th>|F|</th></tr>' + rows + '</table>'
       + '<b>&Sigma;F</b> = ' + fs.toFixed(6) + '  (<b style="color:'
@@ -410,7 +451,8 @@ var MOLS = {
       + '<br><span style="color:' + SYMNOTE[SYM[key]][1] + ';font-size:10.5px" title="'
       + SYMNOTE[SYM[key]][2] + '">&#9432; ' + SYMNOTE[SYM[key]][0] + '</span>'
       + '<br>V<sub>KK</sub> ' + (vkk === undefined ? '—' : vkk.toFixed(5))
-      + ' vs exact ' + vkkExp.toFixed(5)
+      + ' vs exact ' + vkkRef.toFixed(5)
+      + (qp.get('dyn') ? ' <span style="color:#789">(current geometry)</span>' : '')
       + ' <b style="color:' + (vok ? '#6c6' : '#f66') + '">' + (vok ? 'OK' : 'MISMATCH') + '</b>'
       + '<br>E = ' + (window._E === undefined ? '—' : window._E.toFixed(6))
       + geomReport();
@@ -418,9 +460,10 @@ var MOLS = {
       + ' step=' + (window._tStep === undefined ? '?' : window._tStep)
       + ' E=' + (window._E === undefined ? 'n/a' : window._E.toFixed(6))
       + ' Fsum=' + fs.toFixed(6) + ' (' + rel.toFixed(1) + '%)'
-      + ' VKK=' + (vkk === undefined ? 'n/a' : vkk.toFixed(4)) + '/' + vkkExp.toFixed(4)
+      + ' VKK=' + (vkk === undefined ? 'n/a' : vkk.toFixed(4)) + '/' + vkkRef.toFixed(4)
       + (qp.get('dyn') ? ' dR=' + maxRad.toFixed(1) + '% dAng=' + maxAng.toFixed(2) + 'deg' : '')
       + ' soft=' + window.USER_SOFT.toFixed(2) + ' eps=' + (window.USER_SOFT*h).toFixed(3)
+      + ' rinit=' + window.USER_R_INIT + ' wdiff=' + (window.USER_W_DIFF !== undefined ? window.USER_W_DIFF : 0.05)
       + ' | n=' + N + ' box=' + box + ' h=' + h.toFixed(4) + ' nat=' + M.atoms.length + ' ndom=' + nuclei.length;
   }, 1500);
 })();
