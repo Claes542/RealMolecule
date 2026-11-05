@@ -346,7 +346,17 @@ var MOLS = {
   window.USER_NUCLEI = nuclei;
   window.USER_NORM_TARGETS = targets;
   window.USER_WEIGHTED_DENSITY = true;    // the consistent functional: every term weighted by w
-  window.USER_W_KIN_WEIGHT = true;
+  // KINETIC TERM: w-WEIGHTED (default here) or CUT OFF at a w threshold.
+  //   ?wkinw=0          use the GATE instead of w-weighting
+  //   ?wkingate=<t>     the threshold; mol_fast inherits 0.1 from h2o.js, the ORIGINAL p5 uses 0.5
+  // mol_fast.js:153 is explicit that this is not cosmetic: "on a DIFFUSE w the choice decides how
+  // many interface cells pay kinetic cost, which is exactly what sets a bond length". A HIGHER
+  // threshold means fewer interface cells pay, less kinetic energy, more binding, shorter bond.
+  // 0.5 is worth testing because it is the p5 value -- an independent, pre-existing choice, and p5
+  // is the construction that gave H2 ~ -1.17. Searching for a value that fits would be a FIT;
+  // testing one chosen elsewhere is not.
+  window.USER_W_KIN_WEIGHT = qp.get('wkinw') !== '0';
+  if (qp.get('wkingate')) window.USER_W_KIN_GATE = parseFloat(qp.get('wkingate'));
   // KERNEL SOFTENING, eps = SOFT*h. This was hard-coded to 1 with no recorded reason, overriding
   // mol_fast's own default of 2. But the collapse criterion is Z*h/c <~ 0.1 with eps = c*h, and at
   // h = 0.14 that gives Z*h/c = 0.42 for O+3 and 0.56 for C+4 -- 4 to 6 times INSIDE the collapse
@@ -391,6 +401,45 @@ var MOLS = {
   // CONVERGENCE parameter, not a fitted one -- sharpening w approaches the true disjoint-domain
   // problem (mol_fast.js:183). Default 0.05 is inherited, and no ladder has ever been run on it.
   if (qp.get('wdiff')) window.USER_W_DIFF = parseFloat(qp.get('wdiff'));
+  // ?wfloor= the one w cut-off that touches the DYNAMICS (mol_fast.js:412, inside the w-update):
+  //   if (nw < W_FLOOR && w_max_other > 0.5) nw = 0
+  // Default 0, i.e. no cut-off at all -- w is only clamped non-negative. It exists because the
+  // diffusion term smears a residue behind a RETREATING front which advection later regrows, seen
+  // directly as a charge seeded inside the Li+ core being expelled and then reappearing. Not to be
+  // confused with W_KIN_GATE (0.1), which thresholds w for the kinetic ENERGY only and is measured
+  // to leave geometry and forces bit-identical.
+  if (qp.get('wfloor')) window.USER_W_FLOOR = parseFloat(qp.get('wfloor'));
+  // ?udecay= clears the FROZEN RESIDUE. Where w = 0 every term of the u update is gated to zero,
+  // so u is "FROZEN at whatever the initial seed left -- not relaxed, just stationary"
+  // (mol_fast.js:270), and with wd=0 that stale density is counted as real charge: "it is the sense
+  // in which this solver's domains OVERLAP while the model's do not". U_DECAY multiplies the
+  // amplitude by (1-d) each step wherever w < 0.5, so non-overlap holds for the DENSITY and not
+  // only for the occupancy. Default 0 because every page here was tuned with the residue present.
+  // p5 achieves the same end differently: it ZEROES u outside each domain at initialisation.
+  if (qp.get('udecay')) window.USER_U_DECAY = parseFloat(qp.get('udecay'));
+  // ?uzero=1 is p5's ACTUAL mechanism, and mol_fast.js:150 says so: "zero u outside its own
+  // Voronoi cell AT INITIALISATION, as the original p5 solver does".
+  // WHY IT IS THE RIGHT MIMIC. p5 never has to choose between u^2 and u^2*w, because confining the
+  // amplitude makes them IDENTICAL -- u = 0 wherever w = 0. The choice only arises in mol_fast
+  // because its u is frozen at the seed outside its territory, so the density must be weighted to
+  // avoid counting that residue, and weighting is what introduces the partial-weight interface
+  // kinetic term. Confine u and the question disappears.
+  if (qp.get('uzero')) window.USER_U_ZERO_INIT = true;
+  // ?wd=0 switches the density from u^2*w back to u^2 -- p5's choice (its Poisson source is
+  // 2*PI*dt*u^2 with no w factor, and its normalisation is over u^2). Only meaningful together
+  // with udecay, since wd=0 alone reinstates the overlap p5 does not have.
+  if (qp.get('wd') === '0') window.USER_WEIGHTED_DENSITY = false;
+  // ?wadv= FRONT SPEED. mol_fast's default 1 "makes the front crawl ... the u-field then
+  // equilibrates at essentially fixed territory and the geometry is the last thing to settle,
+  // which is the WRONG ORDER for a free-boundary problem" (mol_fast.js:250). The original p5 uses
+  // advection 10 with diffusion 2, where mol_fast ships 1 with 0.05 -- so p5's territory and
+  // amplitude settle together, as a free-boundary problem should.
+  // STABILITY IS MEASURED AND TIGHT: W_ADV=2 conserves charge, 4 at diff=0.1 diverged, 10 ended
+  // with 4.3 and 5.3 units of charge instead of 3. But that test paired high advection with LOW
+  // diffusion; p5 pairs it with HIGH diffusion, which damps the front. The file's own prescription
+  // is "keep W_ADV at a few, raise W_DIFF to damp the front instead, and ALWAYS check charge
+  // conservation -- q_u per domain must come back at its target".
+  if (qp.get('wadv')) window.USER_W_ADV = parseFloat(qp.get('wadv'));
   window.USER_FORCE_VOLUME = true;        // volume integral, not the point gradient
   window.USER_DYNAMICS = !!qp.get('dyn');
   window.USER_STEPS = parseInt(qp.get('steps') || '120000', 10);
@@ -414,6 +463,35 @@ var MOLS = {
     (nuclei.length > 16 ? ' <b style="color:#f66">exceeds the 16-domain cap</b>' : '');
 
   var t0 = Date.now();
+  // CHARGE CONSERVATION. readDomainCentroids is async and returns q_u (what the solver normalises)
+  // and q_uw (the charge inside the domain's own territory). With WEIGHTED_DENSITY the density IS
+  // u^2*w and normalisation enforces int u^2 w = target, so q_uw should return AT its target; a
+  // drift means the front has broken the partition, and the file notes these failures "announce
+  // themselves there long before the picture looks wrong".
+  var qReport = '';
+  setInterval(function () {
+    // q_uw lives in readDomainProfiles, NOT readDomainCentroids -- I called the wrong one and
+    // got q=[?,?]. The field is at mol_fast.js:1968, inside the profiles readback.
+    if (typeof window.readDomainProfiles !== 'function') return;
+    window.readDomainProfiles().then(function (out) {
+      var arr = Array.isArray(out) ? out : (out && out.domains) || (out && out.profiles);
+      if (!arr || !arr.length) { qReport = ' q=unavailable'; return; }
+      var bad = 0, parts = [];
+      // q_u is what the solver NORMALISES and is the conservation check the source demands
+      // ("q_u per domain must come back at its target"). q_uw is the charge inside the domain's
+      // OWN TERRITORY, which is legitimately < target whenever u extends beyond w -- and it does,
+      // since the u-update's flux carries face-averaged w and so pushes amplitude into the first
+      // cell outside. Claes observed exactly this in p5: u fills the vacuum while w keeps the gap.
+      // Flagging on q_uw therefore reports a normal feature as a failure; only q_u can fail.
+      arr.forEach(function (d, di) {
+        var tgt = targets[di], q = d.q_u, qw = d.q_uw;
+        if (q !== undefined && Math.abs(q - tgt) > 0.02 * Math.max(1, tgt)) bad++;
+        parts.push((q === undefined ? '?' : q.toFixed(3))
+                   + '/' + (qw === undefined ? '?' : qw.toFixed(3)));
+      });
+      qReport = ' q_u/q_uw=[' + parts.join(' ') + ']' + (bad ? ' CHARGE_DRIFT=' + bad : '');
+    }).catch(function () {});
+  }, 6000);
   setInterval(function () {
     var ls = document.getElementById('loadStatus');
     if (ls && document.getElementById('defaultCanvas0')) ls.style.display = 'none';
@@ -503,9 +581,23 @@ var MOLS = {
       + ' Fsum=' + fs.toFixed(6) + ' (' + rel.toFixed(1) + '%)'
       + (fax !== null ? ' Fax=' + (fax>=0?'+':'') + fax.toFixed(6) + ' R=' + L.toFixed(4) : '')
       + ' VKK=' + (vkk === undefined ? 'n/a' : vkk.toFixed(4)) + '/' + vkkRef.toFixed(4)
+      // TERM BY TERM, so a difference against another implementation can be localised to one
+      // integral rather than inferred from the total. p5 prints [T, Vee+VeK, VKK] and Vee, so
+      // VeK = (Vee+VeK) - Vee recovers its fourth term and all four are comparable.
+      + (window._E_T !== undefined ? ' [T=' + window._E_T.toFixed(4)
+          + ' VeK=' + window._E_eK.toFixed(4)
+          + ' Vee=' + window._E_ee.toFixed(4)
+          + ' VKK=' + window._E_KK.toFixed(4) + ']' : '')
       + (qp.get('dyn') ? ' dR=' + maxRad.toFixed(1) + '% dAng=' + maxAng.toFixed(2) + 'deg' : '')
       + ' soft=' + window.USER_SOFT.toFixed(2) + ' eps=' + (window.USER_SOFT*h).toFixed(3)
       + ' rinit=' + window.USER_R_INIT + ' wdiff=' + (window.USER_W_DIFF !== undefined ? window.USER_W_DIFF : 0.05)
+      + ' wkinw=' + (window.USER_W_KIN_WEIGHT ? 1 : 0)
+      + ' wkingate=' + (window.USER_W_KIN_GATE !== undefined ? window.USER_W_KIN_GATE : 0.1)
+      + ' wfloor=' + (window.USER_W_FLOOR !== undefined ? window.USER_W_FLOOR : 0)
+      + ' wadv=' + (window.USER_W_ADV !== undefined ? window.USER_W_ADV : 1)
+      + ' wd=' + (window.USER_WEIGHTED_DENSITY ? 1 : 0)
+      + ' udecay=' + (window.USER_U_DECAY !== undefined ? window.USER_U_DECAY : 0)
+      + ' uzero=' + (window.USER_U_ZERO_INIT ? 1 : 0) + qReport
       + ' | n=' + N + ' box=' + box + ' h=' + h.toFixed(4) + ' nat=' + M.atoms.length + ' ndom=' + nuclei.length;
   }, 1500);
 })();
