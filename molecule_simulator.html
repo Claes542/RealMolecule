@@ -425,6 +425,12 @@ var MOLS = {
   // avoid counting that residue, and weighting is what introduces the partial-weight interface
   // kinetic term. Confine u and the question disappears.
   if (qp.get('uzero')) window.USER_U_ZERO_INIT = true;
+  // ?fn=1 STRONG homogeneous Neumann per domain: the kinetic flux through any face joining cells of
+  // different ownership is OMITTED (face weight 0 instead of the averaged 0.5), which is exactly
+  // "faces joining two KEPT cells" in tools/axisym_realqm.py. Zero flux IS du/dn = 0 -- nothing is
+  // imposed, the face simply is not assembled. The energy's kinetic term uses the same face weights,
+  // so the diagnostic still mirrors the solver.
+  if (qp.get('fn')) window.USER_FACE_NEUMANN = true;
   // ?wd=0 switches the density from u^2*w back to u^2 -- p5's choice (its Poisson source is
   // 2*PI*dt*u^2 with no w factor, and its normalisation is over u^2). Only meaningful together
   // with udecay, since wd=0 alone reinstates the overlap p5 does not have.
@@ -484,8 +490,13 @@ var MOLS = {
       // cell outside. Claes observed exactly this in p5: u fills the vacuum while w keeps the gap.
       // Flagging on q_uw therefore reports a normal feature as a failure; only q_u can fail.
       arr.forEach(function (d, di) {
+        // WHICH integral is normalised depends on WEIGHTED_DENSITY: wd=1 enforces int u^2 w
+        // (so q_uw hits the target and q_u legitimately exceeds it by the residue), wd=0 enforces
+        // int u^2 (so q_u hits it and q_uw falls short by the residue). Checking the wrong one
+        // reports a normal feature as a failure -- which this check did twice before.
         var tgt = targets[di], q = d.q_u, qw = d.q_uw;
-        if (q !== undefined && Math.abs(q - tgt) > 0.02 * Math.max(1, tgt)) bad++;
+        var qchk = window.USER_WEIGHTED_DENSITY ? qw : q;
+        if (qchk !== undefined && Math.abs(qchk - tgt) > 0.02 * Math.max(1, tgt)) bad++;
         parts.push((q === undefined ? '?' : q.toFixed(3))
                    + '/' + (qw === undefined ? '?' : qw.toFixed(3)));
       });
@@ -597,7 +608,8 @@ var MOLS = {
       + ' wadv=' + (window.USER_W_ADV !== undefined ? window.USER_W_ADV : 1)
       + ' wd=' + (window.USER_WEIGHTED_DENSITY ? 1 : 0)
       + ' udecay=' + (window.USER_U_DECAY !== undefined ? window.USER_U_DECAY : 0)
-      + ' uzero=' + (window.USER_U_ZERO_INIT ? 1 : 0) + qReport
+      + ' uzero=' + (window.USER_U_ZERO_INIT ? 1 : 0)
+      + ' fn=' + (window.USER_FACE_NEUMANN ? 1 : 0) + qReport
       + ' | n=' + N + ' box=' + box + ' h=' + h.toFixed(4) + ' nat=' + M.atoms.length + ' ndom=' + nuclei.length;
   }, 1500);
 })();

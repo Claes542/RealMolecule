@@ -212,12 +212,41 @@ struct P {
   const CLAMP_RC = (typeof window !== 'undefined' && !!window.USER_CLAMP_RC);
   // Built as a plain string rather than a nested template literal inside reduceWGSL -- nesting
   // backticks inside a backtick string is legal JS but easy to break on the next edit.
+  // USER_FACE_NEUMANN: STRONG homogeneous Neumann on each domain, by OMITTING the flux through any
+  // face joining cells of different ownership -- "faces joining two KEPT cells" in
+  // tools/axisym_realqm.py, whose header states the principle: "Omitting a face IS the
+  // homogeneous-Neumann (free interface) condition, which is the natural boundary condition of the
+  // energy functional restricted to a domain. That is the correct RealQM interface condition."
+  //
+  // WHY. The face-averaged w below imposes that condition only WEAKLY: varying 1/2 int w|grad u|^2
+  // leaves a boundary term oint w (du/dn), so w du/dn = 0 is the natural condition, but on a finite
+  // grid a face straddling the interface carries HALF flux rather than none. Measured on H2 at
+  // identical grid, that costs mol_fast T +17..22% and Vee +26..31% against constructions which
+  // impose Neumann strongly, and puts its bond at +48% where theirs are -2.3% (axisym, pure
+  // face-omission), +14% (p5), +14% (essence_solver).
+  //
+  // THE TRAP THIS AVOIDS, measured in that same file: taking a SUBMATRIX of the full stiffness
+  // keeps the diagonal contributions of faces leading into the excluded region and so imposes
+  // DIRICHLET -- one electron outside a core gave 3.977/3.697/3.484 eV (submatrix) against
+  // 6.177/5.727/5.385 eV (faces omitted), the latter matching the 1D radial solve to ~2%. That was
+  // "the cause of the long-unexplained 36% axisym-vs-radial one-electron discrepancy". Omit the
+  // faces at assembly; never mask afterwards.
+  //
+  // Default OFF, so every existing page stays bit-identical. The energy's kinetic term uses the
+  // SAME face weights as the u-update, because a diagnostic that does not mirror the solver's
+  // exclusion rule corrupts both residuals and energies (project_diagnostic_mirrors_solver).
+  const FACE_NEUMANN = (typeof window !== 'undefined' && !!window.USER_FACE_NEUMANN);
+  const FW = (a, b) => FACE_NEUMANN
+    ? `select(0.0, 1.0, min(${a}, ${b}) > 0.5)`
+    : `((${a} + ${b}) * 0.5)`;
+  console.log('mol_fast interface BC: ' + (FACE_NEUMANN ? 'STRONG Neumann (faces omitted)'
+                                                        : 'weak (face-averaged w)'));
   const kinTermWGSL = W_KIN_WEIGHT ? `
       // FACE-AVERAGED w, matching the u-update's flux EXACTLY:  T = 1/2 sum_faces w_face (du)^2 h
       let wcT = W[o + id];
-      let wfa = 0.5 * (W[o + id + p.S2] + wcT);
-      let wfb = 0.5 * (W[o + id + p.S]  + wcT);
-      let wfc = 0.5 * (W[o + id + 1u]   + wcT);
+      let wfa = ${FW('W[o + id + p.S2]', 'wcT')};
+      let wfb = ${FW('W[o + id + p.S]',  'wcT')};
+      let wfc = ${FW('W[o + id + 1u]',   'wcT')};
       T += k_mult_T * ${KINETIC_COEFF.toFixed(6)} * (wfa*a*a + wfb*b*b + wfc*c*c) * p.h;
   ` : `
       if (W[o + id] > ${W_KIN_GATE.toFixed(6)}) {
@@ -590,9 +619,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let k_mult = select(1.0, ${KC_MULTI.toFixed(6)}, selfN > 1.0);
   let hd = p.half_d * k_mult;
   var u_new: f32 = uc
-    + hd * ((uip - uc) * (wip + nw) * 0.5 - (uc - uim) * (nw + wim) * 0.5)
-    + hd * ((ujp - uc) * (wjp + nw) * 0.5 - (uc - ujm) * (nw + wjm) * 0.5)
-    + hd * ((ukp - uc) * (wkp + nw) * 0.5 - (uc - ukm) * (nw + wkm) * 0.5)
+    + hd * ((uip - uc) * ${FW('wip', 'nw')} - (uc - uim) * ${FW('nw', 'wim')})
+    + hd * ((ujp - uc) * ${FW('wjp', 'nw')} - (uc - ujm) * ${FW('nw', 'wjm')})
+    + hd * ((ukp - uc) * ${FW('wkp', 'nw')} - (uc - ukm) * ${FW('nw', 'wkm')})
     + p.dt * (K[id] - Vother - V_TF - V_tilt - V_Pauli - p.field_x * x_au) * uc * wc;
   // Collapse the frozen residue where this domain holds no territory (see U_DECAY above).
   if (${U_DECAY.toFixed(6)} > 0.0 && nw < 0.5) {
