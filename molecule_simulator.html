@@ -2,7 +2,7 @@
 <html><head>
   <meta charset="utf-8">
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
-  <title>Molecule simulator — H, C, N, O</title>
+  <title>Molecule simulator — H, He, Li, Be, B, C, N, O, F, Ne</title>
   <style>
     body { margin:0; background:#000; color:#fff; font-family:monospace }
     select,button { background:#1a2228; color:#dfe; border:1px solid #456; padding:3px 6px; font-family:monospace }
@@ -15,7 +15,7 @@
 <div id="panel" style="position:fixed;top:8px;left:8px;background:rgba(0,0,0,.92);padding:9px 11px;
      border:1px solid #345;border-radius:6px;width:220px;max-height:96vh;overflow-y:auto;
      font-size:11.5px;z-index:1000;color:#cde">
-  <div style="font-weight:bold;color:#8df">Molecule simulator &mdash; H, C, N, O</div>
+  <div style="font-weight:bold;color:#8df">Molecule simulator &mdash; H, He, Li, Be, B, C, N, O, F, Ne</div>
   <div id="picker" style="margin:7px 0"></div>
   <div id="geom" style="color:#9ab;font-size:11px"></div>
   <div id="checks" style="margin-top:7px"></div>
@@ -63,7 +63,9 @@ window.onerror = function (m, u, l, c) {
 //   'none'    nothing cancels (CO, HCN, N2O, HC3N) -> a genuine convergence measurement
 // Measured 2026-11-03: the asymmetric cases run 11-89% while CO2 and C3O2 read 0.1-0.2%, which is
 // symmetry being preserved, not convergence being good.
-var SYM = { h:'full', c:'full', n:'full', o:'full', h2:'full', n2:'full', o2:'full', co:'none', co2:'full', n2o:'none', hcn:'none',
+var SYM = { h:'full', c:'full', n:'full', o:'full', c_split:'full', n_split:'full', o_split:'full',
+            he_v:'full', he_split:'full', li_v:'full', be_v:'full', b_v:'full', c_v:'full', n_v:'full', o_v:'full', f_v:'full', ne_v:'full',
+            h2:'full', n2:'full', o2:'full', co:'none', co2:'full', n2o:'none', hcn:'none',
             c2h2:'full', c2n2:'full', c3o2:'full', hc3n:'none', c4h2:'full',
             h2o:'axis', h2o_split:'axis', nh3:'axis', ch4:'full', h2co:'axis',
             h2o_a90:'axis', h2o_a109:'axis', h2o_a120:'axis', h2o_z2:'axis' };
@@ -71,6 +73,97 @@ var SYMNOTE = {
   full: ['symmetry-cancelled', '#8a9', 'SigmaF is forced to zero by symmetry here, so it measures only whether the algorithm preserves symmetry — it does NOT bound the convergence error.'],
   axis: ['partly cancelled', '#dc8', 'Symmetry cancels SigmaF except along the unique axis, so the residual IS a convergence measurement in that direction.'],
   none: ['genuine convergence meter', '#8cf', 'No symmetry cancels SigmaF here, so the residual measures electronic non-convergence directly.'] };
+
+// -----------------------------------------------------------------------------------------------
+// BINDING ENERGY, reported in the output instead of being recomputed by hand afterwards.
+//
+//     E_bind = sum_i E(atom_i) - E(molecule),      positive = bound.
+//
+// The subtraction is legitimate only when the atomic references were computed on the SAME grid
+// with the SAME settings as the molecule. That is not a formality: mixed boxes were measured to
+// corrupt a cross-molecule difference by 2.7x (CO gave 0.0369 on mixed boxes against 0.0137 on
+// matched ones). So the references are KEYED BY GRID, and a run whose grid has no reference set
+// reports n/a together with the reason, rather than silently subtracting a number measured
+// somewhere else. Declaring one mesh for every molecule is what turns these into fixed constants
+// of the model instead of per-run bookkeeping.
+//
+// Key is 'box|h|gate'. Each set records how it was measured; add a set, do not edit one.
+var E_ATOM_SETS = {
+  // THE DECLARED GRID: box 20, h 0.10 (200^3), eps = h, soft 1, rinit 3, wdiff 0.05, wd 1,
+  // 232500 steps, gate 0.9. The atom is nearly box-free (-0.000082 Ha from box 12) while the
+  // MOLECULE is not (+0.005967), so E_bind drops 3.5 points of D_e on moving here from box 12 --
+  // larger than the 2.1-point seed scatter, hence real. Measured 2026-11-05.
+  '20|0.100|0.9': { H: -0.486591 },
+  // box 12, h 0.10, eps = h, soft 1, rinit 3, wdiff 0.05, wd 1, 232500 steps, gate 0.9
+  '12|0.100|0.9': { H: -0.486509 },
+  // same grid, baseline kinetic accounting (gate 0.1)
+  '12|0.100|0.1': { H: -0.486422 },
+  // box 15, h 0.1389, eps 0.14, 119500 steps, gate 0.1. N and O are BIT-IDENTICAL here (both
+  // carry Z_x = 3), so nothing computed from this set distinguishes nitrogen from oxygen.
+  '15|0.139|0.1': { H: -0.482258, C: -13.999484, N: -6.847492, O: -6.847492 }
+};
+// Experimental dissociation energy (Ha). TWO conventions, and the output reports the error against
+// BOTH, because for H2 they differ by 6.0% -- larger than the model's own run-to-run scatter, so
+// quoting one silently picks a 6-point answer:
+//   De = the depth of the well at its own minimum. The MATCHED target: the model has no nuclear
+//        motion, so what it computes is a well depth, not the energy of a vibrational state.
+//   D0 = the directly measured dissociation energy, from the vibrational ground state.
+//        De = D0 + ZPE, so De is a hybrid of a measurement and a spectroscopic correction.
+// Only values checked against a standard compilation are listed. A molecule absent here still gets
+// its E_bind, with no error column -- which is the honest output, not an incomplete one.
+var D_EXP = {
+  h2: { De: 0.174470, D0: 0.164560 }    // 4.747 / 4.478 eV; ZPE 0.00991 Ha
+};
+
+// ABSOLUTE (total) energy references, Ha. Reported alongside E_bind because the two errors are of
+// very different size and only quoting the binding energy conceals that: for H2 the total is
+// 2.4% too shallow (0.0287 Ha) while the binding energy is off by 0.0017 Ha, so 94% of the error
+// CANCELS in the difference. The binding energy is good BECAUSE of that cancellation, not because
+// the totals are. Reporting E_bind alone overstates the model by a factor of 17 on this system.
+//
+// PROVENANCE MATTERS and is carried per entry: 'exact' is an analytic result, 'computed' is
+// somebody's calculation and not an observable at all -- H2's -1.17447 is Kolos-Wolniewicz in the
+// Born-Oppenheimer limit, so agreeing with it is agreeing with a calculation, not with nature.
+var E_TOT_REF = {
+  h:  { E: -0.500000,  src: 'exact' },
+  h2: { E: -1.174470,  src: 'computed (Kolos-Wolniewicz, BO)' }
+};
+
+// Absolute error of the total energy. Independent of the grid key, since a total needs no atomic
+// reference -- so this one is available on every run, including the single atoms.
+function totalErrReport(key) {
+  if (window._E === undefined) return null;
+  var R = E_TOT_REF[key];
+  if (!R) return { why: 'no checked total-energy reference for this molecule' };
+  var dE = window._E - R.E;
+  return { E: window._E, ref: R.E, src: R.src, dE: dE, pct: 100 * dE / Math.abs(R.E) };
+}
+
+function bindReport(key, M, box, h) {
+  if (window._E === undefined) return { why: 'no energy yet' };
+  if (M.atoms.length < 2) return { why: 'single atom - this run IS a reference' };
+  var gate = (window.USER_W_KIN_GATE !== undefined ? window.USER_W_KIN_GATE : 0.1);
+  var gkey = box + '|' + h.toFixed(3) + '|' + gate;
+  var set = E_ATOM_SETS[gkey];
+  if (!set) return { why: 'no atomic references at ' + gkey + ' (box|h|gate); run the single atoms on THIS grid' };
+  var sum = 0, miss = [];
+  for (var i = 0; i < M.atoms.length; i++) {
+    var el = M.atoms[i].el;
+    if (set[el] === undefined) { if (miss.indexOf(el) < 0) miss.push(el); } else sum += set[el];
+  }
+  if (miss.length) return { why: 'no ' + miss.join('/') + ' reference at ' + gkey };
+  var eb = sum - window._E, out = { eb: eb, gkey: gkey };
+  var D = D_EXP[key];
+  if (D) {
+    // the ERROR, both as an absolute energy and as a fraction, against both conventions
+    out.err = [];
+    ['De', 'D0'].forEach(function (nm) {
+      if (D[nm] === undefined) return;
+      out.err.push({ name: nm, ref: D[nm], dE: eb - D[nm], pct: 100 * (eb - D[nm]) / D[nm] });
+    });
+  }
+  return out;
+}
 
 var MOLS = {
   h: { name: 'H  single atom  [E_bind reference + null test]', ext: 0.000, nelec: 1, atoms: [
@@ -85,6 +178,41 @@ var MOLS = {
   o: { name: 'O  single atom  [E_bind reference]', ext: 0.000, nelec: 3, atoms: [
       { x:  0.00000, y:  0.00000, z:  0.00000, el:'O', Z:3 },
   ]},
+  // SPLIT ATOMIC REFERENCES. The blob entries above carry Z_x electrons in ONE domain, which has
+  // no intra-domain repulsion, and that is the suspected whole cause of their over-binding
+  // (C 2.57x, N/O 2.03x against the sum of their ionization energies; H, with one electron and
+  // therefore NO pairs, is right to 3%). Dividing each over-binding by the pairs the blob fails
+  // to count gives 1.43 Ha/pair for C and 1.16 for O, i.e. <1/r12> implying r12 = 0.70 and
+  // 0.86 a0 -- a valence-shell separation, so the magnitudes fit.
+  //   PREDICTION under splitting: E(C) rises by ~8.55 Ha to about -5.45, E(O) by ~3.47 to about
+  //   -3.37. A much smaller rise means the over-binding is NOT the missing repulsion.
+  // These are separate entries so the blob references stay reproducible.
+  c_split: { name: 'C  single atom  [split 4x1e -- missing-repulsion test]', ext: 0.000, nelec: 4, atoms: [
+      { x:  0.00000, y:  0.00000, z:  0.00000, el:'C', Z:4, sp:4, ax:[0,0,1] },
+  ]},
+  n_split: { name: 'N  single atom  [split 3x1e]', ext: 0.000, nelec: 3, atoms: [
+      { x:  0.00000, y:  0.00000, z:  0.00000, el:'N', Z:3, sp:3, ax:[0,0,1] },
+  ]},
+  o_split: { name: 'O  single atom  [split 3x1e]', ext: 0.000, nelec: 3, atoms: [
+      { x:  0.00000, y:  0.00000, z:  0.00000, el:'O', Z:3, sp:3, ax:[0,0,1] },
+  ]},
+  // SECOND ROW AT FULL VALENCE, Z_x = 1..8. Required for an ATOMIC validation because Z_x is the
+  // only label distinguishing elements: at the molecular truncations (H1 C4 N3 O3) lithium is
+  // bit-identical to hydrogen and B = N = O collapse onto one object at Z_x = 3. Reference is the
+  // sum of IEs to strip the whole valence, = |E_neutral - E_core| from atom_simulator.html's
+  // REF_ETOT and its fitted coreE(Z); validated on carbon to 0.2% against the recorded 2.57x.
+  he_v: { name: 'He  both electrons Z=2  [sumIE 2.904, NO core]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'He', Z:2 } ]},
+  he_split: { name: 'He  split 2x1e hemi  [splitting ARTEFACT calibration]', ext: 0, nelec: 2, atoms: [
+      { x:0,y:0,z:0, el:'He', Z:2, sp:2, ax:[0,0,1] },
+  ]},
+  li_v: { name: 'Li  full valence Z=1  [sumIE 0.195]',  ext: 0, nelec: 1, atoms: [ { x:0,y:0,z:0, el:'Li', Z:1 } ]},
+  be_v: { name: 'Be  full valence Z=2  [sumIE 1.009]',  ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'Be', Z:2 } ]},
+  b_v:  { name: 'B   full valence Z=3  [sumIE 2.621]',  ext: 0, nelec: 3, atoms: [ { x:0,y:0,z:0, el:'B',  Z:3 } ]},
+  c_v:  { name: 'C   full valence Z=4  [sumIE 5.437]',  ext: 0, nelec: 4, atoms: [ { x:0,y:0,z:0, el:'C',  Z:4 } ]},
+  n_v:  { name: 'N   full valence Z=5  [sumIE 9.806]',  ext: 0, nelec: 5, atoms: [ { x:0,y:0,z:0, el:'N',  Z:5 } ]},
+  o_v:  { name: 'O   full valence Z=6  [sumIE 15.909]', ext: 0, nelec: 6, atoms: [ { x:0,y:0,z:0, el:'O',  Z:6 } ]},
+  f_v:  { name: 'F   full valence Z=7  [sumIE 24.201]', ext: 0, nelec: 7, atoms: [ { x:0,y:0,z:0, el:'F',  Z:7 } ]},
+  ne_v: { name: 'Ne  full valence Z=8  [sumIE 35.030]', ext: 0, nelec: 8, atoms: [ { x:0,y:0,z:0, el:'Ne', Z:8 } ]},
   h2: { name: 'H2 hydrogen', ext: 0.700, nelec: 2, atoms: [
       { x: -0.70014, y:  0.00000, z:  0.00000, el:'H', Z:1 },
       { x:  0.70014, y:  0.00000, z:  0.00000, el:'H', Z:1 },
@@ -267,9 +395,30 @@ var MOLS = {
   }
 
   var SPLIT_BY_N = { 2: 'hemi', 3: 'third', 4: 'tetra' };
+  var USER_RC = parseFloat(qp.get('rc')); if (!isFinite(USER_RC)) USER_RC = 0;
+  // ?clamp=1 selects the CLAMP core model instead of hard depletion. Two different mechanisms for
+  // the same job, and mol_fast implements them as an either/or:
+  //   hard depletion (default) -- drives the WEIGHT to zero inside r_c, so the density is
+  //     territorially excluded. Measured on carbon at r_c=0.7: E -15.106 -> -6.702, removing 87%
+  //     of the over-binding and moving <r> from 0.45 to 1.15 a0.
+  //   clamp (this flag)        -- flattens the KERNEL, r_soft = max(r_soft, r_c), capping the
+  //     attraction at -Z/r_c. Density may still sit inside r_c, feeling no inward force there.
+  // Recorded two-centre result: the clamp beats depletion only on SHALLOW plateaus and breaks at
+  // kernel depth >= 1.3 Ha, which a +4 kernel far exceeds -- so expect it to be the worse model
+  // here, and treat a better result as the one needing scrutiny.
+  window.USER_CLAMP_RC = qp.get('clamp') === '1';
   var nuclei = [], targets = [], labels = [];
   M.atoms.forEach(function (a) {
-    var base = { i: N2 + a.x / h, j: N2 + a.y / h, k: N2 + a.z / h, rc: 0, fixed: !qp.get('dyn') };
+    // ?rc= INNER CUTOFF (core-exclusion radius), default 0. This is not a cosmetic knob: with
+    // r_c = 0 the pseudokernel is a bare +Z_x with nothing holding the valence out of the vacant
+    // core, and the valence COLLAPSES. Measured on carbon at the declared grid: VeK = -35.3303 for
+    // 4 electrons on a +4 kernel gives <1/r> = 2.21, i.e. <r> = 0.45 a0 against a real 2s/2p mean
+    // radius near 1.6 -- about 3.5x too close in, which accounts for the whole 2.78x over-binding.
+    // In a real atom orthogonality to 1s does this job; here only r_c can. Calibrated values
+    // recorded elsewhere in this project: O 0.787, Cl 1.108, both from the ionization energy.
+    // CAUTION: check cells per r_c before trusting a radius -- at h = 0.1, r_c = 0.4 is only four
+    // cells and the cusp is then under-resolved.
+    var base = { i: N2 + a.x / h, j: N2 + a.y / h, k: N2 + a.z / h, rc: USER_RC, fixed: !qp.get('dyn') };
     if (!a.sp) {
       nuclei.push(Object.assign({}, base, { Z: a.Z }));
       targets.push(a.Z); labels.push(a.el);
@@ -431,6 +580,15 @@ var MOLS = {
   // imposed, the face simply is not assembled. The energy's kinetic term uses the same face weights,
   // so the diagnostic still mirrors the solver.
   if (qp.get('fn')) window.USER_FACE_NEUMANN = true;
+  // ?zinit= the SEED's decay rate. The initial amplitude is exp(-z_init*r) (mol_fast.js:1448),
+  // defaulting to Z. Outside its own territory u is never relaxed -- "frozen at whatever the initial
+  // seed left" -- and with wd=1 it carries no density either, so it is neither relaxed NOR
+  // constrained, yet it enters the interface kinetic term through Du = u_out - u_c.
+  // THE TEST: if the binding energy depends on z_init, that term's magnitude is set by an arbitrary
+  // initialisation and the -1.0% result is an artefact. If E_bind is flat in z_init, the seed washes
+  // out and the frozen value is effectively determined by the problem.
+  var zi = qp.get('zinit');
+  if (zi) nuclei.forEach(function (q) { q.z_init = parseFloat(zi); });
   // ?wd=0 switches the density from u^2*w back to u^2 -- p5's choice (its Poisson source is
   // 2*PI*dt*u^2 with no w factor, and its normalisation is over u^2). Only meaningful together
   // with udecay, since wd=0 alone reinstates the overlap p5 does not have.
@@ -585,11 +743,62 @@ var MOLS = {
       + (qp.get('dyn') ? ' <span style="color:#789">(current geometry)</span>' : '')
       + ' <b style="color:' + (vok ? '#6c6' : '#f66') + '">' + (vok ? 'OK' : 'MISMATCH') + '</b>'
       + '<br>E = ' + (window._E === undefined ? '—' : window._E.toFixed(6))
+      + (function () {
+          var t = totalErrReport(key);
+          if (!t) return '';
+          if (t.why) return '<span style="color:#889;font-size:10.5px"> &mdash; <i>' + t.why + '</i></span>';
+          return '<br><span style="font-size:10.5px">absolute error vs ' + t.ref.toFixed(6)
+               + ' <span style="color:#789">[' + t.src + ']</span>: <b style="color:'
+               + (Math.abs(t.pct) < 1 ? '#6c6' : Math.abs(t.pct) < 5 ? '#fc6' : '#f66') + '">'
+               + (t.dE >= 0 ? '+' : '') + t.dE.toFixed(6) + ' Ha ('
+               + (t.pct >= 0 ? '+' : '') + t.pct.toFixed(2) + '%)</b></span>';
+        })()
+      + (function () {
+          var b = bindReport(key, M, box, h);
+          if (b.eb === undefined)
+            return '<br><span style="color:#889;font-size:10.5px">E<sub>bind</sub> — <i>'
+                   + b.why + '</i></span>';
+          var t = '<br><b>E<sub>bind</sub></b> = ' + b.eb.toFixed(6)
+                + (b.eb > 0 ? '' : ' <b style="color:#f66">UNBOUND</b>')
+                + '<span style="color:#789;font-size:10.5px"> (refs ' + b.gkey + ')</span>';
+          if (!b.err) return t + '<br><span style="color:#889;font-size:10.5px">'
+            + 'error — <i>no checked experimental value for this molecule</i></span>';
+          // the ERROR against both conventions. They disagree by 6 points for H2, so showing one
+          // would be choosing an answer; the sign of the disagreement is the useful part.
+          t += '<br><span style="font-size:10.5px">error vs ';
+          b.err.forEach(function (e, i) {
+            t += (i ? ' &nbsp;|&nbsp; ' : '') + 'D<sub>' + e.name.slice(1) + '</sub>=' + e.ref.toFixed(6)
+               + ': <b style="color:'
+               + (Math.abs(e.pct) < 5 ? '#6c6' : Math.abs(e.pct) < 20 ? '#fc6' : '#f66') + '">'
+               + (e.dE >= 0 ? '+' : '') + e.dE.toFixed(6) + ' Ha ('
+               + (e.pct >= 0 ? '+' : '') + e.pct.toFixed(1) + '%)</b>';
+          });
+          return t + '</span>';
+        })()
       + geomReport();
     document.title = 'MOLSIM ' + key + ' t=' + ((Date.now()-t0)/1000).toFixed(0) + 's'
       + ' step=' + (window._tStep === undefined ? '?' : window._tStep)
       + ' E=' + (window._E === undefined ? 'n/a' : window._E.toFixed(6))
+      // ABSOLUTE error alongside the total, so the title never shows a good binding energy without
+      // the much larger total error it was differenced out of.
+      + (function () {
+          var t = totalErrReport(key);
+          return (!t || t.why) ? '' : ' errE=' + (t.dE >= 0 ? '+' : '') + t.dE.toFixed(6)
+               + '(' + (t.pct >= 0 ? '+' : '') + t.pct.toFixed(2) + '%)';
+        })()
       + ' Fsum=' + fs.toFixed(6) + ' (' + rel.toFixed(1) + '%)'
+      // E_bind in the TITLE as well as the panel: the drivers read the title, and computing the
+      // subtraction by hand between messages is how a mismatched-step atomic reference survived
+      // long enough to put a wrong -11.4% on record.
+      + (function () {
+          var b = bindReport(key, M, box, h);
+          if (b.eb === undefined) return ' Ebind=n/a';
+          return ' Ebind=' + b.eb.toFixed(6)
+               + (b.err || []).map(function (e) {
+                   return ' err' + e.name + '=' + (e.dE >= 0 ? '+' : '') + e.dE.toFixed(6)
+                        + '(' + (e.pct >= 0 ? '+' : '') + e.pct.toFixed(1) + '%)';
+                 }).join('');
+        })()
       + (fax !== null ? ' Fax=' + (fax>=0?'+':'') + fax.toFixed(6) + ' R=' + L.toFixed(4) : '')
       + ' VKK=' + (vkk === undefined ? 'n/a' : vkk.toFixed(4)) + '/' + vkkRef.toFixed(4)
       // TERM BY TERM, so a difference against another implementation can be localised to one
@@ -601,6 +810,7 @@ var MOLS = {
           + ' VKK=' + window._E_KK.toFixed(4) + ']' : '')
       + (qp.get('dyn') ? ' dR=' + maxRad.toFixed(1) + '% dAng=' + maxAng.toFixed(2) + 'deg' : '')
       + ' soft=' + window.USER_SOFT.toFixed(2) + ' eps=' + (window.USER_SOFT*h).toFixed(3)
+      + ' rc=' + USER_RC.toFixed(3) + (window.USER_CLAMP_RC ? ' CLAMP' : '')
       + ' rinit=' + window.USER_R_INIT + ' wdiff=' + (window.USER_W_DIFF !== undefined ? window.USER_W_DIFF : 0.05)
       + ' wkinw=' + (window.USER_W_KIN_WEIGHT ? 1 : 0)
       + ' wkingate=' + (window.USER_W_KIN_GATE !== undefined ? window.USER_W_KIN_GATE : 0.1)
@@ -609,7 +819,8 @@ var MOLS = {
       + ' wd=' + (window.USER_WEIGHTED_DENSITY ? 1 : 0)
       + ' udecay=' + (window.USER_U_DECAY !== undefined ? window.USER_U_DECAY : 0)
       + ' uzero=' + (window.USER_U_ZERO_INIT ? 1 : 0)
-      + ' fn=' + (window.USER_FACE_NEUMANN ? 1 : 0) + qReport
+      + ' fn=' + (window.USER_FACE_NEUMANN ? 1 : 0)
+      + ' zinit=' + (nuclei[0] && nuclei[0].z_init !== undefined ? nuclei[0].z_init : 'dflt') + qReport
       + ' | n=' + N + ' box=' + box + ' h=' + h.toFixed(4) + ' nat=' + M.atoms.length + ' ndom=' + nuclei.length;
   }, 1500);
 })();

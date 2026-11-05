@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <title>HeH binding control</title>
+  <style>body{margin:0;background:#000;color:#ddd;font-family:monospace}
+    #out{padding:14px;font-size:12px;white-space:pre;line-height:1.5}</style>
+</head><body>
+<div id="loadStatus" style="color:#ff0;padding:16px;font-size:13px;font-family:monospace">loading…</div>
+<div id="out"></div>
+<script>
+  window.onerror=function(m,u,l,c,e){var p=document.createElement('pre');
+    p.style.cssText='color:#f66;background:#200;padding:12px;font-size:13px;white-space:pre-wrap';
+    p.textContent='ERROR: '+m+' at '+u+':'+l+':'+c+(e&&e.stack?'\n\n'+e.stack:'');
+    document.body.insertBefore(p,document.body.firstChild);};
+  (function(){
+    // HeH -- the OVER-BINDING CONTROL, because the right answer is known to be zero.
+    // Neutral HeH is essentially unbound: a van der Waals complex with a well of order 1e-3 eV,
+    // dissociating to He + H. (HeH+ is the strongly bound one, 2.04 eV -- a different system.)
+    // So any substantial E_bind here is pure artefact, and its SIZE measures the artefact.
+    //
+    // Why this system and not another:
+    //   - NO pseudopotential anywhere. He is +2 carrying its OWN 2 electrons, nothing absorbed into
+    //     a kernel, so r_c = 0 throughout and the clamp asymmetry that muddied H2O is absent.
+    //   - No split ambiguity: 2 electrons in 2 domains is the natural construction for He, unlike
+    //     oxygen's choice between 2+3+3 and 2+2+4.
+    //   - 3 electrons, same as OH, so the comparison is like-for-like.
+    // Calibration so far: H2 came out -1.2169 against the exact -1.1745, and H2O gave E_bind = 477
+    // against 232 kcal/mol. Both genuinely bind, so over-binding shows only as a factor. HeH has
+    // nothing to hide behind.
+    //
+    // The He split plane CONTAINS the bond axis (split_axis = [0,1,0], dividing at y=0), so both
+    // He electrons are symmetric with respect to the hydrogen and no asymmetry is built in by hand.
+    //
+    // ?mode=mol | o | h    molecule, isolated He (same split), isolated H
+    // ?R=                  He-H separation in a.u.  ?rc= He clamp (default 0, and it should stay 0)
+    var qs=new URLSearchParams(location.search);
+    var N=200, scr=parseFloat(qs.get('scr')); if(!isFinite(scr)) scr=12;
+    var h=scr/N, N2=Math.round(N/2);
+    var R=parseFloat(qs.get('R')); if(!isFinite(R)) R=1.5;     // no equilibrium exists; scan it
+    var rcO=parseFloat(qs.get('rc')); if(!isFinite(rcO)) rcO=0.0;   // He needs no clamp
+    var MODE=(qs.get('mode')||'mol');
+    var dC=R/h;                                                 // fractional, no snapping
+    var O={i:N2,j:N2,k:N2}, H={i:N2+dC,j:N2,k:N2};              // H on +x
+
+    // ?steps= total ITP steps, default 10000 (was 100000). At ~48 ms/step wall that is ~8 min
+    // instead of ~80. The reporter still waits for the energy to STALL, so a capped run can
+    // end before it does -- check E against a longer run before trusting a small difference.
+    window.USER_NN=N; window.USER_SCREEN=scr; window.USER_STEPS=parseInt((location.search.match(/[?&]steps=(\d+)/)||[])[1]||"10000",10);
+    window.USER_SHELL_MODE=true; window.USER_DYNAMICS=false;
+    // hemi split about +y: the dividing plane y=0 CONTAINS the bond, so the two He electrons are
+    // mirror images with respect to the hydrogen -- no hand-built asymmetry along the bond.
+    // split_fix FALSE by default: the two He electrons sit on the SAME kernel, so nothing physical
+    // pins the plane between them. Enforcing it every step (mol_fast.js:214) would forbid exactly
+    // the response we are testing -- as H approaches, that boundary must be free to move. The hemi
+    // split is then only a SEED for the partition; non-overlap keeps the two domains apart
+    // thereafter. (?sfix=1 re-imposes it, for comparison. Caution: releasing the THREE-way split in
+    // water collapsed it -- dipole 1.384 -> 0.057 D at 0.226 Ha LOWER energy. Two electrons on one
+    // kernel is a different case, since non-overlap alone forces a partition, but it is worth
+    // checking rather than assuming.)
+    var SFIX = /[?&]sfix=1/.test(location.search);
+    // ?fn=1 -> STRICT (zero-flux) Neumann at the domain faces, by omitting outside faces from the
+    // stencil; default 0 -> the weak condition, where the front converges on amplitude continuity
+    // u_1 = u_2 and the normal derivative is free to jump. The model requires Psi in H^1, i.e.
+    // continuity, whose natural condition is FLUX MATCHING and not zero flux -- so these are two
+    // different problems, and they differ by 29-58 points of binding energy on H2.
+    // WHY HERE: on a symmetric diatomic the two COINCIDE, because reflection gives both u_1 = u_2
+    // and du/dn = 0, so H2 cannot tell them apart and its spread is a discretisation artefact.
+    // He-H has no symmetry plane between the He and H domains (different kernel charges, so the
+    // interface sits off-centre), which makes this the system that can actually decide it.
+    window.USER_FACE_NEUMANN = /[?&]fn=1/.test(location.search);
+    var Osl=[
+      {i:O.i,j:O.j,k:O.k,Z:2,rc:rcO,z_init:2.0,split:'hemi',split_idx:0,split_axis:[0,1,0],fixed:true,split_fix:SFIX},
+      {i:O.i,j:O.j,k:O.k,Z:0,rc:rcO,z_init:2.0,split:'hemi',split_idx:1,split_axis:[0,1,0],fixed:true,split_fix:SFIX}];
+    if(MODE==='o'){ window.USER_NUCLEI=Osl; window.USER_NORM_TARGETS=[1,1]; }
+    else if(MODE==='h'){ window.USER_NUCLEI=[{i:H.i,j:H.j,k:H.k,Z:1,rc:0.0}];
+                         window.USER_NORM_TARGETS=[1]; }
+    else { window.USER_NUCLEI=Osl.concat([{i:H.i,j:H.j,k:H.k,Z:1,rc:0.0}]);
+           window.USER_NORM_TARGETS=[1,1,1]; MODE='mol'; }
+    window._M=MODE; window._g={O:O,H:H,h:h,R:R,rcO:rcO};
+  })();
+
+  async function sample(){
+    var rho=await window.readDensity();
+    var S=window._gridS,h=window._gridH,g=window._g;
+    function at(x,y,z){var i0=Math.floor(x),j0=Math.floor(y),k0=Math.floor(z);
+      if(i0<0||j0<0||k0<0||i0>=S-1||j0>=S-1||k0>=S-1) return 0;
+      var fx=x-i0,fy=y-j0,fz=z-k0,s=0;
+      for(var a=0;a<2;a++)for(var b=0;b<2;b++)for(var c=0;c<2;c++)
+        s+=(a?fx:1-fx)*(b?fy:1-fy)*(c?fz:1-fz)*rho[(i0+a)*S*S+(j0+b)*S+(k0+c)];
+      return s;}
+    function q(p,RB){var s=0,n=Math.ceil(RB/h);
+      for(var i=-n;i<=n;i++)for(var j=-n;j<=n;j++)for(var k=-n;k<=n;k++){
+        if(Math.sqrt(i*i+j*j+k*k)*h>RB) continue; s+=at(p.i+i,p.j+j,p.k+k);}
+      return Number((s*h*h*h).toPrecision(6));}
+    // ELECTRON CENTROID over the whole grid -- convention-free polarity: where the negative charge
+    // sits relative to the kernels. x measured from O, so +x is toward H.
+    var ex=0,ew=0;
+    for(var i2=1;i2<S-1;i2++)for(var j2=1;j2<S-1;j2++)for(var k2=1;k2<S-1;k2++){
+      var rv=rho[i2*S*S+j2*S+k2]; if(!(rv>1e-9)) continue; ex+=rv*i2; ew+=rv;}
+    ex/=ew;
+    var kx=0,kq=0, nuc=window._nuclei;
+    for(var a2=0;a2<nuc.length;a2++){var Z=nuc[a2].Z||0; if(!Z) continue; kx+=Z*nuc[a2].i; kq+=Z;}
+    kx/=kq;
+    var out={mode:window._M,E:window._E,rcO:g.rcO,R:g.R,
+             electronCentroid_x_fromO_au:Number(((ex-g.O.i)*h).toPrecision(5)),
+             kernelCentroid_x_fromO_au:Number(((kx-g.O.i)*h).toPrecision(5)),
+             shift_towardH_au:Number(((ex-kx)*h).toPrecision(5)),
+             mu:[window._mu_x,window._mu_y,window._mu_z], mu_D:window._mu_mag*2.5417};
+    out.verdict = (out.shift_towardH_au<0) ? 'electrons toward O -- CORRECT (O negative)'
+                                           : 'electrons toward H -- INVERTED';
+    // HALF-SPACE PARTITION -- assigns EVERY electron, unlike the spheres.
+    // A 0.7 a.u. ball round oxygen held only ~24% of its density, so it measured the inner region,
+    // not oxygen's share: density expanding outward into the bond reads as "depletion" there even
+    // if oxygen gains overall. Splitting the whole grid at a plane perpendicular to the bond fixes
+    // that. Two dividing planes are reported because the choice is not unique:
+    //   xMid  - the geometric midpoint (Voronoi between the two kernels)
+    //   xMin  - the density MINIMUM along the bond axis, the natural Bader-like divide
+    // Interpretation needs no references at all: O contributes 2 electrons and H contributes 1, so
+    //   q(O side) > 2  =>  oxygen is negative, CORRECT
+    //   q(O side) < 2  =>  inverted
+    var xMid=(g.O.i+g.H.i)/2;
+    var xMin=xMid, vMin=1e9;
+    for(var xi=g.O.i+0.15/h; xi<=g.H.i-0.15/h; xi+=0.25){
+      var v=at(xi,g.O.j,g.O.k); if(v<vMin){vMin=v; xMin=xi;}
+    }
+    function halves(xdiv){
+      var lo=0,hi=0;
+      for(var i3=1;i3<S-1;i3++){
+        var w=0;
+        for(var j3=1;j3<S-1;j3++) for(var k3=1;k3<S-1;k3++) w+=rho[i3*S*S+j3*S+k3];
+        if(i3<xdiv) lo+=w; else hi+=w;
+      }
+      return [Number((lo*h*h*h).toPrecision(6)), Number((hi*h*h*h).toPrecision(6))];
+    }
+    var hMid=halves(xMid), hMin=halves(xMin);
+    out.xMin_au_fromO=Number(((xMin-g.O.i)*h).toPrecision(4));
+    out.rhoMin=Number(vMin.toPrecision(5));
+    out.q_Oside_mid=hMid[0]; out.q_Hside_mid=hMid[1];
+    out.q_Oside_min=hMin[0]; out.q_Hside_min=hMin[1];
+    if(window._M==='mol'){
+      out.partitionVerdict_mid = hMid[0]>2 ? 'O side > 2e -- O NEGATIVE, correct'
+                                           : 'O side < 2e -- INVERTED';
+      out.partitionVerdict_min = hMin[0]>2 ? 'O side > 2e -- O NEGATIVE, correct'
+                                           : 'O side < 2e -- INVERTED';
+    }
+
+    var mid={i:(g.O.i+g.H.i)/2,j:g.O.j,k:g.O.k};
+    [0.5,0.7].forEach(function(RB){
+      out['O_r'+RB]=q(g.O,RB); out['H_r'+RB]=q(g.H,RB); out['bind_r'+RB]=q(mid,RB);});
+    var L=[],X=[];
+    for(var x=-2.5;x<=4.5001;x+=0.05){X.push(Number(x.toFixed(3)));
+      L.push(Number(at(g.O.i+x/h,g.O.j,g.O.k).toPrecision(6)));}
+    out.x=X; out.line=L;
+    var tot=0; for(var t=0;t<rho.length;t++) tot+=rho[t];
+    out.electrons=Number((tot*h*h*h).toPrecision(6));
+    return out;
+  }
+
+  (function reporter(){
+    var qs=new URLSearchParams(location.search);
+    var KEY='mf_heh_'+(qs.get('mode')||'mol')+'_R'+(qs.get('R')||'1.5')+'_rc'+(qs.get('rc')||'0')
+            +(/[?&]sfix=1/.test(location.search)?'_sfix1':'_free');
+    var MIN_S=parseInt((location.search.match(/[?&]mins=(\d+)/)||[])[1]||'180',10);
+    try{localStorage.removeItem(KEY);}catch(e){}
+    var t0=Date.now(),hist=[],since=null,done=false;
+    setInterval(function(){
+      if(window._E===undefined) return;
+      var el=(Date.now()-t0)/1000,st=document.getElementById('loadStatus');
+      if(st) st.textContent='mode='+window._M+'  '+Math.round(el)+'s  E='+window._E.toFixed(6);
+      hist.push({t:Date.now(),E:window._E}); if(hist.length>12) hist.shift();
+      if(el<MIN_S||hist.length<6||done) return;
+      var a=hist[0],b=hist[hist.length-1];
+      if(Math.abs((b.E-a.E)/Math.max((b.t-a.t)/1000,0.01))<1e-5){
+        if(since===null) since=Date.now();
+        if(Date.now()-since>15000){ done=true;
+          sample().then(function(r){
+            try{localStorage.setItem(KEY,JSON.stringify(r));}catch(e){}
+            document.getElementById('out').textContent=
+              'mode='+r.mode+'   E='+r.E.toFixed(6)+'   electrons='+r.electrons+
+              '\nelectron centroid (from O, +x = toward H): '+r.electronCentroid_x_fromO_au+
+              '\nkernel   centroid                        : '+r.kernelCentroid_x_fromO_au+
+              '\nshift toward H                           : '+r.shift_towardH_au+
+              '\n'+r.verdict+
+              '\nmu = '+r.mu_D.toFixed(3)+' D   (HeH: essentially unbound, tiny dipole)'+
+              '\nq(O side) mid-plane = '+r.q_Oside_mid+'   density-min plane = '+r.q_Oside_min+
+              '   (O contributes 2 e)'+
+              (r.partitionVerdict_min?'\n'+r.partitionVerdict_min:'');
+            document.title='HEH DONE '+r.mode+' shift='+r.shift_towardH_au;
+          }).catch(function(e){document.getElementById('out').textContent='sample failed: '+e;
+            document.title='HEH DONE (sample failed)';});
+        }
+      } else since=null;
+    },1000);
+  })();
+
+  var status=document.getElementById('loadStatus');
+  var s=document.createElement('script'); s.src='mol_fast.js?t='+Date.now();
+  s.onload=function(){var p=document.createElement('script');
+    p.src='https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+    p.onerror=function(){status.textContent+='\np5 failed';};document.body.appendChild(p);};
+  s.onerror=function(){status.textContent+='\nmol_fast.js failed';};
+  document.body.appendChild(s);
+</script>
+</body></html>
