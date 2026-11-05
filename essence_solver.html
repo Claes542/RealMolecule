@@ -219,6 +219,18 @@ function drawCode(){
 function draw(){
   background(11,14,18);
   if (t<MAXSTEP){ for (var s=0;s<STEPS_PER_FRAME;s++){ relaxOnce(); t++; } }
+  // LIVE TITLE, so the page can be driven and read the way h2_p5_original.html and the simulator
+  // can. Additive only -- no physics touched -- and invisible in the gallery, where this page is
+  // embedded in an iframe whose title the parent never shows. Needed because the only existing
+  // document.title fires at the END of an xp sweep, so a plain run has nothing to poll.
+  if (!window._essPrevE) window._essPrevE = 0;
+  var _dE = Math.abs(E - window._essPrevE); window._essPrevE = E;
+  document.title = 'ESS ' + stage + ' step=' + t
+    + ' E=' + E.toFixed(6) + ' dE=' + _dE.toExponential(1)
+    + ' [T=' + Ek.toFixed(4) + ' V=' + Ep.toFixed(4)
+    + (CFG.vkk ? ' V_KK=' + V_KK.toFixed(4) : '') + ']'
+    + ' R=' + (CFG.R || 0).toFixed(4) + ' xp=' + XP
+    + ' | nn=' + N + ' box=' + BOX + ' h=' + h.toFixed(4) + ' soft=' + SOFT.toFixed(2);
   drawSurface();
   drawCode();
 
