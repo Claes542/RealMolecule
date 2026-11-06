@@ -67,7 +67,7 @@ var SYM = { h:'full', c:'full', n:'full', o:'full', c_split:'full', n_split:'ful
             he_v:'full', he_split:'full', li_v:'full', be_v:'full', b_v:'full', c_v:'full', n_v:'full', o_v:'full', f_v:'full', ne_v:'full',
             h2:'full', n2:'full', o2:'full', co:'none', co2:'full', n2o:'none', hcn:'none',
             c2h2:'full', c2n2:'full', c3o2:'full', hc3n:'none', c4h2:'full',
-            h2o:'axis', h2o_split:'axis', nh3:'axis', ch4:'full', h2co:'axis',
+            h2o:'axis', h2o_split:'axis', h2o_sh:'axis', nh3:'axis', ch4:'full', h2co:'axis',
             h2o_a90:'axis', h2o_a109:'axis', h2o_a120:'axis', h2o_z2:'axis' };
 var SYMNOTE = {
   full: ['symmetry-cancelled', '#8a9', 'SigmaF is forced to zero by symmetry here, so it measures only whether the algorithm preserves symmetry — it does NOT bound the convergence error.'],
@@ -278,6 +278,11 @@ var MOLS = {
       { x:  3.59142, y:  0.00000, z:  0.00000, el:'C', Z:4 },
       { x:  5.59926, y:  0.00000, z:  0.00000, el:'H', Z:1 },
   ]},
+  h2o_sh: { name: 'H2O  [O all-electron 2+4+2 nested shells, needs ?sh=1]', ext: 1.477, nelec: 10, atoms: [
+      { x:  0.00000, y:  0.73827, z:  0.00000, el:'O', Z:8, Zfull:8, sh:[2,4,2], ax:[0,0,1] },
+      { x: -1.43024, y: -0.36914, z:  0.00000, el:'H', Z:1 },
+      { x:  1.43024, y: -0.36914, z:  0.00000, el:'H', Z:1 },
+  ]},
   h2o_split: { name: 'H2O water  [O split 3x1e]', ext: 1.477, nelec: 5, atoms: [
       { x:  0.00000, y:  0.73827, z:  0.00000, el:'O', Z:3, sp:3, ax:[0,0,1] },
       { x: -1.43024, y: -0.36914, z:  0.00000, el:'H', Z:1 },
@@ -396,6 +401,33 @@ var MOLS = {
 
   var SPLIT_BY_N = { 2: 'hemi', 3: 'third', 4: 'tetra' };
   var USER_RC = parseFloat(qp.get('rc')); if (!isFinite(USER_RC)) USER_RC = 0;
+  // -----------------------------------------------------------------------------------------
+  // NESTED SHELLS (?sh=1). An atom entry carrying `sh: [n0, n1, ..., nv]` is built ALL-ELECTRON:
+  // the kernel takes the FULL nuclear charge and every electron is represented, so the valence is
+  // excluded from the core region BY THE CORE ELECTRONS THEMSELVES, through non-overlap. No r_c,
+  // no clamp-vs-depletion choice, nothing calibrated -- Z is the only supplied quantity, and the
+  // core is COMPRESSIBLE where a radius merely forbids.
+  //
+  // Copied from mol_fast_oh_drho.html's ?shells=242L, which is the only form with a recorded
+  // justification. Two rules from there, both measured, neither optional:
+  //
+  //   * INNER shells are spherical blobs (`sph:true`) with r_in/r_out SEEDING the sort order.
+  //     Core electrons are inert and spherical; a freely-deforming 3D core is what the valence
+  //     invades. The radii are recomputed from the density each update, so only the ORDERING is
+  //     imposed, not the size.
+  //   * the VALENCE is SPLIT and gets NO r_in. Measured on OH at r_c = 0: a 2e valence gives
+  //     mu_x = +0.778 (correct) split into two 1e domains and -0.470 (INVERTED) as a single blob
+  //     -- a spherical domain cannot move charge between its near and far sides, so under
+  //     pressure it TRANSLATES bodily (shell 2 shifted +0.117 a.u. toward the hydrogen). And an
+  //     r_in on the valence WALLS it at R2 so it cannot retreat, which inverts the polarity the
+  //     same way r_c does. Its inner limit must be found by non-overlap, not decreed.
+  var R1 = parseFloat(qp.get('r1')); if (!isFinite(R1)) R1 = 0.30;
+  var R2 = parseFloat(qp.get('r2')); if (!isFinite(R2)) R2 = 0.80;
+  var SH = qp.get('sh') === '1';
+  // mol_fast gates r_in/r_out (p.shells[m].x/.y) behind SHELL_MODE -- without this the nesting
+  // fields are silently ignored and every shell competes isotropically, which is NOT the
+  // construction. mol_fast_oh_drho.html sets it for exactly this reason.
+  if (SH) window.USER_SHELL_MODE = true;
   // ?clamp=1 selects the CLAMP core model instead of hard depletion. Two different mechanisms for
   // the same job, and mol_fast implements them as an either/or:
   //   hard depletion (default) -- drives the WEIGHT to zero inside r_c, so the density is
@@ -419,9 +451,32 @@ var MOLS = {
     // CAUTION: check cells per r_c before trusting a radius -- at h = 0.1, r_c = 0.4 is only four
     // cells and the cusp is then under-resolved.
     var base = { i: N2 + a.x / h, j: N2 + a.y / h, k: N2 + a.z / h, rc: USER_RC, fixed: !qp.get('dyn') };
-    if (!a.sp) {
+    // the shell test must come FIRST: a shell atom carries `sh` but no `sp`, so `!a.sp` would
+    // otherwise swallow it and build ONE domain holding every electron (measured: ndom=3 instead
+    // of 5 for h2o_sh, E = -89.6 with VeK = -224).
+    if (!a.sp && !(SH && a.sh)) {
       nuclei.push(Object.assign({}, base, { Z: a.Z }));
       targets.push(a.Z); labels.push(a.el);
+    } else if (SH && a.sh) {
+      // inner shells: spherical blobs, radii seeded and then free; the FIRST carries the kernel
+      var nsh = a.sh.length, rads = [R1, R2];
+      for (var sIdx = 0; sIdx < nsh - 1; sIdx++) {
+        var d = Object.assign({}, base, {
+          Z: sIdx === 0 ? a.Zfull : 0, rc: 0, z_init: sIdx === 0 ? a.Zfull : a.sh[sIdx],
+          sph: true, shell_id: sIdx });
+        if (sIdx > 0) d.r_in = rads[sIdx - 1];
+        d.r_out = rads[sIdx];
+        nuclei.push(d); targets.push(a.sh[sIdx]); labels.push(a.el + '.s' + sIdx);
+      }
+      // valence: SPLIT, and deliberately NO r_in and NO r_out
+      var nv = a.sh[nsh - 1], nvd = Math.min(nv, 4), per = nv / nvd;
+      for (var v = 0; v < nvd; v++) {
+        nuclei.push(Object.assign({}, base, {
+          Z: 0, rc: 0, z_init: nv, split: SPLIT_BY_N[nvd] || 'sphere', split_idx: v,
+          split_axis: a.ax || [1, 0, 0], shell_id: nsh - 1,
+          split_fix: qp.get('sfix') === '0' ? false : true }));
+        targets.push(per); labels.push(a.el + '.v' + v);
+      }
     } else {
       for (var q = 0; q < a.sp; q++) {
         nuclei.push(Object.assign({}, base, {

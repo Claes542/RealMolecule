@@ -308,17 +308,66 @@ Its error is pure discretisation: $E(\mathrm{H}) = -0.4865\,E_h$ against the exa
 shallow by $2.7\%$. This makes H$_2$ the one system in the list whose binding energy is free of
 core-model error, which is why we work it through first.
 
-\paragraph{The multi-electron references are strongly over-bound, and we cannot say why.} Measured
-against the sum of their experimental ionisation energies, carbon is over-bound by a factor of about
-$2.6$ and nitrogen by about $2.0$, while hydrogen is right to a few percent. Hydrogen's accuracy is
-the one part that is understood: a single electron needs neither a core reduction nor any
-self-interaction correction, so nothing is approximated. For the others the cause is open. It is
-\emph{not} a missing intra-atomic repulsion, by the identity above. The candidates are the
-pseudokernel reduction itself---a bare $Z_x$ with no representation of the core it replaces---and
-the single-shape restriction the occupancy-$Z_x$ domain imposes. The same defect is present in the
-molecule, so it cancels substantially in the difference \eqref{eq:ebind}; but that cancellation is
-precisely what a binding energy \emph{measures}, and it must not be assumed. This is why differences
-taken within one composition are trustworthy while differences across compositions are not.
+\paragraph{The multi-electron references are strongly over-bound, and the cause is the bare kernel.}
+Measured against the sum of their experimental ionisation energies, carbon on the declared grid is
+over-bound by a factor of $2.78$ and nitrogen by about $2.0$, while hydrogen is right to a few
+percent. It is \emph{not} a missing intra-atomic repulsion, by the identity above. The cause is that
+the valence \emph{collapses into the vacant core}. From $V_{eK} = -Z_x\sum_i\langle 1/r_i\rangle$,
+carbon's measured $V_{eK} = -35.33\,E_h$ gives $\langle r\rangle = 0.45\,a_0$ against a real
+$2s/2p$ mean radius near $1.6$: the valence sits some three and a half times too close in, and at
+that radius a bare $+4$ kernel would give $-35.56$, so the collapse accounts for essentially the
+whole error. In a real atom orthogonality to the $1s$ pair excludes the valence from the core
+region. The pseudokernel has no core and, with $r_c = 0$, nothing performs that exclusion.
+
+Restoring it confirms the diagnosis. With the inner cutoff $r_c$ reinstated and the rest of the
+construction untouched:
+\begin{center}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+$r_c$ ($a_0$) & $E(\mathrm{C})$ & vs reference & error & $\langle r\rangle$ \\
+\midrule
+$0$   & $-15.106$ & $2.778$ & $+178\%$ & $0.45$ \\
+$0.7$ & $-6.702$  & $1.233$ & $+23\%$  & $1.15$ \\
+$\mathbf{0.9}$ & $\mathbf{-5.506}$ & $\mathbf{1.013}$ & $\mathbf{+1.3\%}$ & $1.43$ \\
+$1.1$ & $-4.702$  & $0.865$ & $-13.5\%$& $1.71$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent
+with the reference $5.437\,E_h$ and the crossing bracketed at $r_c = 0.91$--$0.92$ from either
+adjacent pair. So a single-domain valence reproduces carbon's binding to $1.3\%$ with one
+parameter, and the statement that ``bare kernels'' is a harmless simplification is wrong: it is the
+largest single error in this work, and it propagates to the binding energies of
+Section~\ref{sec:across}. Hard depletion of the weight inside $r_c$ outperforms clamping the
+kernel by two to one at the same radius ($+23\%$ against $+48\%$), because the clamp merely caps
+the attraction at $-Z_x/r_c$ and lets density remain inside.
+
+\emph{But the radius does not transfer to molecules, and it is not a core radius.} Carbon's $1s$
+mean radius is $0.263\,a_0$ on a Slater estimate, so the calibrated $0.92$ is $3.5$ times the core
+it is supposed to represent---and oxygen's is four times. At that size the exclusion spheres on two
+heavy atoms nearly meet: N$_2$'s bond is $2.075\,a_0$ against $2r_c = 1.574$, leaving $0.50\,a_0$
+of bonding region, and the calculation then converges \emph{reproducibly to an asymmetric state}
+($\Sigma F = 88\%$ of the largest force on a homonuclear molecule, twice, where symmetry forces it
+to zero). X--H bonds are unaffected because hydrogen has no core and carries $r_c = 0$, so the
+one-sided exclusion leaves $1.0$--$1.15\,a_0$; it is heavy--heavy bonds that fail. At the
+\emph{physical} radius the recovery is only about a third of the error---the rest was being bought
+by making the radius too large---so a single parameter cannot both repair the atom and survive in a
+molecule.
+
+\emph{Nor is the radius established as physical.} It was fixed by matching an energy, and this
+grid has a resolution error of its own: helium, whose construction involves no core at all, comes
+out $10.5\%$ too shallow here with its kinetic energy $24\%$ low, because $\varepsilon = h = 0.1$
+cannot resolve a $Z = 2$ cusp---hydrogen is $2.7\%$ shallow at the same softening. A $Z_x = 4$ cusp
+is sharper still, so $r_c = 0.92$ is absorbing that error along with the core exclusion, and it
+must be read as this grid's value until a mesh ladder on the calibration says otherwise. What does
+not depend on the grid is the mechanism: an error of $178\%$ is far too large to be a softening
+artefact, and the collapse is visible directly in $\langle r\rangle$.
+
+The same defect is present in the molecule, so it cancels substantially in the difference
+\eqref{eq:ebind}; but that cancellation is precisely what a binding energy \emph{measures}, and it
+must not be assumed. This is why differences taken within one composition are trustworthy while
+differences across compositions are not.
 
 \paragraph{Nitrogen and oxygen are degenerate.} Both carry $Z_x = 3$ with three one-electron
 domains, so their atomic calculations are bit-identical. The model as it stands cannot distinguish
@@ -741,7 +790,7 @@ binding on a common grid, and that the earlier grid understated it severely.
 system & $Z_x$ & force & $\Delta R$ & $|\sum F|/|F|_{\max}$ & $E_{\text{bind}}$\,$\S$ \\
 \midrule
 H$_2$      & 1,1       & $+0.1383$ & $+30\%$\,$\ast$ & $14.7\%$\,$\dagger$ & $\mathbf{+0.1666}$ \\
-N$_2$      & 3,3       & $-0.2505$ & $-8.2\%$ & $3.7\%$\,$\dagger$ & $-0.0155$\,$\P$ \\
+N$_2$      & 3,3       & $-0.2505$ & $-8.2\%$ & $3.7\%$\,$\dagger$ & $\mathbf{+0.2764}$\,$\P$ \\
 O$_2$      & 3,3       & $-0.2463$ & $-14.3\%$& $8.4\%$\,$\dagger$ & $+0.0770$ \\
 \textbf{HCN} & \textbf{1,4,3} & \multicolumn{2}{l}{C$\equiv$N $-7.8\%$, H--C $+3.5\%$} & $\mathbf{5.5\%}$ & $+0.6099$ \\
 H$_2$O     & 3,1,1     & \multicolumn{2}{c}{---} & $126\%$\,$\ddagger$ & $+0.4307$ \\
@@ -769,9 +818,12 @@ energy comes from an earlier set at the default valences in a box of $15\,a_0$ w
 $\varepsilon = 0.14$ and the uncorrected kinetic accounting. $\P$: H$_2$ is the one row measured
 both ways, and it moves by $+0.0555\,E_h$, or $32$ points of $D_e$, between them---$6.6$ of those
 points from the cut-off and the rest from the grid and softening. Every deficit in this column is
-smaller than that shift, so \emph{the unbound entries are not results}: N$_2$ is short by
-$0.0155\,E_h$, a quarter of the shift, and its failure to bind must be re-measured on the declared
-grid before it means anything. Blank entries are rows whose valences or geometry were not in the
+smaller than that shift, so \emph{the unbound entries are not results}. That has now been
+measured rather than suspected: re-run with molecule and reference on one grid (box $10$,
+$h = 0.10$), \textbf{N$_2$ binds by $+0.2764\,E_h$}, from $E(\mathrm{N}) = -7.260914$ and
+$E(\mathrm{N}_2) = -14.798207$, with a symmetric state ($\Sigma F = 5.5\%$). The atomic reference
+shifts by only $0.008\,E_h$ between boxes $10$ and $16$, i.e. $6\%$ of the binding energy, so the
+sign is secure. The earlier $-0.0155$ came from box $15$ with $h = 0.1389$ and is withdrawn. Blank entries are rows whose valences or geometry were not in the
 earlier set; a row is deliberately left empty rather than filled from a run at different $Z_x$.
 There is no experimental column because the repository holds no verified table of atomisation
 energies, and H$_2$ is the only row with a reference we have checked. Configurations in which two
@@ -832,6 +884,15 @@ CO$_2$  & $15.50\,E_h$ & $-0.2110$ & $\mathbf{73}$ \\
 \bottomrule
 \end{tabular}
 \end{center}
+
+\emph{The N$_2$ row of this argument has since been withdrawn.} Re-measured with molecule and
+reference on one grid, N$_2$ binds by $+0.2764\,E_h$, so the $450\times$ ratio and the $99.8\%$
+cancellation requirement computed for it were artefacts of differencing across grids---and its
+denominator was the model's own near-zero binding, which made the ratio circular as well. What
+survives is the \emph{structure} of the argument, not its worst case: the common atomic error does
+grow with composition, and CO$_2$ at $-0.211\,E_h$ is a deficit an order of magnitude larger than
+N$_2$'s was, so it is the row that still requires a matched-grid repeat before anything is
+concluded from it.
 
 \noindent
 For H$_2$ the common error is a sixth of the signal, so \emph{no} cancellation is needed to get the
