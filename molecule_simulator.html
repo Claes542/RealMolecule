@@ -124,6 +124,16 @@ var D_EXP = {
 // PROVENANCE MATTERS and is carried per entry: 'exact' is an analytic result, 'computed' is
 // somebody's calculation and not an observable at all -- H2's -1.17447 is Kolos-Wolniewicz in the
 // Born-Oppenheimer limit, so agreeing with it is agreeing with a calculation, not with nature.
+// Experimental dipole moments, Debye. The SIGN/direction matters more than the magnitude here:
+// a construction that inverts the polarity is wrong whatever its energy says, and the inversion is
+// reproducible (OH: +0.778 split vs -0.470 as one domain, same kernel and electron count).
+// Symmetric molecules have mu = 0 BY SYMMETRY, which makes them null tests rather than targets --
+// a nonzero value there is pure error, so they are listed at 0 deliberately.
+var MU_EXP = {
+  h2o: 1.8546, nh3: 1.4718, co: 0.1098, hcn: 2.985, h2co: 2.332, n2o: 0.1608,
+  h2: 0.0, n2: 0.0, o2: 0.0, co2: 0.0, ch4: 0.0, c2h2: 0.0, c2n2: 0.0
+};
+
 var E_TOT_REF = {
   h:  { E: -0.500000,  src: 'exact' },
   h2: { E: -1.174470,  src: 'computed (Kolos-Wolniewicz, BO)' }
@@ -400,6 +410,10 @@ var MOLS = {
   }
 
   var SPLIT_BY_N = { 2: 'hemi', 3: 'third', 4: 'tetra' };
+  // HOISTED, like USER_RC before it: declared inside M.atoms.forEach it is out of scope in the
+  // title readout, which is a separate closure -- "FREE is not defined" on every run. Second time
+  // tonight; the rule is that anything the TITLE reports must be declared at this level.
+  var FREE = (qp.get('free') || '').split(',').filter(function (x) { return x !== ''; }).map(Number);
   var USER_RC = parseFloat(qp.get('rc')); if (!isFinite(USER_RC)) USER_RC = 0;
   // -----------------------------------------------------------------------------------------
   // NESTED SHELLS (?sh=1). An atom entry carrying `sh: [n0, n1, ..., nv]` is built ALL-ELECTRON:
@@ -440,7 +454,7 @@ var MOLS = {
   // here, and treat a better result as the one needing scrutiny.
   window.USER_CLAMP_RC = qp.get('clamp') === '1';
   var nuclei = [], targets = [], labels = [];
-  M.atoms.forEach(function (a) {
+  M.atoms.forEach(function (a, ai) {
     // ?rc= INNER CUTOFF (core-exclusion radius), default 0. This is not a cosmetic knob: with
     // r_c = 0 the pseudokernel is a bare +Z_x with nothing holding the valence out of the vacant
     // core, and the valence COLLAPSES. Measured on carbon at the declared grid: VeK = -35.3303 for
@@ -450,7 +464,17 @@ var MOLS = {
     // recorded elsewhere in this project: O 0.787, Cl 1.108, both from the ionization energy.
     // CAUTION: check cells per r_c before trusting a radius -- at h = 0.1, r_c = 0.4 is only four
     // cells and the cusp is then under-resolved.
-    var base = { i: N2 + a.x / h, j: N2 + a.y / h, k: N2 + a.z / h, rc: USER_RC, fixed: !qp.get('dyn') };
+    // ?free=1,2 releases ONLY the listed atoms (0-based), everything else held. Without it, ?dyn=1
+    // releases all kernels at once -- and that is the suspected cause of the three-centre failure:
+    // with several kernels moving, each one's force depends on where the others currently are, so
+    // the relaxation is a FEEDBACK LOOP and can settle into a limit cycle rather than a minimum.
+    // Recorded symptom: three-centre relaxation oscillates ~0.03 Ha out to 3e5 steps. Releasing one
+    // kernel at a time removes the coupling entirely -- each step is a 1D descent -- at the cost of
+    // needing an outer iteration over which atom is free, and of breaking the molecule's symmetry
+    // during each step (so SigmaF is not a valid check mid-sequence; only at the end).
+    // mol_fast already honours `fixed` per nucleus (mol_fast.js:35); only this page set it uniformly.
+    var heldFlag = FREE.length ? (FREE.indexOf(ai) < 0) : !qp.get('dyn');
+    var base = { i: N2 + a.x / h, j: N2 + a.y / h, k: N2 + a.z / h, rc: USER_RC, fixed: heldFlag };
     // the shell test must come FIRST: a shell atom carries `sh` but no `sp`, so `!a.sp` would
     // otherwise swallow it and build ONE domain holding every electron (measured: ndom=3 instead
     // of 5 for h2o_sh, E = -89.6 with VeK = -224).
@@ -797,6 +821,19 @@ var MOLS = {
       + ' vs exact ' + vkkRef.toFixed(5)
       + (qp.get('dyn') ? ' <span style="color:#789">(current geometry)</span>' : '')
       + ' <b style="color:' + (vok ? '#6c6' : '#f66') + '">' + (vok ? 'OK' : 'MISMATCH') + '</b>'
+      + (function () {
+          if (window._mu_mag === undefined) return '';
+          var D = window._mu_mag * 2.5417, ex = MU_EXP[key];
+          var dir = (window._mu_x === undefined) ? '' :
+            ' dir=(' + window._mu_x.toFixed(3) + ',' + window._mu_y.toFixed(3) + ',' + window._mu_z.toFixed(3) + ')';
+          var t = '<br><b>&mu;</b> = ' + D.toFixed(3) + ' D' + dir;
+          if (ex === undefined) return t + '<span style="color:#889;font-size:10.5px"> (no checked value)</span>';
+          if (ex === 0) return t + ' vs <b>0 by symmetry</b> &mdash; <b style="color:'
+            + (D < 0.05 ? '#6c6' : D < 0.2 ? '#fc6' : '#f66') + '">' + D.toFixed(3) + ' D is pure error</b>';
+          return t + ' vs ' + ex.toFixed(3) + ' D = <b style="color:'
+            + (Math.abs(D - ex) / ex < 0.1 ? '#6c6' : Math.abs(D - ex) / ex < 0.3 ? '#fc6' : '#f66') + '">'
+            + (D >= ex ? '+' : '') + (100 * (D - ex) / ex).toFixed(1) + '%</b>';
+        })()
       + '<br>E = ' + (window._E === undefined ? '—' : window._E.toFixed(6))
       + (function () {
           var t = totalErrReport(key);
@@ -841,6 +878,7 @@ var MOLS = {
           return (!t || t.why) ? '' : ' errE=' + (t.dE >= 0 ? '+' : '') + t.dE.toFixed(6)
                + '(' + (t.pct >= 0 ? '+' : '') + t.pct.toFixed(2) + '%)';
         })()
+      + (window._mu_mag !== undefined ? ' mu=' + (window._mu_mag*2.5417).toFixed(3) + 'D' : '')
       + ' Fsum=' + fs.toFixed(6) + ' (' + rel.toFixed(1) + '%)'
       // E_bind in the TITLE as well as the panel: the drivers read the title, and computing the
       // subtraction by hand between messages is how a mismatched-step atomic reference survived
@@ -865,6 +903,7 @@ var MOLS = {
           + ' VKK=' + window._E_KK.toFixed(4) + ']' : '')
       + (qp.get('dyn') ? ' dR=' + maxRad.toFixed(1) + '% dAng=' + maxAng.toFixed(2) + 'deg' : '')
       + ' soft=' + window.USER_SOFT.toFixed(2) + ' eps=' + (window.USER_SOFT*h).toFixed(3)
+      + (FREE.length ? ' free=[' + FREE.join(',') + ']' : '')
       + ' rc=' + USER_RC.toFixed(3) + (window.USER_CLAMP_RC ? ' CLAMP' : '')
       + ' rinit=' + window.USER_R_INIT + ' wdiff=' + (window.USER_W_DIFF !== undefined ? window.USER_W_DIFF : 0.05)
       + ' wkinw=' + (window.USER_W_KIN_WEIGHT ? 1 : 0)
