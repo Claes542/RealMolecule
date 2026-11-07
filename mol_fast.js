@@ -75,8 +75,65 @@ console.log("[mol_fast.js] script loaded");
   const PX = 400 / NN;
   const NRED = 2 + NELEC;  // T, V_eK, V_ee, plus one slot per electron norm (but packed as 3+NELEC)
   // Layout: [0..NELEC-1] = norm² per electron, [NELEC] = T, [NELEC+1] = V_eK, [NELEC+2] = V_ee,
-  //         [NELEC+3] = dipEx (electronic dipole x), [NELEC+4] = dipEy, [NELEC+5] = dipEz
-  const NRED_SLOTS = NELEC + 6;
+  //         [NELEC+3] = dipEx (electronic dipole x), [NELEC+4] = dipEy, [NELEC+5] = dipEz,
+  //         [NELEC+6] = T_psi, [NELEC+7] = N_psi    (the ASSEMBLED-FIELD diagnostic, below)
+  //         [NELEC+8] = S_surf = sum_m INT u_m^2 |grad w_m| dV    (the ROBIN SURFACE MEASURE)
+  //
+  // S_surf, added 2026-11-07, DIAGNOSTIC ONLY -- no dynamics change, every energy bit-identical.
+  // It is the phase-field form of the interface integral that a Robin surface energy needs:
+  //         INT_Gamma f dS  =  INT f |grad w| dV
+  // exact as w sharpens. So a Robin beta can live in mol_fast WITHOUT cut cells or area fractions:
+  //         E_surf = (beta/2) INT u^2 |grad w| dV
+  // which matters because mol_fast is the only solver that FINDS the interface and the only one
+  // that runs the 16-molecule table -- axisym (where beta is already validated) is limited to two
+  // domains on an axis, so it can never test N2 or CO.
+  //
+  // WHY MEASURE IT BEFORE WIRING THE DYNAMICS. axisym gives INT_Gamma u^2 dS = 0.496 for H2 at
+  // D=2.1 and 1.681 for He (3.4x larger, because He's split plane cuts the density MAXIMUM while
+  // H2's midplane sits in the tail). If this diffuse measure does not land near those, the
+  // regularised surface integral is not the sharp one and a beta built on it would be fitting the
+  // smearing. NOTE S_surf sums over ALL m, so each interface is counted TWICE (once from each
+  // side): compare S_surf/2 against axisym's 0.496, not S_surf.
+  //
+  // CONVENTION WARNING: mol_fast's OWN |grad w| in the w-update (mol_fast.js:462) is
+  // `(wip - wim) * p.inv_h` -- the 0.5 of a central difference is MISSING, so it is 2x the true
+  // gradient. Harmless there (absorbed into W_ADV as a front speed) but wrong for a surface
+  // measure, so the 0.5 is restored here. Do not copy line 462's form.
+  //
+  // ASSEMBLED-FIELD KINETIC ENERGY (T_psi), added as a DIAGNOSTIC, 2026-11-07. Changes no result:
+  // nothing reads these slots back into E.
+  //
+  // WHAT IT IS. RealQM asks for ONE global amplitude Psi in H^1, partitioned into domains. This
+  // solver instead carries N overlapping fields u_m with weights w_m, and charges kinetic energy
+  // as a PER-DOMAIN sum, sum_m int (weight) |grad u_m|^2 -- in BOTH existing forms (the hard gate
+  // `if W > W_KIN_GATE`, and the face-averaged W_KIN_WEIGHT one). The global field those pieces are
+  // supposed to assemble into is
+  //      Psi = sum_m w_m u_m
+  // and its kinetic energy  T_psi = 1/2 int |grad Psi|^2  is a DIFFERENT NUMBER. This computes it.
+  //
+  // WHY THE DIFFERENCE IS THE OVERLAP DEFECT. Where the weights are a partition of unity
+  // (sum_m w_m = 1, so grad w_2 = -grad w_1 for two domains),
+  //      grad Psi = w_1 grad u_1 + w_2 grad u_2 + (u_1 - u_2) grad w_1
+  // and there is an exact algebraic identity for the first two terms:
+  //      sum_m w_m |grad u_m|^2  -  |w_1 grad u_1 + w_2 grad u_2|^2  =  w_1 w_2 |grad u_1 - grad u_2|^2
+  // So T_w-weighted - T_psi splits into TWO separable pieces, both supported only in the overlap:
+  //   (1) a JUMP term proportional to (u_1 - u_2) -- which is exactly cm, the residual of this
+  //       solver's OWN front criterion, so it is a convergence meter carrying energy units; and
+  //   (2) a CONVEXITY GAP w_1 w_2 |grad u_1 - grad u_2|^2, which does NOT vanish at convergence.
+  // Jensen fixes the sign of (2): the per-domain sum always charges MORE than the assembled field.
+  // Hence the PREDICTION to test, stated before the first run: T_psi < E_T, so an energy built on
+  // T_psi binds MORE, not less. That gap is the overlap defect of [[project_three_partitions_h2]]
+  // -- recorded as holding this solver's H2 bond together, never measured -- in energy units.
+  //
+  // CAVEAT, AND WHY N_psi IS REPORTED BESIDE IT. sum_m w_m is NOT constrained to 1 here: each w_m
+  // evolves independently from cm and is clamped to [0,1] on its own (no partition of unity). So
+  // the identity above is the INTERPRETATION, not the computation -- the shader forms Psi directly
+  // and differentiates it, assuming nothing. But then int Psi^2 need not equal N, and a kinetic
+  // energy of an unnormalised field is not comparable to one of a normalised field. N_psi =
+  // int Psi^2 is therefore printed alongside: at perfect matching WITH a partition of unity,
+  // Psi = u and N_psi = N exactly, so N_psi's deficit measures the same two defects as T_psi's.
+  // Compare T_psi to E_T only when N_psi is close to N; otherwise compare T_psi/N_psi.
+  const NRED_SLOTS = NELEC + 9;
 
   // ===== Multigrid V-cycle constants =====
   if (NN % 2 !== 0) throw new Error("mol_fast: NN must be even for V-cycle");
@@ -571,6 +628,41 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       nw = min(nw, t * t * (3.0 - 2.0 * t));
     }
   }`}
+  // NOTE on a snap that was tried and REMOVED. I suspected FACE_NEUMANN needed a BINARY w as well
+  // as binary faces -- the worry being that a cell with 0 < w < 0.5 would carry density u^2*w while
+  // all its faces were closed, paying no kinetic energy. MEASURED: snapping w to {0,1} moved H2's
+  // energy by 0.0057 Ha and made it slightly MORE bound, so the hole was not there. The readout had
+  // already said so: q_u/q_uw = 1.000/1.000 both with and without the snap, i.e. u is zero wherever
+  // w < 1, so no cell carried density without paying for it. The snap also FROZE THE FRONT (the
+  // advection nudges nw off 0/1 and the snap returns it), which is a real restriction for no gain,
+  // so it is gone. ?fn=1 changes the FACES only.
+  //
+  // *** THE REASONING ABOVE IS REFUTED. MEASURED 2026-11-07. ***
+  // q_u/q_uw = 1.000/1.000 constrains the DENSITY, not AMPLITUDE CONTINUITY, so it cannot establish
+  // that the hole is absent -- and it reads 1.000/1.000 in a run where the hole is demonstrably
+  // open. H2, box 12, h 0.10, eps=h, D=2.1, wkinw=1 (the simulator default):
+  //     fn=0   E=-1.127903   T=0.9197   Vee=0.4788   q_u=1.052   Tpsi=0.9286   gap=-0.0089
+  //     fn=1   E=-1.338705   T=0.5647   Vee=0.3999   q_u=1.000   Tpsi=4.5563   gap=-3.9916
+  // T collapses 38.6% and E drops 0.2108 Ha, the SAME SIGNATURE as the run already withdrawn as
+  // unsound (T -24%, Vee -19%, residue 1.072 -> 1.000, R-independent shift -0.2344).
+  //
+  // THE DECISIVE EVIDENCE IS THE ASSEMBLED FIELD: Tpsi / T = 8.07.  T_psi = 1/2 int |grad(sum_m
+  // w_m u_m)|^2 charges the interface JUMP (u2-u1)^2/h, which is exactly what closed faces make
+  // FREE for the per-domain sum. A factor 8 therefore means the discrete solution is NOT in H^1: a
+  // large amplitude discontinuity has opened at the interface and the minimiser is exploiting it.
+  // T fell BECAUSE the gradient is no longer charged where it is largest. (This is what the T_psi
+  // diagnostic is for; without it the collapse looks like a plausible "strong Neumann costs less".)
+  //
+  // NOT inferred from "E is below exact", which is an INVALID test here -- RealQM's functional has
+  // no variational theorem tying it to the Schrodinger ground state, and axisym's sharp
+  // construction legitimately converges to -1.276.
+  //
+  // => ?fn=1 is binary FACES over a DIFFUSE w, which is NOT the hard construction but a scheme with
+  // a free jump. axisym has NO w AT ALL (a hard partition by cell labels, faces omitted at
+  // assembly) and that is the actual difference. DO NOT use ?fn=1 as "mol_fast with hard
+  // non-overlap". Making it sound needs binary faces AND a consistent binary w; note the snap alone
+  // was worth only 0.0057 Ha against the 0.2108 that hard faces moved, so the two are not
+  // interchangeable.
   Wo[o + id] = nw;
 
   // --- u evolution: w-weighted Laplacian + (K - V_Hartree_other)·u·w ---
@@ -668,6 +760,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
     var T: f32 = 0.0;
     var VeK: f32 = 0.0;
     var Vee: f32 = 0.0;
+    var S_surf: f32 = 0.0;
     var dipEx: f32 = 0.0;
     var dipEy: f32 = 0.0;
     var dipEz: f32 = 0.0;
@@ -678,6 +771,22 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
     // P_total at this cell (same for all electrons)
     var P_tot: f32 = 0.0;
     for (var n: u32 = 0u; n < ${NELEC}u; n++) { P_tot += Pv[n * p.S3 + id]; }
+    // ASSEMBLED GLOBAL FIELD  Psi = sum_m w_m u_m,  and its kinetic energy. See the NRED_SLOTS
+    // comment. Formed ONCE per cell (outside the per-domain loop) because Psi is a SINGLE field --
+    // this is the whole point, and putting it inside the m loop would just rebuild a per-domain sum.
+    // The gradient needs Psi at the three forward neighbours too, hence four accumulations. Index
+    // safety: i,j,k each run 1..NM so id+S2, id+S, id+1 are in range, exactly as a,b,c below rely on.
+    var psi0: f32 = 0.0; var psiA: f32 = 0.0; var psiB: f32 = 0.0; var psiC: f32 = 0.0;
+    for (var n: u32 = 0u; n < ${NELEC}u; n++) {
+      let on = n * p.S3;
+      psi0 += W[on + id]        * U[on + id];
+      psiA += W[on + id + p.S2] * U[on + id + p.S2];
+      psiB += W[on + id + p.S]  * U[on + id + p.S];
+      psiC += W[on + id + 1u]   * U[on + id + 1u];
+    }
+    let dpa = psiA - psi0; let dpb = psiB - psi0; let dpc = psiC - psi0;
+    let T_psi = ${KINETIC_COEFF.toFixed(6)} * (dpa*dpa + dpb*dpb + dpc*dpc) * p.h;
+    let N_psi = psi0 * psi0 * p.h3;
     for (var m: u32 = 0u; m < ${NELEC}u; m++) {
       let o = m * p.S3;
       let v = U[o + id];
@@ -690,6 +799,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
       let b = U[o + id + p.S]  - v;
       let c = U[o + id + 1u]   - v;
 ${kinTermWGSL}
+      // ROBIN SURFACE MEASURE: |grad w_m| with the TRUE central difference (see the warning in the
+      // NRED_SLOTS note -- the w-update's own form omits the 0.5). i,j,k run 1..NM so id-S2 etc are
+      // in range, exactly as the forward differences a,b,c above rely on.
+      let gwa = (W[o + id + p.S2] - W[o + id - p.S2]) * 0.5 * p.inv_h;
+      let gwb = (W[o + id + p.S]  - W[o + id - p.S])  * 0.5 * p.inv_h;
+      let gwc = (W[o + id + 1u]   - W[o + id - 1u])   * 0.5 * p.inv_h;
+      S_surf += sqrt(gwa*gwa + gwb*gwb + gwc*gwc) * v * v * p.h3;
       VeK -= wd * K[id] * v * v * p.h3;
       // Electronic dipole contribution: -∫ρ_m·r dV  (electron charge = -1)
       let rho_cell = wd * v * v * p.h3;
@@ -719,6 +835,9 @@ ${kinTermWGSL}
     sn[lid * NRED + ${NELEC + 3}u]  = dipEx;
     sn[lid * NRED + ${NELEC + 4}u]  = dipEy;
     sn[lid * NRED + ${NELEC + 5}u]  = dipEz;
+    sn[lid * NRED + ${NELEC + 6}u]  = T_psi;
+    sn[lid * NRED + ${NELEC + 7}u]  = N_psi;
+    sn[lid * NRED + ${NELEC + 8}u]  = S_surf;
   }
   workgroupBarrier();
   for (var s: u32 = 64u; s > 0u; s >>= 1u) {
@@ -1851,6 +1970,23 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // or the potential side, and V_KK in particular is EXACTLY checkable (Z_a Z_b / R summed over
     // pairs), so it is the first thing to compare when two solvers disagree.
     window._E_T = E_T; window._E_eK = E_eK; window._E_ee = E_ee; window._E_KK = E_KK;
+    // Assembled-field diagnostic. DELIBERATELY NOT folded into E: this is a measurement of the
+    // overlap defect, not a change of model, and the whole point is that every recorded number
+    // stays bit-identical. _T_psi_gap > 0 confirms the Jensen prediction (per-domain overcharges).
+    window._T_psi = sums[NELEC + 6];
+    window._N_psi = sums[NELEC + 7];
+    window._T_psi_gap = E_T - sums[NELEC + 6];
+    // S_surf: halve it to compare with axisym's single-counted INT_Gamma u^2 dS (0.496 for H2)
+    window._S_surf = sums[NELEC + 8];
+    // RAW NORM SLOTS FROM THIS SAME PASS. Needed because N_psi = int (sum_m w_m u_m)^2 must be
+    // compared against int w u^2 computed on THE SAME u, W and cell set -- and q_u/q_uw in the
+    // driver come from readDomainProfiles, a SEPARATE readback with its own integral. Comparing
+    // N_psi to those gave an "impossible" 1.023 > 1 for a single domain and sent me looking for a
+    // wiring fault that is not there (SUMS_BYTES is sized from NRED_SLOTS; every post-clamp w
+    // modification is min(nw,...) so W <= 1 holds). For ONE domain the inequality
+    //     N_psi = int W^2 U^2  <=  int W U^2 = _norm_raw
+    // is exact and airtight, so this pair is the real self-test of the diagnostic.
+    window._norm_raw = Array.from({ length: NELEC }, function (_, m) { return sums[m]; });
     // Dipole: μ = Σ_a Z_a·R_a + μ_elec (electron part already summed with minus sign)
     let dipNx = 0, dipNy = 0, dipNz = 0;
     for (let a = 0; a < N_ATOMS; a++) {

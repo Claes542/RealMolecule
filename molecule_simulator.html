@@ -2,7 +2,7 @@
 <html><head>
   <meta charset="utf-8">
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
-  <title>Molecule simulator — H, He, Li, Be, B, C, N, O, F, Ne</title>
+  <title>Molecule simulator — H, C, N, O</title>
   <style>
     body { margin:0; background:#000; color:#fff; font-family:monospace }
     select,button { background:#1a2228; color:#dfe; border:1px solid #456; padding:3px 6px; font-family:monospace }
@@ -15,7 +15,7 @@
 <div id="panel" style="position:fixed;top:8px;left:8px;background:rgba(0,0,0,.92);padding:9px 11px;
      border:1px solid #345;border-radius:6px;width:220px;max-height:96vh;overflow-y:auto;
      font-size:11.5px;z-index:1000;color:#cde">
-  <div style="font-weight:bold;color:#8df">Molecule simulator &mdash; H, He, Li, Be, B, C, N, O, F, Ne</div>
+  <div style="font-weight:bold;color:#8df">Molecule simulator &mdash; H, C, N, O</div>
   <div id="picker" style="margin:7px 0"></div>
   <div id="geom" style="color:#9ab;font-size:11px"></div>
   <div id="checks" style="margin-top:7px"></div>
@@ -63,11 +63,9 @@ window.onerror = function (m, u, l, c) {
 //   'none'    nothing cancels (CO, HCN, N2O, HC3N) -> a genuine convergence measurement
 // Measured 2026-11-03: the asymmetric cases run 11-89% while CO2 and C3O2 read 0.1-0.2%, which is
 // symmetry being preserved, not convergence being good.
-var SYM = { h:'full', c:'full', n:'full', o:'full', c_split:'full', n_split:'full', o_split:'full',
-            he_v:'full', he_split:'full', li_v:'full', be_v:'full', b_v:'full', c_v:'full', n_v:'full', o_v:'full', f_v:'full', ne_v:'full',
-            h2:'full', n2:'full', o2:'full', co:'none', co2:'full', n2o:'none', hcn:'none',
+var SYM = { h:'full', c:'full', n:'full', o:'full', h2:'full', n2:'full', o2:'full', co:'none', co2:'full', n2o:'none', hcn:'none',
             c2h2:'full', c2n2:'full', c3o2:'full', hc3n:'none', c4h2:'full',
-            h2o:'axis', h2o_split:'axis', h2o_sh:'axis', nh3:'axis', ch4:'full', h2co:'axis',
+            h2o:'axis', h2o_split:'axis', nh3:'axis', ch4:'full', h2co:'axis',
             h2o_a90:'axis', h2o_a109:'axis', h2o_a120:'axis', h2o_z2:'axis' };
 var SYMNOTE = {
   full: ['symmetry-cancelled', '#8a9', 'SigmaF is forced to zero by symmetry here, so it measures only whether the algorithm preserves symmetry — it does NOT bound the convergence error.'],
@@ -197,32 +195,11 @@ var MOLS = {
   //   PREDICTION under splitting: E(C) rises by ~8.55 Ha to about -5.45, E(O) by ~3.47 to about
   //   -3.37. A much smaller rise means the over-binding is NOT the missing repulsion.
   // These are separate entries so the blob references stay reproducible.
-  c_split: { name: 'C  single atom  [split 4x1e -- missing-repulsion test]', ext: 0.000, nelec: 4, atoms: [
-      { x:  0.00000, y:  0.00000, z:  0.00000, el:'C', Z:4, sp:4, ax:[0,0,1] },
-  ]},
-  n_split: { name: 'N  single atom  [split 3x1e]', ext: 0.000, nelec: 3, atoms: [
-      { x:  0.00000, y:  0.00000, z:  0.00000, el:'N', Z:3, sp:3, ax:[0,0,1] },
-  ]},
-  o_split: { name: 'O  single atom  [split 3x1e]', ext: 0.000, nelec: 3, atoms: [
-      { x:  0.00000, y:  0.00000, z:  0.00000, el:'O', Z:3, sp:3, ax:[0,0,1] },
-  ]},
   // SECOND ROW AT FULL VALENCE, Z_x = 1..8. Required for an ATOMIC validation because Z_x is the
   // only label distinguishing elements: at the molecular truncations (H1 C4 N3 O3) lithium is
   // bit-identical to hydrogen and B = N = O collapse onto one object at Z_x = 3. Reference is the
   // sum of IEs to strip the whole valence, = |E_neutral - E_core| from atom_simulator.html's
   // REF_ETOT and its fitted coreE(Z); validated on carbon to 0.2% against the recorded 2.57x.
-  he_v: { name: 'He  both electrons Z=2  [sumIE 2.904, NO core]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'He', Z:2 } ]},
-  he_split: { name: 'He  split 2x1e hemi  [splitting ARTEFACT calibration]', ext: 0, nelec: 2, atoms: [
-      { x:0,y:0,z:0, el:'He', Z:2, sp:2, ax:[0,0,1] },
-  ]},
-  li_v: { name: 'Li  full valence Z=1  [sumIE 0.195]',  ext: 0, nelec: 1, atoms: [ { x:0,y:0,z:0, el:'Li', Z:1 } ]},
-  be_v: { name: 'Be  full valence Z=2  [sumIE 1.009]',  ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'Be', Z:2 } ]},
-  b_v:  { name: 'B   full valence Z=3  [sumIE 2.621]',  ext: 0, nelec: 3, atoms: [ { x:0,y:0,z:0, el:'B',  Z:3 } ]},
-  c_v:  { name: 'C   full valence Z=4  [sumIE 5.437]',  ext: 0, nelec: 4, atoms: [ { x:0,y:0,z:0, el:'C',  Z:4 } ]},
-  n_v:  { name: 'N   full valence Z=5  [sumIE 9.806]',  ext: 0, nelec: 5, atoms: [ { x:0,y:0,z:0, el:'N',  Z:5 } ]},
-  o_v:  { name: 'O   full valence Z=6  [sumIE 15.909]', ext: 0, nelec: 6, atoms: [ { x:0,y:0,z:0, el:'O',  Z:6 } ]},
-  f_v:  { name: 'F   full valence Z=7  [sumIE 24.201]', ext: 0, nelec: 7, atoms: [ { x:0,y:0,z:0, el:'F',  Z:7 } ]},
-  ne_v: { name: 'Ne  full valence Z=8  [sumIE 35.030]', ext: 0, nelec: 8, atoms: [ { x:0,y:0,z:0, el:'Ne', Z:8 } ]},
   h2: { name: 'H2 hydrogen', ext: 0.700, nelec: 2, atoms: [
       { x: -0.70014, y:  0.00000, z:  0.00000, el:'H', Z:1 },
       { x:  0.70014, y:  0.00000, z:  0.00000, el:'H', Z:1 },
@@ -287,11 +264,6 @@ var MOLS = {
       { x:  1.30769, y:  0.00000, z:  0.00000, el:'C', Z:4 },
       { x:  3.59142, y:  0.00000, z:  0.00000, el:'C', Z:4 },
       { x:  5.59926, y:  0.00000, z:  0.00000, el:'H', Z:1 },
-  ]},
-  h2o_sh: { name: 'H2O  [O all-electron 2+4+2 nested shells, needs ?sh=1]', ext: 1.477, nelec: 10, atoms: [
-      { x:  0.00000, y:  0.73827, z:  0.00000, el:'O', Z:8, Zfull:8, sh:[2,4,2], ax:[0,0,1] },
-      { x: -1.43024, y: -0.36914, z:  0.00000, el:'H', Z:1 },
-      { x:  1.43024, y: -0.36914, z:  0.00000, el:'H', Z:1 },
   ]},
   h2o_split: { name: 'H2O water  [O split 3x1e]', ext: 1.477, nelec: 5, atoms: [
       { x:  0.00000, y:  0.73827, z:  0.00000, el:'O', Z:3, sp:3, ax:[0,0,1] },
@@ -901,6 +873,23 @@ var MOLS = {
           + ' VeK=' + window._E_eK.toFixed(4)
           + ' Vee=' + window._E_ee.toFixed(4)
           + ' VKK=' + window._E_KK.toFixed(4) + ']' : '')
+      // ASSEMBLED-FIELD KINETIC ENERGY, the overlap-defect meter (mol_fast.js NRED_SLOTS comment).
+      // Tpsi = 1/2 int |grad(sum_m w_m u_m)|^2 against the per-domain T beside it; Npsi = int Psi^2,
+      // which must be read FIRST -- Tpsi is only comparable to T when Npsi is near the electron
+      // count, since sum_m w_m is not constrained to 1 here. gap = T - Tpsi, predicted POSITIVE.
+      + (window._T_psi !== undefined ? ' [Tpsi=' + window._T_psi.toFixed(4)
+          + ' gap=' + window._T_psi_gap.toFixed(4)
+          + ' Npsi=' + window._N_psi.toFixed(4) + '/'
+          + targets.reduce(function (s, t) { return s + t; }, 0).toFixed(0)
+          // SAME-PASS norm, the diagnostic's real self-test: for ONE domain Npsi <= normraw
+          // exactly. q_u/q_uw below come from a DIFFERENT readback and must not be used for this.
+          + ' normraw=' + (window._norm_raw || []).map(function (q) { return q.toFixed(4); }).join(',')
+          + ']' : '')
+      // ROBIN SURFACE MEASURE, sum_m INT u_m^2 |grad w_m| dV -- the phase-field form of
+      // INT_Gamma u^2 dS, which is what a Robin beta needs and what lets beta live in mol_fast
+      // without cut cells. Printed HALVED, because summing over all m counts each interface twice
+      // (once per side), so Ssurf/2 is what compares with axisym's 0.496 for H2 at D=2.1.
+      + (window._S_surf !== undefined ? ' Ssurf/2=' + (window._S_surf/2).toFixed(4) : '')
       + (qp.get('dyn') ? ' dR=' + maxRad.toFixed(1) + '% dAng=' + maxAng.toFixed(2) + 'deg' : '')
       + ' soft=' + window.USER_SOFT.toFixed(2) + ' eps=' + (window.USER_SOFT*h).toFixed(3)
       + (FREE.length ? ' free=[' + FREE.join(',') + ']' : '')
