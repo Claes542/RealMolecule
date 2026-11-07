@@ -87,20 +87,34 @@ footer a { color: #4fc3f7; text-decoration: none; }
     </summary>
     <a href="molecule_simulator.html" style="text-decoration:none;color:inherit">
       <div class="desc" style="font-size:13.5px;margin-top:7px">Sixteen molecules from H, C, N, O
-      at their <b>measured</b> geometries &mdash; H<sub>2</sub>, N<sub>2</sub>, O<sub>2</sub>, CO,
-      CO<sub>2</sub>, N<sub>2</sub>O, HCN, C<sub>2</sub>H<sub>2</sub>, C<sub>2</sub>N<sub>2</sub>,
-      C<sub>3</sub>O<sub>2</sub>, HC<sub>3</sub>N, C<sub>4</sub>H<sub>2</sub>, H<sub>2</sub>O,
-      NH<sub>3</sub>, CH<sub>4</sub>, H<sub>2</sub>CO. At the measured geometry the true force is
-      <b>zero by definition</b>, so each residual force is model error read directly &mdash; no
-      reference calculation, no energy scan, no minimum to find. The page displays its own error
-      checks beside the answer: V<sub>KK</sub> against exact arithmetic on the geometry built, and
-      &Sigma;F. What &Sigma;F <i>means</i> depends on symmetry: it is forced to zero by a mirror or
-      rotation axis whatever the accuracy, so in a symmetric molecule it reports only that symmetry
-      is preserved &mdash; an <b>unbound</b> H<sub>2</sub> scores 2.1% on it. It is a convergence
-      diagnostic, not a figure of merit. The page also reports the <b>binding energy</b> against
-      both experimental conventions (D<sub>e</sub> and D<sub>0</sub>) and the <b>absolute</b> energy
-      error, because for H<sub>2</sub> the total is 2.4% too shallow while 94% of that error cancels
-      in the binding energy.</div></a>
+      at their <b>measured</b> geometries. The model is given three valence charges &mdash;
+      Z<sub>x</sub> = 1, 3, 4 &mdash; and each molecule's observed geometry; everything else is a
+      solver setting, <b>declared once and never adjusted per molecule</b>. That is weaker than
+      &ldquo;parameter-free&rdquo; and more useful: the construction has settings, which the paper
+      tabulates, but no per-system adjustment, so each number is a prediction rather than a fit.
+      It returns the <b>binding energy</b> (against both D<sub>e</sub> and D<sub>0</sub>, which
+      differ by six points &mdash; their gap is the zero-point energy the model omits), the
+      <b>dipole</b>, and the <b>absolute</b> energy error beside it, because for H<sub>2</sub> the
+      total is 2.4% too shallow while 94% of that cancels in the difference.
+      <br><br>
+      <b>The dipole doubles as an acceptance test.</b> A symmetric molecule must give
+      &mu; &equiv; 0, so any value there is pure error needing no reference at all. On one grid
+      (box 16 a<sub>0</sub>, h = 0.10) six rows pass &mdash; N<sub>2</sub> 0.213, O<sub>2</sub>
+      0.216, CO 0.222, CO<sub>2</sub> 0.344, N<sub>2</sub>O 0.392, CH<sub>4</sub> 1.082 Ha &mdash;
+      with &mu; between 0.000 and 0.038 D where symmetry demands zero. Four are <b>rejected</b>:
+      H<sub>2</sub>O, NH<sub>3</sub> and HCN settle to <i>stable</i> states with a net force along
+      a direction symmetry does not protect (&Sigma;F of 117%, 127%, 83%), which more steps do not
+      cure.
+      <br><br>
+      <b>N<sub>2</sub> and CO<sub>2</sub> bind.</b> Both were previously recorded as <i>unbound</i>
+      &mdash; &minus;0.016 and &minus;0.211 Ha &mdash; and both reverse sign once molecule and
+      atomic reference are computed on the <i>same</i> grid. The CO<sub>2</sub> swing is 0.555 Ha.
+      Those failures were comparisons across grids, not physics, and the same error moved
+      H<sub>2</sub>'s binding by 32 points and carbon's energy by 1.1 Ha.
+      <br><br>
+      &Sigma;F is kept as a <b>convergence diagnostic, not a figure of merit</b>: symmetry forces
+      it to zero whatever the accuracy, and an <b>unbound</b> H<sub>2</sub> scores 2.1% on
+      it.</div></a>
     <div style="margin-top:9px">
       <a href="molecule_simulator.html" style="color:#4fc3f7;font-size:13px">&#9654; Launch molecule simulator</a> &middot;
       <a href="#news-obsforce" style="color:#4fc3f7;font-size:13px">the method</a> &middot;
