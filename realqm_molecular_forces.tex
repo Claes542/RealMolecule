@@ -68,57 +68,6 @@ what licenses using forces for dynamics. It is not a figure of merit, and an unb
 molecule scores as well on it as the best entries in the list.
 \end{abstract}
 
-\section{The simulator}
-\label{sec:sim}
-
-The simulator presents a list of molecules, each stored as experimental internal coordinates
-converted to Cartesian form and centred on the centroid. Selecting one builds the system on the
-declared grid of Section~\ref{sec:mesh}---$h = 0.1\,a_0$, $200^3$, box $20\,a_0$, identical for
-every entry---and runs. The solver is a GPU code (\texttt{mol\_fast}) carrying one domain per
-entry and capped at sixteen domains; a second implementation of the same model as one globally
-partitioned field admits two thousand and is discussed in Section~\ref{sec:impl}.
-
-Four choices are built in as defaults rather than offered as options, each because it was measured
-rather than assumed. The grid is fixed, for the reasons of Section~\ref{sec:mesh}, and does not
-follow the molecule---an earlier version sized the box from each molecule's own extent, which is
-what makes a table of cross-molecule differences unusable. Valence charges are $Z_x = 1, 4, 3, 3$
-for H, C, N, O---oxygen at $+3$ rather than the common $+2$, which converges five times worse at
-the same bond error, and carbon never at $+2$, which has no defence (Section~\ref{sec:zx}). The
-nuclear force is the volume integral of Section~\ref{sec:force} rather than a sampled potential
-gradient. And the kinetic energy of partially occupied interface cells is excluded above an
-occupancy of $0.9$, which is the single change that brings hydrogen's binding energy from $-7.6\%$
-to within its own scatter of $D_e$ (Section~\ref{sec:h2}).
-
-The kernels are held fixed by default, since the measured geometry is the input the whole method
-rests on. They can also be released to move under the force, which is the sharpest available test of
-the force and is reported for H$_2$ in Section~\ref{sec:dyn}. It is offered with the restriction
-measured there attached: relaxation is trustworthy for geometry but not for energies, and at three
-centres the electronic state does not settle, so released kernels are at present a two-centre
-capability rather than a feature of the molecule list as a whole.
-
-The two observables that can be compared with experiment are reported directly in the output. The
-bond lengths and angles are displayed against their measured values, and the binding energy is
-displayed as
-\begin{equation}
-  E_{\text{bind}} \;=\; \sum_i E(\text{atom}_i) \;-\; E(\text{molecule}),
-  \label{eq:ebind}
-\end{equation}
-positive for a bound molecule, against the measured well depth $D_e$ where a verified value exists.
-The atomic references in \eqref{eq:ebind} are stored \emph{keyed by grid}, and a run whose grid has
-no reference set reports no binding energy together with the reason, rather than silently
-subtracting an energy computed on a different mesh. This is the declaration of
-Section~\ref{sec:mesh} doing its work: once the grid is fixed, the atomic energies are constants of
-the model rather than per-run bookkeeping.
-
-What further distinguishes the simulator from a calculator is that it displays its own error checks
-continuously alongside the result: the kernel--kernel energy against exact arithmetic on the
-geometry actually built, and the total nuclear force as a percentage of the largest single force.
-The reasoning behind those two quantities, and why which of them carries information depends on the
-molecule's symmetry, is the subject of Section~\ref{sec:checks}, where we also explain why the
-second is useful as a convergence diagnostic but must not be read as a figure of merit. Their
-practical effect is that a calculation which cannot be trusted says so on the same screen as its
-answer.
-
 \section{Introduction}
 \label{sec:intro}
 
@@ -148,75 +97,13 @@ four elements is \emph{degenerate}: nitrogen and oxygen both take $Z_x = 3$ and 
 calculations, so the model cannot distinguish them and no result involving both speaks to their
 difference. And the geometry prediction presently covers four molecules rather than thirteen,
 because rescaling a bond is implemented for diatomics only and three-centre relaxations oscillate
-(Section~\ref{sec:3c}).
+(earlier work in this programme).
 
 Validating such a model is awkward by the usual routes. Scanning the energy over geometry requires
 every point of the scan to be converged, and a scan assembled from partially relaxed states returns
 a smooth but meaningless curve. Relaxing under the force requires the force to be trustworthy, which
 is the thing under test. Both routes also need many calculations per molecule, and both return an
 answer whether or not the underlying states deserve one.
-
-\label{sec:obscomp}
-\paragraph{Observable and computable.} A quantity is \emph{observable} if an experiment on the real
-system yields it, and \emph{computable} if this model yields it. The two are independent, and
-sorting the candidates by both at once decides what can be validated and what cannot:
-
-\begin{center}
-\small
-\begin{tabular}{lll}
-\toprule
- & \textbf{computable} & \textbf{not computable} \\
-\midrule
-\textbf{observable}     & dipole moment; geometry & $D_0$ \\
-\textbf{not observable} & $D_e$; $E$, $T$, $V_{eK}$, $V_{ee}$; $\sum_a \mathbf F_a$ & --- \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\noindent
-Only the upper-left cell can test a theory, and the dipole is the one output that sits there without
-qualification: directly computed here and directly measured in the laboratory, with no inference in
-between.
-
-The geometry needs a qualification, and it is the same one the energy needs. Having no nuclear
-motion, this model finds the minimum of its own curve---an equilibrium quantity. The matched
-experimental partners are therefore the \emph{equilibrium} ones, and both are reached from
-measurement by extrapolation rather than read off:
-\begin{center}
-\small
-\begin{tabular}{lll}
-\toprule
- & well minimum (what the model gives) & vibrational ground state \\
-\midrule
-length & $R_e = 1.40028\,a_0$ for H$_2$ & $R_0$, an average over $v = 0$ \\
-energy & $D_e = 0.17447\,E_h$            & $D_0 = 0.16456\,E_h$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-\noindent
-$R_e$ comes from rotational constants $B_v$, one per vibrational level, each giving a
-$\langle 1/r^2\rangle$ average, extrapolated to the bottom of the well through a vibrational
-analysis; $D_e$ comes from $D_0$ plus a zero-point correction from $\omega_e$. So \emph{both} of
-this paper's primary comparisons are with quantities that spectroscopy infers rather than records,
-and its geometric \emph{input} is inferred the same way. That is worth stating plainly: this is not
-experiment in and experiment out, and the honest claim is that the model predicts the equilibrium
-quantities spectroscopy infers---with the dipole as the single exception needing no inference.
-
-The other cells explain two difficulties that would otherwise look like bad luck. A total energy is
-computable and not observable: only differences are measurable, so the $-1.174470\,E_h$ this work
-compares against is Kolos--Wolniewicz's \emph{calculation} in the Born--Oppenheimer limit, and
-agreeing with it is agreeing with a computation. And the dissociation energy is split across the
-diagonal: \textbf{$D_0$ is observable but not computable here}, because the model has no nuclear
-motion, while \textbf{$D_e$ is computable but not observable}, no experiment measuring a well depth
-directly. The six-point gap between them is exactly the zero-point energy---the quantity the model
-omits. So quoting both is not a hedge between conventions; it is the only honest response to a
-comparison that must cross between cells.
-
-$\sum_a \mathbf F_a$ is in the lower-left cell, which is the deepest reason it was never a figure of
-merit---deeper than the symmetry argument of Section~\ref{sec:checks}. It is not a physical quantity
-at all.
-
-We therefore validate on two quantities, with a third kept as a check rather than a result.
 
 \paragraph{The geometry the model settles at---primary.} The separation and angles the model itself
 reaches, against the measured ones. This is the observable with the fewest defects: it is a
@@ -253,17 +140,6 @@ The two primary quantities are not independent, and reporting either alone invit
 generalisation: a model can have the right depth and the wrong position if its curvature is wrong,
 which is exactly what hydrogen does. Section~\ref{sec:h2} works both through for H$_2$, the one
 system whose atomic reference involves no core at all.
-
-\paragraph{What this costs, and why we pay it.} An earlier version of this work recommended the
-force route for its economy: one calculation per molecule, no scan, no minimum to find. That
-economy is real and we have given it up, because a commensurate two-sided scan is three to five
-calculations per molecule. The reason is in the numbers above---the cheap observable needed a
-second quantity to interpret, that quantity was itself $49\%$ wrong, and using the measured one
-instead understated the error by twenty-five points. A validation protocol that is cheap and
-twenty-five points wrong is not a bargain. What survives of the original argument is the part that
-did not depend on cost: the model is a force law, so agreement between its force and $-dE/dR$ is a
-consistency requirement rather than a definition, and we return to it in
-Section~\ref{sec:dedr}.
 
 \paragraph{What is in scope, stated once.} At one electron this model is the simplest Coulomb model
 there is, and it is not distinguishable from the standard one: minimising
@@ -354,6 +230,16 @@ the unmodified construction instead, and state its energy error rather than abso
 \section{Model and method}
 \label{sec:model}
 
+Throughout, the binding energy is
+\begin{equation}
+  E_{\text{bind}} \;=\; \sum_i E(\text{atom}_i) \;-\; E(\text{molecule}),
+  \label{eq:ebind}
+\end{equation}
+with every atomic reference computed in the same construction, on the same grid, at the same
+softening as the molecule---a requirement rather than a convenience, since a reference taken at
+different settings turns a model error into a settings error.
+
+
 Each electron $m$ carries a density $u_m^2$ supported on a domain fixed by a weight $w_m$, with
 $\int w_m u_m^2 = n_m$ the domain's occupation. Domains compete for territory, so the partition has
 free internal boundaries. The energy is
@@ -394,7 +280,7 @@ $a$ to suppress grid noise is not a well-defined quantity on this mesh: holding 
 $R = 1.68\,a_0$ and varying only $a$ from $0.24$ to $0.96\,a_0$ carries the force from $-0.050$ to
 $+0.027\,E_h/a_0$, with no plateau and a change of sign, since the averaging bias is
 $O(a^2\nabla\rho)$ and $\nabla\rho$ is largest exactly at the cusp. Equation~\eqref{eq:volforce}
-is used throughout; its agreement with the energy is measured in Section~\ref{sec:h2force}, where
+is used throughout; its agreement with $-dE/dR$ was measured on H$_2$, where
 it predicts the model's own minimum to $0.2\%$.
 
 \section{One mesh for every molecule}
@@ -435,7 +321,7 @@ box errors, and the only remedy is one box for the whole table, sized by its lar
 With $h$ declared, $h$ is a constant of the model, fixed by measurement and not derived from
 anything; and \eqref{eq:grid} is not an innocent choice, since $h = 0.1$ is the spacing at which the
 binding energy of hydrogen agrees with experiment while its bond is $52\%$ too long
-(Section~\ref{sec:h2})---and Section~\ref{sec:h2geom} shows the bond error there to be
+(Section~\ref{sec:h2})---and the bond error there is
 discretisation, the converged value being short by only a few percent. A declared mesh is therefore
 not neutral between observables: this one is chosen where the energy is right and the geometry is
 not. A genuine constant of nature would be pinned by something physical; the
@@ -484,7 +370,26 @@ the \emph{most} internally consistent scoring is the furthest from experiment, a
 that agrees best with it is the one that does not correspond to the functional being minimised. We
 declare the face-averaged form because it is the one the dynamics minimises, not because it is the
 one that flatters the model, and we report the spread so that no reader mistakes a choice of
-accounting for a result. Nothing in the geometry depends on it: the three differ only in $E$, and
+accounting for a result.
+
+There is a second reason to declare it, independent of the first. The assembled field
+$\Psi = \sum_m w_m u_m$ is the object the model's $\Psi \in H^1$ requirement actually names, so the
+scoring closest to $T_\Psi$ is the one closest to the stated construction. Measured on N$_2$ at
+box $16$, $h = 0.10$---one state, both scorings, $T_\Psi = 10.4302$ throughout:
+\begin{center}
+\begin{tabular}{lccc}
+\hline
+scoring & $T$ & $E$ & $T - T_\Psi$ \\
+\hline
+gated & $10.3800$ & $-14.718135$ & $-0.0502$ \\
+face-averaged & $10.4261$ & $-14.672033$ & $\mathbf{-0.0041}$ \\
+\hline
+\end{tabular}
+\end{center}
+The face-averaged form is twelve times closer. The entire difference between the two is kinetic---
+$\Delta E = \Delta T = 0.046102$ to six figures, which is the check that the choice touches nothing
+else---so the two scorings differ by $0.046\,E_h$ on N$_2$'s total while agreeing exactly on its
+density, its geometry and its dipole. Nothing in the geometry depends on it: the three differ only in $E$, and
 six gate values give bit-identical bonds.
 
 Their measured sensitivity on H$_2$ is the reason this is a short list rather than a serious one.
@@ -714,151 +619,6 @@ and a declared box. For
 scale, the choice of interface condition discussed in Section~\ref{sec:h2iface} moves the same
 quantity by $29$ to $58$ points, so the initialisation is a minor term.
 
-\subsection{Relaxed geometry}
-\label{sec:h2geom}
-
-Releasing the kernels under the force and letting the system find its own minimum gives the
-geometry the model actually predicts. For H$_2$ at the declared grid this is
-\begin{equation}
-  R_{\min} = 2.134\,a_0 \qquad (+52.4\% \text{ against } R_e = 1.40028),
-  \label{eq:Rmin}
-\end{equation}
-taken from a fixed-geometry scan on commensurate separations $D = (2i+1)h$, which avoids the
-spurious corrugation that appears when kernels are placed at arbitrary sub-cell offsets. The force
-zero of the same scan lies at $2.066\,a_0$, agreeing with the energy minimum to $3.2\%$.
-
-A one-sided relaxation released from the observed geometry stops at $1.796\,a_0$ ($+28.3\%$), well
-short of the minimum, and that is a systematic bias rather than a better answer: released from
-inside, the molecule expands and the relaxation terminates while the force is still outward. The
-two-sided bracket is $1.85$ to $2.09\,a_0$. We report $+52\%$, which is the model's own answer,
-and note that any relaxation started at the experimental geometry flatters the model by roughly ten
-points.
-
-\paragraph{Refining the mesh does not converge on experiment.} The one-sided relaxed bond over
-three spacings is
-\begin{center}
-\small
-\begin{tabular}{lccc}
-\toprule
-$h$       & $0.1395$ & $0.1000$ & $0.0800$ \\
-$R$       & $1.8897$ & $1.7963$ & $1.6999$ \\
-$dR/dh$   & ---      & $2.365$  & $4.820$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-with the local slope \emph{steepening} rather than flattening. Extrapolating linearly in $h$ from
-the two finest points gives $R(h \to 0) = 1.314\,a_0$, which is $6\%$ \emph{below} experiment, and
-crosses the measured $1.40028$ at $h \approx 0.018$.
-
-That crossing is not convergence on the right answer, and we can now say so from a converged
-calculation rather than an extrapolation. In three dimensions $h = 0.02$ is out of reach---$500^3$
-cells at the smallest legitimate box---but H$_2$ is exactly a two-domain system on an axis, which an
-axisymmetric reduction treats exactly. Scanning commensurate separations $D = (2m+1)h$ there gives
-\begin{center}
-\small
-\begin{tabular}{lccccc}
-\toprule
-$h$        & $0.050$ & $0.040$ & $0.030$ & $0.025$ & $0.020$ \\
-\midrule
-$D_{\min}$ & $1.3707$ & $1.3682$ & $1.3686$ & $1.3687$ & $1.3682$ \\
-force zero & $1.3699$ & $1.3702$ & $1.3691$ & $1.3684$ & $1.3685$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-\noindent
-a bond flat to $0.18\%$ across a $2.5$-fold refinement and already converged by $h = 0.04$. The
-minimum and the force zero agree to $0.06\%$ at every spacing, which is the sharpest confirmation
-available that the force is the gradient of the energy. The converged bond is
-\textbf{$1.368\,a_0$, or $-2.3\%$}: short, and not for want of resolution.
-
-So both interface conditions undershoot---$-2.3\%$ with the strict condition, $-6\%$ extrapolated
-with the weak one---and neither reaches experiment at any spacing. The $+52\%$ of \eqref{eq:Rmin}
-is therefore almost entirely \emph{discretisation}, and the construction's own bond error is a few
-percent.
-
-\paragraph{Why the coarse-grid minimum sits long.} The repulsive side of the balance is exact:
-$V_{KK} = 1/R$ is arithmetic on the geometry built. So the equilibrium is wherever the electronic
-attraction gives out, and at $h = 0.1$ it gives out early. Against the exact values at $R_e$, the
-model's kinetic energy is $17\%$ low ($0.9724$ against $1.1745$) and its electronic potential
-$13\%$ weak ($-2.6683$ against $-3.0631$)---both signatures of a density too diffuse, because
-$\varepsilon = h$ cannot resolve the cusp. The kernels then profit by separating, since their
-repulsion is exact and falls as $1/R$: moving from $1.400$ to $2.134\,a_0$ sheds $0.2455\,E_h$ of
-kernel repulsion that was never earned by screening.
-
-A $13\%$ weakening alone would move the minimum only some $6\%$, since $A'(R) = 1/R^2$ at the
-minimum and $R^2$ scales inversely with $A'$. The remaining factor is the curvature, $49\%$ too
-soft, which converts a small imbalance into a large displacement. One cause---the unresolved
-cusp---with two multiplying consequences: the weak attraction sets the direction and the flat well
-sets the size. That is also why the depth survives while the position does not: on a well that
-flat, sitting $52\%$ long costs $\tfrac12 k \Delta R^2 = 0.051\,E_h$. The crossing at $h \approx 0.018$ is a positive discretisation error passing through zero
-as it cancels a negative construction error; declaring that spacing would fit one number to one
-observable and predict nothing. The caveat belongs on the axisymmetric figure too: it carries a
-different softening coefficient, but $\varepsilon = \sigma h$ vanishes with $h$ either way, so both
-schemes approach the same bare-Coulomb problem and the interface condition is the only difference
-that survives the limit.
-
-\subsection{Forces at the observed geometry}
-\label{sec:obs}
-\label{sec:h2force}
-
-The check of Section~\ref{sec:obs} needs no reference calculation and no minimum-finding, and that
-cheapness is what originally recommended it. At the measured
-geometry the true force on every nucleus is zero, so the computed residual is model error read
-directly, with experiment supplying the reference. For H$_2$ at $R_e$,
-\begin{equation}
-  F(R_e) = +0.1383\,E_h/a_0 \qquad \text{(outward: the bond wants to lengthen)},
-\end{equation}
-one calculation rather than a scan. The residual converts to a displacement through
-$\Delta R \approx F/k$, and \emph{which} $k$ appears there matters:
-\begin{equation}
-  \frac{F}{k_{\text{model}}} = \frac{0.1383}{0.1875} = 0.738\,a_0
-  \quad\Longrightarrow\quad R = 2.138\,a_0,
-\end{equation}
-against the scanned minimum of $2.134$---agreement to $0.17\%$. The force at the observed geometry
-predicts the model's own equilibrium, which establishes that the volume integral of
-Section~\ref{sec:force} is the gradient of the energy the solver reports, and it does so from a
-single calculation.
-
-\paragraph{A correction to the conversion.} Using the \emph{measured} force constant instead gives
-$F/k = 0.375\,a_0$, or $+26.8\%$, which understates the model's bond error by the stiffness ratio
-$k/k_{\text{model}} = 1.97$. The measured $k$ answers a different question---what bond error this
-force residual would produce in a well of the correct stiffness---and it is the model's own
-curvature that governs where the model's minimum lies. Bond errors converted with the measured $k$
-are therefore systematically too small whenever the model's well is too soft, and we quote
-$\Delta R$ from the model's own curvature below, at the cost of a three-point scan per molecule in
-place of one calculation.
-
-\subsection{One defect, not three}
-\label{sec:h2one}
-
-The three observables are not three independent verdicts. Collecting them against the measured
-curvature $k = 0.3692\,E_h/a_0^2$:
-\begin{center}
-\small
-\begin{tabular}{llr}
-\toprule
-depth     & $E_{\text{bind}} = 0.1666 \pm 0.0018$ & $-4.5 \pm 1.0\%$ \\
-curvature & $k_{\text{model}} = 0.1875$           & $-49\%$ \\
-position  & $R_{\min} = 2.134$                    & $+52\%$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-\noindent
-the depth is right, the gradient is consistent with the energy to $0.2\%$, and the position is wrong
-\emph{because} the well is too soft: a curvature $49\%$ low turns a given force residual into a
-displacement nearly twice as large. The error is one quantity, the curvature, with the bond length
-as its consequence.
-
-One qualification, from the converged calculation of Section~\ref{sec:h2geom}: the soft well is a
-property of the \emph{weak interface treatment}, not of the model. The same system under the strict
-condition gives curvatures scattering about $0.41\,E_h/a_0^2$, some $11\%$ \emph{above} experiment
-rather than $49\%$ below. So ``one defect, the curvature'' is a statement about this solver's front,
-and the two interface conditions bracket the true curvature from opposite sides exactly as they
-bracket the bond. The reason the position can be so wrong while the depth is right is that the well
-is flat: sitting $52\%$ long costs $\tfrac12 k \Delta R^2 = 0.051\,E_h$ on the model's own curve,
-and any quantity differenced near the bottom of a well that shallow is insensitive to where along
-it the minimum sits.
-
 \subsection{The interface condition, and why hydrogen cannot decide it}
 \label{sec:h2iface}
 
@@ -961,7 +721,7 @@ What the comparison does establish is \emph{which observables depend on the appr
 energies differ by eleven points between the two schemes; the converged bond lengths do not---$1.31$
 extrapolated from the overlapping scheme against $1.368$ from the hard one, both a few percent
 short. \textbf{Geometry is robust against the non-overlap treatment where energy is not}, which is
-an argument for the geometry-first ordering of Section~\ref{sec:obscomp} reached from an
+an argument for the geometry-first ordering of Section~\ref{sec:intro} reached from an
 independent direction.
 
 The measurements above were made with a GPU solver (\texttt{mol\_fast}) that carries one domain per
@@ -989,29 +749,6 @@ domains; it has been run on alpha-helices and on chignolin. It is not used for a
 here. Its interest is that its sharp partition removes the interface ambiguity above at the cost of
 a different force treatment, so it is the natural setting for the asymmetric two-domain test that
 Section~\ref{sec:h2iface} identifies as outstanding.
-
-\section{Cost}
-\label{sec:cost}
-
-A volume integral over the grid is more expensive than a point gradient, and it is worth stating by
-how much. The point gradient visits $N_{\text{atoms}} \times \tfrac43\pi R^3 \approx 270\,N$ cells
-for a four-cell sphere. The volume form visits $N_{\text{atoms}} \times S^3$, about
-$10^6 N$ on a $101^3$ grid: some four thousand times more.
-
-The relevant comparison, however, is with what the solver already does. One volume-force evaluation
-costs about the same as one update sweep of the electronic field, and \emph{less} than one
-evaluation of the potential, which requires an elliptic solve of several sweeps per electron. Forces
-are moreover not evaluated every step: once per animation frame in one implementation, every ten
-electronic steps in the other, giving overheads of well under one percent and of order ten percent
-of the update cost respectively---the latter adjustable, since nuclei move slowly compared with the
-electronic relaxation.
-
-At protein scale the $N \times S^3$ product would warrant a cutoff radius. It is worth noting that
-such a cutoff behaves oppositely to the smoothing radius it replaces: truncating a convergent
-integral has an error that \emph{falls} with radius, and distant neutral groups contribute as
-dipole$/r^3$ rather than charge$/r^2$, so a plateau in the cutoff is attainable and meaningful.
-The smoothing radius of the point gradient admitted no plateau because its bias \emph{grew} as
-$a^2$. The same word denotes a convergent truncation in one case and a divergent bias in the other.
 
 \section{Three checks, and which one applies}
 \label{sec:checks}
@@ -1107,7 +844,7 @@ report the failure rather than a bond error.
 
 Two columns of this table require the qualifications established on hydrogen, and we give them
 before the table rather than after it. The $\Delta R$ entries were converted with the
-\emph{measured} force constant, so by Section~\ref{sec:h2force} each is a \emph{lower bound} on the
+\emph{measured} force constant, so each is a \emph{lower bound} on the
 model's bond error, too small by the ratio of the measured curvature to the model's own; for H$_2$
 that ratio is $1.97$ and the entry below should read $+52\%$ rather than $+30\%$. Correcting the
 remaining rows requires a three-point scan per configuration to measure each model curvature, which
@@ -1117,13 +854,13 @@ only legitimate reading is the symmetry-dependent one given in the caption.
 
 \paragraph{Only the declared valences appear.} Every row is at $Z_x = 1,4,3,3$. The C+2 and O+2
 variants are not results of the model but the alternatives it rejects, measured as such in
-Sections~\ref{sec:depth} and \ref{sec:zx}, and carrying them here would present a ruled-out
+separate convergence and valence studies, and carrying them here would present a ruled-out
 convention as a finding. Removing them has one consequence worth stating plainly: \textbf{CO and
 CO$_2$ leave the table altogether}, because the only force calculations ever made for them were at
 O+2. There is no force measurement for either molecule at the valences the simulator actually
 uses, and the earlier reading of CO$_2$'s $-7.2\%$ as an ordinary bounded error was therefore a
 statement about a configuration this paper rejects. What is measured for CO$_2$ at $3,4,3$ is its
-binding energy, and it does not bind (Section~\ref{sec:across}).
+binding energy, and it does not bind (the across-composition comparison).
 
 \paragraph{Precision of the binding-energy column.} The six decimals are the solver's, not the measurement's, and most of this column
 carries no established precision at all. Its error is dominated by a \emph{systematic}: the one row
@@ -1170,7 +907,8 @@ CH$_4$     & 4,1,1,1,1 & $0.036$ outward & --- & $0.6\%$\,$\dagger$ & $+0.4081$ 
 \end{tabular}
 \caption{The force check at measured geometries, with binding energies. \textbf{Neither of the
 paper's two primary observables appears in full here}: the model's own relaxed geometry is measured
-only for H$_2$ (Section~\ref{sec:h2geom}, $+52\%$ from a commensurate scan), and the
+only for H$_2$ ($+52\%$ from a commensurate scan at box $20$; a scan at box $12$ gives
+$+28\%$, so the figure carries a box dependence of its own), and the
 $\Delta R$ column is \emph{not} that quantity---it is the force residual divided by the
 \emph{experimental} force constant, which understates the model's error by twenty-five points on
 the one row where both are known. The $|\sum F|$ column is a convergence diagnostic to which no
@@ -1181,7 +919,7 @@ rows (CO, HCN) have no symmetry, and their entries are genuine convergence measu
 that these are among the largest in the table. Rows where no $\Delta R$ is given are those whose
 own checks exceed the signal. $\ast$: converted with the \emph{experimental} force constant, hence a lower bound on the model's
 bond error. For H$_2$ the measured minimum is $+52\%$ against this column's $+30\%$
-(Section~\ref{sec:h2geom}), and the same correction applies in unknown measure to every other row,
+on H$_2$, and the same correction applies in unknown measure to every other row,
 none of which has had its geometry scanned. $\S$: only the H$_2$ entry
 (bold) is on the declared grid of \eqref{eq:grid} with the $w = 0.9$ cut-off; every other binding
 energy comes from an earlier set at the default valences in a box of $15\,a_0$ with $h = 0.1389$,
@@ -1211,246 +949,10 @@ $a = 1.8\,a_0$, and the chain has one electron per site with no pseudopotential,
 parameter is involved. At that geometry all four RealQM forces point outward---the model would
 expand a chain the exact method calls stationary---while over-binding by $14$--$18\%$ per atom when
 each method is referred to its own atom. Too long is the pattern H$_2$ shows at $+52\%$
-(Section~\ref{sec:h2geom}). The over-binding is less clear-cut than it reads: the reference is a
+on H$_2$. The over-binding is less clear-cut than it reads: the reference is a
 full configuration-interaction calculation in a minimal STO-6G basis, whose cohesive energy is
 itself $14\%$ low against reality ($0.0766$ against $0.0872\,E_h$ per atom), so over-binding
 against it is not the same statement as over-binding against experiment.
-
-\section{Binding energies across compositions}
-\label{sec:across}
-
-Hydrogen's binding energy is accurate because of a cancellation, not because its energies are
-accurate: the total is $2.4\%$ too shallow and $94\%$ of that error cancels against the atomic
-reference, leaving the $0.0017\,E_h$ residual that is the binding error. The cancellation is that
-complete because molecule and reference share a composition and, for H$_2$, because the reference is
-a one-electron domain with no pseudokernel at all. Neither holds for the rest of the list, and the
-arithmetic of how badly it fails is worth setting out, because it decides which binding energies can
-be believed.
-
-The pseudokernel atoms are over-bound by the factors of Section~\ref{sec:atoms}: against the sum of
-their ionisation energies, carbon by $2.57$ and the $Z_x = 3$ oxygen by $2.03$. Converting those to
-absolute terms, each carbon reference is too deep by $8.55\,E_h$ and each oxygen by $3.47\,E_h$,
-and the same error enters the molecule.
-
-\emph{Provisional figures.} The two factors were measured on an earlier grid (box $15$,
-$h = 0.1389$, $\varepsilon = 0.14$). Re-run on the declared grid \eqref{eq:grid} and converged,
-carbon is $-15.106\,E_h$ rather than $-13.999$, a factor of $2.78$ and an absolute error of
-$9.67\,E_h$. The finer grid is \emph{deeper}, so the over-binding is worse where this paper's
-calculations actually live, and the numbers in the table below are therefore lower bounds. The
-oxygen repeat is in progress. The conclusion drawn from the table is unaffected in direction---a
-deeper reference makes the required cancellation more stringent, not less---but no figure here
-should be quoted until both are on one grid.
-
-What matters is the error's size relative to the bond energy being extracted:
-
-\begin{center}
-\small
-\begin{tabular}{lrrr}
-\toprule
-system & common error carried in & $E_{\text{bind}}$ & ratio \\
-\midrule
-H$_2$   & $0.03\,E_h$  & $+0.1666$ & $\mathbf{0.2}$ \\
-CH$_4$  & $8.61\,E_h$  & $+0.4081$ & $21$ \\
-CO$_2$  & $15.50\,E_h$ & $-0.2110$ & $\mathbf{73}$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\emph{This argument has since been refuted, and by its own test.} It rested on N$_2$ and CO$_2$
-failing to bind, requiring cancellations of $99.8\%$ and $98.6\%$ against the atomic over-binding.
-Re-measured with molecule and reference on one grid, \textbf{both bind}: N$_2$ by $+0.2131$ and
-CO$_2$ by $+0.3440\,E_h$, against the recorded $-0.0155$ and $-0.211$. The CO$_2$ swing alone is
-$0.555\,E_h$. So the premise was not the atom model at all---it was differencing across grids,
-twice, and the ratios computed from it were circular besides, their denominators being the model's
-own near-zero bindings.
-
-What survives is weaker and still worth saying: the atomic references \emph{are} over-bound, by a
-factor of $2.8$ for carbon, and that error does enter every binding energy and does grow with
-composition. What does not survive is any claim that it prevents binding. On one grid the six
-accepted rows of Table~\ref{tab:primary} all bind, including the two that were the headline
-failures.
-
-\noindent
-For H$_2$ the common error is a sixth of the signal, so \emph{no} cancellation is needed to get the
-sign right---the molecule would bind even if the two errors did not cancel at all---and the $94\%$
-that does cancel is what turns a sound sign into a $1\%$ magnitude. For CO$_2$ the common error is
-seventy-three times the signal, so the cancellation must be complete to $98.6\%$ merely to return
-the right \emph{sign}. It is not, and CO$_2$ comes out unbound by $0.211\,E_h$. Nothing is specifically wrong with CO$_2$. It is the composition in this list where
-the atom model's over-binding is largest relative to what the binding energy is trying to measure.
-
-This gives the existing rule---differences within one composition are trustworthy, differences
-across compositions are not---a quantitative form, and it says where the remedy has to be applied.
-No improvement to the interface treatment or the grid can rescue CO$_2$'s binding energy, because
-the defect is in the atomic reference and enters at fifteen Hartree. The pseudokernel atom model is
-the thing that has to improve---but Section~\ref{sec:atoms} does \emph{not} identify what in it is
-wrong, and we are careful not to imply otherwise. The two candidates there are testable and
-untested.
-
-\section{Kernel depth decides convergence}
-\label{sec:depth}
-
-The clearest results hold geometry, symmetry, mesh and every other input fixed and change only the
-central kernel's charge:
-
-\begin{center}
-\begin{tabular}{lccc}
-\toprule
- & shallow & deep & factor \\
-\midrule
-CH$_4$ (identical $T_d$ geometry) & C+2: $40\%$   & C+4: $0.6\%$ & 60 \\
-HCN (identical geometry)          & C+2: $88.7\%$ & C+4: $5.5\%$ & 16 \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-A deep kernel holds its domain and fixes its boundary against the neighbours; a shallow one leaves
-the partition undetermined. The direction is worth emphasising: C+4 is the \emph{less} resolved
-kernel, at $Zh = 0.48$ against a working guideline of $Zh \lesssim 0.1$, so depth helps convergence
-more than coarse resolution hurts it.
-
-Three alternative explanations were tested and excluded.
-
-\begin{itemize}
-\item \textbf{Not hydrogen content.} CH$_4$ carries four hydrogens and is the cleanest polyatomic
-measured; HCN carries one and reaches $5.5\%$; CO at 4,2 carries none and fails at $38.5\%$.
-Hydrogen is neither necessary nor sufficient for failure.
-\item \textbf{Not the box.} The net force on water is $0.216$, $0.215$, $0.214$ in boxes of $12$,
-$18$ and $24\,a_0$ with the mesh held fixed---$0.9\%$ across a doubling of the box. The state is
-box-converged and the residual is a property of it. The control calculation on H$_2$ changes
-\emph{sign} with box and with mesh, marking its own error as stochastic.
-\item \textbf{Not off-axis placement.} Tetrahedral ligands are maximally off-axis and CH$_4$ is
-nearly exact, because the cube diagonals are a symmetry of the grid.
-\end{itemize}
-
-\subsection{Cubic-grid anisotropy}
-
-A second, smaller effect is visible in planar NH$_3$, which has $D_{3h}$ symmetry and must
-therefore give $\sum_a\mathbf F_a = 0$ in every direction; it gives $70\%$ of the largest force
-along $x$. Resolving by ligand: the one lying on the grid axis has radial force $0.0802$, the two
-off-axis ones $0.0545$ and $0.0544$. The off-axis pair agrees with itself to $0.2\%$ and differs
-from the on-axis ligand by $47\%$.
-
-A cubic grid has fourfold symmetry in its planes and threefold symmetry about its body diagonals.
-Molecular geometries that share those symmetries---linear, and tetrahedral---are represented
-evenly; threefold-in-plane and bent geometries are not. This accounts for NH$_3$ and H$_2$O being
-the two worst configurations measured and CH$_4$ among the best, and it is a property of the
-discretisation rather than of the model.
-
-\section{Valence conventions, measured}
-\label{sec:zx}
-
-$Z_x$ is a modelling choice, and the protocol makes it testable. A depth ladder at fixed mesh,
-scored both by the symmetry-breaking error and by the bond error:
-
-\begin{center}
-\begin{tabular}{lccccc}
-\toprule
- & O+2 & O+3 & O+6 (single domain) & N+3 & N+5 \\
-\midrule
-pair asymmetry & $19.5\%$ & $\mathbf{3.7\%}$ & $1.4\%$ & $6.0\%$ & $6.1\%$ \\
-$\Delta R$     & $-6.4\%$ & $\mathbf{-7.1\%}$ & $+59\%$ & $-8.1\%$ & $-13.7\%$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-O+3 is the better oxygen: a fivefold gain in convergence over O+2 at the same bond error. N+3
-stands, full valence costing accuracy while buying no convergence. Most instructive is O+6 as a
-single six-electron domain, which converges best of all and yields a bond $59\%$ too long---it
-converges accurately to the wrong answer, which is exactly the failure mode the protocol is
-designed to make visible. So a rule of ``use the deepest $Z_x$'' is false beyond the valence
-structure the atomic model selects; depth helps only where the domain was genuinely under-bound.
-
-It is worth noting that O+3 is one of the two valence shells in the atomic configuration
-$2{+}3{+}3$ obtained independently from atomic calculations~\cite{atoms}, a convergence of atomic and molecular
-evidence on the same number. Carbon admits no corresponding reduction: C+2 would freeze into the
-core the $2s$ pair that hybridises into the bonds, cannot form four bonds, and---since $Z_x$ is the
-only label distinguishing elements---makes carbon identical to O+2.
-
-\section{Kernel dynamics}
-\label{sec:dyn}
-
-Releasing the kernels and letting them move under the force is both the sharpest test of the force
-and the capability a simulator is finally for. It is also where the distinction between a force and
-a sampled gradient stops being academic: a force that is not the gradient of anything conserves no
-energy, so in sustained dynamics it pumps or drains the system indefinitely.
-
-Released from either side of the expected minimum, H$_2$ relaxes to
-
-\begin{center}
-\begin{tabular}{lccl}
-\toprule
-start & relaxes to & residual force & direction \\
-\midrule
-$1.40$ & $1.8502$ & $[-0.0178, +0.0057]$ & expanded \\
-$2.40$ & $2.0932$ & $[+0.0128, -0.0168]$ & contracted \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\noindent
-Both move the correct way and bracket $[1.850, 2.093]$, whose midpoint $1.972$ sits $0.5\%$ from
-the energy minimum at $1.963$ and inside the force's own zero crossing of $1.84$--$1.89$ measured
-at fixed geometry. Three independent routes---force zero, energy minimum, and dynamical relaxation
-from both directions---therefore agree to a few percent, where before the force was repaired the
-first two disagreed by $27\%$ and the force pointed the wrong way at $R = 1.68$.
-
-The bracket is not a failure to converge but a measured precision. The residual energy drift between
-runs is $\sim\!0.011\,E_h$; through the curvature $k = 0.370\,E_h/a_0^2$ that corresponds to a
-displacement $\sqrt{2(0.011)/0.370} = 0.24\,a_0$, and the bracket is $0.243\,a_0$ wide. The two
-relaxations converged to exactly the precision the unconverged electronic state permits, and
-tightening the geometry requires tightening the electronics, not the dynamics.
-
-Two cautions follow, both measured rather than anticipated. The relaxed states carry energies
-about $0.011\,E_h$ \emph{above} the fixed-geometry scan at comparable separation, the electronic
-field lagging behind moving nuclei in the familiar way; so relaxation yields trustworthy geometry
-and untrustworthy energies, and the two should be taken from different calculations. And at three
-centres the electronic relaxation does not settle at all, oscillating by $\sim\!0.03\,E_h$ out to
-$3\times10^5$ steps, so kernel dynamics there would track a wandering density. Dynamics is at
-present a two-centre capability.
-
-\subsection{What the old force does in dynamics}
-
-The same relaxation under the sphere-averaged gradient settles at $1.5203$ with residual forces
-$[+0.01821, +0.00020]$---both of the same sign, so the molecule carries a net translational force
-and drifts bodily, which no isolated system may do. In sustained dynamics that is a spurious
-acceleration of the whole system, and in a thermostatted simulation it would appear as heating
-indistinguishable from physical dissipation.
-
-It also lands \emph{closer to experiment}: $1.520$ against the measured $1.401$, where the repaired
-force gives $1.97$. This is worth stating plainly because it inverts the naive test. The repaired
-force agrees with the model's own energy minimum to $0.5\%$; it reports faithfully what the model
-says, and what the model says is wrong by $40\%$. The old force was wrong \emph{about the model} in
-a way that partly compensated for the model's own error. Validating a force against experiment
-alone would have preferred the defective one; only the internal checks---the lone atom feeling
-exactly zero, the vanishing of $\sum_a \mathbf F_a$, and agreement with $-dE/dR$---reject it. Fixing
-the instrument made agreement with measurement worse and moved the error from the instrument to the
-model, which is where it can be addressed.
-
-\section{Relation to $-dE/dR$}
-\label{sec:dedr}
-
-In a force-law model the force is definitional and the geometry is where it vanishes, so agreement
-with the energy gradient is not required for the model to be well posed. It remains worth checking
-for three reasons. A force that is not a gradient conserves no energy, which in dynamics produces
-spurious heating indistinguishable from physical dissipation. It is a strong and free check on
-implementation: it is what exposed the sign-flipping force of Section~\ref{sec:force}, which was
-otherwise unremarkable---smooth, antisymmetric, and crossing zero at a plausible separation. And
-once the implementation is correct, the residual disagreement measures the contribution from the
-partition boundary moving with the nuclei, a term specific to a free-boundary model and not
-otherwise accessible.
-
-\section{Bearing on previously recorded three-centre failures}
-\label{sec:3c}
-
-Earlier work in this programme recorded that every three-centre system attempted descended
-monotonically inward through its experimental bond, across nuclear charges, with and without a
-core, for odd and closed-shell systems alike. Measured by force at the observed geometry instead,
-CO$_2$ gives $-7.2\%$ and HCN $-7.8\%$: ordinary bounded errors of the same size as the diatomics,
-not a collapse. Those scans were assembled from an energy relaxation that we find oscillates by
-$\sim 0.03\,E_h$ out to $3\times10^5$ steps, read through a stopping criterion that compares
-energies between wall-clock samples and cannot detect it. The recorded failures are therefore
-consistent with artefacts of the scan rather than properties of the model, and the systems should
-be re-measured before any mechanism is proposed for them.
 
 \section{Limitations}
 
@@ -1575,7 +1077,7 @@ $E(\mathrm{H}) = -0.471039$. The hydrogen chain is a standard benchmark for many
 methods, having one electron per site and no pseudopotential, so no core parameter enters the
 comparison.
 
-\bibitem{code} Public code, the molecule simulator of Section~\ref{sec:sim}, and an interactive
+\bibitem{code} Public code, the molecule simulator of the simulator, and an interactive
 gallery of all experiments in the present work:
 \url{https://claes542.github.io/RealMolecule/gallery.html} (source repository:
 \url{https://github.com/Claes542/RealMolecule}).
