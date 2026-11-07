@@ -63,7 +63,7 @@ window.onerror = function (m, u, l, c) {
 //   'none'    nothing cancels (CO, HCN, N2O, HC3N) -> a genuine convergence measurement
 // Measured 2026-11-03: the asymmetric cases run 11-89% while CO2 and C3O2 read 0.1-0.2%, which is
 // symmetry being preserved, not convergence being good.
-var SYM = { h:'full', c:'full', n:'full', o:'full', h2:'full', n2:'full', o2:'full', co:'none', co2:'full', n2o:'none', hcn:'none',
+var SYM = { h:'full', c:'full', n:'full', o:'full', he_split:'full', he_v:'full', h2:'full', n2:'full', o2:'full', co:'none', co2:'full', n2o:'none', hcn:'none',
             c2h2:'full', c2n2:'full', c3o2:'full', hc3n:'none', c4h2:'full',
             h2o:'axis', h2o_split:'axis', nh3:'axis', ch4:'full', h2co:'axis',
             h2o_a90:'axis', h2o_a109:'axis', h2o_a120:'axis', h2o_z2:'axis' };
@@ -200,6 +200,18 @@ var MOLS = {
   // bit-identical to hydrogen and B = N = O collapse onto one object at Z_x = 3. Reference is the
   // sum of IEs to strip the whole valence, = |E_neutral - E_core| from atom_simulator.html's
   // REF_ETOT and its fitted coreE(Z); validated on carbon to 0.2% against the recorded 2.57x.
+  // HELIUM, restored 2026-11-07 (removed in the H,C,N,O reduction). Needed because He is the
+  // SECOND minimal two-electron system and the other half of the hard-vs-diffuse bracket: its
+  // interface passes THROUGH the kernel, cutting the density maximum, where H2's midplane sits in
+  // the tail between two kernels. Measured: INT_Gamma u^2 dS = 1.681 for He against 0.496 for H2.
+  // USE he_split, NOT he_v: he_v puts both electrons in ONE domain, which counts NO
+  // electron-electron pair inside itself and therefore carries no V_ee -- kept only as that control.
+  // CAVEAT: He's split plane is IMPOSED (sp:2 along z); nothing in the system picks it, unlike H2's
+  // midplane which symmetry fixes. So this row carries an arbitrary orientation that H2's does not.
+  he_split: { name: 'He  split 2x1e hemi  [two-domain He: the bracket entry]', ext: 0, nelec: 2, atoms: [
+      { x:0,y:0,z:0, el:'He', Z:2, sp:2, ax:[0,0,1] },
+  ]},
+  he_v: { name: 'He  both electrons in ONE domain  [no V_ee -- control only]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'He', Z:2 } ]},
   h2: { name: 'H2 hydrogen', ext: 0.700, nelec: 2, atoms: [
       { x: -0.70014, y:  0.00000, z:  0.00000, el:'H', Z:1 },
       { x:  0.70014, y:  0.00000, z:  0.00000, el:'H', Z:1 },

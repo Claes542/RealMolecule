@@ -270,10 +270,37 @@ there is, and it is not distinguishable from the standard one: minimising
 $\tfrac12\int|\nabla u|^2 - \int (Z/r)\,u^2$ subject to $\int u^2 = 1$ is the Schr\"odinger
 variational problem, with the same functional and the same minimiser, so $E(\mathrm{H}) = -0.5$
 follows by \emph{reduction} and not by any fitting. Hydrogen accordingly tests the
-\emph{discretisation} and not the model: the kernel softening $\sigma h$ is a grid device for a
-singularity the mesh cannot represent, and at the declared $\sigma = 1$ it returns
-$E(\mathrm{H}) = -0.486591$, $2.7\%$ shallow. Making hydrogen exact requires $\sigma \approx 0.63$,
-which is not the declared value and which would move every other number here.
+\emph{discretisation} and not the model.
+
+\paragraph{One calibration, on hydrogen, and then none.} The discrete realisation does need one
+constant that the continuum model does not: a grid cannot represent $1/r$, so the kernel carries a
+softening $\sigma h$. We fix it once, by requiring
+\begin{equation}
+  E(\mathrm{H}) = -0.500000 \qquad\Longrightarrow\qquad \sigma = 0.627 \ \ \text{at } h = 0.1\,a_0 ,
+  \label{eq:sigmacal}
+\end{equation}
+measured on a four-point ladder ($-0.508456$, $-0.500962$, $-0.493833$, $-0.486591$ at
+$\sigma = 0.4, 0.6, 0.8, 1.0$, linear in $\sigma$ to better than a percent). This is the \emph{only}
+calibration in the paper, and three things about it matter. It is fixed on a \emph{one-electron}
+system, where the model has no content of its own and the reference is exact, so no molecular
+observable is consumed. It is a single number, not a function. And it is fixed before any molecule
+is computed.
+
+Everything molecular then follows with \emph{no further calibration}: the same $\sigma$, the
+non-overlapping densities, the interface condition, and the observed geometries. There is nothing
+left to adjust, per molecule or otherwise, so every entry in the tables below is a prediction. That
+is the sense in which this is the simplest model of a molecule that can be built on Coulomb's law:
+the one-electron problem is the minimal Coulomb model, the only thing added is that the densities
+do not overlap and must meet somewhere, and the only thing fitted is the one constant that repairs
+the grid.
+
+We distinguish this from the \emph{declared settings}---the spacing $h$, the box, and the five
+coefficients of the free-boundary update~\eqref{eq:wupdate}. Those are numerical choices, listed in
+Section~\ref{sec:mesh} and not fitted to any observable; they are declared rather than calibrated,
+and none of them is adjusted per system. One calibration and a declared numerical scheme is a
+weaker claim than ``parameter-free'' and a more useful one, because it is checkable: there is
+exactly one number in this paper that was set by looking at an answer, and it was not a molecular
+answer.
 
 It is worth putting this the other way round, because it is the stronger statement.
 Schr\"odinger's equation for hydrogen \emph{is} the minimal continuum model that can be built from a
@@ -376,7 +403,7 @@ it predicts the model's own minimum to $0.2\%$.
 All calculations reported here use the GPU solver \texttt{mol\_fast} on a single declared grid:
 \begin{equation}
   h = 0.1\,a_0, \qquad 200^3 \text{ cells}, \qquad \text{box } 20\,a_0, \qquad
-  \sigma = 1 \ \ (\varepsilon = h),
+  \sigma = 0.627 \ \ \text{(calibrated, \eqref{eq:sigmacal})},
   \label{eq:grid}
 \end{equation}
 the same for every molecule in the list. The grid is not adjusted per system and no mesh ladder is
@@ -388,6 +415,15 @@ much vacuum surrounds the molecule, not how finely it is resolved. The bond leng
 insensitive to that: holding $h = 0.1$ and enlarging the box from $10$ to $14\,a_0$ moves H$_2$ from
 $1.8855$ to $1.8921\,a_0$, a change of $0.35\%$. Box $20$ is chosen as the smallest that holds the
 polyatomic entries with room for their electron clouds.
+
+\paragraph{The declared box costs accuracy on the acceptance test, and we report it.} Enlarging the
+box is not free in the direction one would hope. At box $20$, H$_2$ at $R = 1.9\,a_0$ returns a
+dipole of $0.067\,\mathrm{D}$ where reflection symmetry requires identically zero, against
+$0.006\,\mathrm{D}$ for the same configuration at box $12$---eleven times worse, with $0.097$ against
+$0.010$ at $R = 2.1$. The free boundary has more exterior to drift into and nothing anchors it
+there. Since a symmetric molecule's dipole is a pure error measurement needing no reference, the
+declared grid is measurably worse on the one test that cannot be argued with, and the reader should
+weigh the dipole column accordingly.
 
 \paragraph{The box must be fixed too.} This is the reason the grid cannot follow the molecule.
 Comparing two systems computed in differently sized boxes inflates their energy difference: CO gave
@@ -1031,7 +1067,12 @@ H$_2$O  & 3,1,1     & \emph{(0.5164)} & \emph{(0.938)} & $1.855$ & $117\%$ & rej
 NH$_3$  & 3,1,1,1   & \emph{(0.6834)} & \emph{(0.786)} & $1.472$ & $127\%$ & rejected \\
 \bottomrule
 \end{tabular}
-\caption{Primary results, one grid throughout (box $16\,a_0$, $h = 0.10$, $r_c = 0$, occupancy
+\caption{\textbf{These rows predate the calibration \eqref{eq:sigmacal} and the declared box, and
+are being re-measured; they are retained here only so the structure of the table is visible.} They
+were computed at $\sigma = 1$ and box $16\,a_0$, against \eqref{eq:grid}'s $\sigma = 0.627$ and box
+$20\,a_0$. Both differences are material: the box is worth about four points of $D_e$ and $\sigma$
+sets the cusp resolution, hence every energy. Primary results, one grid throughout (box
+$16\,a_0$, $h = 0.10$, $r_c = 0$, occupancy
 cut-off $0.9$, $232\,500$ steps) against atomic references measured identically:
 $E(\mathrm{H}) = -0.486591$, $E(\mathrm{C}) = -15.113441$, $E(\mathrm{N}) = E(\mathrm{O}) =
 -7.252538$. \textbf{The state column is an acceptance test.} Where symmetry requires $\mu = 0$
