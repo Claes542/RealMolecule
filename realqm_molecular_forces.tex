@@ -120,6 +120,7 @@ practical effect is that a calculation which cannot be trusted says so on the sa
 answer.
 
 \section{Introduction}
+\label{sec:intro}
 
 RealQM~\cite{realqm} replaces the many-electron wavefunction by $N$ unit charge densities occupying
 non-overlapping spatial domains with free interfaces, interacting by Coulomb's law with each pair
@@ -155,6 +156,7 @@ a smooth but meaningless curve. Relaxing under the force requires the force to b
 is the thing under test. Both routes also need many calculations per molecule, and both return an
 answer whether or not the underlying states deserve one.
 
+\label{sec:obscomp}
 \paragraph{Observable and computable.} A quantity is \emph{observable} if an experiment on the real
 system yields it, and \emph{computable} if this model yields it. The two are independent, and
 sorting the candidates by both at once decides what can be validated and what cannot:
@@ -263,7 +265,67 @@ did not depend on cost: the model is a force law, so agreement between its force
 consistency requirement rather than a definition, and we return to it in
 Section~\ref{sec:dedr}.
 
+\paragraph{What is in scope, stated once.} At one electron this model is the simplest Coulomb model
+there is, and it is not distinguishable from the standard one: minimising
+$\tfrac12\int|\nabla u|^2 - \int (Z/r)\,u^2$ subject to $\int u^2 = 1$ is the Schr\"odinger
+variational problem, with the same functional and the same minimiser, so $E(\mathrm{H}) = -0.5$
+follows by \emph{reduction} and not by any fitting. Hydrogen accordingly tests the
+\emph{discretisation} and not the model: the kernel softening $\sigma h$ is a grid device for a
+singularity the mesh cannot represent, and at the declared $\sigma = 1$ it returns
+$E(\mathrm{H}) = -0.486591$, $2.7\%$ shallow. Making hydrogen exact requires $\sigma \approx 0.63$,
+which is not the declared value and which would move every other number here.
+
+It is worth putting this the other way round, because it is the stronger statement.
+Schr\"odinger's equation for hydrogen \emph{is} the minimal continuum model that can be built from a
+Coulomb attraction: a kinetic penalty quadratic in $\nabla u$ is the lowest-order rotation-invariant
+term that prevents collapse, and no simpler functional binds at all---a purely local kinetic
+density, for instance, does not. Hydrogen's exactness is therefore a property of those two
+ingredients and not of either theory's account of \emph{many} electrons. The standard formulation
+and ours contain exactly the same ingredients at one electron and are both exactly right, so
+hydrogen discriminates between no formulations whatsoever. Nothing in this paper rests on it, and we
+would regard any programme that advertised one-electron agreement as support for a many-electron
+construction as having claimed the ingredients' success for its own.
+
+The model acquires content only at two electrons, where the partition, the interface condition and
+the absence of exchange all appear for the first time---so that is where its first genuine test is,
+and no agreement at one electron is evidence about molecules.
+
+\paragraph{No molecule should be expected to come out exactly, H$_2$ included.} This follows from
+the two paragraphs above rather than from any particular disappointment. At one electron the
+construction coincides with the standard minimal model; at two it both \emph{adds} a partition and
+\emph{subtracts} antisymmetry, and those changes are structural rather than perturbative. It is
+therefore a different theory precisely where molecules begin, and exact agreement with the other
+theory's answers would be the thing requiring an explanation. We say this in advance because it
+determines what the tables below can mean: a $20\%$ energy error is the expected size of a known
+omission, not a numerical failing to be driven down, and the useful question is whether the error
+is \emph{systematic}---one sign, one scale, cancelling in differences at fixed composition---which
+is a testable claim and the one we make.
+
+A related point of hygiene. The value $-1.174470\,E_h$ that H$_2$'s total energy is conventionally
+measured against is a Kolos--Wolniewicz \emph{computation}, not a datum, and a computation in the
+very theory whose many-electron content this construction declines; so comparing a total energy to
+it sets one theory against another rather than against nature. The total electronic energy is in any
+case not an observable. H$_2$'s observables are $D_0$, $R_e$, and a dipole that must vanish by
+symmetry, and those are what Section~\ref{sec:h2} reports.
+From two electrons onward the construction omits exchange and any state-based repulsion, keeping
+only territorial exclusion---and territorial exclusion generates \emph{nothing} between equivalent
+domains across a mirror plane, where the masked and continuous constructions agree to $4\times
+10^{-8}$. The consequence is not a scatter but a signed bias: the model over-binds, by tens of
+percent, wherever two equivalent units face each other. On H$_2$ a strict-interface construction
+with hydrogen calibrated exactly gives $E_{\text{bind}}$ too large by $+59.6\%$ at its own minimum
+while placing the bond within $-3.7\%$; on helium, with the same softening, $-3.027$ against
+$-2.9037$.
+
+We therefore do not claim absolute binding energies, and the reader should not read the
+$E_{\text{bind}}$ column as one. What the construction does deliver is \emph{geometry}, and
+\emph{differences at fixed composition}, where the common atomic error cancels. Those are the two
+claims this paper makes. A one-parameter interface energy that buys the binding energy is available
+and we have measured it---it takes H$_2$ from $+59.6\%$ to $+18\%$---but it costs the bond, moving
+it from $-3.7\%$ to $+7.6\%$, and it costs the description of the model as parameter-free. We report
+the unmodified construction instead, and state its energy error rather than absorbing it.
+
 \section{Model and method}
+\label{sec:model}
 
 Each electron $m$ carries a density $u_m^2$ supported on a domain fixed by a weight $w_m$, with
 $\int w_m u_m^2 = n_m$ the domain's occupation. Domains compete for territory, so the partition has
@@ -359,6 +421,35 @@ territory extent $R_{\text{init}} = 3\,a_0$---and the box itself, which Section~
 measures at four points of hydrogen's binding energy and which therefore cannot be presented as a
 container sized to fit the molecules. We list them because an unlisted regularisation is
 indistinguishable from a fitted one.
+
+\paragraph{One declared quantity is not a parameter of the dynamics at all.} The kinetic energy is a
+\emph{reported} quantity, and on a diffuse occupancy there is more than one way to report it. The
+functional the evolution actually minimises weights each face by the average occupancy across it,
+$T = \tfrac12 \sum_{\text{faces}} w_{\text{face}} (\delta u)^2 h$, which is what the amplitude update
+performs gradient descent on; this is the form declared here. Two alternatives are equally
+available: a hard gate, counting the \emph{full} unweighted gradient wherever $w$ exceeds a
+threshold and nothing below it, and the kinetic energy of the assembled global field
+$\Psi = \sum_m w_m u_m$, which is the object the model's $\Psi \in H^1$ requirement actually names.
+Measured on H$_2$ at box $12$, $h = 0.10$, $D = 2.1\,a_0$---one converged state, scored three ways,
+with the occupancies and amplitudes identical in all three:
+\begin{center}
+\begin{tabular}{lccc}
+\hline
+scoring of $T$ & $T$ & $E$ & $E_{\text{bind}}$ vs $D_e$ \\
+\hline
+hard gate & $0.9103$ & $-1.137236$ & $-5.9\%$ \\
+face-averaged (declared) & $0.9197$ & $-1.127903$ & $-11.1\%$ \\
+assembled $\Psi$ & $0.9286$ & $-1.1190$ & $-14.0\%$ \\
+\hline
+\end{tabular}
+\end{center}
+Eight points of $D_e$ separate the extremes, from bookkeeping alone. The ordering is uncomfortable:
+the \emph{most} internally consistent scoring is the furthest from experiment, and the gated form
+that agrees best with it is the one that does not correspond to the functional being minimised. We
+declare the face-averaged form because it is the one the dynamics minimises, not because it is the
+one that flatters the model, and we report the spread so that no reader mistakes a choice of
+accounting for a result. Nothing in the geometry depends on it: the three differ only in $E$, and
+six gate values give bit-identical bonds.
 
 Their measured sensitivity on H$_2$ is the reason this is a short list rather than a serious one.
 Reducing $\lambda$ by a factor of four moves the bond by $0.4$ points; doubling
@@ -735,6 +826,31 @@ it the minimum sits.
 \subsection{The interface condition, and why hydrogen cannot decide it}
 \label{sec:h2iface}
 
+\paragraph{What is actually new, relative to one electron.} Section~\ref{sec:intro} argued that at
+one electron this model is the minimal Coulomb model and coincides with the standard one. Everything
+the construction adds is therefore contained in two things: \emph{non-overlapping} one-electron
+densities, and the condition under which they meet. Nothing else about the one-electron block
+changes---the kinetic term and the Coulomb attraction are the same. It is worth being explicit that
+the addition comes with a \emph{subtraction}: there is no antisymmetry and no exchange, so the only
+repulsion between two electrons beyond the direct Coulomb term is the fact that they cannot occupy
+the same space. That subtraction is what the over-binding reported in Section~\ref{sec:intro}
+measures, and it is most visible exactly where territorial exclusion can do nothing---between
+\emph{equivalent} domains facing each other across a mirror plane, where the two constructions below
+agree to $4\times 10^{-8}$ and neither supplies any repulsion at all.
+
+\paragraph{The two conditions are not rivals.} They enter with different roles, and the count of
+equations is what makes this work. For a \emph{fixed} partition, free variation of each density
+gives homogeneous Neumann on that domain's own boundary---$\partial u/\partial n = 0$ is the natural
+condition and nothing is imposed. Solved that way the amplitudes at the interface generically
+\emph{disagree}, and the interface is then placed where they agree. So continuity is not a second
+assumption about $\Psi$: it is the \emph{equation that determines} $\Gamma$. Three conditions, one
+extra unknown. The implementations in this programme each take one half of that scheme and supply
+the other half by hand: \texttt{mol\_fast} drives the amplitude mismatch to zero and so genuinely
+\emph{finds} $\Gamma$, while imposing the Neumann condition only weakly through
+$\tfrac12\int w|\nabla u|^2$; the sharp constructions impose Neumann exactly but are \emph{told}
+where $\Gamma$ is, by symmetry. Neither is a different theory; both are incomplete implementations
+of one, and the gap between them is measured below.
+
 The free boundary between two domains needs a condition, and the construction admits two that are
 both defensible. The model requires $\Psi \in H^1$, that is continuity of the densities across the
 interface, whose natural condition is continuity of the amplitude, $u_1 = u_2$, with the normal
@@ -743,6 +859,23 @@ amplitude mismatch and converges where that mismatch vanishes. The alternative t
 as disjoint with $u$ unconstrained at its own boundary, for which the natural condition is
 $\partial u/\partial n = 0$; a mirrored ghost value, or equivalently omitting the face from the
 stencil, imposes it exactly, and two independent implementations in this programme do so.
+
+\paragraph{Omitting the face imposes it exactly only on a \emph{sharp} partition.} The qualification
+matters, because the obvious way to get the strict condition inside this solver does not work.
+Binarising the face weight---counting a face only where both its cells are owned---while leaving the
+occupancy diffuse gives H$_2$ $E = -1.338705$ against $-1.127903$, a binding energy of $+110\%$,
+and a dipole of $0.108$--$0.187\,\mathrm{D}$ where reflection symmetry requires identically zero. The
+cause is diagnosable rather than mysterious. The kinetic energy of the assembled field,
+$T_\Psi = \tfrac12 \int |\nabla \sum_m w_m u_m|^2$, charges the interface \emph{jump}
+$(u_2 - u_1)^2/h$, which closed faces make free for the per-domain sum; measured,
+$T_\Psi / T = 8.07$ at $D = 2.1\,a_0$ and $4.25$ at $1.3\,a_0$. A factor of eight means the discrete
+solution is not in $H^1$: an amplitude discontinuity has opened at the interface and the minimiser
+is exploiting it, and the per-domain $T$ falls $39\%$ precisely because the gradient is no longer
+charged where it is largest. We note this is \emph{not} inferred from the energy lying below the
+exact value, which is not evidence of anything here---the functional is not Schr\"odinger's and no
+variational theorem connects its minimum to the exact ground state. So the strict condition is
+available in this programme only where the partition is sharp \emph{and} its location is supplied
+by symmetry, which is the same restriction discussed below.
 
 The two give materially different energies---$+27.9\%$ and $+58.0\%$ on $E_{\text{bind}}$ for the
 strict condition against $+0.2\%$ for the continuity condition, with bond errors of $+15.9\%$ and
@@ -754,6 +887,46 @@ system with no symmetry plane, which is not in the present list.
 
 \section{The solver}
 \label{sec:impl}
+
+\paragraph{Two solvers, and the one used here is the less faithful.} \texttt{molecule.js} carries
+\emph{one} amplitude field with every cell labelled by its owner, so the domains are
+non-overlapping \emph{by construction}; it admits two thousand domains and has been run on
+alpha-helices. \texttt{mol\_fast}, which produced every number in this paper, carries one array per
+domain, all overlapping, with the weight $w$ gating only the evolution. One labelled field is the
+formulation of Section~\ref{sec:model}; \texttt{mol\_fast} relaxes it for speed. It also cannot
+relocate a domain: $u$ evolves only where $w > 0$ and $w$ advances only where $u$ already wins, so
+neither field can lead and a domain creeps at its boundary without crossing a gap---measured on
+lithium, where seeds at $0.15$, $1.0$ and $4.0\,a_0$ ended at $0.118$, $0.799$ and $3.203$.
+
+This matters least where it might be expected to matter most. The one system for which both
+treatments are converged is H$_2$, and they \emph{bracket} the exact energy from opposite sides:
+\begin{center}
+\small
+\begin{tabular}{lrrr}
+\toprule
+ & $E(\mathrm{H}_2)$ & error & $E_{\text{bind}}$ vs $D_e$ \\
+\midrule
+overlapping domains (\texttt{mol\_fast}) & $-1.1398$ & $+3.0\%$ & $-4.5\%$ \\
+hard non-overlap (axisymmetric)          & $-1.2760$ & $-8.6\%$ & $+58\%$ \\
+exact                                    & $-1.1745$ & ---      & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent
+Hard non-overlap does not recover the exact energy; it overshoots past it, and over-binds by a
+factor of thirteen more than the overlapping scheme on the binding energy. So \emph{faithful} and
+\emph{accurate} are different claims here, and only the first is established for
+\texttt{molecule.js}. The honest statement of this paper's energy result is therefore a bracket
+rather than a value: \textbf{H$_2$'s binding lies between $-4.5\%$ and $+58\%$ of $D_e$ according to
+how non-overlap is enforced}, and an intermediate choice reproducing experiment would be a fit, not
+a prediction.
+
+What the comparison does establish is \emph{which observables depend on the approximation}. The
+energies differ by eleven points between the two schemes; the converged bond lengths do not---$1.31$
+extrapolated from the overlapping scheme against $1.368$ from the hard one, both a few percent
+short. \textbf{Geometry is robust against the non-overlap treatment where energy is not}, which is
+an argument for the geometry-first ordering of Section~\ref{sec:obscomp} reached from an
+independent direction.
 
 The measurements above were made with a GPU solver (\texttt{mol\_fast}) that carries one domain per
 entry and caps at sixteen domains. That cap is the binding constraint on molecular size, and its
