@@ -36,14 +36,15 @@ at two electrons.
 
 \section{The model}
 
-The unknown is a \emph{single} real function $\Psi \in H^1(\mathbb R^3)$ together with a partition
-of space into $N$ disjoint domains $\Omega_1,\dots,\Omega_N$ filling $\mathbb R^3$. Writing
-$\psi_i = \Psi|_{\Omega_i}$, so that
+RealQM models the ground state of an atomic system---kernels of charge $Z_a$ at positions
+$\mathbf R_a$, surrounded by $N$ electrons---in terms of a wave function
 \begin{equation}
-  \Psi \;=\; \sum_i \psi_i , \qquad \int_{\Omega_i} \Psi^2 = 1 \ \ \text{for each } i ,
+  \Psi \;=\; \sum_{i=1}^{N} \psi_i \;\in\; H^1(\mathbb R^3) ,
+  \qquad \int_{\Omega_i} \Psi^2 = 1 \ \ \text{for each } i ,
   \label{eq:psi}
 \end{equation}
-the energy is
+in which $\psi_i = \Psi|_{\Omega_i}$ is the restriction of $\Psi$ to a domain $\Omega_i$, the
+$\Omega_i$ being disjoint and filling $\mathbb R^3$, as the minimiser of the energy
 \begin{equation}
   E[\Psi, \{\Omega_i\}] \;=\; \tfrac12 \!\int |\nabla \Psi|^2 \;-\; \int K\,\Psi^2
      \;+\; \sum_{i<j} \int\!\!\int \frac{\psi_i^2(\mathbf x)\,\psi_j^2(\mathbf y)}
@@ -51,8 +52,9 @@ the energy is
      \;+\; \sum_{a<b} \frac{Z_a Z_b}{R_{ab}} ,
   \label{eq:E}
 \end{equation}
-with $K = \sum_a Z_a/|\mathbf x - \mathbf R_a|$, and the problem is to \emph{minimise $E$ over both
-$\Psi$ and the partition}. The domains being disjoint, $\Psi^2 = \sum_i \psi_i^2$ with no cross
+with $K = \sum_a Z_a/|\mathbf x - \mathbf R_a|$ the kernel attraction, the minimisation being over
+\emph{both} $\Psi$ and the partition $\{\Omega_i\}$---the domains are unknowns of the problem, not
+given data. The only inputs are the kernel charges, their positions, and $N$. The domains being disjoint, $\Psi^2 = \sum_i \psi_i^2$ with no cross
 terms, so the third sum is a genuine pair interaction counted once, and no electron interacts with
 itself.
 
@@ -71,10 +73,18 @@ extra unknown; the count closes. The two implementations in \S3 are two discreti
 variational problem and differ only in how they represent $\Psi$ near the interfaces---not in the
 problem being solved.
 
-\paragraph{There is one function, not $N$ of them.} The decomposition \eqref{eq:psi} is bookkeeping:
-$\psi_i$ is a restriction of $\Psi$, not an independent orbital, and the $\Omega_i$ are the only
-thing distinguishing one electron from another. The dimension of the unknown is three regardless of
-$N$, which is what makes the model computable and therefore testable at all.
+\paragraph{There is one function, not $N$ of them, and it is a scalar function in three
+dimensions.} The decomposition \eqref{eq:psi} is bookkeeping: $\psi_i$ is a restriction of $\Psi$,
+not an independent orbital, and the $\Omega_i$ are the only thing distinguishing one electron from
+another. So the unknown is a single scalar field on $\mathbb R^3$ whatever $N$ may be, and at a
+spatial resolution $h$ it is represented by a mesh of $h^{-3}$ points on a unit cube---some
+$10^3$ values per $a_0^3$ at the $h = 0.1\,a_0$ used here, independent of the number of electrons.
+
+That is the whole of why this model is computable, and it is worth stating as the arithmetic rather
+than as a claim. The cost of a calculation grows with $N$ only through the number of domains to be
+tracked and the pair sum in \eqref{eq:E}, not through the dimension of the unknown, so adding an
+electron adds work linearly rather than multiplying the size of the space to be searched. Every
+number in this paper was produced in a web browser, which would not be possible otherwise.
 
 \paragraph{Two mechanisms, doing two different jobs.} It is worth separating them, because they are
 easily run together. The Coulomb term does \emph{not} keep two electrons apart: for smooth densities
