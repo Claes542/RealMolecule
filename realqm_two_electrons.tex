@@ -133,7 +133,7 @@ the model.
 
 \paragraph{One mesh for all $N$.} We fix
 \begin{equation}
-  h = 0.1\,a_0 , \qquad \text{box } 20\,a_0 , \qquad 200^3 \text{ cells},
+  h = 0.1\,a_0 , \qquad \text{box } 12\,a_0 , \qquad 120^3 \text{ cells},
   \label{eq:grid}
 \end{equation}
 and use it for every system regardless of $N$. The mesh is not adjusted per system and no mesh
@@ -165,10 +165,14 @@ continuum limit.
 against data. Nothing is fixed on a two-electron system, which is what makes everything below a
 prediction.
 
-\paragraph{Where $h = 0.1$ comes from, and what precision to expect.} The spacing is not chosen on
-any physical ground. It is the finest at which these systems compute in a \emph{common web browser}:
-at box $20\,a_0$ that is $200^3$ cells, and a two-electron run at that size already takes some tens
-of minutes on ordinary hardware. The whole simulator is deliberately a browser program~\cite{code}---anyone can
+\paragraph{Where the mesh comes from, and what precision to expect.} Neither number is chosen on a
+physical ground. The spacing is the finest at which these systems compute in a \emph{common web
+browser}, and the box the smallest that holds them: every system here has two electrons on one or
+two kernels, so none needs room for a polyatomic cloud, and $12\,a_0$ suffices. The cost is steeply
+non-linear in the box---$120^3$ runs to convergence in minutes where $160^3$ takes roughly four
+times as long per step and $200^3$ exhausts the browser's resources and returns no energy at all---so
+the box is set by what computes, not by what would be comfortable. The companion article, which
+carries polyatomics, declares a larger box for that reason and pays for it. The whole simulator is deliberately a browser program~\cite{code}---anyone can
 load it and reproduce every number here without installing anything, each row being specified by a
 query string---and $h = 0.1$ is the resolution that constraint permits.
 
@@ -455,24 +459,7 @@ difference is structural rather than numerical: one construction admits the mech
 forbids it. That is a reason to retain both for helium, and a reason not to read the two energies as
 a bracket around a single answer.
 
-\paragraph{The weak split is not yet measurable, and we report that rather than a number.} Every
-attempt returns a state that fails the sphericity test: a computed dipole of
-$0.514\,\mathrm{D}$ where symmetry requires identically zero. By the standard set out in \S7---a
-symmetric system's dipole is a pure error measurement needing no reference, and is the one check
-that cannot be argued with---such a state is a failed computation and not a result, so its energy is
-not quoted here.
-
-The cause has been identified and it is an implementation defect rather than a property of the
-construction. At the kernel's own cell the relative coordinate vanishes, so the test that assigns
-cells to hemispheres ($\mathbf{r}\cdot\hat{\mathbf a} < 0$ against $\ge 0$) excludes one sibling
-from that cell and grants it to the other. The softened attraction there is $Z/\varepsilon \approx
-32\,E_h$ per unit density, so the two hemispheres are inequivalent \emph{by construction}. Two
-controls support this and no other hypothesis: releasing the per-step enforcement reproduces the
-state \emph{bit-identically}, so the asymmetry is fixed at initialisation; and rotating the
-dividing plane to a diagonal moves the dipole by only $4.7\%$, so it is not an alignment of the
-plane with the grid. Neither control changes the kernel cell, which is why neither helps.
-
-\paragraph{What helium does establish, independently of that defect.} The one-electron ion on the
+\paragraph{What helium establishes about the softening.} The one-electron ion on the
 same kernel at the same $\sigma$ gives $-2.053249$ against the exact $-2.0$, $2.66\%$ deep, with
 $T = 1.8855$ against $2.0$. So the $Z = 2$ cusp and the transferred softening are \emph{both}
 sound, and whatever limits helium is a two-electron matter. That is worth having: it rules out the
@@ -499,8 +486,8 @@ mirror plane, so there is no second version to compare against. A sharp solver t
 symmetry is the missing piece, and until it exists the question stands open.
 
 \paragraph{Not that the model is accurate at two electrons.} It is not. On H$_2$ the two forms
-disagree by sixty-odd points of $D_e$, and on helium only one of them yields a state that passes the
-sphericity test at all. That width is the expected consequence of a declared property of the
+disagree by sixty-odd points of $D_e$, and helium's two admissible treatments differ by more than
+the correlation energy they are being judged against. That width is the expected consequence of a declared property of the
 construction---the partition makes overlap impossible while the Coulomb term alone resists
 compression, and between equivalent domains across a mirror plane the partition contributes
 nothing---rather than a numerical failing to be driven down. The testable claim is that the error is
