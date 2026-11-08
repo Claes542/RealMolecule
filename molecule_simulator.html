@@ -63,7 +63,7 @@ window.onerror = function (m, u, l, c) {
 //   'none'    nothing cancels (CO, HCN, N2O, HC3N) -> a genuine convergence measurement
 // Measured 2026-11-03: the asymmetric cases run 11-89% while CO2 and C3O2 read 0.1-0.2%, which is
 // symmetry being preserved, not convergence being good.
-var SYM = { h:'full', c:'full', n:'full', o:'full', he_split:'full', he_v:'full', h2:'full', n2:'full', o2:'full', co:'none', co2:'full', n2o:'none', hcn:'none',
+var SYM = { h:'full', c:'full', n:'full', o:'full', he_split:'full', he_v:'full', heplus:'full', hehp:'none', h2:'full', n2:'full', o2:'full', co:'none', co2:'full', n2o:'none', hcn:'none',
             c2h2:'full', c2n2:'full', c3o2:'full', hc3n:'none', c4h2:'full',
             h2o:'axis', h2o_split:'axis', nh3:'axis', ch4:'full', h2co:'axis',
             h2o_a90:'axis', h2o_a109:'axis', h2o_a120:'axis', h2o_z2:'axis' };
@@ -200,6 +200,19 @@ var MOLS = {
   // bit-identical to hydrogen and B = N = O collapse onto one object at Z_x = 3. Reference is the
   // sum of IEs to strip the whole valence, = |E_neutral - E_core| from atom_simulator.html's
   // REF_ETOT and its fitted coreE(Z); validated on carbon to 0.2% against the recorded 2.57x.
+  // He+ : ONE electron on a Z=2 kernel. Exact energy -Z^2/2 = -2.0, no interface, no partition,
+  // no two-electron content -- so this is the Z=2 member of the hydrogenic family and the system
+  // that fixes sigma(2), exactly as H fixes sigma(1).
+  // WHY IT IS NEEDED (measured 2026-11-08): sigma calibrated on H (0.627 at h=0.10) does NOT
+  // transfer to Z=2. It UNDER-softens the sharper Z=2 cusp, and helium came out -2.415723 against
+  // exact -2.903724, i.e. 16.8% shallow -- WORSE than the 10.5% at sigma=1 -- with mu = 0.512 D
+  // where sphericity demands identically zero. One sigma cannot serve two kernel charges.
+  // So the scheme is sigma(Z), one value per kernel charge, each fixed on the corresponding
+  // hydrogenic ion. Still no molecular observable consumed; a function of Z, not one constant.
+  // CONSTRUCTION: sp:1 gives one domain with the full kernel charge and target 1 electron.
+  heplus: { name: 'He+  1e on Z=2  [fixes sigma(2); exact -2.0]', ext: 0, nelec: 1, atoms: [
+      { x:0, y:0, z:0, el:'He', Z:2, sp:1, ax:[0,0,1] },
+  ]},
   // HELIUM, restored 2026-11-07 (removed in the H,C,N,O reduction). Needed because He is the
   // SECOND minimal two-electron system and the other half of the hard-vs-diffuse bracket: its
   // interface passes THROUGH the kernel, cutting the density maximum, where H2's midplane sits in
@@ -212,6 +225,27 @@ var MOLS = {
       { x:0,y:0,z:0, el:'He', Z:2, sp:2, ax:[0,0,1] },
   ]},
   he_v: { name: 'He  both electrons in ONE domain  [no V_ee -- control only]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'He', Z:2 } ]},
+  // HeH+ : the ASYMMETRIC two-electron system, and the only one here that can settle the
+  // formulation question. H2 and He both have interfaces fixed by symmetry, where amplitude
+  // matching and zero flux COINCIDE (the two constructions agree to 4e-8), so neither can
+  // distinguish them. HeH+ has unequal kernels, so its interface is at no symmetry plane.
+  // CONSTRUCTION: sp:1 on He decouples the electron count from the kernel charge -- the sp branch
+  // gives one domain per q with Z on the first and target 1 each -- so this is 2 domains, 2
+  // electrons, kernels Z=2 and Z=1. Net charge +1.
+  // GEOMETRY: R_e = 1.4632 a0 (0.7743 A), placed symmetric about the origin like the other entries.
+  // NOT commensurate at h=0.10, so scan 1.3 and 1.5 via ?sep= and bracket it.
+  // CONFOUND TO DECLARE: the two kernels have DIFFERENT Z, so one softening sigma cannot be
+  // calibrated for both -- sigma fixed on H (Z=1) is not right for He (Z=2), whose cusp is sharper.
+  // An error here could be the interface asymmetry OR the Z mismatch. The clean alternative with
+  // equal kernels is H2 with the interface displaced off-centre, which is already measured in
+  // tools/axisym_h1.py (the two constructions differ ~5x there).
+  // REFERENCE ENERGY NOT VERIFIED: do not quote a total energy or D_e for HeH+ from memory. Look
+  // it up before use; only R_e = 1.4632 is asserted here.
+  hehp: { name: 'HeH+  2e on Z=2 and Z=1  [ASYMMETRIC interface -- the formulation test]',
+          ext: 0.7316, nelec: 2, atoms: [
+      { x: -0.73160, y: 0.00000, z: 0.00000, el:'He', Z:2, sp:1, ax:[1,0,0] },
+      { x:  0.73160, y: 0.00000, z: 0.00000, el:'H',  Z:1 },
+  ]},
   h2: { name: 'H2 hydrogen', ext: 0.700, nelec: 2, atoms: [
       { x: -0.70014, y:  0.00000, z:  0.00000, el:'H', Z:1 },
       { x:  0.70014, y:  0.00000, z:  0.00000, el:'H', Z:1 },
@@ -437,6 +471,14 @@ var MOLS = {
   // kernel depth >= 1.3 Ha, which a +4 kernel far exceeds -- so expect it to be the worse model
   // here, and treat a better result as the one needing scrutiny.
   window.USER_CLAMP_RC = qp.get('clamp') === '1';
+  // ?sax=x,y,z overrides every entry's split axis. The physics is rotation-invariant; the GRID is
+  // not, so comparing [0,0,1] (dividing plane lying on cell faces) against a rotated axis
+  // (cutting cells obliquely) separates a construction effect from a cubic-grid artefact.
+  var SAX = (function () {
+    var v = qp.get('sax'); if (!v) return null;
+    var a = v.split(',').map(Number);
+    return (a.length === 3 && a.every(isFinite)) ? a : null;
+  })();
   var nuclei = [], targets = [], labels = [];
   M.atoms.forEach(function (a, ai) {
     // ?rc= INNER CUTOFF (core-exclusion radius), default 0. This is not a cosmetic knob: with
@@ -481,7 +523,7 @@ var MOLS = {
       for (var v = 0; v < nvd; v++) {
         nuclei.push(Object.assign({}, base, {
           Z: 0, rc: 0, z_init: nv, split: SPLIT_BY_N[nvd] || 'sphere', split_idx: v,
-          split_axis: a.ax || [1, 0, 0], shell_id: nsh - 1,
+          split_axis: SAX || a.ax || [1, 0, 0], shell_id: nsh - 1,
           split_fix: qp.get('sfix') === '0' ? false : true }));
         targets.push(per); labels.push(a.el + '.v' + v);
       }
@@ -489,7 +531,7 @@ var MOLS = {
       for (var q = 0; q < a.sp; q++) {
         nuclei.push(Object.assign({}, base, {
           Z: q === 0 ? a.Z : 0, split: SPLIT_BY_N[a.sp] || 'sphere', split_idx: q,
-          split_axis: a.ax || [0, 0, 1], z_init: 2.0,
+          split_axis: SAX || a.ax || [0, 0, 1], z_init: 2.0,
           split_fix: qp.get('sfix') === '0' ? false : true }));
         targets.push(1); labels.push(a.el + '.' + q);
       }
@@ -906,6 +948,7 @@ var MOLS = {
       + ' soft=' + window.USER_SOFT.toFixed(2) + ' eps=' + (window.USER_SOFT*h).toFixed(3)
       + (FREE.length ? ' free=[' + FREE.join(',') + ']' : '')
       + ' rc=' + USER_RC.toFixed(3) + (window.USER_CLAMP_RC ? ' CLAMP' : '')
+      + (SAX ? ' sax=[' + SAX.join(',') + ']' : '')
       + ' rinit=' + window.USER_R_INIT + ' wdiff=' + (window.USER_W_DIFF !== undefined ? window.USER_W_DIFF : 0.05)
       + ' wkinw=' + (window.USER_W_KIN_WEIGHT ? 1 : 0)
       + ' wkingate=' + (window.USER_W_KIN_GATE !== undefined ? window.USER_W_KIN_GATE : 0.1)
