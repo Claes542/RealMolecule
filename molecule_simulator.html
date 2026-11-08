@@ -63,7 +63,7 @@ window.onerror = function (m, u, l, c) {
 //   'none'    nothing cancels (CO, HCN, N2O, HC3N) -> a genuine convergence measurement
 // Measured 2026-11-03: the asymmetric cases run 11-89% while CO2 and C3O2 read 0.1-0.2%, which is
 // symmetry being preserved, not convergence being good.
-var SYM = { h:'full', c:'full', n:'full', o:'full', he_split:'full', he_v:'full', heplus:'full', heli3:'full', heli4:'full', heli6:'full', heli7:'full', heli8:'full', hehp:'none', h2:'full', n2:'full', o2:'full', co:'none', co2:'full', n2o:'none', hcn:'none',
+var SYM = { h:'full', c:'full', n:'full', o:'full', he_split:'full', he_v:'full', heplus:'full', hyd2:'full', hyd3:'full', hyd4:'full', heli3:'full', heli4:'full', heli6:'full', heli7:'full', heli8:'full', hehp:'none', h2:'full', n2:'full', o2:'full', co:'none', co2:'full', n2o:'none', hcn:'none',
             c2h2:'full', c2n2:'full', c3o2:'full', hc3n:'none', c4h2:'full',
             h2o:'axis', h2o_split:'axis', nh3:'axis', ch4:'full', h2co:'axis',
             h2o_a90:'axis', h2o_a109:'axis', h2o_a120:'axis', h2o_z2:'axis' };
@@ -223,6 +223,12 @@ var MOLS = {
   heplus: { name: 'He+  1e on Z=2  [fixes sigma(2); exact -2.0]', ext: 0, nelec: 1, atoms: [
       { x:0, y:0, z:0, el:'He', Z:2, sp:1, ax:[0,0,1] },
   ]},
+  // ONE-ELECTRON IONS on the plain single-domain path (ne:1). sigma(Z) is calibrated HERE, against
+  // the exact -Z^2/2, because He+ at the hydrogen sigma 0.627 gives -2.053 (2.7% deep): sigma
+  // already depends on Z with ONE electron, so a 2hom fit would mix that with the pair's shape.
+  hyd2: { name: 'He+  1e on Z=2, single domain  [sigma(2); exact -2.0]', ext: 0, nelec: 1, atoms: [ { x:0,y:0,z:0, el:'He', Z:2, ne:1 } ]},
+  hyd3: { name: 'Li2+ 1e on Z=3, single domain  [sigma(3); exact -4.5]', ext: 0, nelec: 1, atoms: [ { x:0,y:0,z:0, el:'Li', Z:3, ne:1 } ]},
+  hyd4: { name: 'Be3+ 1e on Z=4, single domain  [sigma(4); exact -8.0]', ext: 0, nelec: 1, atoms: [ { x:0,y:0,z:0, el:'Be', Z:4, ne:1 } ]},
   // HE-LIKE IONS: two electrons in ONE domain on a kernel of charge Z -- the 2hom core, which is
   // the construction the atom model actually uses for inner shells. Calibrating sigma HERE rather
   // than on a one-electron ion calibrates it in the configuration it will be used in.
@@ -241,11 +247,11 @@ var MOLS = {
   //
   // RHF REFERENCES NOT ASSERTED: only He's -2.861680 is used here. Look up the He-like RHF series
   // before quoting Li+/Be2+/C4+/N5+/O6+; do not recall them.
-  heli3: { name: 'Li+  2e on Z=3, one domain  [2hom core; tests sigma(3)]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'Li', Z:3 } ]},
-  heli4: { name: 'Be2+ 2e on Z=4, one domain  [2hom core]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'Be', Z:4 } ]},
-  heli6: { name: 'C4+  2e on Z=6, one domain  [2hom core of carbon]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'C', Z:6 } ]},
-  heli7: { name: 'N5+  2e on Z=7, one domain  [2hom core of nitrogen]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'N', Z:7 } ]},
-  heli8: { name: 'O6+  2e on Z=8, one domain  [2hom core of oxygen]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'O', Z:8 } ]},
+  heli3: { name: 'Li+  2e on Z=3, one domain  [2hom core; tests sigma(3)]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'Li', Z:3, ne:2 } ]},
+  heli4: { name: 'Be2+ 2e on Z=4, one domain  [2hom core]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'Be', Z:4, ne:2 } ]},
+  heli6: { name: 'C4+  2e on Z=6, one domain  [2hom core of carbon]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'C', Z:6, ne:2 } ]},
+  heli7: { name: 'N5+  2e on Z=7, one domain  [2hom core of nitrogen]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'N', Z:7, ne:2 } ]},
+  heli8: { name: 'O6+  2e on Z=8, one domain  [2hom core of oxygen]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'O', Z:8, ne:2 } ]},
   // HELIUM, restored 2026-11-07 (removed in the H,C,N,O reduction). Needed because He is the
   // SECOND minimal two-electron system and the other half of the hard-vs-diffuse bracket: its
   // interface passes THROUGH the kernel, cutting the density maximum, where H2's midplane sits in
@@ -551,7 +557,10 @@ var MOLS = {
     // of 5 for h2o_sh, E = -89.6 with VeK = -224).
     if (!a.sp && !(SH && a.sh)) {
       nuclei.push(Object.assign({}, base, { Z: a.Z }));
-      targets.push(a.Z); labels.push(a.el);
+      // `ne` = electrons in this domain when it differs from the kernel charge (an ION). Without it
+      // the count defaults to Z: heli3 was built as NEUTRAL Li, three electrons in one blob
+      // (measured q_u = 3.000, Vee = 4.68), because `nelec` on the entry is only a label.
+      targets.push(a.ne != null ? a.ne : a.Z); labels.push(a.el);
     } else if (SH && a.sh) {
       // inner shells: spherical blobs, radii seeded and then free; the FIRST carries the kernel
       var nsh = a.sh.length, rads = [R1, R2];
