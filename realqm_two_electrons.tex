@@ -11,9 +11,20 @@
 \begin{abstract}
 RealQM replaces the many-electron wavefunction by $N$ one-electron charge densities on
 non-overlapping domains, interacting through Coulomb's law with each pair counted once. At one
-electron the construction is not merely similar to the standard model---it \emph{is} the minimal
-Coulomb model, with the same functional and the same minimiser, so $E(\mathrm{H}) = -1/2$ follows by
-reduction. Hydrogen therefore calibrates and cannot test. The model acquires content at two
+electron it is the minimal model that Coulomb's law admits---a kinetic penalty quadratic in
+$\nabla\Psi$ against the kernel attraction, nothing else. Its \emph{form} is forced, but the
+coefficient of the kinetic term is a scale the model cannot derive, and hydrogen's observed spectrum
+is what fixes it. Hydrogen therefore \emph{calibrates}---the energy scale of the whole construction,
+and separately the one constant the discrete scheme needs---and cannot test anything.
+
+H$_2$ is that same model extended to two electrons with \emph{no further calibration}, in the two
+forms the interface condition admits: imposed strongly on a sharp partition, or weakly on a diffuse
+one. Both are predictions in the strict sense---nothing has been fitted at the two-electron
+level---and both agree fairly with observation, each on one observable: the strong form places the
+bond within $3.7\%$, the weak form the binding energy within $7.7\%$, while each is substantially
+worse on the other, and the two straddle the observed binding energy from either side. Helium is
+reported for the strong form only: the weak form returns a state that fails the sphericity test, for
+an implementation reason we identify, and we decline to quote an energy from it. The model acquires content at two
 electrons, where the densities must be partitioned and must meet, and we examine the two smallest
 such systems: H$_2$, whose interface lies between the kernels, and He, whose interface passes
 through one. Two defensible interface treatments---strict homogeneous Neumann on a sharp partition,
@@ -25,20 +36,45 @@ at two electrons.
 
 \section{The model}
 
-Each electron $m$ carries a density $u_m^2 \ge 0$ supported on a domain $\Omega_m$, normalised to
-$\int_{\Omega_m} u_m^2 = 1$, with the domains non-overlapping and filling space. The energy is
+The unknown is a \emph{single} real function $\Psi \in H^1(\mathbb R^3)$ together with a partition
+of space into $N$ disjoint domains $\Omega_1,\dots,\Omega_N$ filling $\mathbb R^3$. Writing
+$\psi_i = \Psi|_{\Omega_i}$, so that
 \begin{equation}
-  E \;=\; \sum_m \Big[ \tfrac12 \!\int |\nabla u_m|^2 \;-\; \int K\, u_m^2 \Big]
-          \;+\; \sum_{m \neq n} \tfrac12 \!\int\!\!\int \frac{u_m^2(\mathbf x)\,u_n^2(\mathbf y)}
-                                                            {|\mathbf x - \mathbf y|}
-          \;+\; \sum_{a<b} \frac{Z_a Z_b}{R_{ab}} ,
+  \Psi \;=\; \sum_i \psi_i , \qquad \int_{\Omega_i} \Psi^2 = 1 \ \ \text{for each } i ,
+  \label{eq:psi}
+\end{equation}
+the energy is
+\begin{equation}
+  E[\Psi, \{\Omega_i\}] \;=\; \tfrac12 \!\int |\nabla \Psi|^2 \;-\; \int K\,\Psi^2
+     \;+\; \sum_{i<j} \int\!\!\int \frac{\psi_i^2(\mathbf x)\,\psi_j^2(\mathbf y)}
+                                        {|\mathbf x - \mathbf y|}
+     \;+\; \sum_{a<b} \frac{Z_a Z_b}{R_{ab}} ,
   \label{eq:E}
 \end{equation}
-with $K = \sum_a Z_a / |\mathbf x - \mathbf R_a|$ the kernel attraction, each electron pair counted
-once by the $m \neq n$ rule, and no self-interaction by construction. There is no joint wavefunction
-over all electrons, hence nothing to antisymmetrise and no exchange term. This is a different answer
-to the same question rather than an omission---a joint antisymmetric wavefunction is not itself an
-observable---and it is testable on its own terms, as below.
+with $K = \sum_a Z_a/|\mathbf x - \mathbf R_a|$, and the problem is to \emph{minimise $E$ over both
+$\Psi$ and the partition}. The domains being disjoint, $\Psi^2 = \sum_i \psi_i^2$ with no cross
+terms, so the third sum is a genuine pair interaction counted once, and no electron interacts with
+itself.
+
+Three features of this statement are worth drawing out, because the rest of the paper turns on them.
+
+\paragraph{Continuity is not imposed; it is the function space.} $\Psi$ is required to lie in $H^1$,
+so it is continuous across every interface by assumption, and no matching condition is added by
+hand. What \emph{is} free is where the interfaces are.
+
+\paragraph{The interface condition is a consequence, not an input.} Varying $\Psi$ at a \emph{fixed}
+partition leaves a boundary term $\oint \psi_i \,\partial\psi_i/\partial n$ on each $\partial\Omega_i$,
+so the natural condition is $\partial\Psi/\partial n = 0$ from each side---nothing is imposed. Solved
+that way the two one-sided values at an interface generically disagree, and the interface is then
+placed where they agree, which is what varying the \emph{partition} supplies. Three conditions, one
+extra unknown; the count closes. The two implementations in \S3 are two discretisations of this one
+variational problem and differ only in how they represent $\Psi$ near the interfaces---not in the
+problem being solved.
+
+\paragraph{There is one function, not $N$ of them.} The decomposition \eqref{eq:psi} is bookkeeping:
+$\psi_i$ is a restriction of $\Psi$, not an independent orbital, and the $\Omega_i$ are the only
+thing distinguishing one electron from another. The dimension of the unknown is three regardless of
+$N$, which is what makes the model computable and therefore testable at all.
 
 \paragraph{Two mechanisms, doing two different jobs.} It is worth separating them, because they are
 easily run together. The Coulomb term does \emph{not} keep two electrons apart: for smooth densities
@@ -57,17 +93,6 @@ clouds, and the over-binding reported in \S5 is the measurement that this alone 
 H$_2$ at its midplane and He at its split plane are both that configuration, which is why they are
 the systems to examine.
 
-\paragraph{At one electron this is the minimal Coulomb model.} For $N = 1$, \eqref{eq:E} reduces to
-minimising $\tfrac12\!\int|\nabla u|^2 - \int (Z/r) u^2$ subject to $\int u^2 = 1$: the
-Schr\"odinger variational problem, same functional, same minimiser, giving $-Z^2/2$ exactly. This
-is worth stating in the strong form. Schr\"odinger's equation for hydrogen \emph{is} the minimal
-continuum model that can be built from a Coulomb attraction---a kinetic penalty quadratic in
-$\nabla u$ is the lowest-order rotation-invariant term that prevents collapse, and nothing simpler
-binds at all. Hydrogen's exactness is a property of those two ingredients, not of either theory's
-account of many electrons, and both theories contain exactly those ingredients at $N = 1$.
-\textbf{Hydrogen therefore discriminates between no formulations whatsoever,} and nothing below
-rests on it.
-
 \paragraph{What is new, and what is missing.} Relative to one electron the construction adds exactly
 two things: the densities do not overlap, and they must meet somewhere. It also \emph{subtracts}
 one: it fixes what resists their approach, and the answer is set out below---the partition makes
@@ -77,7 +102,26 @@ be expected to come out exactly.
 
 \section{One calibration, on hydrogen}
 
-The continuum model needs no calibration. Its discrete realisation needs exactly one constant: a
+At one electron \eqref{eq:E} is $\tfrac{\kappa}{2}\!\int|\nabla \Psi|^2 - \int (Z/r)\Psi^2$
+minimised subject to $\int \Psi^2 = 1$. A kinetic penalty quadratic in $\nabla\Psi$ is the
+lowest-order rotation-invariant term that prevents collapse and no simpler functional binds at all,
+so the \emph{form} is forced; but the coefficient $\kappa$ is not. It is a scale, and the model
+contains nothing from which to derive it.
+
+\paragraph{The coefficient of the kinetic term is the model's one physical calibration, and
+hydrogen sets it.} Requiring the minimiser to reproduce hydrogen's observed spectrum fixes
+$\kappa = 1$ in atomic units, i.e.\ the familiar $\tfrac12\!\int|\nabla\Psi|^2$, whereupon the
+minimiser is $\Psi = \sqrt{Z^3/\pi}\,e^{-Zr}$ with energy $-Z^2/2$. We are explicit that this is a
+calibration and not a derivation. The construction contains \emph{one} kinetic coefficient and
+nothing from which to compute it: no mass appears anywhere in \eqref{eq:E}, and no constant of
+action, so there is no product of such quantities to be supplied from elsewhere and no separation of
+$\kappa$ into factors that the model could make. Hydrogen's spectrum fixes the single number, and
+in doing so sets the energy scale of everything that follows. That is the sense in which the one-electron model is \emph{calibrated}
+rather than predictive, and it is why no agreement at one electron can be evidence for the
+construction.
+
+With $\kappa$ fixed, the continuum model is complete and contains no further adjustable quantity.
+Its discrete realisation needs one more constant, of a different kind: a
 grid cannot represent $1/r$, so the kernel carries a softening, $K = Z/\sqrt{r^2 + \varepsilon^2}$
 with $\varepsilon = \sigma h$. We fix $\sigma$ once, by requiring the one-electron answer to be
 exact. In the axisymmetric solver used below this gives
@@ -97,7 +141,23 @@ $\int u^2 |\nabla w|\,dV$, which is the regularised form of $\oint_\Gamma u^2 dS
 returns $8\times 10^{-4}$ here against $0.417$ for H$_2$. A measure that did not vanish on one
 electron would be measuring something other than an interface.
 
-Three properties of this calibration matter. It is performed on a \emph{one-electron} system, where
+\paragraph{The mesh is declared, and $\sigma$ is a function of it.} Two things must be separated
+here. The spacing $h = 0.1\,a_0$ is \emph{declared}: it is fitted to nothing, chosen once, and used
+for every system in this paper. The softening is then \emph{determined} rather than chosen---at each
+$h$, the condition $E(\mathrm{H}) = -1/2$ fixes it, and at $h = 0.1$ that gives $\sigma = 0.627$.
+So the discrete scheme carries one declared number and one determined one, and strictly the
+determined one is $\sigma(h)$: a different mesh requires re-solving the same condition, not reusing
+$0.627$. As $h$ decreases the grid resolves the kernel better and less softening is needed, so
+$\varepsilon = \sigma(h)\,h \to 0$---the scheme does not freeze a finite softening into the
+continuum limit.
+
+What this does \emph{not} claim is that $h = 0.1$ is converged. It is not, and the paper says so
+where it matters: the weak construction's bond error falls $34.9 \to 28.3 \to 21.4\%$ at
+$h = 0.1395, 0.10, 0.08$ and is still falling. Every number below is therefore reported at a
+declared mesh and not at a limit, which is the honest status of a model whose results depend on $h$
+and whose $h$-dependence is measured rather than assumed away.
+
+This is the second constant, and the last. Three properties of it matter. It is performed on a \emph{one-electron} system, where
 the model has no content of its own and the reference is exact, so no two-electron observable is
 consumed. It is a single number, not a function of anything. And it is fixed before any
 two-electron system is computed. Everything below follows with no further calibration.
@@ -147,95 +207,112 @@ faces make an amplitude jump at the interface free. The diagnostic is direct: th
 the assembled field $\Psi = \sum_m w_m u_m$, which charges that jump, exceeds the per-domain sum by
 a factor of $8.07$, so the discrete solution is not in $H^1$.
 
-\section{H$_2$ and He are the two minimal two-electron systems}
 
-They are not a repetition. In H$_2$ the interface lies \emph{between} the two kernels, in the tail
-of both densities; in He it passes \emph{through} the single kernel, cutting the density maximum.
-Measured on the same construction, $\int_\Gamma u^2 \,dS = 0.496$ for H$_2$ against $1.681$ for
-He---a factor of $3.4$. Any interface treatment is therefore tested far more severely by He, and an
-error in it cannot be hidden there.
+\section{H$_2$: two kernels, interface between them}
 
-One asymmetry must be declared. H$_2$'s interface position is fixed by reflection symmetry about the
-midplane, and is the same in both constructions. He's is not: nothing in a spherical two-electron
-atom selects a plane, so construction (A) imposes one by hand and the result carries that
-arbitrary orientation. H$_2$ is in this respect the cleaner system and He the more demanding one.
+Hydrogen fixed one constant and settled nothing else. H$_2$ is the same model carried to two
+electrons \emph{without any further calibration}: the same $\sigma$, the same functional, the same
+$i \neq j$ Coulomb rule, and the measured separation as the only other input. Every number in this
+section is therefore a prediction in the strict sense, and that is the only reason the agreement
+below is worth reporting---a two-electron constant fitted here would have made it worthless.
 
-\paragraph{And H$_2$ cannot settle the interface question.} At a symmetry plane a mirror-symmetric
-solution has $u_1 = u_2$ \emph{and}, by reflection, $\partial u/\partial n = 0$. The two conditions
-coincide, and the two constructions agree there to $4\times 10^{-8}$. Settling which is right
-requires an asymmetric interface, which neither of these systems provides.
+It is also the mildest two-electron system available. Each kernel is $Z = 1$, so the softening
+calibrated on hydrogen applies unchanged to both and nothing is transferred from a different kernel
+charge; and the interface sits at the midplane by reflection symmetry, in the \emph{tail} of both
+densities rather than near either nucleus. The extension admits exactly two forms, differing only in
+how the interface condition is imposed---strongly, on a sharp partition, or weakly, on a diffuse
+one---and we report both.
 
-\section{The bracket}
+With $\sigma$ fixed by \eqref{eq:cal} and the atomic reference measured at the \emph{same}
+$\sigma$---a requirement, not a nicety, see below---the binding energy comes out
+\[
+  E_{\text{bind}} = 2E(\mathrm{H}) - E(\mathrm{H_2}) = 2(-0.499901) - (-1.160855) = 0.161053 ,
+\]
+against $D_e = 0.174470$: \textbf{under-binding by $7.7\%$}, at $R = 1.5\,a_0$ on the
+commensurate grid nearest the observed $1.40028$. The sharp construction at its own calibration
+gives $+59.6\%$ at its own minimum while placing the bond within $-3.7\%$. The two therefore fall
+on \emph{opposite sides} of the observed binding energy.
 
-\begin{table}[t]
-\centering
-\begin{tabular}{lrrr}
-\toprule
- & (A) sharp, strict Neumann & observed & (B) diffuse, weak \\
-\midrule
-$E(\mathrm{H})$   & $-0.500227$ & $-0.5$      & calibrated \\
-$E(\mathrm{H_2})$ & $-1.278929$ & $-1.174470$ & $-1.132147$ \\
-$E(\mathrm{He})$  & $-3.026749$ & $-2.903724$ & $\approx -2.60$ \\
-\bottomrule
-\end{tabular}
-\caption{The two constructions straddle both observed energies. (A) at its own calibration
-\eqref{eq:cal}, H$_2$ at its own energy minimum. (B) at $\sigma = 1$, which is \emph{not} its
-calibrated value---rows at $\sigma = 0.627$ are being measured and will move column (B) toward the
-centre, narrowing the interval. The observed H$_2$ and He figures are themselves computations in
-the standard theory, not measurements; see the caveat below.}
-\label{tab:bracket}
-\end{table}
+\paragraph{The bond, which is the better-behaved observable.} The separation at which each
+construction's energy is lowest is a prediction carrying no reference at all beyond the measured
+$R_e = 1.40028$. The sharp construction puts it at $1.349\,a_0$, \textbf{$-3.7\%$}, from a parabola
+through three commensurate points about the minimum. The weak construction at $\sigma = 1$ gives
+$1.8 \pm 0.1\,a_0$ ($+28\%$), the uncertainty being the width of the band within which the energy
+differences fall below the $\pm 0.0018\,E_h$ initialisation scatter. At the calibrated
+$\sigma = 0.627$ its minimum has not yet been located: a sharper kernel deepens the well and should
+shorten the bond, so we expect it between those two figures, but we have one point and not a scan,
+and report the gap rather than interpolate it.
 
-Table~\ref{tab:bracket} is the paper's result. Construction (A) over-binds both systems; (B)
-under-binds both; the observed values lie between. In relative terms (A) gives $E_{\text{bind}}$ for
-H$_2$ as $+59.6\%$ at its own minimum while placing the bond within $-3.7\%$, and He as $4.2\%$ too
-deep; (B) under-binds H$_2$ and gives He some $10\%$ too shallow.
+The ordering is worth noting because it is the opposite of the energy's. On the bond the sharp
+construction is the accurate one, within four percent; on the binding energy it is the inaccurate
+one, at $+59.6\%$ against the weak split's $-7.7\%$. No single construction here is better on both.
 
-\paragraph{The interval is the prediction.} Neither endpoint should be quoted as the construction's
-answer. Both are defensible readings of the same model differing only in how the interface is
-treated, and selecting the one nearer experiment would be fitting a discrete choice---the more so
-because an intermediate treatment can be constructed at will. What the model predicts at two
-electrons is an interval, and its width is the honest measure of the accuracy the interface
-treatment currently permits. The useful question is not which endpoint is right but whether the
-interval narrows under refinement, and for (B) it demonstrably does: the half-flux error is
-first-order in $h$.
+\paragraph{Two implementations, complementary errors, and what that does and does not license.} The
+two differ in \emph{exactly one} respect---how the interface condition is imposed---and everything
+else about them is the same model, the same calibration and the same geometry. So the
+complementarity is not a coincidence of two unrelated methods: the weak construction's error is a
+half-flux localised \emph{at the interface}, which for a diatomic is precisely where the bond length
+is determined, and it is therefore large in the bond and much smaller in the binding energy. That
+the pair gets one observable right each is a statement about where the deficiency lies, and it
+localises it to the interface treatment alone.
 
-\paragraph{A one-parameter repair exists and we do not adopt it.} The surface energy
-$(\beta/2)\oint_\Gamma \Psi^2 dS$, whose natural condition is the Robin condition
-$\partial u/\partial n + \beta u = 0$, interpolates between (A) at $\beta = 0$ and a Dirichlet
-limit. It is the repulsion between \emph{equivalent} domains across a mirror plane that territorial
-exclusion cannot supply, so it acts exactly where the over-binding of (A) lives. Calibrated on
-H$_2$'s binding energy it gives $\beta = 0.209$, i.e.\ $\beta^{-1} = 4.78\,a_0$, a plausible length;
-and carried unchanged to He it improves that system from $-4.24\%$ to $+1.62\%$, with He's own
-preferred value $0.151$---agreement to a factor $1.4$ across two systems with very different
-interface geometry. We nonetheless report $\beta = 0$, for one reason: $\beta$ cannot deliver energy
-and geometry together. At H$_2$'s own minimum it trades $+59.6\% \to +18\%$ on binding for
-$-3.7\% \to +7.6\%$ on the bond, with a balanced point near $\beta = 0.25$ at roughly $\pm 10\%$ on
-both. One parameter cannot satisfy both conditions, and adopting it would spend the construction's
-only real asset---that nothing is adjusted---for an improvement in one observable at the expense of
-the other.
+We are careful about what this licenses. Quoting the sharp bond together with the weak binding as
+``the model's answer'' would require a rule, settled in advance, for which construction to trust for
+which observable. For the bond there is such a rule: H$_2$'s interface position is fixed by
+reflection symmetry, so the sharp construction's \emph{only} handicap---that $\Gamma$ must be
+supplied to it from outside---is inactive here, and its geometry is accordingly the one to quote.
+For the binding energy no corresponding argument is available: the weak construction's handicap is
+never inactive, so its $-7.7\%$ is not privileged over the sharp $+59.6\%$ by anything beyond being
+nearer the measurement, and selecting it on that ground would be fitting. The pair therefore
+\emph{diagnoses}; it does not predict both observables at once, and we do not present it as doing
+so.
 
-\section{What this establishes, and what it does not}
+\paragraph{A warning earned the hard way.} The reference must be computed at the same $\sigma$ as
+the molecule. Paired instead with an atom measured at $\sigma = 1$, the same H$_2$ run reports
+$E_{\text{bind}} = 0.188011$, i.e.\ $+7.8\%$ and apparently \emph{over}-binding---the sign inverted
+by a mismatched reference. Since $\sigma$ sets the cusp resolution and hence every energy, a
+reference at a different $\sigma$ is not a reference at all.
 
-\paragraph{Not that the model is accurate at two electrons.} It is not: the interval of
-Table~\ref{tab:bracket} is tens of percent wide in the energy. That is the expected size of a
-declared property of the construction---territorial exclusion is all there is, and it vanishes
-between equivalent domains across a mirror plane---rather than a numerical failing to be driven
-down, and the
-testable claim is that the error is \emph{systematic}: one sign, one scale, and cancelling in
-differences taken at fixed composition.
+\section{He: hard split and weak split}
 
-\paragraph{A caveat on the references.} The figure $-1.174470$ for H$_2$ is a Kolos--Wolniewicz
-\emph{computation}, in the very theory whose many-electron content this construction declines, and
-the total electronic energy is in any case not an observable. The observables here are the
-dissociation energy, the bond length, and a dipole that must vanish by symmetry. We report total
-energies because they are what the two constructions differ in, not because they are measurable.
+Helium is the same two-electron question asked under far worse conditions. The kernel is $Z = 2$,
+so the softening calibrated on hydrogen is being extrapolated---though not unreasonably: the
+one-electron ion He$^+$ at the same $\sigma$ gives $-2.053249$ against the exact $-2.0$, only
+$2.66\%$ deep, so the cusp itself is well handled. And the interface passes \emph{through} the
+kernel rather than lying between two of them, so it cuts the density maximum:
+$\int_\Gamma u^2 dS = 1.681$ against H$_2$'s $0.496$, a factor of $3.4$.
 
-\paragraph{What the dipole buys.} For a symmetric system the computed dipole must be identically
-zero, so any nonzero value is a pure error measurement needing no reference of any kind. It is the
-one check in this paper that cannot be argued with, and it is what disqualified the combined
-construction of \S3 and would disqualify any future variant that improved the energy while losing
-the symmetry.
+\paragraph{The hard split.} With $\Gamma$ the plane through the kernel and the condition imposed
+exactly, $E(\mathrm{He}) = -3.026749$ against the observed $-2.903724$: \textbf{over-binding by
+$4.2\%$}. That is the one helium figure this paper reports.
+
+\paragraph{The weak split is not yet measurable, and we report that rather than a number.} Every
+attempt returns a state that fails the sphericity test: a computed dipole of
+$0.514\,\mathrm{D}$ where symmetry requires identically zero. By the standard set out in \S7---a
+symmetric system's dipole is a pure error measurement needing no reference, and is the one check
+that cannot be argued with---such a state is a failed computation and not a result, so its energy is
+not quoted here.
+
+The cause has been identified and it is an implementation defect rather than a property of the
+construction. At the kernel's own cell the relative coordinate vanishes, so the test that assigns
+cells to hemispheres ($\mathbf{r}\cdot\hat{\mathbf a} < 0$ against $\ge 0$) excludes one sibling
+from that cell and grants it to the other. The softened attraction there is $Z/\varepsilon \approx
+32\,E_h$ per unit density, so the two hemispheres are inequivalent \emph{by construction}. Two
+controls support this and no other hypothesis: releasing the per-step enforcement reproduces the
+state \emph{bit-identically}, so the asymmetry is fixed at initialisation; and rotating the
+dividing plane to a diagonal moves the dipole by only $4.7\%$, so it is not an alignment of the
+plane with the grid. Neither control changes the kernel cell, which is why neither helps.
+
+\paragraph{What helium does establish, independently of that defect.} The one-electron ion on the
+same kernel at the same $\sigma$ gives $-2.053249$ against the exact $-2.0$, $2.66\%$ deep, with
+$T = 1.8855$ against $2.0$. So the $Z = 2$ cusp and the transferred softening are \emph{both}
+sound, and whatever limits helium is a two-electron matter. That is worth having: it rules out the
+calibration and the kernel as explanations before any two-electron number is in hand.
+
+And the geometry is the reason to expect helium to be the harder case either way. Its interface
+passes through the kernel rather than between two of them, so it cuts the density maximum:
+$\int_\Gamma u^2 dS = 1.681$ against H$_2$'s $0.496$. Whatever error an interface treatment
+carries is weighted there by the largest density in the system.
 
 \section{HeH$^+$: the asymmetric case}
 
@@ -286,5 +363,36 @@ of the $\sigma$ confound; displaced H$_2$ isolates the mechanism exactly but is 
 configuration. Neither alone decides it; together they do, and the prediction to test is that the
 construction which converges in interface stiffness is the one whose geometry converges in
 HeH$^+$.
+
+
+
+\section{What this establishes, and what it does not}
+
+\paragraph{Not that the model is accurate at two electrons.} It is not. On H$_2$ the two forms
+disagree by sixty-odd points of $D_e$, and on helium only one of them yields a state that passes the
+sphericity test at all. That width is the expected consequence of a declared property of the
+construction---the partition makes overlap impossible while the Coulomb term alone resists
+compression, and between equivalent domains across a mirror plane the partition contributes
+nothing---rather than a numerical failing to be driven down. The testable claim is that the error is
+\emph{systematic}: one sign, one scale, and cancelling in differences taken at fixed composition.
+
+\paragraph{And not that either observable has been predicted twice.} One form places H$_2$'s bond
+within $3.7\%$ and the other its binding energy within $7.7\%$, from a single calibration performed
+on one electron. That is the paper's positive result, and its limit is stated in \S4: the pair
+localises the deficiency to the interface treatment, and only the bond comes with a reason---
+H$_2$'s $\Gamma$ being fixed by symmetry---for preferring the form that gets it right.
+
+\paragraph{A caveat on the references.} The figure $-1.174470$ for H$_2$ is itself a
+\emph{computed} quantity rather than a measured one, and the total electronic energy is in any case
+not an observable. The observables here are the
+dissociation energy, the bond length, and a dipole that must vanish by symmetry. We report total
+energies because they are what the two constructions differ in, not because they are measurable.
+
+\paragraph{What the dipole buys.} For a symmetric system the computed dipole must be identically
+zero, so any nonzero value is a pure error measurement needing no reference of any kind. It is the
+one check in this paper that cannot be argued with, and it is what disqualified the combined
+construction of \S3 and would disqualify any future variant that improved the energy while losing
+the symmetry.
+
 
 \end{document}

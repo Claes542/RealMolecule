@@ -87,6 +87,10 @@ var SYMNOTE = {
 //
 // Key is 'box|h|gate'. Each set records how it was measured; add a set, do not edit one.
 var E_ATOM_SETS = {
+  // Measured 2026-11-08 at the CALIBRATED softening (eq:sigmacal, sigma = 0.627). H only so far;
+  // C, N and O still need running there before any molecular row beyond H2 can report an E_bind.
+  '12|0.100|0.1|s0.627': { H: -0.499901 },
+  '20|0.100|0.1|s0.627': { H: -0.499901 },   // E(H) is box-free to 1e-4, verified at both
   // THE DECLARED GRID: box 20, h 0.10 (200^3), eps = h, soft 1, rinit 3, wdiff 0.05, wd 1,
   // 232500 steps, gate 0.9. The atom is nearly box-free (-0.000082 Ha from box 12) while the
   // MOLECULE is not (+0.005967), so E_bind drops 3.5 points of D_e on moving here from box 12 --
@@ -151,7 +155,13 @@ function bindReport(key, M, box, h) {
   if (window._E === undefined) return { why: 'no energy yet' };
   if (M.atoms.length < 2) return { why: 'single atom - this run IS a reference' };
   var gate = (window.USER_W_KIN_GATE !== undefined ? window.USER_W_KIN_GATE : 0.1);
-  var gkey = box + '|' + h.toFixed(3) + '|' + gate;
+  // sigma MUST be in the key. It was not, and that silently paired a sigma=0.627 molecule with a
+  // sigma=1 atom: H2 then reported E_bind = 0.188011 (+7.8%, apparently OVER-binding) where the
+  // matched atom (-0.499901) gives 0.161053 (-7.7%, UNDER-binding). The sign inverted, and a whole
+  // conclusion was drawn from it before the mismatch was noticed. sigma sets the cusp resolution
+  // and therefore every energy, so a reference at a different sigma is not a reference at all.
+  var sig = (window.USER_SOFT !== undefined ? window.USER_SOFT : 1);
+  var gkey = box + '|' + h.toFixed(3) + '|' + gate + '|s' + Number(sig).toFixed(3);
   var set = E_ATOM_SETS[gkey];
   if (!set) return { why: 'no atomic references at ' + gkey + ' (box|h|gate); run the single atoms on THIS grid' };
   var sum = 0, miss = [];
@@ -224,7 +234,17 @@ var MOLS = {
   he_split: { name: 'He  split 2x1e hemi  [two-domain He: the bracket entry]', ext: 0, nelec: 2, atoms: [
       { x:0,y:0,z:0, el:'He', Z:2, sp:2, ax:[0,0,1] },
   ]},
-  he_v: { name: 'He  both electrons in ONE domain  [no V_ee -- control only]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'He', Z:2 } ]},
+  // HOMOGENEOUS He: both electrons in ONE domain sharing one shape. NOT a no-V_ee control -- I
+  // labelled it that from a memory about a different solver. mol_fast carries multi-occupancy
+  // (fm = 1/selfN for selfN > 1, mol_fast.js:838), so this domain gets Vee = INT(P_m - P_m/2)u^2,
+  // i.e. exactly ONE pair.
+  // CONNECTION TO HF: for a two-electron closed shell, both electrons in one spatial shape with
+  // exactly one Coulomb pair IS the restricted Hartree-Fock ansatz -- RHF's exchange cancels
+  // precisely half the self-interaction, leaving one J integral, which the i != j rule gives
+  // directly. So this should land on the RHF limit -2.861680, and its shortfall against the exact
+  // -2.903724 is the correlation energy (-0.0420). It is the natural BALANCE to the hard split:
+  // one shared shape (correlation-free, under-binds) against one territory each (over-binds 4.2%).
+  he_v: { name: 'He  homogeneous: 2e in ONE domain, one shared shape  [= RHF ansatz]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'He', Z:2 } ]},
   // HeH+ : the ASYMMETRIC two-electron system, and the only one here that can settle the
   // formulation question. H2 and He both have interfaces fixed by symmetry, where amplitude
   // matching and zero flux COINCIDE (the two constructions agree to 4e-8), so neither can
@@ -471,6 +491,8 @@ var MOLS = {
   // kernel depth >= 1.3 Ha, which a +4 kernel far exceeds -- so expect it to be the worse model
   // here, and treat a better result as the one needing scrutiny.
   window.USER_CLAMP_RC = qp.get('clamp') === '1';
+  // ?corefix=1 : let split siblings share the kernel's own cell. See mol_fast.js.
+  window.USER_CORE_SYMM = qp.get('corefix') === '1';
   // ?sax=x,y,z overrides every entry's split axis. The physics is rotation-invariant; the GRID is
   // not, so comparing [0,0,1] (dividing plane lying on cell faces) against a rotated axis
   // (cutting cells obliquely) separates a construction effect from a cubic-grid artefact.
@@ -949,6 +971,7 @@ var MOLS = {
       + (FREE.length ? ' free=[' + FREE.join(',') + ']' : '')
       + ' rc=' + USER_RC.toFixed(3) + (window.USER_CLAMP_RC ? ' CLAMP' : '')
       + (SAX ? ' sax=[' + SAX.join(',') + ']' : '')
+      + (window.USER_CORE_SYMM ? ' corefix=1' : '')
       + ' rinit=' + window.USER_R_INIT + ' wdiff=' + (window.USER_W_DIFF !== undefined ? window.USER_W_DIFF : 0.05)
       + ' wkinw=' + (window.USER_W_KIN_WEIGHT ? 1 : 0)
       + ' wkingate=' + (window.USER_W_KIN_GATE !== undefined ? window.USER_W_KIN_GATE : 0.1)
