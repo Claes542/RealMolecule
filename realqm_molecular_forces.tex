@@ -299,19 +299,25 @@ it predicts the model's own minimum to $0.2\%$.
 
 All calculations reported here use the GPU solver \texttt{mol\_fast} on a single declared grid:
 \begin{equation}
-  h = 0.1\,a_0, \qquad 200^3 \text{ cells}, \qquad \text{box } 20\,a_0, \qquad
+  h = 0.1\,a_0, \qquad 160^3 \text{ cells}, \qquad \text{box } 16\,a_0, \qquad
   \sigma = 0.627 \ \ \text{(calibrated, \eqref{eq:sigmacal})},
   \label{eq:grid}
 \end{equation}
 the same for every molecule in the list. The grid is not adjusted per system and no mesh ladder is
 run to justify a number. This requires defending, because it inverts the usual practice.
 
-\paragraph{At fixed $h$, the grid size is the box.} Since $\text{box} = n h$, declaring $h$ means
-that choosing between $100^3$, $200^3$ and $300^3$ is choosing a box of $10$, $20$ or $30\,a_0$---how
-much vacuum surrounds the molecule, not how finely it is resolved. The bond length is nearly
-insensitive to that: holding $h = 0.1$ and enlarging the box from $10$ to $14\,a_0$ moves H$_2$ from
-$1.8855$ to $1.8921\,a_0$, a change of $0.35\%$. Box $20$ is chosen as the smallest that holds the
-polyatomic entries with room for their electron clouds.
+\paragraph{At fixed $h$, the grid size is the box.} Since $\text{box} = n h$, declaring $h$ turns
+the choice of grid size into a choice of how much vacuum surrounds the molecule, not of how finely
+it is resolved. The bond length is nearly insensitive to that: holding $h = 0.1$ and enlarging the
+box from $10$ to $14\,a_0$ moves H$_2$ from $1.8855$ to $1.8921\,a_0$, a change of $0.35\%$.
+
+\paragraph{Why $16\,a_0$ and not more.} Two constraints meet here and the second is the binding
+one. The box must be large enough to hold the polyatomic entries with room for their electron
+clouds, which rules out $12\,a_0$. And it must be small enough to compute: at $h = 0.1$, box
+$20\,a_0$ is $200^3$ cells, and two-electron runs at that size exhaust the browser's resources and
+return no energy at all, while $160^3$ runs to convergence in minutes. So $16\,a_0$ is not a
+compromise between accuracy and convenience---it is the largest box at which these calculations
+exist. We prefer to say that plainly rather than to declare a grid the computations cannot reach.
 
 \paragraph{The declared box costs accuracy on the acceptance test, and we report it.} Enlarging the
 box is not free in the direction one would hope. At box $20$, H$_2$ at $R = 1.9\,a_0$ returns a
@@ -323,7 +329,7 @@ declared grid is measurably worse on the one test that cannot be argued with, an
 weigh the dipole column accordingly.
 
 \paragraph{Where $h = 0.1$ comes from.} Not from a physical argument. It is the finest spacing at
-which these systems compute in a common web browser---$200^3$ cells at the declared box---and the
+which these systems compute in a common web browser---$160^3$ cells at the declared box---and the
 simulator is deliberately a browser program so that any reader can reproduce every number here
 without installing anything. That is an accessibility choice with a price, and the price is
 resolution: \textbf{the precision to expect from this table is fair rather than high}, several of
@@ -826,9 +832,9 @@ NH$_3$  & 3,1,1,1   & \emph{(0.6834)} & \emph{(0.786)} & $1.472$ & $127\%$ & rej
 \end{tabular}
 \caption{\textbf{These rows predate the calibration \eqref{eq:sigmacal} and the declared box, and
 are being re-measured; they are retained here only so the structure of the table is visible.} They
-were computed at $\sigma = 1$ and box $16\,a_0$, against \eqref{eq:grid}'s $\sigma = 0.627$ and box
-$20\,a_0$. Both differences are material: the box is worth about four points of $D_e$ and $\sigma$
-sets the cusp resolution, hence every energy. Primary results, one grid throughout (box
+were computed at $\sigma = 1$, against \eqref{eq:grid}'s calibrated $\sigma = 0.627$; the box and
+spacing are already those of \eqref{eq:grid}. The difference is material, since $\sigma$ sets the
+cusp resolution and hence every energy. Primary results, one grid throughout (box
 $16\,a_0$, $h = 0.10$, $r_c = 0$, occupancy
 cut-off $0.9$, $232\,500$ steps) against atomic references measured identically:
 $E(\mathrm{H}) = -0.486591$, $E(\mathrm{C}) = -15.113441$, $E(\mathrm{N}) = E(\mathrm{O}) =
