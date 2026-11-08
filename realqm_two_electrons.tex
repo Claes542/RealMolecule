@@ -157,6 +157,21 @@ $h = 0.1395, 0.10, 0.08$ and is still falling. Every number below is therefore r
 declared mesh and not at a limit, which is the honest status of a model whose results depend on $h$
 and whose $h$-dependence is measured rather than assumed away.
 
+\paragraph{Where $h = 0.1$ comes from, and what precision to expect.} The spacing is not chosen on
+any physical ground. It is the finest at which these systems compute in a \emph{common web browser}:
+at box $20\,a_0$ that is $200^3$ cells, and a two-electron run at that size already takes some tens
+of minutes on ordinary hardware. The whole simulator is deliberately a browser program---anyone can
+load it and reproduce every number here without installing anything---and $h = 0.1$ is the
+resolution that constraint permits.
+
+The consequence should be stated plainly rather than discovered by the reader: \textbf{the precision
+to expect is fair, not high.} Several of the errors reported below are mesh-limited rather than
+model-limited, and we say which where we can tell them apart---helium's energy most clearly, where
+the softening moves the answer by nine percent and the quantities of physical interest are smaller
+than that. Where an $h$-ladder exists we give it instead of a single figure, and where the ladder
+has not flattened we say so. A finer mesh is the obvious next step and is not available under the
+constraint we have adopted.
+
 This is the second constant, and the last. Three properties of it matter. It is performed on a \emph{one-electron} system, where
 the model has no content of its own and the reference is exact, so no two-electron observable is
 consumed. It is a single number, not a function of anything. And it is fixed before any
@@ -282,9 +297,70 @@ $2.66\%$ deep, so the cusp itself is well handled. And the interface passes \emp
 kernel rather than lying between two of them, so it cuts the density maximum:
 $\int_\Gamma u^2 dS = 1.681$ against H$_2$'s $0.496$, a factor of $3.4$.
 
-\paragraph{The hard split.} With $\Gamma$ the plane through the kernel and the condition imposed
-exactly, $E(\mathrm{He}) = -3.026749$ against the observed $-2.903724$: \textbf{over-binding by
-$4.2\%$}. That is the one helium figure this paper reports.
+\paragraph{Helium is special: both electrons touch the kernel.} In every molecule below, each
+electron has its own kernel and the interface lies \emph{between} them, in the tail of both
+densities. Helium has one kernel and two electrons, so a dividing surface necessarily passes
+\emph{through} it and both domains touch it. The interface therefore cuts the density maximum
+rather than the tail: $\int_\Gamma u^2\,dS = 1.681$ against H$_2$'s $0.496$, a factor of $3.4$.
+Helium is not a smaller molecule; it is a different configuration, and its two admissible
+constructions are not two approximations to one answer.
+
+\paragraph{Two constructions, describing different things.} The \emph{homogeneous} treatment puts
+both electrons in one domain sharing one shape. For a two-electron closed shell that is exactly the
+restricted Hartree--Fock ansatz---one spatial shape, one Coulomb pair, which the $i \neq j$ rule
+supplies directly---so it should return the Hartree--Fock energy, and the shortfall against the
+exact value is the correlation energy that neither carries. The \emph{split} treatment gives each
+electron its own territory, with $\Gamma$ the plane through the kernel and the condition imposed
+exactly:
+\[
+  E(\mathrm{He}) = -3.026749 \quad\text{against}\quad -2.903724 ,
+  \qquad \textbf{over-binding by } 4.2\% .
+\]
+
+\paragraph{What the homogeneous treatment measures.} At the softening calibrated on hydrogen it
+returns $E = -2.771193$, with the state clean on every available check---$\mu = 0.000\,\mathrm{D}$
+as sphericity requires, the norm exact at $2.000$, and the interface measure $3\times10^{-4}$ since
+there is no interface. The term breakdown is the informative part. Against the Hartree--Fock values
+$T = 2.8617$, $V_{eK} = -6.7492$, $J = 1.0258$:
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+$\sigma$ & $T$ & $V_{eK}$ & $V_{ee}$ \\
+\midrule
+$0.627$ (calibrated on H) & $2.5318$ \ ($-11.5\%$) & $-6.3228$ \ ($-6.3\%$) & $\mathbf{1.0197}$ \ $(\mathbf{-0.6\%})$ \\
+$0.2846$                  & $3.1780$ \ ($+11.0\%$) & $-7.3139$ \ ($+8.4\%$) & $1.1135$ \ ($+8.6\%$) \\
+\bottomrule
+\end{tabular}
+\end{center}
+At the calibrated $\sigma$ the \emph{pair} term is right to $0.6\%$ and the whole error lies in the
+one-electron terms---which is where He$^+$ already placed it, with a $5.7\%$ kinetic deficit at the
+same $\sigma$. So the two-electron content is sound and the unresolved $Z = 2$ cusp at $h = 0.1$ is
+what the energy is reporting.
+
+\paragraph{And at this mesh the softening dominates helium.} Moving $\sigma$ from $0.627$ to
+$0.2846$ moves $E$ by $0.251\,E_h$, about $9\%$, from $3.2\%$ shallow of Hartree--Fock to $5.6\%$
+deep of it. Against that, the correlation energy is $1.45\%$ of the total and the difference between
+the two constructions is smaller still. Three consequences follow and we state them rather than
+work around them. Helium's energy at $h = 0.1$ is a statement about resolution, not about the
+model. The gap to the exact value cannot be read as correlation, because the resolution error
+exceeds the quantity it would explain. And we decline to choose the $\sigma$ that lands on
+Hartree--Fock: $\sigma$ is fixed by hydrogen, and re-fixing it on helium would be the one thing this
+paper is organised to avoid.
+
+\paragraph{A cross-check worth recording.} At $\sigma = 0.2846$ the homogeneous treatment gives
+$-3.022386$ and the split treatment $-3.026749$---$0.15\%$ apart, from two different codes and two
+different constructions. That is a useful validation of both implementations, and it also shows that
+the distinction between them does \emph{not} appear in helium's energy. Which is the point of the
+next paragraph: the difference is structural.
+
+The split is worth keeping despite over-binding, and not as a variant to be averaged with the other.
+A spherical shared shape has no internal structure to orient, so it can generate no attraction
+between two such atoms at all; two territories can. Whether that mechanism accounts for the observed
+weak binding of He$_2$ we do not compute here, and we are careful not to claim it---dispersion-bound
+systems have been treated as outside this construction's range---but the \emph{qualitative}
+difference is structural rather than numerical: one construction admits the mechanism and the other
+forbids it. That is a reason to retain both for helium, and a reason not to read the two energies as
+a bracket around a single answer.
 
 \paragraph{The weak split is not yet measurable, and we report that rather than a number.} Every
 attempt returns a state that fails the sphericity test: a computed dipole of
