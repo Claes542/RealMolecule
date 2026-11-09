@@ -529,6 +529,15 @@ var MOLS = {
   // fields are silently ignored and every shell competes isotropically, which is NOT the
   // construction. mol_fast_oh_drho.html sets it for exactly this reason.
   if (SH) window.USER_SHELL_MODE = true;
+  // ?order=1 : radial ORDER with free radii (mol_fast USER_SHELL_ORDER, as mol_fast_oh_drho ?order=1).
+  // Every USER_SHELL_UPDATE (?supd=, default 250) steps the domains on one kernel are ranked by mean
+  // radius and each boundary is put at the radius enclosing the cumulative electron count -- the 1D
+  // solver's construction. Without it nothing keeps the valence out of the core (c_sh, wd=0: E -65.0
+  // against -37.845 exact, VeK -125).
+  if (SH && qp.get('order') === '1') {
+    window.USER_SHELL_ORDER = true;
+    window.USER_SHELL_UPDATE = parseInt(qp.get('supd') || '250', 10);
+  }
   // ?clamp=1 selects the CLAMP core model instead of hard depletion. Two different mechanisms for
   // the same job, and mol_fast implements them as an either/or:
   //   hard depletion (default) -- drives the WEIGHT to zero inside r_c, so the density is
@@ -1044,6 +1053,9 @@ var MOLS = {
       + ' fn=' + (window.USER_FACE_NEUMANN ? 1 : 0)
       + ' zinit=' + (nuclei[0] && nuclei[0].z_init !== undefined ? nuclei[0].z_init : 'dflt') + qReport
       + ' | n=' + N + ' box=' + box + ' h=' + h.toFixed(4) + ' nat=' + M.atoms.length + ' ndom=' + nuclei.length;
+    // ?log=1: echo the title to the console, so a HEADLESS Chrome run (--enable-logging=stderr)
+    // can be read without AppleScript or a visible window.
+    if (qp.get('log') === '1') console.log(document.title);
   }, 1500);
 })();
 

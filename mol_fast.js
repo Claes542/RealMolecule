@@ -27,7 +27,10 @@ console.log("[mol_fast.js] script loaded");
   }
   const nuclei = rawNuclei.map(n => ({
     i: n.i, j: n.j, k: n.k, Z: n.Z,
-    rc: n.rc || 0, r_out: n.r_out || 0, tilt_y: n.tilt_y || 0, tilt_x: n.tilt_x || 0, hs: n.hs || 0,
+    rc: n.rc || 0, r_out: n.r_out || 0,
+    // r_in WAS DROPPED HERE until 2026-11-09: rInArr and the shell-bound seed read nuclei[a].r_in from
+    // THIS copy, so every declared r_in was silently 0 (incl. mol_fast_oh_drho ?shells=242L).
+    r_in: n.r_in || 0, tilt_y: n.tilt_y || 0, tilt_x: n.tilt_x || 0, hs: n.hs || 0,
     flat: n.flat || 0,        // init as CONSTANT density inside a sphere of this radius (0 = off)
     halfx: n.halfx || 0,      // ±1: concentrate INITIAL density on one side of x (0 = off)
     halfy: n.halfy || 0,      // ditto in y -- x+y together give a QUARTER shell
