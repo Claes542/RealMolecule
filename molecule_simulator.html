@@ -63,7 +63,7 @@ window.onerror = function (m, u, l, c) {
 //   'none'    nothing cancels (CO, HCN, N2O, HC3N) -> a genuine convergence measurement
 // Measured 2026-11-03: the asymmetric cases run 11-89% while CO2 and C3O2 read 0.1-0.2%, which is
 // symmetry being preserved, not convergence being good.
-var SYM = { h:'full', c:'full', n:'full', o:'full', he_split:'full', he_v:'full', heplus:'full', hyd2:'full', hyd3:'full', hyd4:'full', heli3:'full', heli4:'full', heli6:'full', heli7:'full', heli8:'full', hehp:'none', h2:'full', n2:'full', o2:'full', co:'none', co2:'full', n2o:'none', hcn:'none',
+var SYM = { h:'full', c:'full', n:'full', o:'full', he_split:'full', he_v:'full', heplus:'full', hyd2:'full', hyd3:'full', hyd4:'full', c4s:'full', c_sh:'full', c_sh222:'full', heli3:'full', heli4:'full', heli6:'full', heli7:'full', heli8:'full', hehp:'none', h2:'full', n2:'full', o2:'full', co:'none', co2:'full', n2o:'none', hcn:'none',
             c2h2:'full', c2n2:'full', c3o2:'full', hc3n:'none', c4h2:'full',
             h2o:'axis', h2o_split:'axis', nh3:'axis', ch4:'full', h2co:'axis',
             h2o_a90:'axis', h2o_a109:'axis', h2o_a120:'axis', h2o_z2:'axis' };
@@ -189,6 +189,26 @@ var MOLS = {
   ]},
   c: { name: 'C  single atom  [E_bind reference]', ext: 0.000, nelec: 4, atoms: [
       { x:  0.00000, y:  0.00000, z:  0.00000, el:'C', Z:4 },
+  ]},
+  // SHELL MODEL WITH A PSEUDO INNER CORE (Claes 2026-11-08): kernel Z_x = 4 carries the 1s pair as a
+  // pseudocore (?rc= at its PHYSICAL radius, Slater 0.263 for C), valence explicit and SPLIT into
+  // four one-electron tetrahedral sectors. Compare with `c` (one 4-electron blob) at equal rc.
+  // FAILED 2026-11-09: at rc 0 the lone atom is not spherical (mu 0.134 D -- the kernel cell is owned
+  // by one sector); at rc 0.263 it diverges (E -7.97, mu 0.50). Blob `c` is the working entry.
+  c4s: { name: 'C  pseudo-1s + valence split 4 x 1e (tetra)  [shell model, pseudo core]', ext: 0.000, nelec: 4, atoms: [
+      { x: 0, y: 0, z: 0, el:'C', Z:4, sp:4 },
+  ]},
+  // ALL-ELECTRON carbon, hom2 core + valence, both free (?sh=1; add ?shv=1 for a hom4 valence). The
+  // 3D version of atom_simulator's 2+4: no r_c, the core/valence boundary found by non-overlap.
+  // FAILED 2026-11-09: E = NaN from step 0-500, hom or split valence. Not debugged.
+  c_sh: { name: 'C  all-electron 2+4 on Z=6  [?sh=1; ?shv=1 = hom valence]', ext: 0.000, nelec: 6, atoms: [
+      { x: 0, y: 0, z: 0, el:'C', Z:4, Zfull:6, sh:[2,4] },
+  ]},
+  // atom_simulator's PHYSICAL carbon, 2+2+2 (1D: -37.376, 1.2% from exact). In ?sh=1 the inner two
+  // shells are shape-locked spheres -- so here TWO VALENCE electrons are locked spherical too.
+  // FAILED 2026-11-09: E = NaN from step 0-500, as c_sh. Not debugged.
+  c_sh222: { name: 'C  all-electron 2+2+2 on Z=6  [?sh=1; 1D physical config]', ext: 0.000, nelec: 6, atoms: [
+      { x: 0, y: 0, z: 0, el:'C', Z:4, Zfull:6, sh:[2,2,2] },
   ]},
   n: { name: 'N  single atom  [E_bind reference]', ext: 0.000, nelec: 3, atoms: [
       { x:  0.00000, y:  0.00000, z:  0.00000, el:'N', Z:3 },
@@ -551,7 +571,14 @@ var MOLS = {
     // during each step (so SigmaF is not a valid check mid-sequence; only at the end).
     // mol_fast already honours `fixed` per nucleus (mol_fast.js:35); only this page set it uniformly.
     var heldFlag = FREE.length ? (FREE.indexOf(ai) < 0) : !qp.get('dyn');
-    var base = { i: N2 + a.x / h, j: N2 + a.y / h, k: N2 + a.z / h, rc: USER_RC, fixed: heldFlag };
+    // PER-ELEMENT CORE RADIUS: ?rcC= / ?rcN= / ?rcO= (any element symbol) override ?rc= for that
+    // element, so hydrogen -- which has no core -- can keep r_c = 0 while the heavy atoms carry one.
+    // Absent, every atom takes ?rc= exactly as before (bit-identical for existing URLs). In the
+    // default (non-shell) mode each atom's r_c depletes EVERY domain, not just its own: the core
+    // excludes the neighbour's valence too.
+    var rcEl = parseFloat(qp.get('rc' + a.el));
+    var base = { i: N2 + a.x / h, j: N2 + a.y / h, k: N2 + a.z / h,
+                 rc: isFinite(rcEl) ? rcEl : USER_RC, fixed: heldFlag };
     // the shell test must come FIRST: a shell atom carries `sh` but no `sp`, so `!a.sp` would
     // otherwise swallow it and build ONE domain holding every electron (measured: ndom=3 instead
     // of 5 for h2o_sh, E = -89.6 with VeK = -224).
@@ -573,7 +600,9 @@ var MOLS = {
         nuclei.push(d); targets.push(a.sh[sIdx]); labels.push(a.el + '.s' + sIdx);
       }
       // valence: SPLIT, and deliberately NO r_in and NO r_out
-      var nv = a.sh[nsh - 1], nvd = Math.min(nv, 4), per = nv / nvd;
+      // ?shv=1: keep the valence as ONE homogeneous domain (the 1D atom simulator's hom valence)
+      // instead of splitting it -- the 3D counterpart of atom_simulator's 2+4 construction.
+      var nv = a.sh[nsh - 1], nvd = qp.get('shv') === '1' ? 1 : Math.min(nv, 4), per = nv / nvd;
       for (var v = 0; v < nvd; v++) {
         nuclei.push(Object.assign({}, base, {
           Z: 0, rc: 0, z_init: nv, split: SPLIT_BY_N[nvd] || 'sphere', split_idx: v,
@@ -1001,7 +1030,7 @@ var MOLS = {
       + (qp.get('dyn') ? ' dR=' + maxRad.toFixed(1) + '% dAng=' + maxAng.toFixed(2) + 'deg' : '')
       + ' soft=' + window.USER_SOFT.toFixed(2) + ' eps=' + (window.USER_SOFT*h).toFixed(3)
       + (FREE.length ? ' free=[' + FREE.join(',') + ']' : '')
-      + ' rc=' + USER_RC.toFixed(3) + (window.USER_CLAMP_RC ? ' CLAMP' : '')
+      + ' rc=' + USER_RC.toFixed(3) + ['C','N','O'].map(function (e) { var v = qp.get('rc' + e); return v !== null ? ' rc' + e + '=' + parseFloat(v).toFixed(3) : ''; }).join('') + (window.USER_CLAMP_RC ? ' CLAMP' : '')
       + (SAX ? ' sax=[' + SAX.join(',') + ']' : '')
       + (window.USER_CORE_SYMM ? ' corefix=1' : '')
       + ' rinit=' + window.USER_R_INIT + ' wdiff=' + (window.USER_W_DIFF !== undefined ? window.USER_W_DIFF : 0.05)
