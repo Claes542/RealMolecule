@@ -63,7 +63,7 @@ window.onerror = function (m, u, l, c) {
 //   'none'    nothing cancels (CO, HCN, N2O, HC3N) -> a genuine convergence measurement
 // Measured 2026-11-03: the asymmetric cases run 11-89% while CO2 and C3O2 read 0.1-0.2%, which is
 // symmetry being preserved, not convergence being good.
-var SYM = { h:'full', c:'full', n:'full', o:'full', he_split:'full', he_v:'full', heplus:'full', hyd2:'full', hyd3:'full', hyd4:'full', c4s:'full', c_sh:'full', c_sh222:'full', heli3:'full', heli4:'full', heli6:'full', heli7:'full', heli8:'full', hehp:'none', h2:'full', n2:'full', o2:'full', co:'none', co2:'full', n2o:'none', hcn:'none',
+var SYM = { h:'full', c:'full', n:'full', o:'full', he_split:'full', he_v:'full', heplus:'full', hyd2:'full', hyd3:'full', hyd4:'full', c4s:'full', c_sh:'full', c_sh222:'full', heli3:'full', heli4:'full', heli6:'full', heli7:'full', heli8:'full', hehp:'none', h2:'full', n2:'full', o2:'full', co:'none', oh:'none', nh:'none', ch:'none', co2:'full', n2o:'none', hcn:'none',
             c2h2:'full', c2n2:'full', c3o2:'full', hc3n:'none', c4h2:'full',
             h2o:'axis', h2o_split:'axis', nh3:'axis', ch4:'full', h2co:'axis',
             h2o_a90:'axis', h2o_a109:'axis', h2o_a120:'axis', h2o_z2:'axis' };
@@ -327,6 +327,21 @@ var MOLS = {
       { x: -1.14139, y:  0.00000, z:  0.00000, el:'O', Z:3 },
       { x:  1.14139, y:  0.00000, z:  0.00000, el:'O', Z:3 },
   ]},
+  // X-H DIATOMICS (2026-11-09), observed R_e (Huber-Herzberg): OH 0.9697 A, NH 1.0362 A, CH 1.1199 A.
+  // Two centres, and hydrogen has no core -- the most favourable case the model has. No X-H bond
+  // length had ever been computed in this project; scan with ?R= (a0). Heavy atom at -R/2, H at +R/2.
+  oh: { name: 'OH hydroxyl  [X-H scan]', ext: 0.916, nelec: 4, atoms: [
+      { x: -0.91622, y: 0, z: 0, el:'O', Z:3 },
+      { x:  0.91622, y: 0, z: 0, el:'H', Z:1 },
+  ]},
+  nh: { name: 'NH imidogen  [X-H scan]', ext: 0.979, nelec: 4, atoms: [
+      { x: -0.97905, y: 0, z: 0, el:'N', Z:3 },
+      { x:  0.97905, y: 0, z: 0, el:'H', Z:1 },
+  ]},
+  ch: { name: 'CH methylidyne  [X-H scan]', ext: 1.058, nelec: 5, atoms: [
+      { x: -1.05815, y: 0, z: 0, el:'C', Z:4 },
+      { x:  1.05815, y: 0, z: 0, el:'H', Z:1 },
+  ]},
   co: { name: 'CO carbon monoxide', ext: 1.066, nelec: 7, atoms: [
       { x: -1.06581, y:  0.00000, z:  0.00000, el:'C', Z:4 },
       { x:  1.06581, y:  0.00000, z:  0.00000, el:'O', Z:3 },
@@ -453,6 +468,15 @@ var MOLS = {
   var key = qp.get('mol') || 'ch4';
   if (!MOLS[key]) key = 'ch4';
   var M = MOLS[key];
+  // ?R= (a0) : BOND-LENGTH SCAN for a diatomic -- kernels at -R/2 and +R/2 on x, nothing rounded.
+  // With R a multiple of 2h both kernels sit exactly on grid nodes (commensurate). Copied, so the
+  // MOLS entry keeps its observed geometry for every other use.
+  var R_SCAN = parseFloat(qp.get('R'));
+  if (isFinite(R_SCAN) && M.atoms.length === 2) {
+    M = Object.assign({}, M, { atoms: [
+      Object.assign({}, M.atoms[0], { x: -R_SCAN / 2, y: 0, z: 0 }),
+      Object.assign({}, M.atoms[1], { x:  R_SCAN / 2, y: 0, z: 0 }) ] });
+  }
 
   // Box from the molecule's own extent: the outermost nucleus plus room for its electron cloud
   // (~3 a0) plus margin. Undersized boxes were a real error source -- several runs were silently
