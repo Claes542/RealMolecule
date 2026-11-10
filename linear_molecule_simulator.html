@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+<title>Linear Molecule Simulator</title>
+<style>
+  :root { --surface:#000; --panel:rgba(0,0,0,.92); --ink:#f0efec; --ink2:#c3c2b7; --muted:#8a8a80; --rule:#2a2f33;
+          --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --obs:#c3c2b7; }
+  body { margin:0; background:var(--surface); color:var(--ink); font-family:monospace }
+  select,button { background:#1a2228; color:#dfe; border:1px solid #456; padding:3px 6px; font-family:monospace }
+  a { color:#6cf }
+  #panel { position:fixed; top:8px; left:8px; background:var(--panel); padding:9px 11px; border:1px solid #345;
+           border-radius:6px; width:270px; max-height:96vh; overflow-y:auto; font-size:11.5px; z-index:10; color:#cde }
+  #main { margin-left:306px; padding:8px 10px 20px 0 }
+  h2 { font-size:13px; color:#8df; margin:10px 0 4px; font-weight:bold }
+  table { border-collapse:collapse; font-size:12px }
+  td,th { padding:2px 8px; text-align:right; border-bottom:1px solid var(--rule) }
+  th { color:var(--muted); font-weight:normal } td:first-child, th:first-child { text-align:left }
+  tr.sel td { background:#14202a } tr.row { cursor:pointer } tr.row:hover td { background:#101820 }
+  .muted { color:var(--muted) } .k { color:#9ab }
+  .cat { margin:2px 0; padding:3px 5px; border-radius:4px; cursor:pointer } .cat:hover { background:#13202a }
+  .cat.on { background:#1b2c38 } .cat .st { float:right; color:var(--muted) } .cat .st.ok { color:#9c9 }
+  #chartWrap { position:relative; display:inline-block }
+  #tip { position:absolute; pointer-events:none; background:#111; border:1px solid #456; padding:4px 6px; font-size:11px;
+         color:var(--ink); display:none; white-space:pre; z-index:5 }
+  #legend span { margin-right:14px } #legend i { display:inline-block; width:14px; height:2px; vertical-align:middle; margin-right:4px }
+  iframe { width:100%; height:900px; border:1px solid #234; background:#000 }
+  .btns button { margin-right:4px }
+</style>
+</head><body>
+<div id="panel">
+  <div style="font-weight:bold;color:#8df">Linear Molecule Simulator &mdash; axisym</div>
+  <div class="muted" style="margin:4px 0 8px">2D (z,&rho;) RealQM solver, exact for linear molecules.<br>
+    <b style="color:#cde">Protocol:</b> geometry from the <b>sharp</b> interface (R scan, h ladder &rarr; h&rarr;0);
+    binding energy from the <b>weak</b> (mol_fast) interface at h = 0.1 exactly, at the observed R and at the sharp R.
+    r<sub>c</sub> of a pseudo-atom is fitted to the atom's IE sum, per interface.</div>
+  <div style="margin-bottom:6px"><button id="reload">reload runs</button></div>
+  <div id="catalogue"></div>
+  <div id="detail" style="margin-top:8px"></div>
+  <div class="muted" style="margin-top:8px">Runs are made from the command line and land in <code>axisym_runs/</code>;
+    this page discovers them. <code>?mol=</code> selects one. Density views: <a href="axisym_view.html">axisym_view.html</a>.</div>
+</div>
+<div id="main">
+  <h2>All linear molecules run so far</h2>
+  <div id="summary" class="muted">loading&hellip;</div>
+  <h2 id="chartTitle">Geometry: sharp-interface binding vs R</h2>
+  <div id="legend" style="font-size:11px;margin-bottom:4px"></div>
+  <div id="chartWrap"><canvas id="ch" width="760" height="300"></canvas><div id="tip"></div></div>
+  <h2>Densities</h2>
+  <div class="btns" id="btns"></div>
+  <iframe id="view" src="about:blank"></iframe>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const KCAL = 627.509, A0 = 0.529177;
+const SER = ['--s1', '--s2', '--s3', '--s4'].map(v => getComputedStyle(document.documentElement).getPropertyValue(v).trim());
+// Catalogue: the examples this simulator is meant to hold. Observed values are what the protocol compares
+// against; the ones marked (unchecked) are from memory/the book and must be verified before quoting.
+const CAT = [
+  { key:'h2',         name:'H2',  model:'bare protons, 1e per half-space',                 Robs:1.4011, Eexp:109.5, src:'exact' },
+  { key:'h3',         name:'H3 (linear)', model:'bare protons, 1e per domain; exact = H+H2 saddle', Robs:1.757, Eexp:null, src:'saddle, from memory' },
+  { key:'beh2_hom',   name:'BeH2', model:'pseudo-Be +2, one 2e valence domain',             Robs:2.5066, Eexp:144, src:'book (unchecked)' },
+  { key:'beh2_split', name:'BeH2', model:'pseudo-Be +2, valence 1+1 hemispheres',           Robs:2.5066, Eexp:144, src:'book (unchecked)' },
+  { key:'ch2_hom',    name:'CH2 (linear)', model:'pseudo-C +2, one 2e valence domain (2023 sketch)', Robs:2.0372, Eexp:null, src:'real CH2 is bent' },
+  { key:'ch2_split',  name:'CH2 (linear)', model:'pseudo-C +2, valence 1+1',                Robs:2.0372, Eexp:null, src:'real CH2 is bent' },
+  { key:'ch2_4',      name:'CH2 (linear)', model:'pseudo-C +4, valence 2|2',                Robs:2.0372, Eexp:null, src:'real CH2 is bent' },
+  { key:'lih',        name:'LiH', model:'planned: pseudo-Li +1 + H',                          Robs:3.0154, Eexp:58.0, src:'exp D_e 2.52 eV', planned:true },
+  { key:'co2',        name:'CO2', model:'planned: pseudo-C, pseudo-O',                        Robs:2.1944, Eexp:null, src:'planned', planned:true },
+];
+let PROT = {}, cur = null, hover = null, pts = [];
+async function discover() {
+  let names = [];
+  try { names = await (await fetch('axisym_runs/protocols.json?' + Date.now())).json(); } catch (e) {}
+  if (!names.length) try {          // local server fallback: directory listing
+    const html = await (await fetch('axisym_runs/?' + Date.now())).text();
+    names = [...html.matchAll(/href="(protocol_[^"]+\.json)"/g)].map(m => m[1]);
+  } catch (e) {}
+  PROT = {};
+  for (const f of names) {
+    try { const d = await (await fetch('axisym_runs/' + f + '?' + Date.now())).json(); PROT[d.name] = d; } catch (e) {}
+  }
+  const want = new URLSearchParams(location.search).get('mol');
+  cur = want || cur || (Object.keys(PROT)[0] || CAT[0].key);
+  renderCatalogue(); renderSummary(); select(cur);
+}
+function pct(x, ref) { return ref ? ((x / ref - 1) * 100).toFixed(1) + '%' : ''; }
+function rowData(c) {
+  const d = PROT[c.key]; if (!d) return null;
+  const eo = d.energy && d.energy.obs, eh = d.energy && d.energy.hard;
+  return { R: d.R_hard, Rpct: pct(d.R_hard, c.Robs), Eo: eo ? eo.Ea * KCAL : null, Eh: eh ? eh.Ea * KCAL : null };
+}
+function renderCatalogue() {
+  $('catalogue').innerHTML = CAT.map(c => {
+    const done = !!PROT[c.key];
+    return `<div class="cat ${c.key === cur ? 'on' : ''}" data-k="${c.key}"><b>${c.name}</b>
+      <span class="st ${done ? 'ok' : ''}">${done ? 'run' : (c.planned ? 'planned' : 'not run')}</span><br>
+      <span class="muted">${c.model}</span></div>`;
+  }).join('');
+  document.querySelectorAll('.cat').forEach(e => e.onclick = () => select(e.dataset.k));
+}
+function renderSummary() {
+  const rows = CAT.filter(c => PROT[c.key]).map(c => {
+    const r = rowData(c), f = x => x == null ? '&ndash;' : x.toFixed(1);
+    return `<tr class="row ${c.key === cur ? 'sel' : ''}" data-k="${c.key}"><td>${c.name} <span class="muted">${c.key}</span></td>
+      <td>${c.Robs.toFixed(4)}</td><td>${r.R.toFixed(4)}</td><td>${r.Rpct}</td>
+      <td>${f(r.Eo)}</td><td>${f(r.Eh)}</td><td>${c.Eexp == null ? '&ndash;' : c.Eexp}</td><td>${c.Eexp ? pct(r.Eo, c.Eexp) : ''}</td>
+      <td class="muted">${c.src}</td></tr>`;
+  });
+  $('summary').innerHTML = rows.length ? `<table><tr><th>molecule</th><th>R obs (a0)</th><th>R sharp, h&rarr;0</th><th>&Delta;R</th>
+      <th>E weak @R obs</th><th>E weak @R sharp</th><th>E exp</th><th>&Delta;E @obs</th><th>reference</th></tr>${rows.join('')}</table>
+      <div class="muted" style="margin-top:3px">E = atomisation energy, kcal/mol. Weak energies are at h = 0.1 by protocol: they converge to the
+      (over-bound) sharp value as h &rarr; 0, so they are calibrated by the mesh &mdash; quote as "weak, h = 0.1".</div>`
+    : 'No protocol runs yet. Run e.g. <code>python3 tools/axisym_linear.py protocol h2</code>.';
+  document.querySelectorAll('tr.row').forEach(e => e.onclick = () => select(e.dataset.k));
+}
+function select(k) {
+  cur = k; history.replaceState(null, '', '?mol=' + k);
+  renderCatalogue(); renderSummary();
+  const c = CAT.find(x => x.key === k) || { key:k, name:k, model:'', Robs:NaN }, d = PROT[k];
+  if (!d) {
+    $('detail').innerHTML = `<b>${c.name}</b> &mdash; ${c.model}<br><span class="muted">not run yet:</span><br>
+      <code>python3 tools/axisym_linear.py protocol ${k}</code>`;
+    $('chartTitle').textContent = 'Geometry: (no run)'; pts = []; drawChart(null); $('btns').innerHTML = ''; $('view').src = 'about:blank';
+    return;
+  }
+  const rc = d.rc && d.rc.hard ? `r<sub>c</sub> sharp ${d.rc.hard.toFixed(4)}, weak ${d.rc.weak.toFixed(4)}<br>` : '';
+  const geo = d.geometry.map(g => `h ${g.h.toFixed(3)}: R<sub>min</sub> ${g.R.toFixed(4)}`).join('<br>');
+  const en = ['obs', 'hard'].map(l => d.energy[l] ? `weak @R ${l === 'obs' ? 'obs' : 'sharp'} ${d.energy[l].R.toFixed(4)}: <b>${(d.energy[l].Ea * KCAL).toFixed(1)}</b> kcal/mol` : '').join('<br>');
+  $('detail').innerHTML = `<b>${c.name}</b> &mdash; ${d.note}<br>${rc}
+    <span class="k">geometry (sharp)</span><br>${geo}<br>h&rarr;0: <b>${d.R_hard.toFixed(4)} a0 = ${(d.R_hard * A0).toFixed(4)} &Aring;</b>
+    (obs ${d.Robs.toFixed(4)}, ${pct(d.R_hard, d.Robs)})<br>
+    <span class="k">energy (weak, h = 0.1)</span><br>${en}${c.Eexp ? `<br>exp ${c.Eexp} <span class="muted">(${c.src})</span>` : ''}<br>
+    <span class="muted">${d.seconds.toFixed(0)} s &middot; rerun: <code>${d.cmd || ('python3 tools/axisym_linear.py protocol ' + k)}</code></span>`;
+  $('chartTitle').textContent = `Geometry: ${c.name}, sharp-interface atomisation energy vs R`;
+  drawChart(d);
+  const btn = [];
+  for (const l of ['obs', 'hard']) if (d.energy[l] && d.energy[l].file) btn.push([`weak @R ${l === 'obs' ? 'obs' : 'sharp'}`, d.energy[l].file]);
+  const gf = d.geometry[d.geometry.length - 1];
+  if (gf && gf.files) {
+    const ks = Object.keys(gf.files).map(Number); const kb = ks.reduce((a, b) => Math.abs(b - d.R_hard) < Math.abs(a - d.R_hard) ? b : a, ks[0]);
+    btn.push([`sharp h=${gf.h} @R ${kb}`, gf.files[String(kb)] || gf.files[kb]]);
+  }
+  $('btns').innerHTML = btn.map((b, i) => `<button data-f="${b[1]}">${b[0]}</button>`).join('');
+  document.querySelectorAll('#btns button').forEach(b => b.onclick = () => { $('view').src = 'axisym_view.html?f=' + b.dataset.f; });
+  if (btn.length) $('view').src = 'axisym_view.html?f=' + btn[0][1];
+}
+function drawChart(d) {
+  const c = $('ch'), x = c.getContext('2d'), W = c.width, H = c.height;
+  x.clearRect(0, 0, W, H); x.fillStyle = '#000'; x.fillRect(0, 0, W, H); pts = [];
+  if (!d) { $('legend').innerHTML = ''; return; }
+  const ser = d.geometry.map((g, i) => ({ h: g.h, Rm: g.R, col: SER[i % 4],
+    p: Object.keys(g.pts).map(Number).sort((a, b) => a - b).map(R => [R, g.pts[R] * KCAL]) }));
+  const all = ser.flatMap(s => s.p);
+  const R0 = Math.min(...all.map(p => p[0]), d.Robs) - 0.05, R1 = Math.max(...all.map(p => p[0]), d.Robs) + 0.05;
+  const E0 = Math.min(...all.map(p => p[1])), E1 = Math.max(...all.map(p => p[1]));
+  const pad = (E1 - E0) * 0.12 || 1, y0 = E0 - pad, y1 = E1 + pad;
+  const L = 58, Rt = 14, T = 22, B = 34, X = r => L + (r - R0) / (R1 - R0) * (W - L - Rt), Y = e => T + (1 - (e - y0) / (y1 - y0)) * (H - T - B);
+  // recessive grid + axes
+  x.strokeStyle = '#1c2226'; x.fillStyle = '#8a8a80'; x.font = '11px monospace'; x.lineWidth = 1;
+  const ny = 5; for (let i = 0; i <= ny; i++) { const e = y0 + (y1 - y0) * i / ny, yy = Y(e); x.beginPath(); x.moveTo(L, yy); x.lineTo(W - Rt, yy); x.stroke(); x.fillText(e.toFixed(1), 4, yy + 4); }
+  const step = (R1 - R0) > 1 ? 0.2 : 0.1;
+  for (let r = Math.ceil(R0 / step) * step; r <= R1; r += step) { const xx = X(r); x.fillText(r.toFixed(1), xx - 10, H - B + 15); }
+  x.fillText('R (a0)', W - 60, H - 4); x.fillText('kcal/mol', 4, T + 2);
+  // observed R
+  x.strokeStyle = '#c3c2b7'; x.setLineDash([4, 4]); x.beginPath(); x.moveTo(X(d.Robs), T); x.lineTo(X(d.Robs), H - B); x.stroke(); x.setLineDash([]);
+  x.fillStyle = '#c3c2b7'; x.fillText('R obs', X(d.Robs) + 4, T + 10);
+  // sharp h->0
+  x.strokeStyle = '#f0efec'; x.beginPath(); x.moveTo(X(d.R_hard), T); x.lineTo(X(d.R_hard), H - B); x.stroke();
+  x.fillStyle = '#f0efec'; x.fillText('R sharp h→0', X(d.R_hard) + 4, T + 24);
+  for (const s of ser) {
+    x.strokeStyle = s.col; x.lineWidth = 2; x.beginPath(); s.p.forEach((p, i) => i ? x.lineTo(X(p[0]), Y(p[1])) : x.moveTo(X(p[0]), Y(p[1]))); x.stroke();
+    for (const p of s.p) {
+      x.fillStyle = '#000'; x.beginPath(); x.arc(X(p[0]), Y(p[1]), 5, 0, 7); x.fill();
+      x.fillStyle = s.col; x.beginPath(); x.arc(X(p[0]), Y(p[1]), 4, 0, 7); x.fill();
+      pts.push({ x: X(p[0]), y: Y(p[1]), t: `h ${s.h}\nR ${p[0].toFixed(4)} a0\nE_at ${p[1].toFixed(2)} kcal/mol` });
+    }
+    // R_min tick + direct label
+    const last = s.p[s.p.length - 1]; x.fillStyle = '#c3c2b7'; x.fillText(`h=${s.h}`, X(last[0]) + 6, Y(last[1]) + 4);
+    x.strokeStyle = s.col; x.lineWidth = 2; x.beginPath(); x.moveTo(X(s.Rm), H - B); x.lineTo(X(s.Rm), H - B - 8); x.stroke();
+  }
+  $('legend').innerHTML = ser.map(s => `<span><i style="background:${s.col}"></i>h = ${s.h}: R<sub>min</sub> ${s.Rm.toFixed(4)}</span>`).join('') +
+    `<span class="muted">dashed: observed R &middot; solid white: sharp R extrapolated to h&rarr;0 &middot; ticks: R<sub>min</sub> per h</span>`;
+}
+$('ch').onmousemove = e => {
+  const r = $('ch').getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+  let best = null, bd = 144; for (const p of pts) { const dd = (p.x - mx) ** 2 + (p.y - my) ** 2; if (dd < bd) { bd = dd; best = p; } }
+  const t = $('tip'); if (!best) { t.style.display = 'none'; return; }
+  t.textContent = best.t; t.style.display = 'block'; t.style.left = (best.x + 10) + 'px'; t.style.top = (best.y - 10) + 'px';
+};
+$('ch').onmouseleave = () => $('tip').style.display = 'none';
+discover();
+$('reload').onclick = () => discover();
+</script></body></html>

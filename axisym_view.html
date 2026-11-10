@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+<title>Axisym molecule viewer</title>
+<style>
+  body { margin:0; background:#000; color:#fff; font-family:monospace }
+  select,button,input { background:#1a2228; color:#dfe; border:1px solid #456; padding:3px 6px; font-family:monospace }
+  a { color:#6cf }
+  #panel { position:fixed; top:8px; left:8px; background:rgba(0,0,0,.92); padding:9px 11px; border:1px solid #345;
+           border-radius:6px; width:250px; max-height:96vh; overflow-y:auto; font-size:11.5px; z-index:10; color:#cde }
+  #main { margin-left:286px; padding-top:8px }
+  #title { font-size:12px; color:#ffd; margin:2px 0 6px; white-space:pre-wrap }
+  #dens { margin:0 0 6px; padding:6px 8px; background:rgba(0,0,0,.85); color:#ffd;
+          font:12px monospace; white-space:pre; display:inline-block }
+  canvas { border:1px solid #234; vertical-align:top; background:#000 }
+  table { border-collapse:collapse } td { padding:0 5px 0 0 } .k { color:#789 } .ok { color:#6d6 } .bad { color:#f77 }
+</style>
+</head><body>
+<div id="panel">
+  <div style="font-weight:bold;color:#8df">Axisym molecule viewer &mdash; linear molecules</div>
+  <div style="margin:7px 0"><select id="run" style="width:100%"></select></div>
+  <div><button id="re">reload runs</button></div>
+  <div id="geom" style="color:#9ab;font-size:11px;margin-top:7px"></div>
+  <div id="checks" style="margin-top:7px"></div>
+  <div style="margin-top:7px">solve <input id="sl" type="range" min="0" max="0" value="0" style="width:150px"> <span id="slv"></span></div>
+  <div>zoom <input id="zm" type="range" min="2" max="12" step="0.5" value="5" style="width:150px"></div>
+  <div>floor log&#8321;&#8320;&rho; <input id="fl" type="range" min="-8" max="-2" step="0.5" value="-5" style="width:110px"> <span id="flv">-5</span></div>
+  <div id="cmd" style="color:#789;font-size:11px;margin-top:7px"></div>
+  <div style="color:#789;font-size:11px;margin-top:7px">
+    2D cylindrical (z, &rho;) solver <code>tools/axisym_linear.py</code>: exact for linear molecules, every domain a
+    body of revolution, interfaces are planes placed by density continuity. Runs are made from the command line and
+    land in <code>axisym_runs/</code>; this page shows them. <code>?f=</code> selects a run.
+  </div>
+</div>
+<div id="main">
+  <div id="title"></div>
+  <pre id="dens"></pre>
+  <canvas id="c2" width="620" height="330"></canvas><br>
+  <canvas id="c3" width="306" height="260"></canvas>
+  <canvas id="cz" width="310" height="260"></canvas><br>
+  <canvas id="ch" width="620" height="120"></canvas>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const r_ok=(j,h)=>(j+0.5)*h<4;
+const HUE=[[255,90,60],[80,150,255],[90,220,120],[255,200,60],[200,110,255],[60,220,220],[255,120,200],[180,180,180]];
+const KCAL=627.509, EV=27.2114;
+let runs=[],D=null,F=[],yaw=0.7,pitch=0.45;
+function dec(s){const b=atob(s),a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a;}
+const lv=q=>q/255*8-8;
+const fx=(x,n=6)=>(x>=0?'+':'')+x.toFixed(n);
+async function loadList(){
+  const r=await fetch('axisym_runs/index.json?'+Date.now());runs=await r.json();
+  const want=new URLSearchParams(location.search).get('f');
+  $('run').innerHTML=runs.map((r,i)=>`<option value="${i}">${r.file.replace('.json','')}  (${r.atomisation_kcal} kcal/mol)</option>`).join('');
+  let i=runs.length-1;if(want){const j=runs.findIndex(r=>r.file==want);if(j>=0)i=j;}
+  $('run').value=i;await loadRun();}
+async function loadRun(){
+  const r=runs[+$('run').value];const t=await fetch('axisym_runs/'+r.file+'?'+Date.now());D=await t.json();
+  F=D.frames.map(f=>({...f,L:dec(f.lab),Q:dec(f.rho)}));
+  $('sl').max=F.length-1;$('sl').value=F.length-1;history.replaceState(null,'','?f='+r.file);panel();show();}
+function panel(){
+  const m=D.meta,R=D.result;
+  const Ne=m.domains.reduce((s,d)=>s+d.n,0);
+  // realised geometry: every internuclear distance
+  let bonds=[];for(let i=0;i+1<m.nuclei.length;i++){const a=m.nuclei[i],b=m.nuclei[i+1];bonds.push(`${a.label}-${b.label} ${(b.z-a.z).toFixed(5)} a0 = ${((b.z-a.z)*0.529177).toFixed(4)} &Aring;`);}
+  $('geom').innerHTML=`<b style="color:#cde">${m.name}</b> &mdash; ${D.note}<br>${m.nuclei.length} nuclei / ${m.domains.length} domains, ${Ne} electrons<br>`+
+    'nuclei '+m.nuclei.map(n=>`${n.label}(Z=${n.Z}${n.rc?', r<sub>c</sub>='+n.rc:''}) z=${fx(n.z,4)}`).join('<br>&nbsp;&nbsp;')+
+    '<br>'+bonds.join('<br>')+`<br>box &plusmn;${m.L.toFixed(2)} a<sub>0</sub>, grid ${m.nz}&times;${m.nr}, h=${m.h.toFixed(5)}, soft ${m.soft}`;
+  const fr=R.frags.map(f=>`<tr><td>${f.count}&times;${f.label}</td><td>${fx(f.E)}</td></tr>`).join('');
+  const ref=R.ref_kcal?` <span class="k">(exp ${R.ref_kcal})</span>`:'';
+  $('checks').innerHTML=`<table>
+   <tr><td>E</td><td>${fx(R.E)}</td></tr><tr><td class="k">E interp J=0</td><td class="k">${fx(R.E_interp)}</td></tr>
+   <tr><td>T</td><td>${fx(R.T,4)}</td></tr><tr><td>V<sub>K</sub></td><td>${fx(R.VK,4)}</td></tr>
+   <tr><td>V<sub>ee</sub></td><td>${fx(R.Vee,4)}</td></tr><tr><td>V<sub>nn</sub></td><td>${fx(R.Vnn,4)}</td></tr>
+   ${fr}<tr><td>separated</td><td>${fx(R.E_sep)}</td></tr></table>
+   <div style="color:#ffd;margin-top:4px"><b>atomisation ${R.atomisation_kcal.toFixed(1)} kcal/mol</b>${ref}<br>
+   <span class="k">${R.atomisation_Ha.toFixed(5)} Ha = ${(R.atomisation_Ha*EV).toFixed(3)} eV; interp ${R.atomisation_interp_kcal.toFixed(1)}; ${R.seconds.toFixed(0)} s</span></div>`;
+  $('cmd').innerHTML=R.cmd?`rerun: <code>${R.cmd}</code>`:'';
+  $('title').textContent=`${m.name}  E=${R.E.toFixed(6)}  T=${R.T.toFixed(4)}  VK=${R.VK.toFixed(4)}  Vee=${R.Vee.toFixed(4)}  Vnn=${R.Vnn.toFixed(4)}`+
+    (R.mu_D!==undefined?`  mu_z=${fx(R.mu_D,3)} D`:'')+`  planes ${R.planes.map(p=>p.toFixed(3)).join(' ')}  Eat=${R.atomisation_kcal.toFixed(1)} kcal/mol`;
+  // density readout (as the simulator's DENSITY rows): per domain charge, interval, centroid, T, V
+  const m2=D.meta,pl=[-Infinity,...R.planes,Infinity];
+  let s='DENSITY  domain   n   interval z            centroid   T/e      VK/e\n';
+  m2.domains.forEach((d,k)=>{const a=pl[k],b=pl[k+1];
+    s+=`         ${d.label.padEnd(6)} ${d.n}   ${(isFinite(a)?a.toFixed(3):'-inf').padStart(7)} .. ${(isFinite(b)?b.toFixed(3):'+inf').padEnd(7)}  `+
+       `${R.centroids?fx(R.centroids[k],3).padStart(7):'   -   '}  ${R.Tdom[k].toFixed(4)}  ${R.Vdom[k].toFixed(4)}\n`;});
+  if(R.mu_D!==undefined)s+=`mu_z ${fx(R.mu_D,3)} D  (nuclei minus electron centroids)`;
+  $('dens').textContent=s;}
+function show(){const s=+$('sl').value,f=F[s];
+  $('slv').textContent=`${s+1}/${F.length}`;
+  draw2(f);draw3(f);drawZ(f);drawH(s);}
+function coreAt(z,r){for(const n of D.meta.nuclei)if(n.rc>0&&Math.hypot(z-n.z,r)<n.rc)return true;return false;}
+function draw2(f){
+  const c=$('c2'),x=c.getContext('2d'),W=c.width,H=c.height,m=D.meta,{nz,nr,h,zmin}=m;
+  const s2=H/(2*+$('zm').value),fl=+$('fl').value;
+  const img=x.createImageData(W,H),d=img.data;
+  for(let py=0;py<H;py++){const r=Math.abs((py-H/2)/s2),j=Math.floor(r/h);
+    for(let px=0;px<W;px++){const z=(px-W/2)/s2,i=Math.floor((z-zmin)/h);let R=0,G=0,B=0;
+      if(i>=0&&i<nz&&j<nr){const k=i*nr+j,l=f.L[k];
+        if(l==255){if(coreAt(z,r))R=G=B=45;}
+        else{const t=Math.max(0,Math.min(1,(lv(f.Q[k])-fl)/(-fl))),t2=Math.pow(t,1.6),c0=HUE[l%8];R=c0[0]*t2;G=c0[1]*t2;B=c0[2]*t2;
+          {const q=k+nr;if(q<nz*nr&&f.L[q]!=l&&f.L[q]!=255){R=G=B=255;}}}}
+      const o=(py*W+px)*4;d[o]=R;d[o+1]=G;d[o+2]=B;d[o+3]=255;}}
+  x.putImageData(img,0,0);
+  for(const n of m.nuclei){x.fillStyle='#fff';x.beginPath();x.arc(W/2+n.z*s2,H/2,3.5,0,7);x.fill();x.fillText(n.label,W/2+n.z*s2+5,H/2-6);
+    if(n.rc>0){x.strokeStyle='#888';x.beginPath();x.arc(W/2+n.z*s2,H/2,n.rc*s2,0,7);x.stroke();}}
+  x.fillStyle='#aaa';x.fillText('meridian plane: z along axis, rho mirrored; n_k u_k^2 log scale, one colour per domain; white = interfaces; circle = r_c',6,13);
+  m.domains.forEach((dd,k)=>{x.fillStyle=`rgb(${HUE[k%8]})`;x.fillText(`${dd.label}:${dd.n}e`,6+k*70,H-6);});}
+function draw3(f){
+  const c=$('c3'),x=c.getContext('2d'),W=c.width,H=c.height,m=D.meta,{nz,nr,h,zmin}=m;
+  x.fillStyle='#000';x.fillRect(0,0,W,H);
+  const qiso=(+$('fl').value+2+8)/8*255;   // iso surface 2 decades above the floor
+  const pts=[];
+  for(let i=1;i<nz-1;i++)for(let j=0;j<nr-1;j++){const k=i*nr+j,l=f.L[k];if(l==255)continue;
+    let kind=-1;
+    if(f.L[k+nr]!=l&&f.L[k+nr]!=255){if(j%3==0&&r_ok(j,h))kind=99;}
+    else{const inn=f.Q[k]>=qiso;if(inn!=(f.Q[k+nr]>=qiso&&f.L[k+nr]==l)||inn!=(f.Q[k+1]>=qiso&&f.L[k+1]==l))kind=l;}
+    if(kind<0)continue;const z=zmin+(i+0.5)*h,r=(j+0.5)*h;if(Math.abs(z)>7||r>7)continue;
+    const na=Math.max(6,Math.round(60*Math.min(1,r/3)));
+    for(let a=0;a<na;a++){const t=2*Math.PI*a/na;pts.push([z,r*Math.cos(t),r*Math.sin(t),kind]);}}
+  const cy=Math.cos(yaw),sy=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch),sc=W/14;
+  const P=pts.map(([X,Y,Z,k])=>{const x1=X*cy-Z*sy,z1=X*sy+Z*cy;return[x1,Y*cp-z1*sp,Y*sp+z1*cp,k];}).sort((a,b)=>a[2]-b[2]);
+  for(const [px,py,pz,k] of P){const sh=Math.max(0.15,Math.min(1,0.35+0.65*(pz+7)/14));
+    const col=k==99?'255,255,255':HUE[k%8].join(',');x.fillStyle=`rgba(${col},${sh*(k==99?0.45:0.3)})`;x.fillRect(W/2+px*sc,H/2-py*sc,2,2);}
+  for(const n of m.nuclei){const x1=n.z*cy,z1=n.z*sy;x.fillStyle='#fff';x.beginPath();x.arc(W/2+x1*sc,H/2+z1*sp*sc,3,0,7);x.fill();}
+  x.fillStyle='#aaa';x.fillText('3D (drag): iso surfaces + interfaces (white)',4,12);}
+function drawZ(f){
+  const c=$('cz'),x=c.getContext('2d'),W=c.width,H=c.height,m=D.meta,{nz,nr,h,zmin}=m;
+  x.fillStyle='#000';x.fillRect(0,0,W,H);const Zm=7,s2=W/(2*Zm),Y=v=>14+(0-v)/8*(H-30);
+  x.strokeStyle='#222';for(let v=0;v>=-8;v-=2){x.beginPath();x.moveTo(0,Y(v));x.lineTo(W,Y(v));x.stroke();x.fillStyle='#555';x.fillText(v,2,Y(v)-2);}
+  for(let i=0;i<nz;i++){const k=i*nr,l=f.L[k];if(l==255)continue;const z=zmin+(i+0.5)*h,px=W/2+z*s2;if(px<0||px>W)continue;
+    x.fillStyle=`rgb(${HUE[l%8]})`;x.fillRect(px-1,Y(lv(f.Q[k]))-1,2.5,2.5);}
+  x.strokeStyle='#fff';x.setLineDash([3,3]);for(const p of f.planes){x.beginPath();x.moveTo(W/2+p*s2,0);x.lineTo(W/2+p*s2,H);x.stroke();}x.setLineDash([]);
+  for(const n of m.nuclei){x.fillStyle='#fff';x.fillText(n.label,W/2+n.z*s2-3,H-4);}
+  x.fillStyle='#aaa';x.fillText('log10 rho on the axis; dashed = planes',22,11);}
+function drawH(s){
+  const c=$('ch'),x=c.getContext('2d'),W=c.width,H=c.height;x.fillStyle='#000';x.fillRect(0,0,W,H);
+  const E=F.map(f=>f.E),e0=Math.min(...E),e1=Math.max(...E),n=F.length;
+  const X=i=>40+(n>1?i/(n-1):0.5)*(W-60),Y=e=>10+(1-(e-e0)/((e1-e0)||1))*(H-34);
+  x.strokeStyle='#4c4';x.beginPath();E.forEach((e,i)=>i?x.lineTo(X(i),Y(e)):x.moveTo(X(i),Y(e)));x.stroke();
+  E.forEach((e,i)=>{x.fillStyle=i==s?'#ff0':'#4c4';x.fillRect(X(i)-2,Y(e)-2,4,4);});
+  const f=F[s];x.fillStyle='#aaa';
+  x.fillText(`E per SCF solve during the interface search: ${e0.toFixed(5)} .. ${e1.toFixed(5)} Ha.  This solve: E=${f.E.toFixed(6)}  planes ${f.planes.map(p=>p.toFixed(3)).join(' ')}  J ${f.J.map(j=>j.toExponential(1)).join(' ')}`,6,H-6);}
+let drag=null;$('c3').onmousedown=e=>drag=[e.clientX,e.clientY];window.onmouseup=()=>drag=null;
+window.onmousemove=e=>{if(!drag||!F.length)return;yaw+=(e.clientX-drag[0])*0.01;pitch+=(e.clientY-drag[1])*0.01;drag=[e.clientX,e.clientY];draw3(F[+$('sl').value]);};
+$('run').onchange=loadRun;$('re').onclick=loadList;$('sl').oninput=show;$('zm').oninput=show;
+$('fl').oninput=()=>{$('flv').textContent=$('fl').value;show();};
+loadList();
+</script></body></html>
