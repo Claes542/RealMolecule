@@ -53,7 +53,7 @@ const fx=(x,n=6)=>(x>=0?'+':'')+x.toFixed(n);
 async function loadList(){
   const r=await fetch('axisym_runs/index.json?'+Date.now());runs=await r.json();
   const want=new URLSearchParams(location.search).get('f');
-  $('run').innerHTML=runs.map((r,i)=>`<option value="${i}">${r.file.replace('.json','')}  (${r.atomisation_kcal} kcal/mol)</option>`).join('');
+  $('run').innerHTML=runs.map((r,i)=>`<option value="${i}">${r.file.replace('.json','')}  (${(r.atomisation_kcal/KCAL).toFixed(5)} Ha)</option>`).join('');
   let i=runs.length-1;if(want){const j=runs.findIndex(r=>r.file==want);if(j>=0)i=j;}
   $('run').value=i;await loadRun();}
 async function loadRun(){
@@ -69,17 +69,17 @@ function panel(){
     'nuclei '+m.nuclei.map(n=>`${n.label}(Z=${n.Z}${n.rc?', r<sub>c</sub>='+n.rc:''}) z=${fx(n.z,4)}`).join('<br>&nbsp;&nbsp;')+
     '<br>'+bonds.join('<br>')+`<br>box &plusmn;${m.L.toFixed(2)} a<sub>0</sub>, grid ${m.nz}&times;${m.nr}, h=${m.h.toFixed(5)}, soft ${m.soft}`;
   const fr=R.frags.map(f=>`<tr><td>${f.count}&times;${f.label}</td><td>${fx(f.E)}</td></tr>`).join('');
-  const ref=R.ref_kcal?` <span class="k">(exp ${R.ref_kcal})</span>`:'';
+  const ref=R.ref_kcal?` <span class="k">(exp ${(R.ref_kcal/KCAL).toFixed(4)} Ha)</span>`:'';
   $('checks').innerHTML=`<table>
    <tr><td>E</td><td>${fx(R.E)}</td></tr><tr><td class="k">E interp J=0</td><td class="k">${fx(R.E_interp)}</td></tr>
    <tr><td>T</td><td>${fx(R.T,4)}</td></tr><tr><td>V<sub>K</sub></td><td>${fx(R.VK,4)}</td></tr>
    <tr><td>V<sub>ee</sub></td><td>${fx(R.Vee,4)}</td></tr><tr><td>V<sub>nn</sub></td><td>${fx(R.Vnn,4)}</td></tr>
    ${fr}<tr><td>separated</td><td>${fx(R.E_sep)}</td></tr></table>
-   <div style="color:#ffd;margin-top:4px"><b>atomisation ${R.atomisation_kcal.toFixed(1)} kcal/mol</b>${ref}<br>
-   <span class="k">${R.atomisation_Ha.toFixed(5)} Ha = ${(R.atomisation_Ha*EV).toFixed(3)} eV; interp ${R.atomisation_interp_kcal.toFixed(1)}; ${R.seconds.toFixed(0)} s</span></div>`;
+   <div style="color:#ffd;margin-top:4px"><b>atomisation ${R.atomisation_Ha.toFixed(5)} Ha</b>${ref}<br>
+   <span class="k">= ${R.atomisation_kcal.toFixed(1)} kcal/mol = ${(R.atomisation_Ha*EV).toFixed(3)} eV; interp ${(R.atomisation_interp_kcal/KCAL).toFixed(5)} Ha; ${R.seconds.toFixed(0)} s</span></div>`;
   $('cmd').innerHTML=R.cmd?`rerun: <code>${R.cmd}</code>`:'';
   $('title').textContent=`${m.name}  E=${R.E.toFixed(6)}  T=${R.T.toFixed(4)}  VK=${R.VK.toFixed(4)}  Vee=${R.Vee.toFixed(4)}  Vnn=${R.Vnn.toFixed(4)}`+
-    (R.mu_D!==undefined?`  mu_z=${fx(R.mu_D,3)} D`:'')+`  planes ${R.planes.map(p=>p.toFixed(3)).join(' ')}  Eat=${R.atomisation_kcal.toFixed(1)} kcal/mol`;
+    (R.mu_D!==undefined?`  mu_z=${fx(R.mu_D,3)} D`:'')+`  planes ${R.planes.map(p=>p.toFixed(3)).join(' ')}  Eat=${R.atomisation_Ha.toFixed(5)} Ha`;
   // density readout (as the simulator's DENSITY rows): per domain charge, interval, centroid, T, V
   const m2=D.meta,pl=[-Infinity,...R.planes,Infinity];
   let s='DENSITY  domain   n   interval z            centroid   T/e      VK/e\n';

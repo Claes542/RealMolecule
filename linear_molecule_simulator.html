@@ -57,14 +57,14 @@ const SER = ['--s1', '--s2', '--s3', '--s4'].map(v => getComputedStyle(document.
 // Catalogue: the examples this simulator is meant to hold. Observed values are what the protocol compares
 // against; the ones marked (unchecked) are from memory/the book and must be verified before quoting.
 const CAT = [
-  { key:'h2',         name:'H2',  model:'bare protons, 1e per half-space',                 Robs:1.4011, Eexp:109.5, src:'exact' },
+  { key:'h2',         name:'H2',  model:'bare protons, 1e per half-space',                 Robs:1.4011, Eexp:0.1745, src:'exact D_e' },
   { key:'h3',         name:'H3 (linear)', model:'bare protons, 1e per domain; exact = H+H2 saddle', Robs:1.757, Eexp:null, src:'saddle, from memory' },
-  { key:'beh2_hom',   name:'BeH2', model:'pseudo-Be +2, one 2e valence domain',             Robs:2.5066, Eexp:144, src:'book (unchecked)' },
-  { key:'beh2_split', name:'BeH2', model:'pseudo-Be +2, valence 1+1 hemispheres',           Robs:2.5066, Eexp:144, src:'book (unchecked)' },
+  { key:'beh2_hom',   name:'BeH2', model:'pseudo-Be +2, one 2e valence domain',             Robs:2.5066, Eexp:0.2295, src:'book 144 kcal/mol (unchecked)' },
+  { key:'beh2_split', name:'BeH2', model:'pseudo-Be +2, valence 1+1 hemispheres',           Robs:2.5066, Eexp:0.2295, src:'book 144 kcal/mol (unchecked)' },
   { key:'ch2_hom',    name:'CH2 (linear)', model:'pseudo-C +2, one 2e valence domain (2023 sketch)', Robs:2.0372, Eexp:null, src:'real CH2 is bent' },
   { key:'ch2_split',  name:'CH2 (linear)', model:'pseudo-C +2, valence 1+1',                Robs:2.0372, Eexp:null, src:'real CH2 is bent' },
   { key:'ch2_4',      name:'CH2 (linear)', model:'pseudo-C +4, valence 2|2',                Robs:2.0372, Eexp:null, src:'real CH2 is bent' },
-  { key:'lih',        name:'LiH', model:'planned: pseudo-Li +1 + H',                          Robs:3.0154, Eexp:58.0, src:'exp D_e 2.52 eV', planned:true },
+  { key:'lih',        name:'LiH', model:'planned: pseudo-Li +1 + H',                          Robs:3.0154, Eexp:0.0926, src:'exp D_e 2.52 eV', planned:true },
   { key:'co2',        name:'CO2', model:'planned: pseudo-C, pseudo-O',                        Robs:2.1944, Eexp:null, src:'planned', planned:true },
 ];
 let PROT = {}, cur = null, hover = null, pts = [];
@@ -87,7 +87,7 @@ function pct(x, ref) { return ref ? ((x / ref - 1) * 100).toFixed(1) + '%' : '';
 function rowData(c) {
   const d = PROT[c.key]; if (!d) return null;
   const eo = d.energy && d.energy.obs, eh = d.energy && d.energy.hard;
-  return { R: d.R_hard, Rpct: pct(d.R_hard, c.Robs), Eo: eo ? eo.Ea * KCAL : null, Eh: eh ? eh.Ea * KCAL : null };
+  return { R: d.R_hard, Rpct: pct(d.R_hard, c.Robs), Eo: eo ? eo.Ea : null, Eh: eh ? eh.Ea : null };
 }
 function renderCatalogue() {
   $('catalogue').innerHTML = CAT.map(c => {
@@ -100,15 +100,15 @@ function renderCatalogue() {
 }
 function renderSummary() {
   const rows = CAT.filter(c => PROT[c.key]).map(c => {
-    const r = rowData(c), f = x => x == null ? '&ndash;' : x.toFixed(1);
+    const r = rowData(c), f = x => x == null ? '&ndash;' : x.toFixed(4);
     return `<tr class="row ${c.key === cur ? 'sel' : ''}" data-k="${c.key}"><td>${c.name} <span class="muted">${c.key}</span></td>
       <td>${c.Robs.toFixed(4)}</td><td>${r.R.toFixed(4)}</td><td>${r.Rpct}</td>
-      <td>${f(r.Eo)}</td><td>${f(r.Eh)}</td><td>${c.Eexp == null ? '&ndash;' : c.Eexp}</td><td>${c.Eexp ? pct(r.Eo, c.Eexp) : ''}</td>
+      <td>${f(r.Eo)}</td><td>${f(r.Eh)}</td><td>${c.Eexp == null ? '&ndash;' : c.Eexp.toFixed(4)}</td><td>${c.Eexp ? pct(r.Eo, c.Eexp) : ''}</td>
       <td class="muted">${c.src}</td></tr>`;
   });
   $('summary').innerHTML = rows.length ? `<table><tr><th>molecule</th><th>R obs (a0)</th><th>R sharp, h&rarr;0</th><th>&Delta;R</th>
       <th>E weak @R obs</th><th>E weak @R sharp</th><th>E exp</th><th>&Delta;E @obs</th><th>reference</th></tr>${rows.join('')}</table>
-      <div class="muted" style="margin-top:3px">E = atomisation energy, kcal/mol. Weak energies are at h = 0.1 by protocol: they converge to the
+      <div class="muted" style="margin-top:3px">E = atomisation energy, Hartree (1 Ha = 627.5 kcal/mol = 27.21 eV). Weak energies are at h = 0.1 by protocol: they converge to the
       (over-bound) sharp value as h &rarr; 0, so they are calibrated by the mesh &mdash; quote as "weak, h = 0.1".</div>`
     : 'No protocol runs yet. Run e.g. <code>python3 tools/axisym_linear.py protocol h2</code>.';
   document.querySelectorAll('tr.row').forEach(e => e.onclick = () => select(e.dataset.k));
@@ -125,11 +125,11 @@ function select(k) {
   }
   const rc = d.rc && d.rc.hard ? `r<sub>c</sub> sharp ${d.rc.hard.toFixed(4)}, weak ${d.rc.weak.toFixed(4)}<br>` : '';
   const geo = d.geometry.map(g => `h ${g.h.toFixed(3)}: R<sub>min</sub> ${g.R.toFixed(4)}`).join('<br>');
-  const en = ['obs', 'hard'].map(l => d.energy[l] ? `weak @R ${l === 'obs' ? 'obs' : 'sharp'} ${d.energy[l].R.toFixed(4)}: <b>${(d.energy[l].Ea * KCAL).toFixed(1)}</b> kcal/mol` : '').join('<br>');
+  const en = ['obs', 'hard'].map(l => d.energy[l] ? `weak @R ${l === 'obs' ? 'obs' : 'sharp'} ${d.energy[l].R.toFixed(4)}: <b>${d.energy[l].Ea.toFixed(4)}</b> Ha` : '').join('<br>');
   $('detail').innerHTML = `<b>${c.name}</b> &mdash; ${d.note}<br>${rc}
     <span class="k">geometry (sharp)</span><br>${geo}<br>h&rarr;0: <b>${d.R_hard.toFixed(4)} a0 = ${(d.R_hard * A0).toFixed(4)} &Aring;</b>
     (obs ${d.Robs.toFixed(4)}, ${pct(d.R_hard, d.Robs)})<br>
-    <span class="k">energy (weak, h = 0.1)</span><br>${en}${c.Eexp ? `<br>exp ${c.Eexp} <span class="muted">(${c.src})</span>` : ''}<br>
+    <span class="k">energy (weak, h = 0.1)</span><br>${en}${c.Eexp ? `<br>exp ${c.Eexp.toFixed(4)} Ha <span class="muted">(${c.src})</span>` : ''}<br>
     <span class="muted">${d.seconds.toFixed(0)} s &middot; rerun: <code>${d.cmd || ('python3 tools/axisym_linear.py protocol ' + k)}</code></span>`;
   $('chartTitle').textContent = `Geometry: ${c.name}, sharp-interface atomisation energy vs R`;
   drawChart(d);
@@ -149,7 +149,7 @@ function drawChart(d) {
   x.clearRect(0, 0, W, H); x.fillStyle = '#000'; x.fillRect(0, 0, W, H); pts = [];
   if (!d) { $('legend').innerHTML = ''; return; }
   const ser = d.geometry.map((g, i) => ({ h: g.h, Rm: g.R, col: SER[i % 4],
-    p: Object.keys(g.pts).map(Number).sort((a, b) => a - b).map(R => [R, g.pts[R] * KCAL]) }));
+    p: Object.keys(g.pts).map(Number).sort((a, b) => a - b).map(R => [R, g.pts[R]]) }));
   const all = ser.flatMap(s => s.p);
   const R0 = Math.min(...all.map(p => p[0]), d.Robs) - 0.05, R1 = Math.max(...all.map(p => p[0]), d.Robs) + 0.05;
   const E0 = Math.min(...all.map(p => p[1])), E1 = Math.max(...all.map(p => p[1]));
@@ -157,10 +157,10 @@ function drawChart(d) {
   const L = 58, Rt = 14, T = 22, B = 34, X = r => L + (r - R0) / (R1 - R0) * (W - L - Rt), Y = e => T + (1 - (e - y0) / (y1 - y0)) * (H - T - B);
   // recessive grid + axes
   x.strokeStyle = '#1c2226'; x.fillStyle = '#8a8a80'; x.font = '11px monospace'; x.lineWidth = 1;
-  const ny = 5; for (let i = 0; i <= ny; i++) { const e = y0 + (y1 - y0) * i / ny, yy = Y(e); x.beginPath(); x.moveTo(L, yy); x.lineTo(W - Rt, yy); x.stroke(); x.fillText(e.toFixed(1), 4, yy + 4); }
+  const ny = 5; for (let i = 0; i <= ny; i++) { const e = y0 + (y1 - y0) * i / ny, yy = Y(e); x.beginPath(); x.moveTo(L, yy); x.lineTo(W - Rt, yy); x.stroke(); x.fillText(e.toFixed(4), 2, yy + 4); }
   const step = (R1 - R0) > 1 ? 0.2 : 0.1;
   for (let r = Math.ceil(R0 / step) * step; r <= R1; r += step) { const xx = X(r); x.fillText(r.toFixed(1), xx - 10, H - B + 15); }
-  x.fillText('R (a0)', W - 60, H - 4); x.fillText('kcal/mol', 4, T + 2);
+  x.fillText('R (a0)', W - 60, H - 4); x.fillText('E_at (Ha)', L + 4, 12);
   // observed R
   x.strokeStyle = '#c3c2b7'; x.setLineDash([4, 4]); x.beginPath(); x.moveTo(X(d.Robs), T); x.lineTo(X(d.Robs), H - B); x.stroke(); x.setLineDash([]);
   x.fillStyle = '#c3c2b7'; x.fillText('R obs', X(d.Robs) + 4, T + 10);
@@ -172,7 +172,7 @@ function drawChart(d) {
     for (const p of s.p) {
       x.fillStyle = '#000'; x.beginPath(); x.arc(X(p[0]), Y(p[1]), 5, 0, 7); x.fill();
       x.fillStyle = s.col; x.beginPath(); x.arc(X(p[0]), Y(p[1]), 4, 0, 7); x.fill();
-      pts.push({ x: X(p[0]), y: Y(p[1]), t: `h ${s.h}\nR ${p[0].toFixed(4)} a0\nE_at ${p[1].toFixed(2)} kcal/mol` });
+      pts.push({ x: X(p[0]), y: Y(p[1]), t: `h ${s.h}\nR ${p[0].toFixed(4)} a0\nE_at ${p[1].toFixed(5)} Ha` });
     }
     // R_min tick + direct label
     const last = s.p[s.p.length - 1]; x.fillStyle = '#c3c2b7'; x.fillText(`h=${s.h}`, X(last[0]) + 6, Y(last[1]) + 4);

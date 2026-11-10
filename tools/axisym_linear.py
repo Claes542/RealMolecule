@@ -452,8 +452,8 @@ def protocol(name, o):
     print('  geometry (sharp)  h->0  R=%.4f a0 = %.4f A   obs %.4f a0  (%+.1f%%)' % (R0, R0 * 0.529177, Robs, 100 * (R0 / Robs - 1)))
     for lab in ('obs', 'hard'):
         e = en[lab]
-        print('  energy (weak, h=0.1) at %-4s R=%.4f:  %.1f kcal/mol (interp %.1f)%s' % (lab, e['R'], e['Ea'] * KCAL, e['Eai'] * KCAL,
-              '' if not p.get('ref_kcal') else '   exp %s' % p['ref_kcal']))
+        print('  energy (weak, h=0.1) at %-4s R=%.4f:  %.5f Ha (interp %.5f) = %.1f kcal/mol%s' % (lab, e['R'], e['Ea'], e['Eai'], e['Ea'] * KCAL,
+              '' if not p.get('ref_kcal') else '   exp %.4f Ha' % (p['ref_kcal'] / KCAL)))
     print('  %.0f s' % (time.time() - t0))
 
 
