@@ -53,21 +53,218 @@
   var R    = parseFloat(q.get('R') || '2.0');
   var BETA = parseFloat(q.get('beta') || '0');
   var MODE = q.get('mode') || 'h2';
+  // The card above describes the H2/beta cross-check. For atom (x) and X-H (xh) runs it does not
+  // apply: replace it by a one-line description of the run, keeping the live monitor and table.
+  if (MODE !== 'h2' && MODE !== 'h') {
+    var info = document.getElementById('info');
+    var el0 = q.get('el') || 'X';
+    info.innerHTML = '<div style="color:#9f9;font-weight:bold">'
+      + (MODE === 'xh' ? el0 + 'H at R = ' + (q.get('R') || '2.0') + ' a0' : 'Atom ' + el0)
+      + ' &mdash; molecule.js</div>'
+      + '<div style="color:#aaa;font-size:11px;word-break:break-all">' + location.search.slice(1) + '</div>'
+      + '<div id="mon" style="margin-top:8px;color:#9f9">relaxing&hellip;</div>'
+      + '<div id="tab" style="margin-top:8px;color:#9c9;font-size:11px"></div>';
+  }
   var BOX  = parseFloat(q.get('box') || '16');
   var HG   = parseFloat(q.get('h') || '0.10');
-  var CURV = parseFloat(q.get('curv') || '0');
+  // curv: boundary curvature regularisation. 0 lets single cells flip until one domain invades the other:
+  // H2 R=1.2 free collapsed from -1.242 to -0.736 (2026-11-11). 0.15 (molecule.js's own default) is stable and
+  // lands within 1.4e-4 Ha of the exact midplane (-1.20551 vs frozen -1.20565); it vanishes on a flat interface.
+  var CURV = parseFloat(q.get('curv') || '0.15');
   var BS   = parseFloat(q.get('bs') || '0.25');
 
   var gridN = Math.max(48, Math.min(200, 2 * Math.round(BOX / HG / 2)));
   var scr = BOX, N2 = gridN / 2, h = scr / gridN;
 
-  var atoms = [], Z = [], Znuc = [];
+  var atoms = [], Z = [], Znuc = [], RC = [], ZE = [];
   function add(x) {
-    atoms.push({ i: Math.round(N2 + x / h), j: N2, k: N2, Z: 1, el: 'H' });
-    Z.push(1); Znuc.push(1);
+    // NOT rounded: molecule.js keeps nuclei as f32 grid coordinates (CLAUDE.md: never snap kernels)
+    // ?ZH=2 -> H carries TWO electrons in one domain (H-, ionic bond), kernel still +1
+    var zh = parseInt(q.get('ZH') || '1');
+    // ?pairH=1 -> TWO one-electron domains on H (the Li valence electron moved onto H: Li+ core | H- as a split
+    // pair), kernel share 0.5 each so H stays +1. Split by the plane y=0 (contains the bond axis), held FIXED
+    // unless ?relH=<step> releases it to a free boundary (seed-on-H test). ?pairax=x -> plane x=x_H, perpendicular
+    // to the bond: one electron on H's bond side (facing Li), one behind H.
+    // ?hback=1 -> H's one electron held in the half-space BEHIND H (x > x_H, away from X), so the bare H+ faces the
+    // bond region and X's valence electron can move into it. Plane through H fixed unless ?relHb=<step> releases it.
+    // ?Hbare=1 -> H as a BARE proton (Z=0 electrons, Z_nuc=1; molecule.js bare-nucleus path, as proton_transfer.html):
+    // with ?ZX=2&ZnX=1&rcX=1.99 the molecule is ONE 2hom pair around the Li+ pseudo-core and H+ (no interior wall).
+    if (q.get('Hbare') === '1') {
+      atoms.push({ i: N2 + x / h, j: N2, k: N2, Z: 0, el: 'H+' });
+      Z.push(0); Znuc.push(1); RC.push(0);
+      return;
+    }
+    if (q.get('hback') === '1') {
+      atoms.push({ i: N2 + x / h, j: N2, k: N2, Z: 1, el: 'Hb' });
+      Z.push(1); Znuc.push(1); RC.push(0);
+      SPT[atoms.length - 1] = 2; SPI[atoms.length - 1] = 1; SPA[atoms.length - 1] = [1, 0, 0];
+      if (q.get('relHb')) REL.push(atoms.length - 1);
+      return;
+    }
+    if (q.get('pairH') === '1') {
+      for (var hp = 0; hp < 2; hp++) {
+        atoms.push({ i: N2 + x / h, j: N2, k: N2, Z: 1, el: 'H' + hp });
+        Z.push(1); Znuc.push(0.5); RC.push(0);
+        SPT[atoms.length - 1] = 2; SPI[atoms.length - 1] = hp; SPA[atoms.length - 1] = (q.get('pairax') === 'x') ? [1, 0, 0] : [0, 1, 0];
+        if (q.get('relH')) REL.push(atoms.length - 1);
+      }
+      return;
+    }
+    atoms.push({ i: N2 + x / h, j: N2, k: N2, Z: zh, el: 'H' });
+    Z.push(zh); Znuc.push(1); RC.push(0);
+    if (XPL !== null) { SPT[atoms.length - 1] = 10; SPI[atoms.length - 1] = 1; SPA[atoms.length - 1] = [1, 0, 0]; SPR[atoms.length - 1] = XPL - R; if (q.get('relX')) REL.push(atoms.length - 1); }
   }
-  if (MODE === 'h') { add(0); }
+  // pseudo-atom X: charge ZX, ZX valence electrons in ONE domain (hom), hard inner cutoff rcX
+  var ZX = parseInt(q.get('ZX') || '1'), RCX = parseFloat(q.get('rcX') || '0'), ELX = q.get('el') || 'X';
+  // ?bb=nb,nf -> X as TWO hemisphere siblings on one nucleus (molecule.js splitType 2): nb electrons BEHIND X
+  // (away from +x), nf in the BOND half facing +x. The plane through X between them is FIXED (cellSectorOK);
+  // the X|H boundary stays free. Each sibling carries Z_nuc = its own electron count, so the kernel is nb+nf
+  // and V_KK (summed over co-located entries) agrees with K. ZX is then nb+nf.
+  var BB = (q.get('bb') || '').split(',').filter(function (x) { return x !== ''; }).map(Number);
+  // ?bb=n1,n2,nf -> 3-split (molecule.js splitType 9): two back lobes n1, n2 (divided by a plane containing the
+  // axis) and the bond lobe nf facing +x. All three planes are fixed through X; the X|H boundary stays free.
+  if (BB.length === 2) ZX = BB[0] + BB[1];
+  if (BB.length === 3) ZX = BB[0] + BB[1] + BB[2];
+  var SPT = [], SPI = [], SPA = [], REL = [], SPR = [];
+  // ?xplane=a -> FIXED interface plane perpendicular to the bond, a au from X toward H (molecule.js splitType 10):
+  // X's domain owns the X side, H's domain the H side. For Li+ (2hom) | H- (2hom) with the plane position as a
+  // variational parameter instead of the free density-continuity boundary. ?relX=<step> releases the plane (seed test).
+  var XPL = q.get('xplane') ? parseFloat(q.get('xplane')) : null;
+  var C2H = q.get('core2hom') ? parseFloat(q.get('core2hom')) : null;
+  // 1D Li+ 1s^2 orbital phi(r) (per electron, int phi^2 = 1), r = 0, 0.02, ..., 2.4
+  var LICORE_PHI = [2.59501,2.46261,2.32015,2.18655,2.06124,1.94368,1.83338,1.72984,1.63264,1.54134,1.45557,1.37496,1.29917,1.2279,1.16083,1.09772,1.03829,0.982319,0.929582,0.879876,0.833012,0.788811,0.747109,0.707752,0.670596,0.635509,0.602364,0.571046,0.541446,0.513461,0.486998,0.461967,0.438285,0.415874,0.394661,0.374577,0.355559,0.337547,0.320483,0.304315,0.288994,0.274471,0.260704,0.247651,0.235273,0.223533,0.212397,0.201832,0.191808,0.182295,0.173267,0.164698,0.156563,0.14884,0.141507,0.134544,0.127931,0.12165,0.115684,0.110016,0.104632,0.0995163,0.0946553,0.090036,0.0856462,0.081474,0.0775085,0.0737391,0.0701559,0.0667494,0.0635109,0.0604317,0.0575039,0.0547199,0.0520725,0.0495549,0.0471605,0.0448832,0.0427173,0.040657,0.0386973,0.0368331,0.0350597,0.0333726,0.0317675,0.0302404,0.0287874,0.0274049,0.0260894,0.0248377,0.0236465,0.022513,0.0214343,0.0204077,0.0194307,0.0185009,0.0176158,0.0167735,0.0159717,0.0152086,0.0144822,0.0137907,0.0131325,0.0125059,0.0119094,0.0113415,0.0108009,0.0102862,0.0097962,0.00932969,0.00888552,0.00846262,0.00805997,0.00767658,0.00731153,0.00696394,0.00663296,0.00631779,0.00601767,0.00573189,0.00545974];
+  function addX(x, axisSign) {
+    if (BB.length === 3) {
+      var IDX3 = [1, 2, 0];   // back A, back B, bond
+      for (var s3 = 0; s3 < 3; s3++) {
+        atoms.push({ i: N2 + x / h, j: N2, k: N2, Z: BB[s3], el: ELX + ['a', 'b', 'f'][s3] });
+        Z.push(BB[s3]); Znuc.push(BB[s3]); RC.push(RCX);
+        SPT[atoms.length - 1] = 9; SPI[atoms.length - 1] = IDX3[s3]; SPA[atoms.length - 1] = [axisSign || 1, 0, 0];
+      }
+      return;
+    }
+    // ?bpair=1 (with ?Hbare=1): H's electron joins the BOND sibling, which then carries BB[1]+1 electrons as one
+    // hom pair over X's front and the bare proton, while its kernel share stays BB[1] (B 2+3 -> lone pair 2hom
+    // behind + bond pair 2hom over B|H+). Without it the bond sibling is BB[1] electrons and H keeps its own.
+    if (BB.length === 2) {
+      for (var s2 = 0; s2 < 2; s2++) {
+        var ne2 = BB[s2] + ((s2 === 1 && q.get('bpair') === '1') ? 1 : 0);
+        atoms.push({ i: N2 + x / h, j: N2, k: N2, Z: ne2, el: ELX + (s2 ? 'f' : 'b') });
+        Z.push(ne2); Znuc.push(BB[s2]); RC.push(RCX);
+        SPT[atoms.length - 1] = 2; SPI[atoms.length - 1] = s2; SPA[atoms.length - 1] = [axisSign || 1, 0, 0];
+      }
+      return;
+    }
+    // ?ZnX= kernel charge of X when it differs from its electron count (ionic: Li+ = kernel +3, 2 electrons)
+    var znx = q.get('ZnX') ? parseFloat(q.get('ZnX')) : ZX;
+    // ?core2hom=a -> ALL-ELECTRON X with the core as ONE 2hom domain (2 electrons, kernel share 2) held in the sphere
+    // r < a around X, seeded with the 1D Li+ 1s^2 density (scratchpad li_core_1d.py: one 2hom domain, i!=j Hartree,
+    // E = -7.23630 vs HF -7.2364; 1.994 e inside 1.99), plus ONE valence domain of ?nval= electrons (kernel share
+    // znx-2) outside it, seeded exp(-0.6 r). The core|valence wall is FROZEN (FREEZE_BOUNDARY) until ?unlock=<step>
+    // releases it to the free density-continuity boundary. No pseudo cut-off: RC = 0, the full kernel -znx/r acts.
+    if (C2H !== null) {
+      var nval = parseInt(q.get('nval') || '1');
+      atoms.push({ i: N2 + x / h, j: N2, k: N2, Z: 2, el: ELX + 'c' });
+      Z.push(2); Znuc.push(2); RC.push(0);
+      atoms.push({ i: N2 + x / h, j: N2, k: N2, Z: nval, el: ELX + 'v' });
+      Z.push(nval); Znuc.push(znx - 2); RC.push(0);
+      return;
+    }
+    // ?val=1 -> neutral all-electron atom as CORE + one outer VALENCE electron on the same kernel (Li 2+1):
+    // core domain ZX electrons with kernel share znx-1, valence sibling 1 electron with kernel share 1 (a sibling
+    // with Z_nuc 0 would add its electron count to K). Seeded compact core (initZeff znx) / diffuse valence
+    // (?zval=, default 0.6); the boundary between them is free.
+    // ?val=1&core2=1 -> the core as TWO one-electron domains (house construction) instead of one 2e pair:
+    // seeded as hemispheres split by the plane y=0 (which contains the bond axis; ?coreax=x -> the plane x=0,
+    // perpendicular to the bond: one core half faces H, the other faces away), released to a FREE
+    // boundary at step ?rel= (default 500) via molecule.js USER_SPLIT_RELEASE. Each kernel share 1.
+    if (q.get('val') === '1' && q.get('core2') === '1') {
+      for (var c2 = 0; c2 < 2; c2++) {
+        atoms.push({ i: N2 + x / h, j: N2, k: N2, Z: 1, el: ELX + 'c' + c2 });
+        // with ?pairH=1 the valence electron lives on H, so the two core domains carry the whole +3
+        Z.push(1); Znuc.push(q.get('pairH') === '1' ? znx / 2 : (znx - 1) / 2); RC.push(RCX); ZE[atoms.length - 1] = znx;
+        SPT[atoms.length - 1] = 2; SPI[atoms.length - 1] = c2; SPA[atoms.length - 1] = (q.get('coreax') === 'x') ? [1, 0, 0] : [0, 1, 0];
+        // core release only in the plain core2 test; with pairH / hback the core plane stays FIXED (released, the
+        // pair nests into an inner ball + outer shell, 2026-11-11) and REL carries only the H-side domains
+        if (q.get('pairH') !== '1' && q.get('hback') !== '1') REL.push(atoms.length - 1);
+      }
+      if (q.get('pairH') === '1') return;
+      atoms.push({ i: N2 + x / h, j: N2, k: N2, Z: 1, el: ELX + 'v' });
+      Z.push(1); Znuc.push(1); RC.push(RCX); ZE[atoms.length - 1] = parseFloat(q.get('zval') || '0.6');
+      return;
+    }
+    if (q.get('val') === '1') {
+      atoms.push({ i: N2 + x / h, j: N2, k: N2, Z: ZX, el: ELX });
+      Z.push(ZX); Znuc.push(znx - 1); RC.push(RCX); ZE[atoms.length - 1] = znx;
+      atoms.push({ i: N2 + x / h, j: N2, k: N2, Z: 1, el: ELX + 'v' });
+      Z.push(1); Znuc.push(1); RC.push(RCX); ZE[atoms.length - 1] = parseFloat(q.get('zval') || '0.6');
+      return;
+    }
+    atoms.push({ i: N2 + x / h, j: N2, k: N2, Z: ZX, el: ELX });
+    Z.push(ZX); Znuc.push(znx); RC.push(RCX);
+    if (XPL !== null && MODE === 'xh') { SPT[atoms.length - 1] = 10; SPI[atoms.length - 1] = 0; SPA[atoms.length - 1] = [1, 0, 0]; SPR[atoms.length - 1] = XPL; if (q.get('relX')) REL.push(atoms.length - 1); }
+  }
+  // mode=h&Z=2 -> a single atom of charge Z with Z electrons in ONE domain (He as one pair)
+  var ZA = parseInt(q.get('Z') || '1');
+  if (MODE === 'h' && q.get('ZH')) { add(0); }
+  else if (MODE === 'h') { if (ZA === 1) add(0); else { atoms.push({ i: N2, j: N2, k: N2, Z: ZA, el: 'He' }); Z.push(ZA); Znuc.push(ZA); RC.push(0); } }
+  // mode=x: the lone pseudo-atom (reference); mode=xh: X at -R/2, H at +R/2; mode=xh2: linear H-X-H, X-H = R
+  else if (MODE === 'x') addX(0);
+  // ?anchor=1: X stays at the box centre (a cell centre, exactly where its isolated-atom reference sits) and H moves.
+  // Without it X walks between cell centres and faces as R steps by h/2, and a few-cell core sphere captures a
+  // different cell set each time: HF (r_c 0.52) jumped 0.03 Ha between R = 1.5/1.6/1.7 (2026-11-11).
+  else if (MODE === 'xh' && q.get('anchor') === '1') { addX(0); add(+R); }
+  else if (MODE === 'h' && q.get('ZH')) { add(0); }
+  else if (MODE === 'xh') { addX(-R / 2); add(+R / 2); }
+  else if (MODE === 'xh2') { add(-R); addX(0); add(+R); }
+  // mode=x2: homonuclear X2 at +-R/2; with ?bb= each atom's BOND half faces the other atom
+  else if (MODE === 'x2') { addX(-R / 2, +1); addX(+R / 2, -1); }
   else { add(-R / 2); add(+R / 2); }
+  window.USER_RC = RC;
+  if (C2H !== null) {
+    window.FREEZE_BOUNDARY = true;
+    if (q.get('unlock')) window.UNLOCK_AT_STEP = parseInt(q.get('unlock'));
+    var iCore = atoms.findIndex(function (a) { return a.el === ELX + 'c'; }), iVal = iCore + 1;
+    window.CUSTOM_INIT_FULL = function (S, hG, nucPos, NE) {
+      var u = new Float32Array(S * S * S), l = new Uint32Array(S * S * S), c = nucPos[iCore], sum = [0, 0];
+      for (var i = 0; i < S; i++) for (var j = 0; j < S; j++) for (var k = 0; k < S; k++) {
+        var id = i * S * S + j * S + k;
+        var r = hG * Math.sqrt((i - c[0]) * (i - c[0]) + (j - c[1]) * (j - c[1]) + (k - c[2]) * (k - c[2]));
+        var v, d;
+        if (r < C2H) {
+          var t = r / 0.02, m = Math.min(Math.floor(t), LICORE_PHI.length - 2), f = t - m;
+          v = (1 - f) * LICORE_PHI[m] + f * LICORE_PHI[m + 1]; d = iCore;
+        } else { v = Math.exp(-0.6 * r); d = iVal; }
+        l[id] = d; u[id] = v; sum[d - iCore] += v * v * hG * hG * hG;
+      }
+      // scale each domain to int U^2 = its electron count
+      var sc = [Math.sqrt(Z[iCore] / sum[0]), Math.sqrt(Z[iVal] / sum[1])];
+      for (var n = 0; n < u.length; n++) u[n] *= sc[l[n] - iCore];
+      console.log('core2hom init: sphere ' + C2H + ' core norm ' + sum[0].toFixed(4) + ' val norm ' + sum[1].toFixed(4) + ' frozen until ' + (window.UNLOCK_AT_STEP || 'never'));
+      return { u: u, l: l };
+    };
+  }
+  if (ZE.length) window.USER_INIT_ZEFF = atoms.map(function (a, n) { return ZE[n] || Z[n]; });
+  // Force readout: the VOLUME integral F_a = Z_a INT rho (r-R_a)/r^3 over r > clamp (molecule.js USER_FORCE_VOLUME),
+  // not the default averaged grad P, whose sign is set by its smoothing radius. ?force=gradp restores the default.
+  if (q.get('force') !== 'gradp') window.USER_FORCE_VOLUME = true;
+  // A hard core excludes EVERY domain, not only its own atom's (axisym: "density zero inside rc for EVERY
+  // domain"). Without USER_FULL_RC the H domains of BeH2 took Be's core sphere and its flat -Z/rc well and
+  // pushed the Be domain out to the far field (2026-11-11). On whenever a pseudo-atom is present; ?fullrc=0 off.
+  if (RC.some(function (r) { return r > 0; }) && q.get('fullrc') !== '0') window.USER_FULL_RC = true;
+  if (SPT.length) {
+    window.USER_SPLIT_TYPE = atoms.map(function (a, n) { return SPT[n] || 0; });
+    window.USER_SPLIT_IDX  = atoms.map(function (a, n) { return SPI[n] || 0; });
+    window.USER_SPLIT_AXIS = atoms.map(function (a, n) { return SPA[n] || [0, 0, 1]; });
+    window.USER_SPLIT_ROT  = atoms.map(function (a, n) { return SPR[n] || 0; });
+  }
+  if (REL.length) { window.USER_SPLIT_RELEASE = REL; window.USER_SPLIT_RELEASE_STEP = parseInt((q.get('pairH') === '1' ? q.get('relH') : q.get('hback') === '1' ? q.get('relHb') : XPL !== null ? q.get('relX') : q.get('rel')) || '500'); }
+  // ?rsing= pins molecule.js's kernel clamp -Z/max(r, R_SING) to an absolute radius (default 2h moves with h,
+  // so an h-ladder would refine a different problem at every rung). Must be >= 2h on every rung.
+  if (q.get('rsing')) window.USER_R_SING = parseFloat(q.get('rsing'));
+  console.log('h2_beta geometry: mode=' + MODE + ' h=' + h.toFixed(5) + ' N=' + gridN + ' atoms ' +
+    atoms.map(function (a, n) { return a.el + '(' + Z[n] + 'e,kernel+' + Znuc[n] + ',rc' + RC[n] + ')@x=' + ((a.i - N2) * h).toFixed(4); }).join(' ') +
+    (window.USER_R_SING ? ' R_SING=' + window.USER_R_SING : ''));
 
   window.USER_ATOMS = atoms;
   window.USER_Z = Z;
@@ -98,13 +295,57 @@
   // hold it: repeat runs at R=6 scattered -0.802 to -1.100 with it free.
   if (q.get('fixed')) window.FREEZE_BOUNDARY = true;
   window.INIT_ZEFF = 1;
-  window.CONVERGENCE_THRESHOLD = 0.0002;
+  // ?conv= the |dE| stopping threshold (default 2e-4 per check).  2e-4 fires while T and V_eK are still
+  // drifting by 0.1 Ha (H2 R=2 h=0.1 stopped at step 1450, E=-1.137 against -1.237 converged).
+  window.CONVERGENCE_THRESHOLD = parseFloat(q.get('conv') || '0.0002');
+  // speed: ?pevery=k solves the per-electron potentials every k steps; ?cheb=1 Chebyshev, ?lobpcg=1 LOBPCG inner solver
+  if (q.get('pevery')) window.USER_POT_EVERY = parseInt(q.get('pevery'));
+  if (q.get('cheb') === '1') window.USER_CHEB = true;
+  if (q.get('lobpcg') === '1') window.USER_LOBPCG = true;
+  // ?win=W -> windowed-mean convergence over W steps (molecule.js CONVERGENCE_WINDOW); needed with a free boundary
+  if (q.get('win')) window.CONVERGENCE_WINDOW = parseInt(q.get('win'));
+  // ?weak=n -> molecule.js weak interface (mol_fast's w u^2 update, per-electron fields), n smoothing passes of w
+  if (q.get('weak')) window.USER_WEAK_W = parseInt(q.get('weak'));
+  // ?inner=1 -> count the r < 2h sphere in the energy readout (molecule.js USER_ENERGY_INNER)
+  if (q.get('inner')) window.USER_ENERGY_INNER = 1;
 
   var KEY = 'realqm_h2beta';
   if (q.get('reset') !== null) localStorage.setItem(KEY, '{}');
 
   // the solver hands the breakdown to the callback: totals over all electrons
+  // ?blog=s -> log the realised boundary every s seconds while running (not only at convergence)
+  window._logBoundary = function (tag) {
+    try {
+      var sd = window._sliceData, S = window._sliceS || (gridN + 1);
+      if (!sd) return;
+      var rows = [0, 1, 2, 3].map(function (off) {
+        var j = Math.round(N2 + off / h), out = [];
+        for (var i = 2; i < gridN - 1; i++) {
+          var a = Math.round(sd[S * S + i * S + j]) % 1000, b = Math.round(sd[S * S + (i + 1) * S + j]) % 1000;
+          if (a !== b) out.push(a + '|' + b + '@x=' + ((i + 0.5 - N2) * h).toFixed(2));
+        }
+        return 'y=' + off + ': ' + (out.join(' ') || 'none');
+      });
+      console.log(tag + ' step=' + window._tStep + ' E=' + Number(window._E).toFixed(5) + (window._dip_x !== undefined ? ' mu_x=' + Number(window._dip_x).toFixed(4) + 'au(' + (2.5417 * window._dip_x).toFixed(3) + 'D)' : '') + ' ' + rows.join('  ;  '));
+    } catch (e) { console.log(tag + ' readout failed: ' + e); }
+  };
+  if (q.get('blog')) setInterval(function () { window._logBoundary('BLOG'); }, 1000 * parseFloat(q.get('blog')));
   window.onSweepDone = function (E, steps, E_T, E_eK, E_ee, E_KK) {
+    // realised free boundary: label changes along x, on the axis and at 1, 2, 3 a0 off it (slice through the axis)
+    try {
+      var sd = window._sliceData, S = window._sliceS || (gridN + 1);
+      if (sd) {
+        var rows = [0, 1, 2, 3].map(function (off) {
+          var j = Math.round(N2 + off / h), out = [];
+          for (var i = 2; i < gridN - 1; i++) {
+            var a = Math.round(sd[S * S + i * S + j]) % 1000, b = Math.round(sd[S * S + (i + 1) * S + j]) % 1000;
+            if (a !== b) out.push(a + '|' + b + '@x=' + ((i + 0.5 - N2) * h).toFixed(2));
+          }
+          return 'y=' + off + ': ' + (out.join(' ') || 'none');
+        });
+        console.log('BOUNDARY ' + rows.join('  ;  '));
+      }
+    } catch (e) { console.log('BOUNDARY readout failed: ' + e); }
     window._parts = { T: E_T, eK: E_eK, ee: E_ee, KK: E_KK };
     var st = JSON.parse(localStorage.getItem(KEY) || '{}');
     // The key MUST carry box and the freeze flag. Without them a frozen H run and a free
@@ -117,15 +358,38 @@
     // A lone atom has no R, beta or curvature, so those are left out of its key entirely.
     var FIXED = q.get('fixed') ? 1 : 0;
     var JAC = parseInt(q.get('jac') || '10');
-    var cfg = '_h' + h.toFixed(3) + '_j' + JAC + '_x' + BOX.toFixed(1) + '_f' + FIXED;
-    var k = (MODE === 'h') ? ('h' + cfg)
+    var cfg = '_h' + h.toFixed(3) + '_j' + JAC + '_x' + BOX.toFixed(1) + '_f' + FIXED + (q.get('weak') ? '_w' + q.get('weak') : '') + (q.get('inner') ? '_i' : '') + (q.get('Hbare') === '1' ? '_Hb0' : '') + (q.get('bpair') === '1' ? '_bp' : '') + (C2H !== null ? '_c2h' + C2H + 'n' + (q.get('nval') || '1') + 'u' + (q.get('unlock') || 'fix') : '');
+    cfg += (q.get('rsing') ? '_s' + q.get('rsing') : '') + ((MODE === 'x' || MODE === 'xh' || MODE === 'xh2' || MODE === 'x2') ? '_' + ELX + ZX + 'rc' + RCX + (BB.length >= 2 ? '_bb' + BB.join('') : '') : '') + (q.get('ZnX') ? '_Zn' + q.get('ZnX') : '') + (q.get('ZH') ? '_ZH' + q.get('ZH') : '') + (q.get('val') === '1' ? '_val' : '') + (q.get('core2') === '1' ? '_c2r' + (q.get('rel') || '500') + (q.get('coreax') || '') : '') + (q.get('pairH') === '1' ? '_pH' + (q.get('relH') || 'fix') + (q.get('pairax') || '') : '') + (q.get('hback') === '1' ? '_hb' + (q.get('relHb') || 'fix') : '') + (XPL !== null ? '_xp' + XPL + (q.get('relX') ? 'r' + q.get('relX') : '') : '');
+    var k = (MODE === 'h' || MODE === 'x') ? (MODE + (ZA > 1 ? 'Z' + ZA : '') + cfg)
           : ('h2_R' + R.toFixed(2) + '_b' + BETA.toFixed(3) + '_c' + CURV.toFixed(2) + cfg);
     if (!Array.isArray(st[k])) st[k] = [];
     st[k].push(Number(E));
     localStorage.setItem(KEY, JSON.stringify(st));
     console.log('CONVERGED ' + k + ' E=' + Number(E).toFixed(5)
                 + '  T=' + Number(E_T).toFixed(5) + ' V_eK=' + Number(E_eK).toFixed(5)
-                + ' V_ee=' + Number(E_ee).toFixed(5) + ' V_KK=' + Number(E_KK).toFixed(5));
+                + ' V_ee=' + Number(E_ee).toFixed(5) + ' V_KK=' + Number(E_KK).toFixed(5)
+                // molecule.js dipole (au, nuclear minus electronic); +x points from X toward H in xh mode,
+                // so mu_x > 0 means X negative, H positive (the experimental sign for OH, NH, HF, CH)
+                + (window._dip_x !== undefined ? ' mu_x=' + Number(window._dip_x).toFixed(4) + 'au(' + (2.5417 * window._dip_x).toFixed(3) + 'D)' : ''));
+    // F_x per NUCLEUS (siblings on one nucleus summed), total = electronic volume integral + nuclear repulsion.
+    // Hellmann-Feynman only: it omits the moving core-sphere and free-boundary terms, so compare against -dE/dR.
+    // NOT window._nucForceTotal: molecule.js gives EVERY entry on a nucleus the whole nuclear repulsion (summing
+    // siblings counts it 2-3 times) and softens it with r^2 + h^2. Electronic part per entry, summed per nucleus,
+    // plus the EXACT sum_b Za Zb (Ra-Rb)/|Ra-Rb|^3 computed here.
+    try {
+      var Fe = window._nucForceElec, byPos = {}, keys = [];
+      if (Fe) {
+        atoms.forEach(function (a, n) { var key = a.i.toFixed(3);
+          if (!byPos[key]) { byPos[key] = { x: (a.i - N2) * h, el: a.el.replace(/[abf]$/, ''), Fe: 0, Zn: 0 }; keys.push(key); }
+          byPos[key].Fe += Fe[n] ? Fe[n][0] : 0; byPos[key].Zn += Znuc[n]; });
+        keys.forEach(function (ka) { var A = byPos[ka], fn = 0;
+          keys.forEach(function (kb) { if (kb === ka) return; var B = byPos[kb], d = A.x - B.x;
+            fn += A.Zn * B.Zn * d / Math.abs(d * d * d); });
+          A.Fn = fn; });
+        console.log('FORCE ' + keys.map(function (k) { var b = byPos[k];
+          return b.el + '@x=' + b.x.toFixed(4) + ' Fx=' + (b.Fe + b.Fn).toFixed(5) + ' (el ' + b.Fe.toFixed(5) + ' nuc ' + b.Fn.toFixed(5) + ')'; }).join('  '));
+      }
+    } catch (e) { console.log('FORCE readout failed: ' + e); }
     var st2 = JSON.parse(localStorage.getItem(KEY + '_parts') || '{}');
     st2[k] = [E_T, E_eK, E_ee, E_KK]; localStorage.setItem(KEY + '_parts', JSON.stringify(st2));
   };
@@ -259,7 +523,9 @@
     var el = document.getElementById('mon');
     if (!el) return;
     var txt = (MODE === 'h' ? 'single H atom (no interface: beta cannot matter)'
-                            : 'H2 at R = ' + R.toFixed(2) + ' a0, domains meeting at the midplane')
+             : MODE === 'h2' ? 'H2 at R = ' + R.toFixed(2) + ' a0, domains meeting at the midplane'
+             : MODE === 'xh' ? (q.get('el') || 'X') + 'H at R = ' + R.toFixed(2) + ' a0'
+             : 'atom ' + (q.get('el') || 'X'))
             + '<br>beta = ' + BETA.toFixed(3) + ',  curv = ' + CURV.toFixed(2)
             + ',  grid h = ' + h.toFixed(3) + ' (' + gridN + '^3), box ' + BOX + '<br>';
     if (typeof window._prevE !== 'undefined')

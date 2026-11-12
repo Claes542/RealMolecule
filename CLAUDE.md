@@ -35,6 +35,10 @@ caught only by him asking. That cost most of a day.
 - Splitting a −Z valence into Z **one-electron** domains is the house construction: n unit charges
   give n(n−1)/2 pairs, each counted once by the i≠j rule — exact, no (Z−1)/Z factor, no kinetic
   fudge. A −Z multi-occupancy blob is the exception and needs justifying.
+- **In 3D a domain holds 1 electron or a 2hom pair (opposite spins), never more** (Pauli). 3hom/4hom
+  exist only as 1D radial shells — the spherical average of a split into ≤2-electron domains
+  (B's 3 → 2hom+1; a 4 → tetrahedron). Shells hold at most 4; never 6hom/8hom. Shared pairs
+  (core, lone, bonding) are 2hom; electrons that must avoid each other are 2split.
 - Molecules impose only the **inner** cutoff r_c. Outer boundaries are free, found by non-overlap.
   A uniform density plus a free boundary is unstable — it expands without bound.
 - Differences within one composition cancel their errors; differences across compositions do not.

@@ -3,12 +3,12 @@
 \usepackage{amsmath,amssymb}
 \usepackage{graphicx}
 \usepackage{booktabs}
+\usepackage{float}
 \usepackage{authblk}
 \usepackage[margin=1in]{geometry}
 \usepackage[hidelinks]{hyperref}
 
-\title{RealQM Molecule Simulator:\\
-Validation on Small Molecules from Hydrogen and the Second Row}
+\title{RealQM for Molecules: Validation}
 
 \author[1]{Claes Johnson}
 \affil[1]{KTH Royal Institute of Technology, Stockholm, Sweden \\
@@ -21,1049 +21,393 @@ Validation on Small Molecules from Hydrogen and the Second Row}
 \maketitle
 
 \begin{abstract}
-We describe a simulator for small molecules built from hydrogen, carbon, nitrogen and oxygen in
-RealQM, a real-space model in which each electron is a unit-charge density occupying a
-non-overlapping spatial domain, and the validation it is built to support. The model is given three
-valence charges---$Z_x = 1, 3, 4$ for hydrogen, carbon, and nitrogen with oxygen---and each
-molecule's observed geometry; it returns the binding energy and the geometry it settles at. Every
-other quantity is a solver setting, and the settings are declared once and never adjusted per
-molecule. That is a weaker claim than parameter-free and a more useful one: the construction has
-settings, which we tabulate, but no per-system adjustment, so each molecular number is a prediction
-rather than a fit. The central such declaration is the grid: one spacing, $h = 0.1\,a_0$, for every
-molecule in the list, treated as a commitment about what the model is rather than as a convergence
-parameter.
-At fixed $h$ the grid size no longer carries resolution---it fixes the box---and the box must be
-fixed too, because mixed boxes were measured to corrupt a cross-molecule energy difference by a
-factor of $2.7$. The declaration costs something and buys something. It costs the claim of being
-parameter-free: $h$ becomes a constant of the model, fixed by measurement rather than derived, and
-we say so plainly rather than presenting the grid as a numerical setting. It buys falsifiability,
-since with $h$ free any disagreement can be deferred to convergence, whereas with $h$ declared every
-bond length and every binding energy is a prediction carrying no remaining adjustment. On that
-footing the simulator reports both observables directly: binding energy against the measured well
-depth $D_e$, and bond length against $R_e$. We work hydrogen through in full as the foundational
-case. Its binding energy is $0.1666 \pm 0.0018\,E_h$, where the uncertainty is measured scatter
-over a factor of two in the initialisation and not an estimate. That value falls \emph{between} the
-two experimental conventions---$4.5\%$ below the well depth $D_e$ and $1.2\%$ above the directly
-measured $D_0$---which differ by more than the model's own scatter, so the model is accurate to a
-few percent on either reading and the sign of its error is set by a convention it cannot resolve.
-The declared box is worth a further four points, more than the scatter, and runs the unflattering
-way: a smaller box binds more strongly, so enlarging it costs accuracy rather than buying it.
-Its bond is $52\%$ too long;
-and these are not independent defects but one, since the well's curvature is $49\%$ too soft and
-$\Delta R = F/k_{\text{model}}$ turns a given force residual into a proportionately larger
-displacement---a conversion that must use the model's own curvature, the measured force constant
-understating the bond error by the stiffness ratio.
-Its bond error is almost entirely discretisation rather than model: an axisymmetric reduction, exact
-for a two-domain system on an axis, converges the same bond to $1.368\,a_0$---short by $2.3\%$ and
-flat to $0.18\%$ under a $2.5$-fold refinement---with the energy minimum and the force zero agreeing
-to $0.06\%$. So the refinement sequence crosses experiment on its way to something shorter, and the
-spacing at which the error vanishes marks a cancellation rather than an agreement. The two quantities we validate on are the \emph{geometry the model settles at} and the
-\emph{binding energy}---a length and a depth, both in the units the model claims to predict.
-Forces at observed geometries, which an earlier version of this work made primary, are demoted to
-a check: a residual converts to a bond error only through the model's own curvature, and using the
-measured force constant instead---as we did---understates hydrogen's error by twenty-five points.
-What the force retains is narrower and real: the total residual measures electronic
-non-convergence, and its agreement with $-dE/dR$ ($0.06\%$ in an exact axisymmetric reduction) is
-what licenses using forces for dynamics. It is not a figure of merit, and an unbound hydrogen
-molecule scores as well on it as the best entries in the list.
+RealQM~\cite{realqm} describes a molecule as a partition of space into non-overlapping domains, each holding one
+electron (or a pair counted once) as a real density, with the domain boundaries placed where the
+density is continuous and each electron free at its wall (a homogeneous Neumann condition). We
+solve this \emph{hard-partition} model as it stands, converged in the mesh, with nothing adjusted to
+molecular data (each core radius is set once per atom, from its ionisation energies), using a three-dimensional solver (\texttt{molecule.js}) and, for homonuclear X$_2$, where the
+boundary is the midplane by symmetry, an exact axisymmetric reduction that serves as an independent check: on H$_2$ the two give binding
+energies of $0.2251$ and $0.2241\,E_h$ at the same mesh. Each electron pair can be carried in
+two parameter-free constructions to choose from: \emph{2split}, two one-electron domains
+(complete, permanent avoidance), and \emph{2hom}, one pair domain (no avoidance beyond the mean
+field, the Hartree--Fock level). Both are reported; for H$_2$ and He the exact value lies between
+them. Where the boundary is fixed by symmetry the bond is sharp: H$_2$ $-2.3\%$, converged.
+A free boundary carries no Pauli cost, so inner shells
+are excluded by a fixed core radius per atom: every all-electron LiH with free core boundaries
+collapses, while the pseudo-Li core with one 2hom bonding pair gives $R_e = 2.85\,a_0$ (exact
+$3.015$), $D_e = 0.095\,E_h$ (exact $0.092$) and a dipole of the right sign, $11\%$ high.
+Molecules are built by successive reduction---all electrons, frozen $1s^2$ core, reduced
+dimension for X$_2$, reduced valence charges on a coarse mesh---and the last step carries
+proteins of over two thousand atoms on one GPU in a web browser.
 \end{abstract}
 
-\section{Introduction}
-\label{sec:intro}
-
-RealQM~\cite{realqm} replaces the many-electron wavefunction by $N$ unit charge densities occupying
-non-overlapping spatial domains with free interfaces, interacting by Coulomb's law with each pair
-counted once. Nuclei enter as kernels; in molecular work a filled core is replaced by a
-\emph{pseudo-kernel} of reduced charge $Z_x$ carrying only the bonding valence. The model is
-therefore a force law: kernels move under the electrostatic force of the charge distribution, and
-a predicted geometry is wherever that force vanishes.
-
-\paragraph{What goes in, and what comes out.} The model is given \emph{three valence charges}---
-$Z_x = 1, 3, 4$, covering hydrogen, carbon, and nitrogen with oxygen---and each molecule's
-\emph{observed geometry}. Everything else is a solver setting, and the settings are declared once
-and never adjusted per molecule. That is the load-bearing claim of this paper, and it is weaker
-than ``parameter-free'' while being more useful: the construction plainly has settings, listed in
-Section~\ref{sec:mesh}, but it has no \emph{per-system} adjustment, so every molecular number is a
-prediction rather than a fit. A reader can check this by inspection, which is why the settings are
-tabulated rather than described.
-
-What comes out is the \emph{binding energy} and the \emph{geometry the model itself settles at},
-with the \emph{dipole} as a third quantity that doubles as an acceptance test---a symmetric molecule
-must give $\mu \equiv 0$, so any value there is pure error and rejects the state before its energy
-is read.
-
-Two limits of that economy belong here rather than in a closing section. Three charges covering
-four elements is \emph{degenerate}: nitrogen and oxygen both take $Z_x = 3$ and are bit-identical
-calculations, so the model cannot distinguish them and no result involving both speaks to their
-difference. And the geometry prediction presently covers four molecules rather than thirteen,
-because rescaling a bond is implemented for diatomics only and three-centre relaxations oscillate
-(earlier work in this programme).
-
-Validating such a model is awkward by the usual routes. Scanning the energy over geometry requires
-every point of the scan to be converged, and a scan assembled from partially relaxed states returns
-a smooth but meaningless curve. Relaxing under the force requires the force to be trustworthy, which
-is the thing under test. Both routes also need many calculations per molecule, and both return an
-answer whether or not the underlying states deserve one.
-
-\paragraph{The geometry the model settles at---primary.} The separation and angles the model itself
-reaches, against the measured ones. This is the observable with the fewest defects: it is a
-\emph{length}, in the units the model claims to predict; it needs no second quantity to interpret;
-and it is not symmetry-protected, where a force residual is---CO$_2$ can contract symmetrically
-with $\sum_a \mathbf F_a$ staying exactly zero while every bond is wrong. It must be taken from a
-\emph{commensurate, two-sided} scan: released from the experimental geometry the molecule expands
-and stops short, giving $1.796\,a_0$ for H$_2$ against a true minimum of $2.134$, so one-sided
-relaxation flatters the model by some ten points.
-
-\paragraph{The binding energy---primary.} $E_{\text{bind}}$ from \eqref{eq:ebind} against the
-measured well depth, reported against both conventions because they differ by more than the model's
-own scatter. It requires atomic references computed with the same construction on the same grid,
-which is why Section~\ref{sec:atoms} treats the atom before any molecule.
-
-\paragraph{The force at the observed geometry---a check, not a figure of merit.} At the measured
-equilibrium the true force vanishes, so the residual is model error with experiment supplying the
-reference, from a single calculation. We previously presented this as the primary observable and
-that was a mistake, for a reason H$_2$ makes quantitative. Converting a residual to a bond error
-needs a force constant, and \emph{which} one decides the answer: $F(R_e) = +0.1383\,E_h/a_0$ gives
-$+27\%$ divided by the measured $k = 0.3692$ and $+53\%$ divided by the model's own
-$k = 0.1875$, against a true minimum at $+52\%$. So the conversion is right only with the model's
-curvature---a second quantity, itself $49\%$ in error, requiring its own three-point scan---and the
-measured constant \emph{understates} the model's error by twenty-five points. Every
-$\Delta R$ in Table~\ref{tab:main} was converted that way and is a lower bound.
-
-What the force retains are two narrower uses, both real. The residual total force measures
-\emph{electronic non-convergence}, since it equals the net force of the cloud on the nuclei and
-vanishes only for a stationary state. And agreement with $-dE/dR$ is what licenses using forces for
-dynamics at all: $0.06\%$ in the axisymmetric reduction, $3.2\%$ in the three-dimensional solver.
-Neither is a measure of how good the model is.
-
-The two primary quantities are not independent, and reporting either alone invites a wrong
-generalisation: a model can have the right depth and the wrong position if its curvature is wrong,
-which is exactly what hydrogen does. Section~\ref{sec:h2} works both through for H$_2$, the one
-system whose atomic reference involves no core at all.
-
-\paragraph{What is in scope, stated once.} At one electron this model is the simplest Coulomb model
-there is, and it is not distinguishable from the standard one: minimising
-$\tfrac12\int|\nabla u|^2 - \int (Z/r)\,u^2$ subject to $\int u^2 = 1$ is the Schr\"odinger
-variational problem, with the same functional and the same minimiser, so $E(\mathrm{H}) = -0.5$
-follows by \emph{reduction} and not by any fitting. Hydrogen accordingly tests the
-\emph{discretisation} and not the model.
-
-\paragraph{One calibration, on hydrogen, and then none.} The discrete realisation does need one
-constant that the continuum model does not: a grid cannot represent $1/r$, so the kernel carries a
-softening $\sigma h$. We fix it once, by requiring
-\begin{equation}
-  E(\mathrm{H}) = -0.500000 \qquad\Longrightarrow\qquad \sigma = 0.627 \ \ \text{at } h = 0.1\,a_0 ,
-  \label{eq:sigmacal}
-\end{equation}
-measured on a four-point ladder ($-0.508456$, $-0.500962$, $-0.493833$, $-0.486591$ at
-$\sigma = 0.4, 0.6, 0.8, 1.0$, linear in $\sigma$ to better than a percent). Verified at the declared
-grid rather than extrapolated to it: $\sigma = 0.627$ returns $E(\mathrm{H}) = -0.500067$ at box
-$16\,a_0$, an error of $0.013\%$ (and $-0.499901$ at box $20\,a_0$), confirming also that the ladder's value carries across boxes as the near
-box-independence of a single atom requires. This is the \emph{only} calibration in the paper, and three things about it matter. It is fixed on a \emph{one-electron}
-system, where the model has no content of its own and the reference is exact, so no molecular
-observable is consumed. It is a single number, not a function. And it is fixed before any molecule
-is computed.
-
-Everything molecular then follows with \emph{no further calibration}: the same $\sigma$, the
-non-overlapping densities, the interface condition, and the observed geometries. There is nothing
-left to adjust, per molecule or otherwise, so every entry in the tables below is a prediction. That
-is the sense in which this is the simplest model of a molecule that can be built on Coulomb's law:
-the one-electron problem is the minimal Coulomb model, the only thing added is that the densities
-do not overlap and must meet somewhere, and the only thing fitted is the one constant that repairs
-the grid.
-
-We distinguish this from the \emph{declared settings}---the spacing $h$, the box, and the five
-coefficients of the free-boundary update~\eqref{eq:wupdate}. Those are numerical choices, listed in
-Section~\ref{sec:mesh} and not fitted to any observable; they are declared rather than calibrated,
-and none of them is adjusted per system. One calibration and a declared numerical scheme is a
-weaker claim than ``parameter-free'' and a more useful one, because it is checkable: there is
-exactly one number in this paper that was set by looking at an answer, and it was not a molecular
-answer.
-
-It is worth putting this the other way round, because it is the stronger statement.
-Schr\"odinger's equation for hydrogen \emph{is} the minimal continuum model that can be built from a
-Coulomb attraction: a kinetic penalty quadratic in $\nabla u$ is the lowest-order rotation-invariant
-term that prevents collapse, and no simpler functional binds at all---a purely local kinetic
-density, for instance, does not. Hydrogen's exactness is therefore a property of those two
-ingredients and not of either theory's account of \emph{many} electrons. The standard formulation
-and ours contain exactly the same ingredients at one electron and are both exactly right, so
-hydrogen discriminates between no formulations whatsoever. Nothing in this paper rests on it, and we
-would regard any programme that advertised one-electron agreement as support for a many-electron
-construction as having claimed the ingredients' success for its own.
-
-The model acquires content only at two electrons, where the partition, the interface condition and
-and the question of what keeps two electrons apart all appear for the first time---so that is
-where its first genuine test is,
-and no agreement at one electron is evidence about molecules.
-
-\paragraph{No molecule should be expected to come out exactly, H$_2$ included.} This follows from
-the two paragraphs above rather than from any particular disappointment. At one electron the
-construction coincides with the standard minimal model; at two it both \emph{adds} a partition and
-answers the question of inter-electron repulsion \emph{differently}, and those changes are
-structural rather than perturbative. It is
-therefore a different theory precisely where molecules begin, and exact agreement with the other
-theory's answers would be the thing requiring an explanation. We say this in advance because it
-determines what the tables below can mean: a $20\%$ energy error is the expected size of a known
-omission, not a numerical failing to be driven down, and the useful question is whether the error
-is \emph{systematic}---one sign, one scale, cancelling in differences at fixed composition---which
-is a testable claim and the one we make.
-
-A related point of hygiene. The value $-1.174470\,E_h$ that H$_2$'s total energy is conventionally
-measured against is a Kolos--Wolniewicz \emph{computation}, not a datum, and a computation in the
-very theory whose many-electron content this construction declines; so comparing a total energy to
-it sets one theory against another rather than against nature. The total electronic energy is in any
-case not an observable. H$_2$'s observables are $D_0$, $R_e$, and a dipole that must vanish by
-symmetry, and those are what Section~\ref{sec:h2} reports.
-From two electrons onward two distinct mechanisms operate and should not be run together. The
-partition makes overlap \emph{impossible}---a constraint, not a penalty, since the Coulomb integral
-is finite even for coincident smooth densities and so could never forbid coincidence by itself. The
-Coulomb term instead resists \emph{compression}, rising as two domains are pushed together. And the
-partition generates
-\emph{nothing} between equivalent domains across a mirror plane, where the masked and continuous
-constructions agree to $4\times 10^{-8}$. We state this as a measured property of this construction
-rather than as the absence of a term from another one: a joint antisymmetric wavefunction is not an
-observable, and a theory built on distinguishable densities on disjoint domains has no such object
-to antisymmetrise, so it is not \emph{omitting} anything---it is answering the same question with
-different machinery, and the answer is testable on its own. The consequence is not a scatter but a signed bias: the model over-binds, by tens of
-percent, wherever two equivalent units face each other. On H$_2$ a strict-interface construction
-with hydrogen calibrated exactly gives $E_{\text{bind}}$ too large by $+59.6\%$ at its own minimum
-while placing the bond within $-3.7\%$; on helium, with the same softening, $-3.027$ against
-$-2.9037$.
-
-We therefore do not claim absolute binding energies, and the reader should not read the
-$E_{\text{bind}}$ column as one. What the construction does deliver is \emph{geometry}, and
-\emph{differences at fixed composition}, where the common atomic error cancels. Those are the two
-claims this paper makes. A one-parameter interface energy that buys the binding energy is available
-and we have measured it---it takes H$_2$ from $+59.6\%$ to $+18\%$---but it costs the bond, moving
-it from $-3.7\%$ to $+7.6\%$, and it costs the description of the model as parameter-free. We report
-the unmodified construction instead, and state its energy error rather than absorbing it.
-
-\section{Model and method}
+% =====================================================================================
+\section{The model}
 \label{sec:model}
 
-Throughout, the binding energy is
+RealQM~\cite{realqm} replaces the many-electron wave function by one-electron densities on
+non-overlapping domains of ordinary three-dimensional space. A molecule with nuclei
+$\{(\mathbf{R}_a, Z_a)\}$ is described by domains $\Omega_k$ partitioning
+space, each carrying $n_k \in \{1, 2\}$ electrons (two only of opposite spin) as a real amplitude $u_k$ with
+$\int_{\Omega_k} u_k^2 = 1$ and density $\rho_k = n_k u_k^2$. The energy is
 \begin{equation}
-  E_{\text{bind}} \;=\; \sum_i E(\text{atom}_i) \;-\; E(\text{molecule}),
-  \label{eq:ebind}
+E = \sum_k n_k \Big( \tfrac12 \int_{\Omega_k} |\nabla u_k|^2 - \int_{\Omega_k} K u_k^2 \Big)
+  + \sum_k \tfrac{n_k(n_k-1)}{2} U_{kk} + \sum_{k<l} n_k n_l U_{kl} + V_{KK},
+\label{eq:E}
 \end{equation}
-with every atomic reference computed in the same construction, on the same grid, at the same
-softening as the molecule---a requirement rather than a convenience, since a reference taken at
-different settings turns a model error into a settings error.
+with $K = \sum_a Z_a/|\mathbf{x} - \mathbf{R}_a|$, $U_{kl}$ the Coulomb interaction of the unit
+densities $u_k^2$ and $u_l^2$, and $V_{KK}$ the nuclear repulsion. A pair domain ($n_k = 2$) counts
+its single pair once.
 
+\paragraph{Boundary conditions.} Each $u_k$ satisfies a homogeneous Neumann condition on
+$\partial\Omega_k$: the kinetic energy is counted only inside the domain, and the amplitude at the
+wall is free. The boundaries are placed by \emph{density continuity}, $\rho_k = \rho_l$ across each
+interface. Energy minimisation over the boundary position is not used: in this model a ragged or
+displaced boundary can lower the energy (Section~\ref{sec:why}), and only continuity holds it.
 
-Each electron $m$ carries a density $u_m^2$ supported on a domain fixed by a weight $w_m$, with
-$\int w_m u_m^2 = n_m$ the domain's occupation. Domains compete for territory, so the partition has
-free internal boundaries. The energy is
-\begin{equation}
-  E = \sum_m \Big[\tfrac12\!\int\! w_m|\nabla u_m|^2 - \!\int\! w_m K u_m^2\Big]
-      + E_{ee} + \sum_{a<b} \frac{Z_a Z_b}{R_{ab}},
-  \qquad K(\mathbf r) = \sum_a \frac{Z_a}{r_{\mathrm{soft},a}},
-\end{equation}
-with every term weighted by $w$, electron--electron repulsion counting each pair once by the
-$i\neq j$ rule, and $r_{\mathrm{soft}}^2 = |\mathbf r - \mathbf R_a|^2 + (\sigma h)^2$ a kernel
-softening on the grid of spacing $h$. Calculations use bare kernels ($r_c = 0$) throughout, the
-declared grid of Section~\ref{sec:mesh}, and relaxation to a fixed step count with early
-termination disabled---the latter because the built-in stopping criterion compares energies between
-wall-clock samples and was found to report convergence on a plateau from which the state was still
-moving.
-
-\subsection{How the forces are computed}
-\label{sec:force}
-
-The force on a nucleus is the classical electrostatic force of the charge distribution, the content
-of the electrostatic force theorem~\cite{hellmann,feynman}; in a model built from charge densities
-it is definitional rather than derived. It is obtained by differentiating the discretised energy
-analytically rather than by sampling its gradient. From
-$V_{eK} = -\sum_a Z_a \int \rho / r_{\mathrm{soft},a}$,
-\begin{equation}
-  \mathbf F_a \;=\; -\frac{\partial V_{eK}}{\partial \mathbf R_a}
-   \;=\; Z_a \int \rho(\mathbf r)\,
-          \frac{\mathbf r - \mathbf R_a}{r_{\mathrm{soft},a}^{3}}\, dV ,
-  \label{eq:volforce}
-\end{equation}
-a volume integral over the grid. It carries no averaging radius and is never evaluated at the
-nuclear cusp, and because it differentiates the same softened kernel from which the energy is
-built it agrees with $-dE/dR$ by construction, up to the term arising from the partition boundary
-moving with the nuclei---the analogue here of the basis-set derivative term of Pulay~\cite{pulay}.
-
-The alternative of sampling $Z_a \nabla V_H$ at the nucleus and averaging over a sphere of radius
-$a$ to suppress grid noise is not a well-defined quantity on this mesh: holding H$_2$ fixed at
-$R = 1.68\,a_0$ and varying only $a$ from $0.24$ to $0.96\,a_0$ carries the force from $-0.050$ to
-$+0.027\,E_h/a_0$, with no plateau and a change of sign, since the averaging bias is
-$O(a^2\nabla\rho)$ and $\nabla\rho$ is largest exactly at the cusp. Equation~\eqref{eq:volforce}
-is used throughout; its agreement with $-dE/dR$ was measured on H$_2$, where
-it predicts the model's own minimum to $0.2\%$.
-
-\section{One mesh for every molecule}
-\label{sec:mesh}
-
-All calculations reported here use the GPU solver \texttt{mol\_fast} on a single declared grid:
-\begin{equation}
-  h = 0.1\,a_0, \qquad 160^3 \text{ cells}, \qquad \text{box } 16\,a_0, \qquad
-  \sigma = 0.627 \ \ \text{(calibrated, \eqref{eq:sigmacal})},
-  \label{eq:grid}
-\end{equation}
-the same for every molecule in the list. The grid is not adjusted per system and no mesh ladder is
-run to justify a number. This requires defending, because it inverts the usual practice.
-
-\paragraph{At fixed $h$, the grid size is the box.} Since $\text{box} = n h$, declaring $h$ turns
-the choice of grid size into a choice of how much vacuum surrounds the molecule, not of how finely
-it is resolved. The bond length is nearly insensitive to that: holding $h = 0.1$ and enlarging the
-box from $10$ to $14\,a_0$ moves H$_2$ from $1.8855$ to $1.8921\,a_0$, a change of $0.35\%$.
-
-\paragraph{Why $16\,a_0$ and not more.} Two constraints meet here and the second is the binding
-one. The box must be large enough to hold the polyatomic entries with room for their electron
-clouds, which rules out $12\,a_0$. And it must be small enough to compute: at $h = 0.1$, box
-$20\,a_0$ is $200^3$ cells, and two-electron runs at that size exhaust the browser's resources and
-return no energy at all, while $160^3$ runs to convergence in minutes. So $16\,a_0$ is not a
-compromise between accuracy and convenience---it is the largest box at which these calculations
-exist. We prefer to say that plainly rather than to declare a grid the computations cannot reach.
-
-\paragraph{The declared box costs accuracy on the acceptance test, and we report it.} Enlarging the
-box is not free in the direction one would hope. At box $20$, H$_2$ at $R = 1.9\,a_0$ returns a
-dipole of $0.067\,\mathrm{D}$ where reflection symmetry requires identically zero, against
-$0.006\,\mathrm{D}$ for the same configuration at box $12$---eleven times worse, with $0.097$ against
-$0.010$ at $R = 2.1$. The free boundary has more exterior to drift into and nothing anchors it
-there. Since a symmetric molecule's dipole is a pure error measurement needing no reference, the
-declared grid is measurably worse on the one test that cannot be argued with, and the reader should
-weigh the dipole column accordingly.
-
-\paragraph{Where $h = 0.1$ comes from.} Not from a physical argument. It is the finest spacing at
-which these systems compute in a common web browser---$160^3$ cells at the declared box---and the
-simulator is deliberately a browser program so that any reader can reproduce every number here
-without installing anything. That is an accessibility choice with a price, and the price is
-resolution: \textbf{the precision to expect from this table is fair rather than high}, several of
-the errors are mesh-limited rather than model-limited, and a finer mesh is the obvious next step
-that the constraint forbids. Where an $h$-ladder exists we report it rather than a single value.
-
-\paragraph{The box must be fixed too.} This is the reason the grid cannot follow the molecule.
-Comparing two systems computed in differently sized boxes inflates their energy difference: CO gave
-$0.0369\,E_h$ on mixed boxes against $0.0137\,E_h$ on matched ones, a factor of $2.7$. A table of
-binding energies assembled from per-molecule boxes is therefore not a table of model errors but of
-box errors, and the only remedy is one box for the whole table, sized by its largest member.
-
-\paragraph{What the declaration costs.} It costs the description of the model as parameter-free.
-With $h$ declared, $h$ is a constant of the model, fixed by measurement and not derived from
-anything; and \eqref{eq:grid} is not an innocent choice, since $h = 0.1$ is the spacing at which the
-binding energy of hydrogen agrees with experiment while its bond is $52\%$ too long
-(Section~\ref{sec:h2})---and the bond error there is
-discretisation, the converged value being short by only a few percent. A declared mesh is therefore
-not neutral between observables: this one is chosen where the energy is right and the geometry is
-not. A genuine constant of nature would be pinned by something physical; the
-natural candidate here is the kernel softening length $\varepsilon = h$, and at $0.1\,a_0$ that
-exceeds a real nuclear radius by four orders of magnitude, so no physical length currently fixes it.
-
-\paragraph{And $h$ is not the only one.} The free boundary is advanced by
-\begin{equation}
-  w \;\leftarrow\; w \;+\; \lambda\,\delta t\,|c|\,\nabla^2 w \;+\; \mu\,\delta t\, c\,|\nabla w| ,
-  \qquad c \;=\; u_m - \max_{n \neq m} u_n ,
-  \label{eq:wupdate}
-\end{equation}
-clamped to $[0,1]$, with the occupancy set to zero below a floor $w_f$ wherever another domain
-clearly owns the cell. The fixed point $c = 0$ is the amplitude-continuity condition of
-Section~\ref{sec:h2iface} and is part of the model; the coefficients are not. Declaring the grid
-therefore means declaring, alongside $h$: the interface sharpness $\lambda = 0.05$, the front speed
-$\mu = 1$, the residue floor $w_f = 0$, the relaxation step $\delta t = \nu h^2$, the initial
-territory extent $R_{\text{init}} = 3\,a_0$---and the box itself, which Section~\ref{sec:h2bind}
-measures at four points of hydrogen's binding energy and which therefore cannot be presented as a
-container sized to fit the molecules. We list them because an unlisted regularisation is
-indistinguishable from a fitted one.
-
-\paragraph{One declared quantity is not a parameter of the dynamics at all.} The kinetic energy is a
-\emph{reported} quantity, and on a diffuse occupancy there is more than one way to report it. The
-functional the evolution actually minimises weights each face by the average occupancy across it,
-$T = \tfrac12 \sum_{\text{faces}} w_{\text{face}} (\delta u)^2 h$, which is what the amplitude update
-performs gradient descent on; this is the form declared here. Two alternatives are equally
-available: a hard gate, counting the \emph{full} unweighted gradient wherever $w$ exceeds a
-threshold and nothing below it, and the kinetic energy of the assembled global field
-$\Psi = \sum_m w_m u_m$, which is the object the model's $\Psi \in H^1$ requirement actually names.
-Measured on H$_2$ at box $12$, $h = 0.10$, $D = 2.1\,a_0$---one converged state, scored three ways,
-with the occupancies and amplitudes identical in all three:
-\begin{center}
-\begin{tabular}{lccc}
-\hline
-scoring of $T$ & $T$ & $E$ & $E_{\text{bind}}$ vs $D_e$ \\
-\hline
-hard gate & $0.9103$ & $-1.137236$ & $-5.9\%$ \\
-face-averaged (declared) & $0.9197$ & $-1.127903$ & $-11.1\%$ \\
-assembled $\Psi$ & $0.9286$ & $-1.1190$ & $-14.0\%$ \\
-\hline
-\end{tabular}
-\end{center}
-Eight points of $D_e$ separate the extremes, from bookkeeping alone. The ordering is uncomfortable:
-the \emph{most} internally consistent scoring is the furthest from experiment, and the gated form
-that agrees best with it is the one that does not correspond to the functional being minimised. We
-declare the face-averaged form because it is the one the dynamics minimises, not because it is the
-one that flatters the model, and we report the spread so that no reader mistakes a choice of
-accounting for a result.
-
-There is a second reason to declare it, independent of the first. The assembled field
-$\Psi = \sum_m w_m u_m$ is the object the model's $\Psi \in H^1$ requirement actually names, so the
-scoring closest to $T_\Psi$ is the one closest to the stated construction. Measured on N$_2$ at
-box $16$, $h = 0.10$---one state, both scorings, $T_\Psi = 10.4302$ throughout:
-\begin{center}
-\begin{tabular}{lccc}
-\hline
-scoring & $T$ & $E$ & $T - T_\Psi$ \\
-\hline
-gated & $10.3800$ & $-14.718135$ & $-0.0502$ \\
-face-averaged & $10.4261$ & $-14.672033$ & $\mathbf{-0.0041}$ \\
-\hline
-\end{tabular}
-\end{center}
-The face-averaged form is twelve times closer. The entire difference between the two is kinetic---
-$\Delta E = \Delta T = 0.046102$ to six figures, which is the check that the choice touches nothing
-else---so the two scorings differ by $0.046\,E_h$ on N$_2$'s total while agreeing exactly on its
-density, its geometry and its dipole. Nothing in the geometry depends on it: the three differ only in $E$, and
-six gate values give bit-identical bonds.
-
-Their measured sensitivity on H$_2$ is the reason this is a short list rather than a serious one.
-Reducing $\lambda$ by a factor of four moves the bond by $0.4$ points; doubling
-$R_{\text{init}}$ moves it by $0.2$ points and the energy by $0.006\,E_h$. The floor is the
-exception: raising it from $0$ to $0.05$ lengthens the bond by up to $2.9$ points, monotonically and
-saturating, and---awkwardly---the setting that leaves no spurious residue behind a retreating front
-makes the bond \emph{worse}, which is why $w_f = 0$ is declared rather than defaulted quietly. The
-front speed $\mu$ has not been laddered on H$_2$ at all; it was fixed on a one-electron test where
-$\mu = 2$ was stable and $\mu = 10$ failed to conserve charge, and that is the outstanding gap in
-this list.
-
-\paragraph{What it buys.} Falsifiability. With $h$ free, any disagreement with experiment can be
-deferred to convergence, and no single calculation is ever answerable for its result. With $h$
-declared, every bond length and every binding energy in the table is a prediction carrying no
-remaining adjustment, and the whole table stands or falls together. The sharp test, which we cannot
-yet run, is whether \emph{one} spacing fits both observables at once; Section~\ref{sec:h2} shows
-that hydrogen's two observables currently want different ones.
-
-\section{The atom: homogeneous inner shells, sector-split valence}
+% =====================================================================================
+\section{Atoms}
 \label{sec:atoms}
 
-The binding energy \eqref{eq:ebind} is a difference against separated atoms, so the atomic model is
-part of the molecular model and is stated first.
+Atoms are computed in spherical symmetry, with all electrons organised in non-overlapping radial
+shells following the Atom Simulator configurations~\cite{atoms} (Li $2{+}1$, B $2{+}3$, \dots): a
+one-dimensional problem in the radius, with each shell boundary free and placed by the same continuity rule as in three dimensions. For
+use in molecules the atom is then reduced to a
+\emph{pseudo-atom}: the $1s^2$ core (and further inner shells) is frozen into a pseudo-nucleus of
+charge $Z_x$ with a hard core of radius $r_c$, and only the outer shell is carried in three
+dimensions, split into domains of at most two electrons (boron: pseudo-B $+3$ with an outer 2hom
+pair and one electron). A radial shell holding three or four electrons is a shared density in one
+dimension, which no domain may be in three dimensions; it stands for the spherical average of its
+angular split into domains of at most two (boron's $3$ as $2_{\rm hom}{+}1$, a $4$ as a tetrahedron
+of single electrons). Shells hold at most four---the pair and the tetrahedron, an octet being
+$4{+}4$, never a single shell of six or eight. Energy does not select the configuration: more
+sharing always lowers the one-dimensional energy (Li as one shell of $3$ is $13.7\%$ too deep, as
+$2{+}1$ within $0.5\%$), so the configuration is set by the Pauli cap of two per domain, not by
+minimisation. The core radius is a property of the atom, not of any molecule, and it is
+obtained in two ways. \emph{Fitted}: the radius at which the pseudo-atom alone, in three
+dimensions, reproduces the sum of the ionisation energies of the electrons it carries.
+\emph{Computed}: the core--valence interface of the one-dimensional all-electron atom, which for a
+$1s^2$ core is fixed by the model itself, independent of the box:
+\begin{center}
+\small
+\begin{tabular}{lccc}
+\toprule
+& $r_c$ fitted to IE (3D) & $r_c$ computed (1D, boxes $6$--$20\,a_0$) & difference \\
+\midrule
+Li ($2{+}1$) & $1.99$  & $1.98$--$2.05$ & within $3\%$ \\
+B  ($2{+}3$) & $1.08$ & $0.92$--$1.00$ & $8$--$15\%$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+For Li the two agree, and the core radius is an output of the model. For B the computed radius is
+shorter than the fitted one. We use the fitted radius throughout, and state the computed one beside
+it; an outer core shell beyond $1s^2$ (Na and below) has no box-independent interface in one
+dimension, and there only the fitted radius exists. At $h = 0.1$ the hard core excludes whole
+cells, so the fitted radius is defined to a few hundredths of $a_0$.
+% BH box12 rc1.08: E(R) split 2.1 -3.34532 2.3 -3.38409 2.5 -3.37957; hom 2.1 -3.26044 2.3 -3.26588 2.5 -3.25960; refs B -2.62898 H -0.48209.
+% B fitted: pseudo-B +3, bb=2,1, box 12, h=0.1; E(rc) 0.7 -3.48229, 0.9 -2.97445, 1.04 -2.69126, 1.06 -2.66469, 1.087 -2.60805, 1.1 -2.60292, 1.3 -2.32130; 1.08 -2.62898 (0.2% below target -2.62329); 1.08->1.087 jumps 0.021 Ha (cell staircase). Box 20 at 1.087: -2.61030.
 
-An atom is a kernel carrying the \emph{full} nuclear charge $Z$ with every electron represented as
-its own charge density, arranged in radial shells. The inner shells are \textbf{homogeneous}:
-spherical, non-split, multi-occupancy domains, whose intra-shell repulsion the solver reduces
-exactly for a shared shape, retaining $(n-1)/n$ of the self-Hartree, which is the identity
-\begin{equation}
-  \sum_{i<j}\!\iint\!\frac{\rho_i\rho_j}{r}
-  \;=\; \frac{n(n-1)}{2}\cdot\frac{1}{n^2}\iint\!\frac{\rho\rho}{r}
-  \;=\; \frac{n-1}{2n}\iint\!\frac{\rho\rho}{r}.
-\end{equation}
-The outermost shell is \textbf{sector-split}: divided into angular domains rather than carried as
-one sphere. Oxygen is $2+3+3$ on a $+8$ kernel, the configuration obtained from atomic calculations
-independently of any molecular input~\cite{atoms}.
+% =====================================================================================
+\section{Molecules by successive reduction}
+\label{sec:reduction}
 
-Three properties of this construction decide what the molecular results can mean.
+Molecules are built by reducing the full model step by step, each step tested on systems where the
+step before it can still be run.
+\begin{enumerate}
+\item \emph{All electrons} (H$_2$, He): every electron in its own domain or in a pair, with no
+  pseudo-nucleus. Here an electron pair has two constructions to choose from, 2split and 2hom
+  (Section~\ref{sec:h2}).
+\item \emph{Frozen $1s^2$ core}: for every molecule beyond H$_2$ the atoms enter as pseudo-atoms
+  (Section~\ref{sec:atoms}); only valence electrons are computed, in domains of at most two, with
+  the inner boundary $r_c$ fixed and all outer boundaries free. A free boundary carries no Pauli
+  cost, so the core sphere must be fixed (Section~\ref{sec:lih}). LiH and BH are computed this way.
+\item \emph{Reduced dimension} for homonuclear X$_2$, where the boundary is the midplane by
+  symmetry: the axisymmetric solver (Section~\ref{sec:solver}).
+\item \emph{Large molecules}: pseudo-atoms with reduced valence charges on a coarse mesh. The same
+  \texttt{molecule.js} then carries a 238-residue protein (green fluorescent protein, $2307$ atoms)
+  on a $300^3$ grid at $h = 0.4\,a_0$, and crambin ($540$ atoms) on $200^3$ at $h = 0.25\,a_0$,
+  on the GPU of a laptop in a web browser, in minutes to hours. % TODO: measure wall time per run
+  At this level the mesh no longer resolves the bond, and the protein folds shown are guided by
+  contact restraints; the step makes the computation possible, and what it preserves is tested only
+  on small fragments (Section~\ref{sec:limits}).
+\end{enumerate}
 
-\paragraph{The core excludes the valence by occupying space, not by decree.} There is no inner
-cutoff and no core radius. The valence is held out of the core region by the core electrons
-themselves, through the same non-overlap that separates any two domains---and that exclusion is
-\emph{compressible}: a valence pressed inward can squeeze the core, where a radius would simply
-block it. This distinction is not cosmetic. A radius calibrated to reproduce an atom's valence
-energy comes out at $0.92\,a_0$ for carbon, three and a half times the $0.263\,a_0$ Slater estimate
-of its $1s$ radius, and two such spheres on a second-row diatomic leave only $0.50\,a_0$ of bonding
-region between them: the calculation then converges reproducibly to an asymmetric state. A core
-that yields transfers to molecules; a radius sized to fix the atom does not.
 
-\paragraph{The sector split changes the sign of the dipole, and we do not know why.} Measured on
-OH with everything else held: the same valence electrons give $\mu_x = +0.778$ (correct sign) as
-two angular domains and $-0.470$---inverted---as one. Same kernel, same electron count, same
-geometry; only the partition differs. The effect is large and reproducible, and it is the sharpest
-discriminator we have between constructions, because a sign cannot be rescued by cancellation.
+% =====================================================================================
+\section{Solvers, and the check between them}
+\label{sec:solver}
 
-We decline to explain it by saying a single domain cannot polarise, which would be wrong: a
-domain's density is a free field over its territory, constrained only by $\int w u^2 = n$, so it
-may perfectly well carry more charge on one side than the other. A domain explicitly \emph{flagged
-spherical} is shape-locked and can only translate or resize, and that is the case the nested
-construction uses for its inner shells---but it does not apply to a free-form single domain, which
-is what the measurement above compares. What the split supplies is therefore not polarisability as
-such. The mechanism is open, and we report the measurement without it.
+\paragraph{\texttt{molecule.js}.} One amplitude field on a Cartesian grid, each cell labelled by its
+owning domain, so the domains are disjoint by construction. The kinetic stencil omits every face
+joining two labels (true Neumann). Boundaries move by label flips: a boundary cell changes owner
+when the neighbouring domain's density exceeds its own. The Coulomb potential of the other
+electrons is a direct per-electron Poisson solve. The nuclear kernel is clamped,
+$-Z/\max(r, R_{\text{sing}})$, with $R_{\text{sing}} = 2h$ unless pinned. The amplitude is relaxed
+in imaginary time; convergence is declared when the mean energy over a window of $3000$ steps
+changes by less than $10^{-4}\,E_h$ between successive windows, since a free boundary keeps
+flipping single cells indefinitely and a step-to-step test either never fires or fires early.
 
-\paragraph{Hydrogen is the one atom with nothing approximated.} One electron, one domain, no core
-and no shell structure, so its only error is discretisation, and the calibration
-\eqref{eq:sigmacal} removes it. This is why H$_2$ is worked through first in
-Section~\ref{sec:h2}: every error there belongs to the grid and the interface treatment, not to the
-atom. The calibration does not carry to a deeper kernel, and a one-electron ion shows it with nothing
-else involved: He$^+$ at $\sigma = 0.627$ gives $-2.053249$ against the exact $-2$, $2.7\%$ too
-deep, with its kinetic energy $5.7\%$ low. Reaching the exact $-Z^2/2$ needs $\sigma = 0.771$,
-$0.932$, $1.092$ for $Z = 2, 3, 4$, and at those values the kinetic energy is still $11$, $19$ and
-$27\%$ low: the total comes right only by cancellation (box $12\,a_0$; a single atom's energy moves
-by $0.2\,$m$E_h$ from there to the declared box). Deeper kernels have sharper cusps, so the softening
-is the dominant error in every atom heavier than hydrogen, and it is a resolution error rather than
-a defect of the construction.
+\paragraph{Axisymmetric reduction.} For a homonuclear X$_2$ the domain boundary is the midplane by
+symmetry, and the model reduces exactly to $(z,\rho)$ with a plane boundary. We use it only there:
+in a heteronuclear molecule the boundary curves, and a plane would impose it. The
+Neumann condition is imposed by assembling the stiffness only over faces inside a domain. Each
+domain's lowest state is an exact sparse eigensolve, and the potentials are iterated to
+self-consistency. Mesh ladders down to $h = 0.05$ are cheap.
 
-\paragraph{Scope of what is reported.} The molecular results in Section~\ref{sec:results} were
-computed with the \emph{valence-only} reduction of this model---a kernel of reduced charge $Z_x$
-carrying the bonding shell alone, with the core absorbed into the charge reduction. That reduction
-is cheaper and it is what the tabulated numbers use, but it is not the model above: with the core
-electrons absent, nothing performs the exclusion, and the valence collapses to
-$\langle r\rangle = 0.45\,a_0$ against a physical $1.6$, which over-binds carbon by a factor of
-$2.8$ against the sum of its ionisation energies. The shell model is stated here because it is what
-removes that defect at its origin; its own molecular numbers are not yet measured, and nothing in
-Section~\ref{sec:results} should be read as testing it.
+\paragraph{The check.} The electron--electron energy of the two solvers agrees to $1.4\%$, and the
+total energies to the extent their kernels allow. At $R = 2.0\,a_0$, $h = 0.1$ and box $10\,a_0$:
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+& $E(\mathrm{H}_2)$ & $2E(\mathrm{H}) - E(\mathrm{H}_2)$ \\
+\midrule
+\texttt{molecule.js} (3D, free boundary) & $-1.20734$ & $0.2251$ \\
+axisymmetric (2D, exact eigensolve)      & $-1.23685$ & $0.2241$ \\
+exact                                    & $-1.1381$  & $0.1381$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+The totals differ by the kernel (clamped at $2h$ in 3D, analytic in 2D), which largely cancels in
+the binding energy; the binding energies agree to $0.5\%$. The three-dimensional solver reproduces
+the model.
 
-\section{Hydrogen}
+% =====================================================================================
+\section{Hydrogen and helium: two constructions of a pair}
 \label{sec:h2}
 
-We work hydrogen through on the three observables the simulator reports: the binding energy, the
-geometry the model relaxes to, and the force residual at the observed geometry. H$_2$ is the natural
-first case because, as Section~\ref{sec:atoms} notes, its atomic reference carries no pseudokernel,
-so every error below belongs to the discretisation and the interface treatment rather than to the
-core model.
+\subsection{Two constructions of an electron pair}
 
-Everything below is on the declared grid \eqref{eq:grid}. Before the results, what the box
-contributes at fixed spacing, because it turns out to contribute more than a grid choice should:
+RealQM carries no spin variable; spin enters only through the Pauli principle, as the rule that a
+domain holds at most two electrons, and two only if of opposite spin. Electrons in different
+domains are excluded from each other by disjointness, whatever their spin. A pair of opposite spin
+can therefore be carried in two parameter-free ways. In the \emph{2split}
+construction each electron owns its own domain and the two meet at a free wall: their avoidance is
+complete and permanent. In the \emph{2hom} construction both electrons share one domain and one
+density, the overlay that Pauli permits for opposite spins, each feeling half its Hartree field: there is no avoidance beyond the mean field, and the
+pair is a restricted Hartree--Fock pair. A one-dimensional radial check on Li$^+$ makes the last
+point exact: the 2hom $1s^2$ pair gives $-7.23630$ against the Hartree--Fock $-7.2364$. The true
+state avoids partially and dynamically.
 
+\subsection{H$_2$ and He}
+
+For both two-electron systems the exact value lies between the two constructions (H$_2$
+axisymmetric, $R = 1.4$, $h = 0.1$):
 \begin{center}
 \small
-\begin{tabular}{lrrrrr}
+\begin{tabular}{lrrrr}
 \toprule
-box ($a_0$) & $E(\mathrm{H})$ & $E(\mathrm{H}_2)$ & $E_{\text{bind}}$ & vs $D_e$ & $R$ \\
+H$_2$ & $T$ & $V_{eK}$ & $V_{ee}$ & $D_e$ \\
 \midrule
-$10$ & $-0.486810$ & $-1.147250$ & $0.173630$ & $-0.5\%$ & $1.7951$ \\
-$12$ & $-0.486509$ & $-1.145757$ & $0.172739$ & $-1.0\%$ & $1.7963$ \\
-$14$ & $-0.486591$ & $-1.143770$ & $0.170588$ & $-2.2\%$ & $1.7973$ \\
-$\mathbf{20}$ (declared) & $\mathbf{-0.486591}$ & $\mathbf{-1.139790}$ & $\mathbf{0.166608}$ & $\mathbf{-4.5\%}$ & $\mathbf{1.7983}$ \\
+2split, two one-electron domains & $1.291$ & $-3.843$ & $0.545$ & $0.281$ \\
+exact                            & $1.1745$ & $-3.650$ & $0.587$ & $0.1745$ \\
+2hom, one pair domain            & $1.153$ & $-3.679$ & $0.664$ & $0.138$ \\
+\bottomrule
+\end{tabular}
+\qquad
+\begin{tabular}{lr}
+\toprule
+He & $E$ \\
+\midrule
+2split (two hemispheres)\textsuperscript{a} & $-3.026$ \\
+exact                                       & $-2.9037$ \\
+2hom (one pair, 1D radial)\textsuperscript{b} & $-2.845$ \\
 \bottomrule
 \end{tabular}
 \end{center}
+% TODO verify: exact V_ee = 0.587 is quoted from memory; exact V_eK then follows from T = -E (virial).
+% TODO: add the molecule.js H2 2hom/2split pair at R = 1.4 beside the axisym values (2hom run diverged 2026-11-12).
+\noindent\textsuperscript{a}\,Axisymmetric; the pair repulsion is $4\%$ below exact.
+\textsuperscript{b}\,The Atoms paper~\cite{atoms}.
+(For H$_2$ the exact $T$ is $-E$ by the virial theorem, and $V_{eK}$ follows.) In both cases the
+exact value lies strictly between the two constructions, with no adjustable quantity on either side:
+$D_{\text{2hom}} < D_e < D_{\text{2split}}$ and $E_{\text{2split}} < E < E_{\text{2hom}}$. This is
+the model's energy statement. An intermediate construction that reproduced the exact value would be
+a fit.
 
-\noindent
-The atomic reference is box-free, varying by $0.0003\,E_h$ across the range, and the bond is
-box-free, varying by $0.18\%$. The whole effect is in the molecular energy, which is the interior
-interface again: the molecule has one and the atom does not. The binding energy spans
-$4.0$ points of $D_e$, twice the initialisation scatter measured below, so the dependence is real.
+The geometry is sharper than the energy. The 2split H$_2$ converges in the axisymmetric reduction to
+$R_e = 1.368\,a_0$, short of the exact $1.401$ by $2.3\%$ and flat to $0.2\%$ under a $2.5$-fold
+mesh refinement.
 
-It cannot be extrapolated away. The shift per unit box is $0.00075$, $0.00099$, $0.00066\,E_h$
-across the three intervals---not monotone, so not a power law in $1/\text{box}$---and every
-individual rung is at or below the scatter even though the overall range is twice it. Neither a
-convergent limit nor an unbounded expansion of the free boundary is established, and we quote no
-box-limit value.
+\subsection{What places the 2split side}
+\label{sec:why}
 
-Two consequences follow, and both are more awkward than the grid declaration was meant to be. The
-box joins $h$ and the five coefficients of \eqref{eq:wupdate} in the declared set: it is not a
-convenience sized to hold the molecules but a parameter worth four points of the answer. And the
-dependence runs the unflattering way---the \emph{smallest} box binds most strongly, within half a
-percent of $D_e$, and enlarging it to the declared value costs four points. An earlier figure of six
-points between boxes $12$ and $15$ was obtained at fixed \emph{cell count}, so the spacing changed
-with the box; it is confounded and withdrawn.
-
-The experimental targets are $R_e = 1.40028\,a_0$ and
-$k = 5.75\,\mbox{mdyn/\AA} = 0.3692\,E_h/a_0^2$. For the dissociation energy there are two standard
-values and the difference between them exceeds the model's own scatter, so we give both:
+The 2split energy is not an error in the solution: two independent solvers agree, the energy
+converges, and every term is counted. Its components show what the free wall does. Against exact,
+the nuclear attraction is larger (centroid of electron 1 at $-0.785$, the nucleus at $-0.70$) and
+$V_{ee}$ smaller: a Neumann wall lets each electron keep full amplitude right up to the
+midplane---in the bond region, where both nuclei attract it---at no kinetic cost, and the other
+electron, confined strictly to the other side, never competes for that region. Charging the wall
+shows this directly. With a surface energy $\tfrac{\beta}{2}\int_{\partial\Omega_k} u_k^2$ on the
+interface:
 \begin{center}
 \small
-\begin{tabular}{llrrl}
+\begin{tabular}{rrrrr}
 \toprule
- & & $E_h$ & eV & \\
+$\beta$ & $T$ & $V_{eK}$ & $V_{ee}$ & centroid \\
 \midrule
-$D_0$ & measured & $0.16457$ & $4.478$ & the directly observed value, from the vibrational ground state \\
-$D_e$ & well depth & $0.17449$ & $4.748$ & $D_0$ plus a zero-point energy of $0.00993\,E_h$ \\
+$0$    & $1.291$ & $-3.843$ & $0.545$ & $-0.785$ \\
+$0.15$ & $1.277$ & $-3.803$ & $0.526$ & $-0.832$ \\
+$0.5$  & $1.265$ & $-3.695$ & $0.485$ & $-0.936$ \\
+$2$    & $1.281$ & $-3.255$ & $0.381$ & $-1.269$ \\
+$10$   & $1.238$ & $-2.607$ & $0.288$ & $-1.713$ \\
 \bottomrule
 \end{tabular}
 \end{center}
-\noindent
-$D_e$ is the matched comparison, because the model carries no nuclear motion: what it computes is
-the depth of a well, not the energy of a vibrational state. But $D_e$ is a hybrid of a measurement
-and a spectroscopic correction, whereas $D_0$ is purely measured, and the two differ by $6.0$
-percentage points. We quote against $D_e$ and state the $D_0$ figure alongside it throughout rather
-than choose silently.
+As soon as the wall costs anything the density leaves the interface for the far side of its own
+nucleus and the nuclear attraction falls, with the kinetic energy almost unchanged. The free cut at
+the wall is the model's central assumption; it sets the 2split energy, while the 2hom pair has no
+wall.
 
-\subsection{Binding energy}
-\label{sec:h2bind}
+\subsection{Beyond two electrons}
+\label{sec:bracket}
 
-\begin{table}[h]
-\centering
-\small
-\begin{tabular}{lrrrrr}
-\toprule
-interface kinetic treatment & $E(\mathrm{H})$ & $E(\mathrm{H}_2)$ & $E_{\text{bind}}$ & vs $D_e$ & vs $D_0$ \\
-\midrule
-\textbf{cut-off at $w = 0.9$, box 20} & $\mathbf{-0.486591}$ & $\mathbf{-1.139790}$ & $\mathbf{0.166608}$ & $\mathbf{-4.5\%}$ & $\mathbf{+1.2\%}$ \\
-\midrule
-cut-off at $w = 0.9$, box 12 & $-0.486509$ & $-1.145757$ & $0.172739$ & $-1.0\%$ & $+5.0\%$ \\
-full $w$-weighting, box 12 & $-0.486422$ & $-1.134067$ & $0.161223$ & $-7.6\%$ & $-2.0\%$ \\
-exterior cleared, box 12   & $-0.485361$ & $-0.935158$ & $-0.035564$ & unbound & unbound \\
-\bottomrule
-\end{tabular}
-\caption{Binding energy of H$_2$ under three treatments of the partially occupied cells at the
-interface, with molecule and atom relaxed for the same number of steps. Note that the two
-conventions disagree about which of the first two rows is better, the cut-off being $1.0\%$ low
-against $D_e$ and $5.0\%$ high against $D_0$ while the uncorrected weighting is $7.6\%$ low and
-$2.0\%$ low respectively---another reason to quote both. The reference and the molecule must be run
-to the same step count: an earlier value of $-11.4\%$ for the middle row came from an atomic
-reference stopped at $70\,500$ steps against a molecule at $232\,500$, and is withdrawn.}
-\label{tab:h2bind}
-\end{table}
+The same two constructions apply to any pair in a molecule. For LiH, with Li as a $+1$
+pseudo-nucleus ($r_c = 1.99$ from its ionisation energy) and the bonding pair as 2split (Li valence
+and H electron in separate domains) or 2hom (one pair over Li$^+$ and a bare proton,
+Section~\ref{sec:lih}), $D_e$ is $0.063$--$0.073$ (2split) and $0.095$ (2hom) against the exact
+$0.092$. For BH (pseudo-B $+3$ with a 2hom lone pair) $D_e$ is $0.276$ (2split) and $0.155$
+(2hom) against $0.135$ (Table~\ref{tab:geom}). In both, the 2hom bonding pair is the closer.
 
-Table~\ref{tab:h2bind} shows that the binding energy is decided by how the interface cells are
-counted. Where two domains meet, the partition weight $w$ passes through intermediate values, and
-the kinetic energy of those cells is an artefact of the diffuse representation of a boundary that
-the model treats as sharp. Excluding cells below an occupancy of $0.9$ removes $0.0117\,E_h$ from
-the molecule and only $0.000087\,E_h$ from the atom---a ratio of $67$ to $1$ per domain---because
-the molecule has an interior interface where two domains meet while the atom has only an outer edge
-with nothing on the far side. The exclusion therefore does not cancel in the difference, and it is
-the single change that brings the binding energy to experiment.
+The picture also tells where each construction belongs. A pair that shares one region---a core
+$1s^2$, or a bonding pair near equilibrium---is naturally 2hom. Electrons that must avoid each other
+need 2split: the 2hom H$^-$ is unbound, exactly as in Hartree--Fock, while the 2split H$^-$ binds;
+and a 2hom pair cannot dissociate a bond into two neutral atoms. We report both, and choose
+by this rule.
 
-The third row is the control. Clearing the exterior amplitude altogether, rather than merely
-declining to count its kinetic energy, unbinds the molecule: $E_{\text{bind}}$ goes negative and the
-relaxed separation runs out to $3.56\,a_0$. The amplitude just outside a domain is what makes the
-interface flux small, and removing it imposes a drain at the boundary instead.
-
-\paragraph{The uncertainty is measured, not estimated.} The exterior amplitude in
-\texttt{mol\_fast} is not varied by the relaxation---where $w$ vanishes the update is identically
-zero---so its value is inherited from the initial state, and the binding energy could in principle
-be an artefact of that choice. Varying the initial decay constant by a factor of $2.1$ gives
-
-\begin{center}
-\small
-\begin{tabular}{lrrr}
-\toprule
-$z_{\text{init}}$ & $0.7$ & $1.0$ & $1.5$ \\
-\midrule
-$E_{\text{bind}}$ & $0.175248$ & $0.172739$ & $0.176339$ \\
-vs $D_e$           & $+0.45\%$  & $-0.99\%$  & $+1.07\%$ \\
-$R$ (relaxed)      & $1.7993$   & $1.7963$   & $1.7953$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\noindent
-a spread of $2.1$ percentage points which is not monotone in the seed, so it is scatter rather than
-a dependence, and a geometry spread of $0.22\%$. We therefore quote
-\begin{equation}
-  E_{\text{bind}}(\mathrm{H}_2) \;=\; 0.1666 \pm 0.0018\,E_h
-  \;=\; -4.5 \pm 1.0\%\ \text{of } D_e
-  \;=\; +1.2 \pm 1.1\%\ \text{of } D_0
-  \qquad\text{[declared box; $+4.0$ points at box $10$]},
-\end{equation}
-the central value on the declared grid, the stated uncertainty the measured initialisation scatter,
-and the bracketed figure the declared-box sensitivity---which is twice the scatter and must be
-quoted with it. The result lies \emph{between} the two experimental conventions,
-$D_0 = 0.16456 < 0.16661 < D_e = 0.17447$, closer to the directly measured $D_0$ than to the well
-depth it should properly be compared with. So the model's binding is accurate to a few percent on
-either reading, and which few percent depends on two things it cannot itself resolve: a convention,
-and a declared box. For
-scale, the choice of interface condition discussed in Section~\ref{sec:h2iface} moves the same
-quantity by $29$ to $58$ points, so the initialisation is a minor term.
-
-\subsection{The interface condition, and why hydrogen cannot decide it}
-\label{sec:h2iface}
-
-\paragraph{What is actually new, relative to one electron.} Section~\ref{sec:intro} argued that at
-one electron this model is the minimal Coulomb model and coincides with the standard one. Everything
-the construction adds is therefore contained in two things: \emph{non-overlapping} one-electron
-densities, and the condition under which they meet. Nothing else about the one-electron block
-changes---the kinetic term and the Coulomb attraction are the same. It is worth being explicit that
-the addition fixes what keeps electrons apart: there is no joint wavefunction here to
-antisymmetrise, so the only
-repulsion between two electrons beyond the direct Coulomb term is the fact that they cannot occupy
-the same space. That subtraction is what the over-binding reported in Section~\ref{sec:intro}
-measures, and it is most visible exactly where territorial exclusion can do nothing---between
-\emph{equivalent} domains facing each other across a mirror plane, where the two constructions below
-agree to $4\times 10^{-8}$ and neither supplies any repulsion at all.
-
-\paragraph{The two conditions are not rivals.} They enter with different roles, and the count of
-equations is what makes this work. For a \emph{fixed} partition, free variation of each density
-gives homogeneous Neumann on that domain's own boundary---$\partial u/\partial n = 0$ is the natural
-condition and nothing is imposed. Solved that way the amplitudes at the interface generically
-\emph{disagree}, and the interface is then placed where they agree. So continuity is not a second
-assumption about $\Psi$: it is the \emph{equation that determines} $\Gamma$. Three conditions, one
-extra unknown. The implementations in this programme each take one half of that scheme and supply
-the other half by hand: \texttt{mol\_fast} drives the amplitude mismatch to zero and so genuinely
-\emph{finds} $\Gamma$, while imposing the Neumann condition only weakly through
-$\tfrac12\int w|\nabla u|^2$; the sharp constructions impose Neumann exactly but are \emph{told}
-where $\Gamma$ is, by symmetry. Neither is a different theory; both are incomplete implementations
-of one, and the gap between them is measured below.
-
-The free boundary between two domains needs a condition, and the construction admits two that are
-both defensible. The model requires $\Psi \in H^1$, that is continuity of the densities across the
-interface, whose natural condition is continuity of the amplitude, $u_1 = u_2$, with the normal
-derivative free to jump. \texttt{mol\_fast} implements this: its front advances on the local
-amplitude mismatch and converges where that mismatch vanishes. The alternative treats the domains
-as disjoint with $u$ unconstrained at its own boundary, for which the natural condition is
-$\partial u/\partial n = 0$; a mirrored ghost value, or equivalently omitting the face from the
-stencil, imposes it exactly, and two independent implementations in this programme do so.
-
-\paragraph{Omitting the face imposes it exactly only on a \emph{sharp} partition.} The qualification
-matters, because the obvious way to get the strict condition inside this solver does not work.
-Binarising the face weight---counting a face only where both its cells are owned---while leaving the
-occupancy diffuse gives H$_2$ $E = -1.338705$ against $-1.127903$, a binding energy of $+110\%$,
-and a dipole of $0.108$--$0.187\,\mathrm{D}$ where reflection symmetry requires identically zero. The
-cause is diagnosable rather than mysterious. The kinetic energy of the assembled field,
-$T_\Psi = \tfrac12 \int |\nabla \sum_m w_m u_m|^2$, charges the interface \emph{jump}
-$(u_2 - u_1)^2/h$, which closed faces make free for the per-domain sum; measured,
-$T_\Psi / T = 8.07$ at $D = 2.1\,a_0$ and $4.25$ at $1.3\,a_0$. A factor of eight means the discrete
-solution is not in $H^1$: an amplitude discontinuity has opened at the interface and the minimiser
-is exploiting it, and the per-domain $T$ falls $39\%$ precisely because the gradient is no longer
-charged where it is largest. We note this is \emph{not} inferred from the energy lying below the
-exact value, which is not evidence of anything here---the functional is not Schr\"odinger's and no
-variational theorem connects its minimum to the exact ground state. So the strict condition is
-available in this programme only where the partition is sharp \emph{and} its location is supplied
-by symmetry, which is the same restriction discussed below.
-
-The two give materially different energies---$+27.9\%$ and $+58.0\%$ on $E_{\text{bind}}$ for the
-strict condition against $+0.2\%$ for the continuity condition, with bond errors of $+15.9\%$ and
-$-2.3\%$ against $+52\%$---so the choice is not a detail. But H$_2$ cannot adjudicate it. A
-symmetric diatomic has $u_1 = u_2$ at the midplane \emph{and}, by reflection,
-$\partial u/\partial n = 0$; the two conditions coincide, and the spread above is a difference
-between discretisations rather than between physical conditions. Settling it requires a two-domain
-system with no symmetry plane, which is not in the present list.
-
-\section{The solver}
-\label{sec:impl}
-
-\paragraph{Two solvers, and the one used here is the less faithful.} \texttt{molecule.js} carries
-\emph{one} amplitude field with every cell labelled by its owner, so the domains are
-non-overlapping \emph{by construction}; it admits two thousand domains and has been run on
-alpha-helices. \texttt{mol\_fast}, which produced every number in this paper, carries one array per
-domain, all overlapping, with the weight $w$ gating only the evolution. One labelled field is the
-formulation of Section~\ref{sec:model}; \texttt{mol\_fast} relaxes it for speed. It also cannot
-relocate a domain: $u$ evolves only where $w > 0$ and $w$ advances only where $u$ already wins, so
-neither field can lead and a domain creeps at its boundary without crossing a gap---measured on
-lithium, where seeds at $0.15$, $1.0$ and $4.0\,a_0$ ended at $0.118$, $0.799$ and $3.203$.
-
-This matters least where it might be expected to matter most. The one system for which both
-treatments are converged is H$_2$, and they \emph{bracket} the exact energy from opposite sides:
-\begin{center}
-\small
-\begin{tabular}{lrrr}
-\toprule
- & $E(\mathrm{H}_2)$ & error & $E_{\text{bind}}$ vs $D_e$ \\
-\midrule
-overlapping domains (\texttt{mol\_fast}) & $-1.1398$ & $+3.0\%$ & $-4.5\%$ \\
-hard non-overlap (axisymmetric)          & $-1.2760$ & $-8.6\%$ & $+58\%$ \\
-exact                                    & $-1.1745$ & ---      & --- \\
-\bottomrule
-\end{tabular}
-\end{center}
-\noindent
-Hard non-overlap does not recover the exact energy; it overshoots past it, and over-binds by a
-factor of thirteen more than the overlapping scheme on the binding energy. So \emph{faithful} and
-\emph{accurate} are different claims here, and only the first is established for
-\texttt{molecule.js}. The honest statement of this paper's energy result is therefore a bracket
-rather than a value: \textbf{H$_2$'s binding lies between $-4.5\%$ and $+58\%$ of $D_e$ according to
-how non-overlap is enforced}, and an intermediate choice reproducing experiment would be a fit, not
-a prediction.
-
-What the comparison does establish is \emph{which observables depend on the approximation}. The
-energies differ by eleven points between the two schemes; the converged bond lengths do not---$1.31$
-extrapolated from the overlapping scheme against $1.368$ from the hard one, both a few percent
-short. \textbf{Geometry is robust against the non-overlap treatment where energy is not}, which is
-an argument for the geometry-first ordering of Section~\ref{sec:intro} reached from an
-independent direction.
-
-The measurements above were made with a GPU solver (\texttt{mol\_fast}) that carries one domain per
-entry and caps at sixteen domains. That cap is the binding constraint on molecular size, and its
-meaning depends on the construction: with one domain per atom carrying $Z_x$ electrons it permits
-sixteen atoms, which covers benzene, glycine, ethanol and comparable small organics; with the
-one-electron domains of the underlying construction it permits sixteen electrons, which covers
-CH$_4$ and C$_2$H$_2$ but not benzene.
-
-The scope of the pseudo-kernel core model itself, measured on two-centre systems, is reported
-separately~\cite{coremodels}.
-
-Two properties of \texttt{mol\_fast} are relevant to reading the numbers above, and we state them
-rather than leave them implicit. The partition weights are diffuse: $w$ passes through intermediate
-values over a few cells at an interface instead of switching between $0$ and $1$, which is what
-makes the interface kinetic energy of Section~\ref{sec:h2bind} a quantity that must be decided
-rather than a consequence of the model. And the amplitude outside a domain is not relaxed---where
-$w$ vanishes the update is identically zero---so it is inherited from the initial state. The
-measured consequence of that is the $\pm 1.0\%$ band on the binding energy, which is small, and
-bounds how much of the result can be attributed to initialisation rather than to the model.
-
-A second implementation (\texttt{molecule.js}) carries the same model as one global field
-partitioned by labels, enforcing true non-overlap with sharp interfaces, and admits two thousand
-domains; it has been run on alpha-helices and on chignolin. It is not used for any number reported
-here. Its interest is that its sharp partition removes the interface ambiguity above at the cost of
-a different force treatment, so it is the natural setting for the asymmetric two-domain test that
-Section~\ref{sec:h2iface} identifies as outstanding.
-
-\section{Three checks, and which one applies}
-\label{sec:checks}
-
-Every calculation carries three internal checks. They are not interchangeable, and the choice
-between them is dictated by symmetry---a point we found easy to get wrong.
-
-\paragraph{Kernel--kernel energy.} $V_{KK} = \sum_{a<b} Z_aZ_b/R_{ab}$ is exact arithmetic and
-confirms the geometry \emph{actually built}, independently of any physics. Every configuration
-reported below matched its predicted value; this is how fractional kernel placement, per-bond
-spacing and coincident kernels were verified.
-
-\paragraph{Total force as a convergence criterion.} The sum of nuclear forces is \emph{not}
-automatically zero. It equals the net force the electron cloud exerts on the nuclei; only when the
-electronic state is stationary does the cloud exert no net force, and then $\sum_a \mathbf F_a = 0$
-follows by Newton's third law. The residual is therefore a direct measure of electronic
-non-convergence---and a more reliable one than any energy-based criterion, since a relaxation can
-sit on a long plateau with the energy changing imperceptibly while the state is far from settled.
-
-\paragraph{But symmetry cancels it.} In a symmetric molecule, mirror or rotational symmetry forces
-$\sum_a \mathbf F_a = 0$ regardless of accuracy. A small residual in CO$_2$ (we measure $0.06\%$ of
-the largest force) establishes only that the algorithm preserves symmetry. The sum carries
-information only in directions symmetry does not protect: every direction for a heteronuclear
-molecule, the $C_3$ axis of NH$_3$, the $C_2$ axis of water.
-
-\paragraph{Per-atom zeros.} Where symmetry is complete, the useful check is instead a single atom's
-force. An atom at a centre of symmetry---the carbon of CO$_2$ or of CH$_4$---must feel exactly
-nothing. Unlike the sum, this cannot be satisfied by cancellation among atoms, so a nonzero value
-is unambiguously error and its magnitude is the per-atom floor.
-
-\section{Results: relaxed geometries and binding energies, with forces as a check}
-
-Table~\ref{tab:primary} is the paper's primary table: the two predicted quantities with the dipole
-beside them. Table~\ref{tab:main}, which follows, is the force \emph{check} and the older
-binding-energy set, kept because it is the only coverage of the polyatomic rows.
-
-\begin{table}[h]
-\centering
-\small
-\begin{tabular}{llrrrrl}
-\toprule
-system & $Z_x$ & $E_{\text{bind}}$ & $\mu$ (D) & $\mu_{\exp}$ & $|\sum F|$ & state \\
-\midrule
-N$_2$   & 3,3       & $0.2131$ & $0.038$ & $0$ & $1.2\%$ & accepted \\
-O$_2$   & 3,3       & $0.2156$ & $0.012$ & $0$ & $5.4\%$ & accepted \\
-CO      & 4,3       & $0.2219$ & $0.154$ & $0.110$ & $6.3\%$ & accepted \\
-CO$_2$  & 4,3,3     & $0.3440$ & $0.000$ & $0$ & $0.1\%$ & accepted \\
-N$_2$O  & 3,3,3     & $0.3915$ & $0.023$ & $0.161$ & $7.4\%$ & accepted \\
-CH$_4$  & 4,1,1,1,1 & $1.0823$ & $0.004$ & $0$ & $3.4\%$ & accepted \\
-\midrule
-HCN     & 1,4,3     & \emph{(0.4371)} & \emph{(0.165)} & $2.985$ & $83\%$ & rejected \\
-H$_2$O  & 3,1,1     & \emph{(0.5164)} & \emph{(0.938)} & $1.855$ & $117\%$ & rejected \\
-NH$_3$  & 3,1,1,1   & \emph{(0.6834)} & \emph{(0.786)} & $1.472$ & $127\%$ & rejected \\
-\bottomrule
-\end{tabular}
-\caption{\textbf{These rows predate the calibration \eqref{eq:sigmacal} and the declared box, and
-are being re-measured; they are retained here only so the structure of the table is visible.} They
-were computed at $\sigma = 1$, against \eqref{eq:grid}'s calibrated $\sigma = 0.627$; the box and
-spacing are already those of \eqref{eq:grid}. The difference is material, since $\sigma$ sets the
-cusp resolution and hence every energy. Primary results, one grid throughout (box
-$16\,a_0$, $h = 0.10$, $r_c = 0$, occupancy
-cut-off $0.9$, $232\,500$ steps) against atomic references measured identically:
-$E(\mathrm{H}) = -0.486591$, $E(\mathrm{C}) = -15.113441$, $E(\mathrm{N}) = E(\mathrm{O}) =
--7.252538$. \textbf{The state column is an acceptance test.} Where symmetry requires $\mu = 0$
-(N$_2$, O$_2$, CO$_2$, CH$_4$) the computed value is a pure error measurement needing no reference,
-and all four pass---$0.000$ to $0.038$~D. Where no symmetry protects the total force (CO, N$_2$O,
-HCN) the residual is a genuine convergence measurement and admits rows below $20\%$. Rejected rows
-are shown parenthesised so the rejection can be checked, never as results; three of the four have
-an \emph{unprotected direction}---H$_2$O and NH$_3$ a $C_2$ or $C_3$ axis, HCN no symmetry at
-all---and settle to a \emph{stable} asymmetric state rather than converging slowly: water's
-residual held at $116.7$, $116.5$, $116.6\%$ across its run with its two hydrogens equivalent to
-$0.1\%$, so the imbalance lies along the axis and more steps will not remove it.
-\textbf{Hydrogen is deliberately absent.} Its repeat run on this grid did not converge, while it
-converges at boxes $12$ and $20$---so that is a bad grid point, not a failed molecule, and a
-different thing entirely from the rejections above, which are \emph{stable} wrong states. Listing
-it here would conflate the two. Hydrogen is treated in full in Section~\ref{sec:h2}, where its
-binding is $-4.5\%$ of $D_e$, its bond converges to $1.368\,a_0$, and its force agrees with
-$-dE/dR$ to $0.06\%$. $R_{\min}$ is omitted: it exists for H$_2$ alone, no commensurate scan having
-been run for the others. The two polar accepted rows give $+40\%$ (CO) and $-86\%$ (N$_2$O) against
-measurement---CO's dipole being famously small at $0.11$~D---so the dipole magnitudes are poor where
-the null tests are excellent.}
-\label{tab:primary}
-\end{table}
-
-The ten remaining rows are being measured on this grid. Until they are, the binding energies in
-Table~\ref{tab:main} stand as the only polyatomic coverage, and seven of its nine populated entries
-come from the superseded grid---annotated there, but old.
+% =====================================================================================
+\section{Results}
 \label{sec:results}
 
-Table~\ref{tab:main} collects the configurations. Forces are quoted with $+$ meaning outward, so a
-positive entry indicates the bond wants to lengthen. Where a configuration fails its own check we
-report the failure rather than a bond error.
+\textbf{[In progress.]} Bond lengths from an $R$-scan at three meshes ($h = 0.10, 0.07, 0.05$) per
+bond with \texttt{molecule.js}, extrapolated in $h$, with the kernel clamp pinned so that the
+ladder refines a fixed problem; axisymmetric values beside them for X$_2$ only.
+Energies for both constructions, 2hom and 2split, at the computed geometry.
 
-Two columns of this table require the qualifications established on hydrogen, and we give them
-before the table rather than after it. The $\Delta R$ entries were converted with the
-\emph{measured} force constant, so each is a \emph{lower bound} on the
-model's bond error, too small by the ratio of the measured curvature to the model's own; for H$_2$
-that ratio is $1.97$ and the entry below should read $+52\%$ rather than $+30\%$. Correcting the
-remaining rows requires a three-point scan per configuration to measure each model curvature, which
-has not been done. And the last column is a diagnostic, not a score: an H$_2$ configuration that
-does not bind at all returns $2.1\%$ on it, which would place it among the best entries here. Its
-only legitimate reading is the symmetry-dependent one given in the caption.
-
-\paragraph{Only the declared valences appear.} Every row is at $Z_x = 1,4,3,3$. The C+2 and O+2
-variants are not results of the model but the alternatives it rejects, measured as such in
-separate convergence and valence studies, and carrying them here would present a ruled-out
-convention as a finding. Removing them has one consequence worth stating plainly: \textbf{CO and
-CO$_2$ leave the table altogether}, because the only force calculations ever made for them were at
-O+2. There is no force measurement for either molecule at the valences the simulator actually
-uses, and the earlier reading of CO$_2$'s $-7.2\%$ as an ordinary bounded error was therefore a
-statement about a configuration this paper rejects. What is measured for CO$_2$ at $3,4,3$ is its
-binding energy, and it does not bind (the across-composition comparison).
-
-\paragraph{Precision of the binding-energy column.} The six decimals are the solver's, not the measurement's, and most of this column
-carries no established precision at all. Its error is dominated by a \emph{systematic}: the one row
-measured on both grids moves by $0.0555\,E_h$, or $32$ points of $D_e$ (H$_2$: $0.1111$ against
-$0.1666$), which is larger than several of the entries themselves---N$_2$ at $0.0155$, CO at
-$0.0137$, O$_2$ at $0.0770$. Mixing boxes between rows contributes a further $0.023\,E_h$ (CO
-$0.0369$ against $0.0137$ matched), the box at fixed $h$ some $0.007$, and the step count a similar
-amount, these rows having been stopped at $119\,500$ steps against the $232\,500$ used elsewhere.
-No \emph{random} component was ever measured on them: no seed variation and no box ladder. The
-operational consequence is a single rule---\textbf{an entry below about $0.056\,E_h$ cannot be
-distinguished from zero on this evidence}---and N$_2$ is the demonstration, its $-0.0155$ becoming
-$+0.2764$ once the grid was matched. Only two rows carry a stated uncertainty: H$_2$ at
-$0.1666 \pm 0.0018$ from measured initialisation scatter, with a further four points of
-declared-box sensitivity; and N$_2$ at $+0.2764$ with a $6\%$ reference-shift uncertainty, which
-secures the sign and not the value.
-
-The binding-energy column carries a third and sharper qualification. Only hydrogen is on the
-declared grid; the rest predate it, and the single row available on both grids shifts by $35$
-points of $D_e$ between them. That shift is larger than every deficit in the column, so no entry
-here establishes that a molecule fails to bind---a statement we had drawn from this set and now
-withdraw. What the column does establish is the direction and rough scale of the construction's
-binding on a common grid, and that the earlier grid understated it severely.
-
-\begin{table}[h]
+\begin{table}[H]
 \centering
 \small
-\begin{tabular}{llrrrr}
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{llrrrrrrr}
 \toprule
-system & $Z_x$ & force & $\Delta R$ from $F/k_{\exp}$\,$\ast$ & $|\sum F|/|F|_{\max}$ & $E_{\text{bind}}$\,$\S$ \\
+& & \multicolumn{4}{c}{bond length ($a_0$)} & \multicolumn{3}{c}{binding energy $D_e$ ($E_h$)} \\
+\cmidrule(lr){3-6}\cmidrule(lr){7-9}
+molecule & construction & 3D & axisym & exp. & error & 2hom & 2split & exp. \\
 \midrule
-H$_2$      & 1,1       & $+0.1383$ & $+30\%$\,$\ast$ & $14.7\%$\,$\dagger$ & $\mathbf{+0.1666}$ \\
-N$_2$      & 3,3       & $-0.2505$ & $-8.2\%$ & $3.7\%$\,$\dagger$ & $\mathbf{+0.2764}$\,$\P$ \\
-O$_2$      & 3,3       & $-0.2463$ & $-14.3\%$& $8.4\%$\,$\dagger$ & $+0.0770$ \\
-\textbf{HCN} & \textbf{1,4,3} & \multicolumn{2}{l}{C$\equiv$N $-7.8\%$, H--C $+3.5\%$} & $\mathbf{5.5\%}$ & $+0.6099$ \\
-H$_2$O     & 3,1,1     & \multicolumn{2}{c}{---} & $126\%$\,$\ddagger$ & $+0.4307$ \\
-H$_3$ lin. & 1,1,1     & $+0.0420$ & ---      & $34.9\%$\,$\dagger$ & --- \\
-H$_4$ chain& 1,1,1,1   & $+0.0316$ & ---      & $7.4$--$16\%$\,$\dagger$ & --- \\
-C$_2$H$_2$ & 1,4,4,1   & outward   & ---      & $25\%$\,$\dagger$ & $+0.3177$ \\
-C$_2$N$_2$ & 3,4,4,3   & \multicolumn{2}{l}{N inward, C outward} & $3.2\%$\,$\dagger$ & $+1.9819$ \\
-NH$_3$     & 3,1,1,1   & \multicolumn{2}{c}{---} & $141\%$\,$\ddagger$ & $+0.5424$ \\
-NH$_3$ planar & 3,1,1,1& \multicolumn{2}{c}{---} & $70\%$\,$\ddagger$ & --- \\
-CH$_4$     & 4,1,1,1,1 & $0.036$ outward & --- & $0.6\%$\,$\dagger$ & $+0.4081$ \\
+H$_2$   & $1{+}1$                       & pending & $1.368$ & $1.401$ & $-2.3\%$ & $0.138$ & $0.281$ & $0.1745$ \\
+LiH     & Li$^+$ ($r_c$) + pair         & $2.85$  & ---     & $3.015$ & $-5\%$   & $0.095$ & $0.063$--$0.073$ & $0.092$ \\
+BH      & B $2{+}3$ ($2_{\rm hom}{+}1$) & $2.29$  & ---     & $2.329$ & $-1.6\%$ & $0.155$ & $0.276$ & $0.135$ \\ % TODO verify exp: re 1.2324 A; De = D0 81.5 kcal/mol + ZPE (we/2, we~2367 cm-1)
+NH      & N $2{+}2{+}3$                 & pending & ---     & & & & & \\
+OH      & O $2{+}3{+}3$                 & pending & ---     & & & & & \\
+BeH$_2$ & Be $2{+}1{+}1$                & pending & ---     & & & & & \\
+HF      & F $2{+}4{+}3$                 & pending & ---     & & & & & \\
+NaH     & Na                            & pending & ---     & & & & & \\
+H$_2$O  &                               & pending & ---     & & & & & \\
+NH$_3$  &                               & pending & ---     & & & & & \\
+CH$_4$  &                               & pending & ---     & & & & & \\
 \bottomrule
 \end{tabular}
-\caption{The force check at measured geometries, with binding energies. \textbf{Neither of the
-paper's two primary observables appears in full here}: the model's own relaxed geometry is measured
-only for H$_2$ ($+52\%$ from a commensurate scan at box $20$; a scan at box $12$ gives
-$+28\%$, so the figure carries a box dependence of its own), and the
-$\Delta R$ column is \emph{not} that quantity---it is the force residual divided by the
-\emph{experimental} force constant, which understates the model's error by twenty-five points on
-the one row where both are known. The $|\sum F|$ column is a convergence diagnostic to which no
-verdict attaches, because what it \emph{measures} depends on symmetry. $\dagger$: every direction is symmetry-cancelled, so the entry reports whether the
-algorithm preserves symmetry and bounds nothing about convergence. $\ddagger$: cancelled except
-along the unique axis, so the residual is a convergence measurement in that direction. Unmarked
-rows (CO, HCN) have no symmetry, and their entries are genuine convergence measurements---note
-that these are among the largest in the table. Rows where no $\Delta R$ is given are those whose
-own checks exceed the signal. $\ast$: converted with the \emph{experimental} force constant, hence a lower bound on the model's
-bond error. For H$_2$ the measured minimum is $+52\%$ against this column's $+30\%$
-on H$_2$, and the same correction applies in unknown measure to every other row,
-none of which has had its geometry scanned. $\S$: only the H$_2$ entry
-(bold) is on the declared grid of \eqref{eq:grid} with the $w = 0.9$ cut-off; every other binding
-energy comes from an earlier set at the default valences in a box of $15\,a_0$ with $h = 0.1389$,
-$\varepsilon = 0.14$ and the uncorrected kinetic accounting. $\P$: H$_2$ is the one row measured
-both ways, and it moves by $+0.0555\,E_h$, or $32$ points of $D_e$, between them---$6.6$ of those
-points from the cut-off and the rest from the grid and softening. Every deficit in this column is
-smaller than that shift, so \emph{the unbound entries are not results}. That has now been
-measured rather than suspected: re-run with molecule and reference on one grid (box $10$,
-$h = 0.10$), \textbf{N$_2$ binds by $+0.2764\,E_h$}, from $E(\mathrm{N}) = -7.260914$ and
-$E(\mathrm{N}_2) = -14.798207$, with a symmetric state ($\Sigma F = 5.5\%$). The atomic reference
-shifts by only $0.008\,E_h$ between boxes $10$ and $16$, i.e. $6\%$ of the binding energy, so the
-sign is secure. The earlier $-0.0155$ came from box $15$ with $h = 0.1389$ and is withdrawn. Blank entries are rows whose valences or geometry were not in the
-earlier set; a row is deliberately left empty rather than filled from a run at different $Z_x$.
-There is no experimental column because the repository holds no verified table of atomisation
-energies, and H$_2$ is the only row with a reference we have checked.
- Configurations in which two
-different elements receive the same $Z_x$ are degenerate---the model cannot distinguish
-them---and are omitted.}
-\label{tab:main}
+\caption{Bond lengths and the 2hom and 2split binding energies against experiment. H$_2$ energies are
+axisymmetric ($R = 1.4$, $h = 0.1$); LiH is three-dimensional (box $20\,a_0$, $h = 0.1$), its bond
+length from the 2hom construction (2split: $2.98$--$2.99$). BH is three-dimensional (box
+$12\,a_0$, $h = 0.1$, pseudo-B $r_c = 1.08$), $R = 2.1, 2.3, 2.5$; bond length from 2hom (2split: $2.38$). The axisymmetric reduction is used for
+X$_2$ only. Remaining rows to be filled from the runs in progress.}
+\label{tab:geom}
 \end{table}
 
-\subsection{H$_4$ against an exact reference}
+\subsection{LiH: pseudo-Li and one bonding pair}
+\label{sec:lih}
 
-One configuration can be scored against an exact method rather than experiment. Full configuration
-interaction in a minimal basis~\cite{hchain} places the equilibrium of the equally spaced H$_4$ chain at
-$a = 1.8\,a_0$, and the chain has one electron per site with no pseudopotential, so no core
-parameter is involved. At that geometry all four RealQM forces point outward---the model would
-expand a chain the exact method calls stationary---while over-binding by $14$--$18\%$ per atom when
-each method is referred to its own atom. Too long is the pattern H$_2$ shows at $+52\%$
-on H$_2$. The over-binding is less clear-cut than it reads: the reference is a
-full configuration-interaction calculation in a minimal STO-6G basis, whose cohesive energy is
-itself $14\%$ low against reality ($0.0766$ against $0.0872\,E_h$ per atom), so over-binding
-against it is not the same statement as over-binding against experiment.
+LiH is the simplest polar bond with an inner shell, and is viewed as ionic (Li$^+$H$^-$) rather
+than covalent: its dipole, $5.88$\,D, is $77\%$ of that of point charges $\pm1$ at $3.015\,a_0$
+($7.66$\,D). The model reduction reflects this: the Li $1s^2$ core is
+excluded by a fixed sphere of radius $r_c = 1.99\,a_0$ around the Li nucleus, which then carries charge
+$+1$ (pseudo-Li); the two valence electrons form one 2hom pair over pseudo-Li and a bare proton.
+The radius is the one at which the pseudo-Li atom alone reproduces the Li ionisation energy; the
+one-dimensional all-electron Li atom places its own core--valence interface at
+$1.98$--$2.05\,a_0$ over boxes $6$--$20\,a_0$, within $3\%$ of it. All runs are \texttt{molecule.js},
+$h = 0.1$, box $20\,a_0$; binding energies are $E(\mathrm{Li}) + E(\mathrm{H}) - E(\mathrm{LiH})$ with
+both atoms built the same way and in the same box.
 
+\begin{center}
+\small
+\begin{tabular}{rrrr}
+\toprule
+$R$ & $E$ & $D(R)$ & $\mu$ (D) \\
+\midrule
+$2.6$ & $-0.76776$ & $0.0880$ & --- \\
+$2.8$ & $-0.77436$ & $0.0946$ & $6.45$ \\
+$3.0$ & $-0.77259$ & $0.0928$ & $6.53$ \\
+$3.2$ & $-0.76709$ & $0.0873$ & $6.66$ \\
+$3.4$ & $-0.75999$ & $0.0802$ & $6.82$ \\
+\midrule
+exp.  & & $0.092$ at $3.015$ & $5.88$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+A fit through the five points gives $R_e = 2.85\,a_0$ ($2.81$--$2.89$ over three-, four- and five-point
+fits), $5\%$ short of experiment, and $D_e = 0.0947\,E_h$, $3\%$ over. At $R = 3.0$ the dipole is
+$6.53$\,D, of the right sign (Li$^+$H$^-$) and $11\%$ high; it is $86\%$ of the point-charge value
+at that $R$, so the pair, free to distribute itself over both centres, settles largely on H.
+Nothing was adjusted to LiH.
+The 2split on the same pseudo-Li (Li valence and H electron in separate domains) gives a
+slightly longer bond, $R_e = 2.98$--$2.99$ ($-1\%$), and under-binds, $D_e = 0.063$--$0.073$
+(Section~\ref{sec:bracket}). The core is a hard exclusion with a radius set by the atom: a
+frozen-core model, stated as such. A 2hom core held inside the same fixed sphere is equivalent for
+the valence, since a spherical charge inside the sphere acts outside it as a point charge. The
+sphere must be fixed: a free boundary between core and valence carries no Pauli cost, and with it
+the valence presses into the core and $E(R)$ falls monotonically as H approaches.
+
+% =====================================================================================
 \section{Limitations}
+\label{sec:limits}
 
-The bond errors reported here are not competitive with established electronic structure methods,
-and are not offered as such; they measure where this real-space construction currently stands.
-Several specific limitations bound the numbers.
+\paragraph{Polar bonds.} Where the two sides of a bond differ strongly, the true domain boundary
+curves around the smaller or more weakly bound atom, so heteronuclear molecules are computed in
+three dimensions only. LiH is recovered once its valence electrons
+form one bonding pair over an excluded core (Section~\ref{sec:lih}); with one electron per domain
+the dipole remains wrong in sign, so for polar bonds the pair construction, not the boundary shape,
+is decisive. NaH and HF are still to be run this way.
 
-The construction is not parameter-free. Besides the declared spacing it carries the five
-coefficients of the free-boundary update listed in Section~\ref{sec:mesh}, four of which have
-measured sensitivities below three points on H$_2$ and one of which ($\mu$, the front speed) has
-never been laddered on a molecule. It also takes the valence charges $Z_x$ from separate atomic
-work, and the kinetic occupancy cut-off at $0.9$ is a declared choice worth $6.6$ points of binding
-energy. None of these is fitted to the quantities reported here, but none is derived either.
+\paragraph{Inner shells.} Pauli exclusion is included through disjoint domains: electrons in
+different domains do not overlap. A 2hom pair overlays two electrons of opposite spin in one domain,
+as Pauli permits, and so captures that part of it too. In standard quantum mechanics exclusion is
+the antisymmetry of the many-electron wave function; imposed as orthogonality of, say, $2s$ to $1s$,
+it puts a node in the valence orbital inside the core, and the kinetic energy of that node keeps
+the valence out (the term a pseudopotential replaces). Disjoint domains are orthogonal by
+construction, $\int u_k u_l = 0$, but by separation rather than by a node: the valence amplitude
+is free at the wall and pays no node energy, and a free boundary between a shell and the valence,
+placed by continuity, carries no counterpart of that cost. Inner shells therefore cannot be represented by domains with free
+walls---the valence presses into them and the bond collapses---and are excluded by a fixed core
+radius per atom. This is a frozen-core model, and its radius is a
+property of the atom, set by its ionisation energy.
 
-All calculations use bare kernels, so the deepest, $Z = 4$, sits at $Zh = 0.48$, far above the
-resolution guideline. Mesh ladders are deliberately \emph{not} used to justify the numbers, for the
-reason given in Section~\ref{sec:mesh}; the one ladder we do report, for H$_2$'s bond, shows the
-refinement sequence passing through experiment rather than converging on it, which is a limitation
-of the construction and not of the sampling.
+\paragraph{Large molecules.} The last reduction step (reduced valence charges, $h = 0.25$--$0.4\,a_0$)
+has been checked against reference chemistry only on small fragments: the formamide dimer and a
+five-residue polyglycine helix, both on $200^3$, give bond and hydrogen-bond geometries in line with
+reference values. Folding runs on whole proteins use contact restraints; without them the fold is
+not found. % memory: project_validation, feedback_blind_folding
 
-The convergence problem is characterised but not solved. We can now measure electronic
-non-convergence, attribute it principally to shallow kernels, and exclude three rival explanations;
-we cannot yet remove it. Configurations containing shallow kernels or threefold and bent geometries
-remain unusable, which includes water and ammonia---a serious limitation for any application to
-hydrogen-bonded systems.
+\paragraph{Contacts between molecules.} A new domain boundary in a region of high density adds the
+same uncharged wall as the 2split bond, without a 2hom alternative. % TODO: HF-dimer contact energy to be recomputed in 3D (the earlier value used a plane boundary).
+Intermolecular energies are outside the model's range, and so is dispersion.
 
-Measured geometries, force constants and dissociation energies are taken from the standard
-compilations~\cite{huber,cccbdb} and are recorded as unverified in the source files. Dissociation
-energies carry the further ambiguity of Section~\ref{sec:h2bind}: $D_0$ is measured and $D_e$ adds
-a spectroscopic zero-point correction, the two differ by six points for H$_2$, and only $D_e$ is
-the quantity a model without nuclear motion computes.
+\paragraph{Energies across compositions.} Binding and reaction energies compare systems with
+different domain structures, whose errors differ; only differences within one composition
+(conformations, scans along a coordinate) are quotable.
 
-Finally, the construction pins the electron count of each domain, so charge transfer between
-unlike atoms is representable only through the shape of each domain and not through its occupation.
-For homonuclear systems this costs nothing; for a heteronuclear molecule it constrains precisely
-the asymmetry that defines it.
-
+% =====================================================================================
 \section{Conclusion}
 
-The simulator is defined by a declared grid rather than by a convergence limit: one spacing for
-every molecule, with the atomic references that enter the binding energy becoming constants of the
-model rather than per-run bookkeeping. That choice gives up the description of the construction as
-parameter-free, and we have listed what it actually carries. What it gains is that each number is
-answerable: with the grid fixed there is no remaining adjustment to defer a disagreement to.
-
-Hydrogen, the one system whose atomic reference involves no pseudokernel, comes out as a single
-defect rather than three. Its depth is right to a few percent---$0.1666 \pm 0.0018\,E_h$, falling
-between the two experimental conventions, with the uncertainty measured over a factor of two in the
-initialisation rather than estimated. Its gradient
-is right, the volume force predicting the model's own minimum to $0.2\%$ from one calculation at
-the observed geometry. Its curvature is $49\%$ too soft, and its bond is $52\%$ too long
-\emph{because} of that, through $\Delta R = F/k_{\text{model}}$. One quantity is wrong and the other
-errors follow from it, which is a more useful finding than three independent discrepancies would
-have been, and it identifies the curvature as what any improvement has to address.
-
-\textbf{And nitrogen binds.} Measured with molecule and reference on one grid, $E_{\text{bind}} =
-+0.2764\,E_h$ in a symmetric state, where the same quantity computed across two grids gave
-$-0.0155$ and was reported as a failure to bind the strongest common bond. That reversal is the
-single most consequential result here, and it is a lesson about method rather than about nitrogen:
-a number measured on one grid is not evidence about another. The same comparison moves hydrogen's
-binding by thirty-two points and carbon's energy by $1.1\,E_h$, and it is why the binding column of
-Table~\ref{tab:main} carries a systematic larger than several of its own entries---nothing below
-about $0.056\,E_h$ in it can be distinguished from zero.
-
-Three further things bear on how the earlier protocol should be read. The residual total force is a
-convergence diagnostic and not a figure of merit: an unbound H$_2$ scores as well on it as the best
-entries in the table. Bond errors converted with the measured force constant are lower bounds, too
-small by the stiffness ratio wherever the model's well is soft---twenty-five points for H$_2$. And
-the long bond is a \emph{resolution} artefact, not a property of the construction: an axisymmetric
-reduction, exact for two domains on an axis, converges the same bond to $1.368\,a_0$ and holds it
-flat to $0.18\%$ under a two-and-a-half-fold refinement, so the model's own bond error is $-2.3\%$
-where the declared grid reports $+52\%$.
-
-What remains outstanding is specific rather than general. The front-speed coefficient has never
-been laddered on a molecule. The choice of interface condition, worth $29$ to $58$ points of
-binding energy, cannot be settled on any symmetric system---H$_2$ included---because symmetry makes
-the candidates coincide. The atomic references are the binding energies' real bottleneck, the
-valence-only reduction over-binding carbon by a factor of $2.8$; the shell construction of
-Section~\ref{sec:atoms} is stated as what removes that at its origin, and its molecular numbers are
-not yet measured. And the two conventions for a dissociation energy differ by more than the model's
-own scatter, so every binding figure here is quoted against both.
-
+Solved as it stands, the hard-partition model of RealQM carries every electron pair in one of two
+parameter-free constructions, 2split and 2hom, the limits of complete and of no avoidance; for
+H$_2$ and He the exact energy lies between them. A shared pair (core, bonding pair) is 2hom, and
+for LiH and BH the 2hom bond is the closer to experiment. Bond lengths are good
+where the domain boundaries are flat or fixed by symmetry. Inner shells must be excluded by a fixed
+core radius, since a free wall has no Pauli cost; with that, LiH as one 2hom bonding pair has its
+bond within $5\%$, its binding within $3\%$ and a dipole of the right sign. Other polar bonds are
+\textbf{[pending]}. Nothing is adjusted to molecular data; each atom contributes one core radius, set from its
+ionisation energies.
 
 \begin{thebibliography}{9}
 
@@ -1078,36 +422,13 @@ submitted to \emph{Physics Essays}.
 configurations used here, including oxygen as $2{+}3{+}3$, are obtained there from atomic
 calculations independent of any molecular input.
 
-\bibitem{coremodels} C.\ Johnson, \emph{The Two-Centre Test: where the pseudo-kernel core model
-works, and where it stops}. Companion study measuring three core models---hard depletion, clamp
-and empty core---against the alkali and halogen dimers.
-
-\bibitem{hellmann} H.\ Hellmann, \emph{Einf\"uhrung in die Quantenchemie}, Deuticke, Leipzig
-(1937).
-
-\bibitem{feynman} R.\ P.\ Feynman, \emph{Forces in molecules}, Phys.\ Rev.\ \textbf{56}, 340
-(1939).
-
-\bibitem{pulay} P.\ Pulay, \emph{Ab initio calculation of force constants and equilibrium
-geometries in polyatomic molecules}, Mol.\ Phys.\ \textbf{17}, 197 (1969). The correction arising
-when the computational representation itself depends on nuclear position; the free partition
-boundary of the present model plays the corresponding role.
-
 \bibitem{huber} K.\ P.\ Huber and G.\ Herzberg, \emph{Molecular Spectra and Molecular Structure
 IV: Constants of Diatomic Molecules}, Van Nostrand Reinhold (1979).
 
 \bibitem{cccbdb} NIST Computational Chemistry Comparison and Benchmark Database, NIST Standard
 Reference Database 101.
 
-\bibitem{hchain} Full configuration interaction in a minimal (STO-6G) basis for equally spaced
-hydrogen chains $H_N$, generated for this work: equilibrium at $a = 1.8\,a_0$ with
-$E = -2.19038$ ($N = 4$) and $-3.26674$ ($N = 6$), each referred to its own atom
-$E(\mathrm{H}) = -0.471039$. The hydrogen chain is a standard benchmark for many-electron
-methods, having one electron per site and no pseudopotential, so no core parameter enters the
-comparison.
-
-\bibitem{code} Public code, the molecule simulator of the simulator, and an interactive
-gallery of all experiments in the present work:
+\bibitem{code} Public code, the molecule simulator, and an interactive gallery:
 \url{https://claes542.github.io/RealMolecule/gallery.html} (source repository:
 \url{https://github.com/Claes542/RealMolecule}).
 

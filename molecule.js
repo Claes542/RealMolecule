@@ -18,7 +18,27 @@ const NELEC = (function() {
 const N_ELECTRONS = _uz.reduce((s, z) => s + z, 0);  // total valence electrons
 const NRED_E = 6;  // Energy reduce: T + V_eK + V_ee + dipole(x,y,z)
 //
-// *** V_ee IS WRONG IN BOTH BUILDS, IN OPPOSITE DIRECTIONS. PARTLY FIXED. ***
+// *** CURRENT STATE, MEASURED 2026-11-11 -- V_ee IS CORRECT; THE ACCOUNT BELOW IS HISTORY. ***
+//
+// H2, R = 2.0, h = 0.1, box 10, direct path, p5 relaxation (jac=10), h2_beta.html, run to true convergence,
+// against tools/axisym_linear.py (same hard model, exact eigensolve, UNSOFTENED kernel, same h and box):
+//
+//                              E          T        V_eK      V_ee     V_KK
+//     molecule.js, fixed plane -1.13619   0.94053  -3.02145  0.44476  0.49998   (9800 steps)
+//     molecule.js, free        -1.1445    0.9381   -3.0308   0.4482   0.5000    (+-0.001 flicker, 73k steps)
+//     axisym hard              -1.23685   1.0321   -3.2200   0.4510   0.5000
+//     H atom: molecule.js -0.46654;  softened continuum (eps=0.1) -0.47417;  exact -0.5
+//
+//   V_ee agrees to 1.4%.  The 0.10 Ha gap in E is ONE-ELECTRON: kernel softening eps = h costs 0.026 Ha per
+//   H atom, the h = 0.1 grid 0.008 (both measured on the atom).  E_bind (fixed) 0.203 vs axisym 0.224: the
+//   solver reproduces the hard model.  The free boundary is deterministic (two runs identical) but never
+//   still, and sits 0.008 Ha BELOW the flat midplane -- the hard model's ragged-boundary gain (a jagged
+//   Neumann wall lowers E for free; axisym shows one kink worth 0.015), not a code fault.
+//   Convergence: the step-to-step test with 2e-4 stops while T, V_eK still drift 0.03 Ha (H2 stopped at
+//   step 1450, E -1.137); use window.CONVERGENCE_WINDOW = 3000 with threshold 1e-4 (stops at 6600,
+//   <E> -1.14464, within 2e-4 of the 73k-step mean).
+//
+// *** HISTORICAL: V_ee WAS WRONG IN BOTH BUILDS, IN OPPOSITE DIRECTIONS. (Fixed by the p5 relaxation.) ***
 //
 // Settled against the EXACT value rather than against another code: two electrons a
 // distance R apart have V_ee = 1/R to better than a percent by R = 6. At R = 6, where the
@@ -276,6 +296,17 @@ const INTERIOR = (NN - 1) * (NN - 1) * (NN - 1);
 // Pseudopotential atoms (rc > 0) are unaffected either way: their cutoff is rc, already absolute,
 // which is why the lithium-chain corrugation passed a mesh ladder where the bare-proton one does not.
 const R_SING = Math.max(2 * hGrid, window.USER_R_SING || 0);
+// ENERGY_INNER (DEFAULT ON since 2026-11-11; window.USER_ENERGY_INNER = 0 restores the old readout): the old energy reduce SKIPPED every cell within R_SING of its
+// owner's nucleus (isInsideExcl uses max(rc, R_SING)), for bare atoms too -- but the U update never zeroes those
+// cells (isInsideAnalytical is defined and never called), so their density is normalised and feels the clamped
+// kernel while its V_eK and T are dropped from the REPORTED energy. The reported E is then not the functional
+// being minimised. Measured 2026-11-11, H2 R=2 h=0.1 box 10 fixed: the weak path with a sharp w (which counts
+// every cell) gave -1.1941 against the standard readout's -1.1362.  With this flag only pseudo-atom cores
+// (rc > 0) are excluded, so the readout matches the update.
+// With it, hard molecule.js gives H2 (R=2, h=0.1, box 10) E_bind 0.2251 against axisym's 0.2241 -- the 3D solver
+// reproduces the hard model.  Every molecule.js energy recorded before this date omitted the inner spheres.
+const ENERGY_INNER = !(typeof window !== 'undefined' && window.USER_ENERGY_INNER === 0);
+console.log('molecule.js energy readout: inner r<R_SING spheres ' + (ENERGY_INNER ? 'COUNTED (default)' : 'SKIPPED (old readout)'));
 // USER_KIN: the coefficient of the kinetic term, normally 1/2 from hbar^2/2m. Raising it penalises
 // density gradients, i.e. makes the charge stiffer against being modulated -- a stand-in for the
 // degeneracy pressure this construction lacks (C = 0), and a way to test whether the corrugation is
@@ -310,7 +341,11 @@ const W_CUTOFF = window.USER_W_CUTOFF || 0;  // smooth ψ cutoff near other nucl
 const FULL_RC = !!window.USER_FULL_RC;
 // USER_MULTI_OCC: keep (Z_eff-1)/Z_eff of a multi-occupancy domain's own potential, which is the
 // intra-atomic pair repulsion the i!=j exclusion otherwise throws away with the self-interaction.
-const MULTI_OCC = !!window.USER_MULTI_OCC;
+// MULTI_OCC: a domain of N electrons feels (N-1)/N of its own Hartree field, so a pair counts its one pair
+// (the n(n-1)/2 rule). DEFAULT ON since 2026-11-11: without it a 2-electron domain has NO repulsion between its
+// own electrons, in the update and the energy (He as one pair: ~-4.0 instead of ~-2.86). USER_MULTI_OCC = false
+// restores the old behaviour.
+const MULTI_OCC = !(window.USER_MULTI_OCC === false);
 const rcAllLoopWGSL = FULL_RC ? `
   for (var nrc: u32 = 0u; nrc < ${NELEC}u; nrc++) {
     if (atoms[nrc].rc > 0.0 && atoms[nrc].Z_nuc > 0.0) {
@@ -345,6 +380,21 @@ const BOUNDARY_INTERVAL = 20;
 const NORM_INTERVAL = 20;
 const POISSON_INTERVAL = window.USER_POISSON_INTERVAL || 50;
 const USE_DIRECT_POTHER = (window.USER_DIRECT_POTHER !== undefined) ? window.USER_DIRECT_POTHER : (NELEC <= 5);  // direct per-electron Poisson solve (no SIC needed)
+// WEAK INTERFACE (opt-in, window.USER_WEAK_W = n): mol_fast's weak Neumann on molecule.js's partition. Each
+// electron m carries its OWN amplitude u_m and weight w_m; w_m is the label indicator chi_m smoothed by n
+// linear passes, so sum_m w_m = 1 (a partition of unity) and the ramp is ~sqrt(n) cells wide. Update as in
+// mol_fast: u += HD_C * sum_faces (u_nb - u_c)(w_nb + w_c)/2 + dt (K - V_other) u w;  density w u^2 in the
+// norm, the Poisson source and the energy (mol_fast wd=1 + wkinw=1, the consistent functional).
+// The owner field U = u_label is assembled every step, so label flips, viewer and readouts are unchanged.
+// NOTE (axisym, 2026-11-11): with a ONE-cell ramp and density w u^2 this is identical to hard Neumann (the
+// overhang cell has zero weight and a free amplitude); the weak effect needs n >= 1 smoothing passes.
+// Requires the direct per-electron Poisson path; Chebyshev and LOBPCG are disabled.
+// USER_WEAK_W < 0 runs the weak path with ZERO smoothing passes (w = the sharp label indicator): the CONTROL,
+// which must reproduce hard Neumann.
+const WEAK_REQ = (typeof window !== 'undefined' && window.USER_WEAK_W) ? (window.USER_WEAK_W | 0) : 0;
+const WEAK_W = Math.max(0, WEAK_REQ);
+const WEAK = WEAK_REQ !== 0 && USE_DIRECT_POTHER && N_ELECTRONS > 1;
+if (WEAK_REQ !== 0) console.log('WEAK interface: ' + (WEAK ? ('ON, ' + WEAK_W + ' smoothing passes') : 'REQUESTED BUT OFF (needs the direct Poisson path and >1 electron)'));
 const SIC_INTERVAL = NELEC <= 15 ? 1 : NELEC <= 30 ? 5 : 999999;  // SIC in dynamics to remove self-interaction from wavefunction evolution
 const SIC_JACOBI = NELEC <= 15 ? 50 : 10;
 
@@ -408,8 +458,18 @@ const INTERIOR_C = (NC - 1) * (NC - 1) * (NC - 1);
 
 // Energy reduce: 6 values (T, V_eK, V_ee, dipX, dipY, dipZ) — REDUCE_WG=128 (6*128*4 = 3072 bytes shared mem)
 const REDUCE_WG = 128;
-const NORM_SCALE = 16777216.0; // 2^24 for fixed-point atomic norm accumulation
+// Fixed-point atomic norm accumulation. The OLD form, u32(rho*h^3*2^24), TRUNCATED every cell: it lost half a
+// unit of 2^-24 per cell on average and every cell below one unit entirely. On N=200 (8e6 cells) a diffuse density
+// lost several percent of its norm, the normaliser then scaled u UP, and T and V_eK were inflated by the same factor:
+// pseudo-Li (Z 1, r_c 1.6, box 20, h 0.1) read -0.2401 against -0.2245 from an independent 3D FD solve of the same
+// staircase problem and -0.2252 exact radial (2026-11-11). Now: round to nearest, and the largest power-of-two scale
+// that keeps 2x headroom for the biggest domain charge in u32. USER_NORM_LEGACY = true restores the old readout.
+const NORM_LEGACY = !!window.USER_NORM_LEGACY;
+const _maxDomZ = Math.max(1, ..._uz.map(z => Math.abs(z) || 0));
+const NORM_SCALE = NORM_LEGACY ? 16777216.0 : Math.pow(2, Math.min(30, Math.floor(Math.log2(4294967295 / (2 * _maxDomZ)))));
 const NORM_INV_SCALE = 1.0 / NORM_SCALE;
+const NORM_RND = NORM_LEGACY ? '0.0' : '0.5';
+console.log('molecule.js norms: scale 2^' + Math.log2(NORM_SCALE) + (NORM_LEGACY ? ' TRUNCATED (legacy)' : ' rounded'));
 
 // ===== WGSL SHADERS =====
 
@@ -451,12 +511,37 @@ fn inSplitAtom(dx: f32, dy: f32, dz: f32, r: f32, n: u32) -> bool {
   let st = atoms[n].splitType;
   if (st <= 1u || r < 1e-6) { return true; }
   if (st == 6u) { return true; }   // absolute half-space: enforced in cellSectorOK, not here
+  // 10 = HALF-SPACE bounded by a plane PERPENDICULAR to the axis at signed distance splitRot (au) from this atom's
+  // nucleus (not through it, unlike 2): idx 0 owns dotp < splitRot, idx 1 owns dotp >= splitRot. Two atoms given
+  // offsets to the SAME absolute plane are separated by it -- a fixed ionic interface (Li+ | H-) whose position is a
+  // variational parameter instead of the density-continuity rule.
+  if (st == 10u) {
+    let axL10 = max(sqrt(atoms[n].splitAxX*atoms[n].splitAxX + atoms[n].splitAxY*atoms[n].splitAxY + atoms[n].splitAxZ*atoms[n].splitAxZ), 1e-12);
+    let d10 = (dx*atoms[n].splitAxX + dy*atoms[n].splitAxY + dz*atoms[n].splitAxZ) / axL10;
+    if (atoms[n].splitIdx == 0u) { return d10 < atoms[n].splitRot; }
+    return d10 >= atoms[n].splitRot;
+  }
   let axL = max(sqrt(atoms[n].splitAxX*atoms[n].splitAxX + atoms[n].splitAxY*atoms[n].splitAxY + atoms[n].splitAxZ*atoms[n].splitAxZ), 1e-12);
   let a0 = atoms[n].splitAxX/axL; let a1 = atoms[n].splitAxY/axL; let a2 = atoms[n].splitAxZ/axL;
   let dotp = dx*a0 + dy*a1 + dz*a2;
   if (st == 2u) {
     if (atoms[n].splitIdx == 0u) { return dotp < 0.0; }
     return dotp >= 0.0;
+  }
+  // 9 = BOND + TWO BACK (3-split of an outer shell along a bond): idx 0 owns the half-space facing +axis
+  // (the bond); idx 1 and 2 share the back half, divided by a plane CONTAINING the axis (e1 as in 'third',
+  // rotated by splitRot). Every lobe is a 1e domain -- the 3D form of the axisym 2hom-back | 1-bond.
+  if (st == 9u) {
+    if (atoms[n].splitIdx == 0u) { return dotp >= 0.0; }
+    if (dotp >= 0.0) { return false; }
+    var f1x: f32; var f1y: f32; var f1z: f32;
+    if (abs(a2) < 0.9) { f1x = a1; f1y = -a0; f1z = 0.0; } else { f1x = 0.0; f1y = a2; f1z = -a1; }
+    let f1L = max(sqrt(f1x*f1x+f1y*f1y+f1z*f1z), 1e-12);
+    f1x = f1x/f1L; f1y = f1y/f1L; f1z = f1z/f1L;
+    let f2x = a1*f1z - a2*f1y; let f2y = a2*f1x - a0*f1z; let f2z = a0*f1y - a1*f1x;
+    let side = cos(atoms[n].splitRot) * (dx*f1x + dy*f1y + dz*f1z) + sin(atoms[n].splitRot) * (dx*f2x + dy*f2y + dz*f2z);
+    if (atoms[n].splitIdx == 1u) { return side >= 0.0; }
+    return side < 0.0;
   }
   if (st == 3u) {
     let px = dx - dotp*a0; let py = dy - dotp*a1; let pz = dz - dotp*a2;
@@ -1154,14 +1239,22 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let zk = f32(k) * p.h;
   let m = dom.idx;
   var val: f32 = 0.0;
+  // Monopole seed, which also fixes P at the box walls (never updated by the relaxation). Weighted by each
+  // domain's electron count Z (a pair is TWO charges, not one), and including the domain's OWN kept share
+  // (N-1)/N of its charge when MULTI_OCC: without it a lone pair domain had P pinned to 0 at the walls and its
+  // pair repulsion came out 17% short (He as one pair, h=0.1: V_ee 0.764 vs 0.918; 2026-11-11).
+  let Zm = atoms[m].Z;
+  let keepM = select(0.0, (Zm - 1.0) / max(Zm, 1.0), ${MULTI_OCC} && Zm > 1.0);
   for (var n: u32 = 0u; n < ${NELEC}u; n++) {
     let Za = atoms[n].Z;
-    if (Za <= 0.0 || n == m) { continue; }
+    if (Za <= 0.0) { continue; }
+    let wgt = select(Za, Za * keepM, n == m);
+    if (wgt <= 0.0) { continue; }
     let dx = xi - atoms[n].posI * p.h;
     let dy = yj - atoms[n].posJ * p.h;
     let dz = zk - atoms[n].posK * p.h;
     let r = sqrt(dx*dx + dy*dy + dz*dz + p.h2);
-    val += 0.5 / r;
+    val += 0.5 * wgt / r;
   }
   Pdirect[id] = val;
   Pother[id] += val;
@@ -1296,6 +1389,181 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   Pout[id] = Pc + p.dt * (lap * p.inv_h2 + p.TWO_PI * rhoTotal[id]);
 }
 `;
+
+// ---------------- WEAK INTERFACE shaders (USER_WEAK_W) ----------------
+const weakHeadWGSL = () => `
+${paramStructWGSL}
+${atomStructWGSL}
+${cellIdxWGSL}
+const NEL: u32 = ${NELEC}u;
+const SS3: u32 = ${S3}u;
+fn interior(gid: vec3<u32>) -> vec4<u32> {
+  let NM = p.NN - 1u; let cell = cellIdx(gid);
+  if (cell >= NM * NM * NM) { return vec4<u32>(0u, 0u, 0u, 0xffffffffu); }
+  let k = (cell % NM) + 1u; let j = ((cell / NM) % NM) + 1u; let i = (cell / (NM * NM)) + 1u;
+  return vec4<u32>(i, j, k, i * p.S2 + j * p.S + k);
+}`;
+const weakWinitWGSL = () => `
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> label: array<u32>;
+@group(0) @binding(2) var<storage, read_write> W: array<f32>;
+${weakHeadWGSL()}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let id = cellIdx(gid); if (id >= SS3 || p.NN == 0u) { return; }
+  let m = gid.z;
+  W[m * SS3 + id] = select(0.0, 1.0, label[id] == m);
+}`;
+const weakBlurWGSL = () => `
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> Wi: array<f32>;
+@group(0) @binding(2) var<storage, read_write> Wo: array<f32>;
+${weakHeadWGSL()}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let id = cellIdx(gid); if (id >= SS3) { return; }
+  let b = gid.z * SS3;
+  let k = id % p.S; let j = (id / p.S) % p.S; let i = id / p.S2;
+  if (i == 0u || j == 0u || k == 0u || i == p.NN || j == p.NN || k == p.NN) { Wo[b + id] = Wi[b + id]; return; }
+  let sn = Wi[b + id + p.S2] + Wi[b + id - p.S2] + Wi[b + id + p.S] + Wi[b + id - p.S] + Wi[b + id + 1u] + Wi[b + id - 1u];
+  Wo[b + id] = (6.0 * Wi[b + id] + sn) / 12.0;     // linear: preserves sum_m w_m = 1
+}`;
+const weakSeedWGSL = () => `
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> U0: array<f32>;
+@group(0) @binding(2) var<storage, read> label: array<u32>;
+@group(0) @binding(3) var<storage, read_write> Uw: array<f32>;
+${weakHeadWGSL()}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let id = cellIdx(gid); if (id >= SS3 || p.NN == 0u) { return; }
+  let m = gid.z;
+  Uw[m * SS3 + id] = select(0.0, U0[id], label[id] == m);
+}`;
+const weakUpdateWGSL = () => `
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> Ui: array<f32>;
+@group(0) @binding(2) var<storage, read_write> Uo: array<f32>;
+@group(0) @binding(3) var<storage, read> W: array<f32>;
+@group(0) @binding(4) var<storage, read> K: array<f32>;
+@group(0) @binding(5) var<storage, read> Pd: array<f32>;
+@group(0) @binding(6) var<storage, read> atoms: array<Atom>;
+${weakHeadWGSL()}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let c = interior(gid); if (c.w == 0xffffffffu) { return; }
+  let id = c.w; let m = gid.z; let b = m * SS3;
+  if (atoms[m].Z <= 0.0) { Uo[b + id] = 0.0; return; }
+  // pseudo-atom core: u = 0 inside its own r_c
+  if (atoms[m].rc > 0.0) {
+    let dx = (f32(c.x) - atoms[m].posI) * p.h; let dy = (f32(c.y) - atoms[m].posJ) * p.h; let dz = (f32(c.z) - atoms[m].posK) * p.h;
+    if (sqrt(dx*dx + dy*dy + dz*dz) < atoms[m].rc) { Uo[b + id] = 0.0; return; }
+  }
+  let wc = W[b + id]; let uc = Ui[b + id];
+  let wip = W[b + id + p.S2]; let wim = W[b + id - p.S2]; let wjp = W[b + id + p.S];
+  let wjm = W[b + id - p.S]; let wkp = W[b + id + 1u]; let wkm = W[b + id - 1u];
+  if (max(wc, max(max(max(wip, wim), max(wjp, wjm)), max(wkp, wkm))) < 1e-7) { Uo[b + id] = 0.0; return; }
+  let flux = (Ui[b + id + p.S2] - uc) * (wip + wc) + (Ui[b + id - p.S2] - uc) * (wim + wc)
+           + (Ui[b + id + p.S]  - uc) * (wjp + wc) + (Ui[b + id - p.S]  - uc) * (wjm + wc)
+           + (Ui[b + id + 1u]   - uc) * (wkp + wc) + (Ui[b + id - 1u]   - uc) * (wkm + wc);
+  Uo[b + id] = uc + ${HD_C.toFixed(8)} * 0.5 * flux + p.dt * (K[id] - 2.0 * Pd[b + id]) * uc * wc;
+}`;
+const weakRhoOtherWGSL = () => `
+struct DomIdx { idx: u32, _p0: u32, _p1: u32, _p2: u32 }
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> Uw: array<f32>;
+@group(0) @binding(2) var<storage, read> W: array<f32>;
+@group(0) @binding(3) var<storage, read_write> rhoOther: array<f32>;
+@group(0) @binding(4) var<uniform> dom: DomIdx;
+@group(0) @binding(5) var<storage, read> atoms: array<Atom>;
+${weakHeadWGSL()}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let c = interior(gid); if (c.w == 0xffffffffu) { return; }
+  let id = c.w; var r: f32 = 0.0;
+  for (var n: u32 = 0u; n < NEL; n++) {
+    let u = Uw[n * SS3 + id]; let q = W[n * SS3 + id] * u * u;
+    if (n != dom.idx) { r += q; }
+    else { let z = atoms[n].Z; if (${MULTI_OCC} && z > 1.0) { r += q * (z - 1.0) / z; } }
+  }
+  rhoOther[id] = r;
+}`;
+const weakNormWGSL = () => `
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> Uw: array<f32>;
+@group(0) @binding(2) var<storage, read> W: array<f32>;
+@group(0) @binding(3) var<storage, read_write> normAtomic: array<atomic<u32>>;
+${weakHeadWGSL()}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let c = interior(gid); if (c.w == 0xffffffffu) { return; }
+  let m = gid.z; let u = Uw[m * SS3 + c.w];
+  atomicAdd(&normAtomic[m], u32(W[m * SS3 + c.w] * u * u * p.h3 * ${NORM_SCALE.toFixed(1)} + ${NORM_RND}));
+}`;
+const weakNormalizeWGSL = () => `
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read_write> Uw: array<f32>;
+@group(0) @binding(2) var<storage, read> normFloat: array<f32>;
+@group(0) @binding(3) var<storage, read> atoms: array<Atom>;
+${weakHeadWGSL()}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let c = interior(gid); if (c.w == 0xffffffffu) { return; }
+  let m = gid.z; let n = normFloat[m]; let z = atoms[m].Z;
+  if (n > 0.0 && z > 0.0) { Uw[m * SS3 + c.w] *= sqrt(z / n); }
+}`;
+const weakAssembleWGSL = () => `
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> Uw: array<f32>;
+@group(0) @binding(2) var<storage, read> label: array<u32>;
+@group(0) @binding(3) var<storage, read_write> U: array<f32>;
+${weakHeadWGSL()}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let c = interior(gid); if (c.w == 0xffffffffu) { return; }
+  let l = label[c.w];
+  U[c.w] = select(0.0, Uw[l * SS3 + c.w], l < NEL);
+}`;
+const weakEnergyWGSL = () => `
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> Uw: array<f32>;
+@group(0) @binding(2) var<storage, read> W: array<f32>;
+@group(0) @binding(3) var<storage, read> K: array<f32>;
+@group(0) @binding(4) var<storage, read> Pd: array<f32>;
+@group(0) @binding(5) var<storage, read_write> partials: array<f32>;
+${weakHeadWGSL()}
+var<workgroup> sn: array<f32, ${NRED_E * REDUCE_WG}>;
+@compute @workgroup_size(${REDUCE_WG})
+fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invocation_index) lid: u32,
+        @builtin(workgroup_id) wgid: vec3<u32>) {
+  let NM = p.NN - 1u; let tot = NM * NM * NM; let stride = ${MAX_REDUCE_WG}u * ${REDUCE_WG}u; let NR = ${NRED_E}u;
+  for (var q: u32 = 0u; q < NR; q++) { sn[lid * NR + q] = 0.0; }
+  var cell = gid.x;
+  loop {
+    if (cell >= tot) { break; }
+    let k = (cell % NM) + 1u; let j = ((cell / NM) % NM) + 1u; let i = (cell / (NM * NM)) + 1u;
+    let id = i * p.S2 + j * p.S + k;
+    for (var m: u32 = 0u; m < NEL; m++) {
+      let b = m * SS3; let v = Uw[b + id]; let w = W[b + id]; let rho = w * v * v;
+      // kinetic: 1/2 sum over the three forward faces of w_face (du)^2 h, w_face = (w_c + w_nb)/2
+      let a = Uw[b + id + p.S2] - v; let bb = Uw[b + id + p.S] - v; let cc = Uw[b + id + 1u] - v;
+      sn[lid * NR] += 0.5 * (0.5 * (w + W[b + id + p.S2]) * a * a + 0.5 * (w + W[b + id + p.S]) * bb * bb
+                           + 0.5 * (w + W[b + id + 1u]) * cc * cc) * p.h;
+      sn[lid * NR + 1u] += -K[id] * rho * p.h3;
+      sn[lid * NR + 2u] += Pd[b + id] * rho * p.h3;
+      sn[lid * NR + 3u] += rho * f32(i) * p.h * p.h3;
+      sn[lid * NR + 4u] += rho * f32(j) * p.h * p.h3;
+      sn[lid * NR + 5u] += rho * f32(k) * p.h * p.h3;
+    }
+    cell = cell + stride;
+  }
+  workgroupBarrier();
+  for (var s: u32 = ${REDUCE_WG >> 1}u; s > 0u; s >>= 1u) {
+    if (lid < s) { for (var q: u32 = 0u; q < NR; q++) { sn[lid * NR + q] += sn[(lid + s) * NR + q]; } }
+    workgroupBarrier();
+  }
+  if (lid == 0u) { let base = wgid.x * NR; for (var q: u32 = 0u; q < NR; q++) { partials[base + q] = sn[q]; } }
+}`;
 
 const computeRhoWGSL = `
 ${paramStructWGSL}
@@ -1474,7 +1742,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = (cell / (NM * NM)) + 1u;
   let id = i * p.S2 + j * p.S + k;
   let v = U[id];
-  let contrib = u32(v * v * p.h3 * ${NORM_SCALE});
+  let contrib = u32(v * v * p.h3 * ${NORM_SCALE.toFixed(1)} + ${NORM_RND});
   atomicAdd(&normAtomic[label[id]], contrib);
 }
 `;
@@ -1505,11 +1773,20 @@ ${atomStructWGSL}
 @group(0) @binding(6) var<storage, read> atoms: array<Atom>;
 
 fn isInsideExcl(ci: u32, cj: u32, ck: u32, lbl: u32) -> bool {
-  let rc = max(atoms[lbl].rc, ${R_SING});
+  let rc = ${ENERGY_INNER ? 'atoms[lbl].rc' : 'max(atoms[lbl].rc, ' + R_SING + ')'};
   let dx = (f32(ci) - atoms[lbl].posI) * p.h;
   let dy = (f32(cj) - atoms[lbl].posJ) * p.h;
   let dz = (f32(ck) - atoms[lbl].posK) * p.h;
-  return sqrt(dx*dx + dy*dy + dz*dz) < rc;
+  if (sqrt(dx*dx + dy*dy + dz*dz) < rc) { return true; }
+  // USER_FULL_RC: every core excludes every domain in the update (isInsideRc), so the readout must too --
+  // otherwise a domain bordering ANOTHER atom's core is charged a gradient the solver never saw.
+  ${FULL_RC ? `for (var nrc: u32 = 0u; nrc < ${NELEC}u; nrc++) {
+    if (atoms[nrc].rc > 0.0 && atoms[nrc].Z_nuc > 0.0) {
+      let ex = (f32(ci) - atoms[nrc].posI) * p.h; let ey = (f32(cj) - atoms[nrc].posJ) * p.h; let ez = (f32(ck) - atoms[nrc].posK) * p.h;
+      if (sqrt(ex*ex + ey*ey + ez*ez) < atoms[nrc].rc) { return true; }
+    }
+  }` : ''}
+  return false;
 }
 
 var<workgroup> sn: array<f32, ${NRED_E * REDUCE_WG}>;
@@ -2636,7 +2913,7 @@ function fillAtomBuf() {
     af[off + 6] = perZeff ? perZeff[n] || Z[n] : (window.INIT_ZEFF || Z[n]);
     af[off + 7] = perRcut ? perRcut[n] || 1e6 : (window.INIT_RCUT || 1e6);
     // Shell split (optional): splitType 0/1=sphere, 2=hemi, 3=third; sector idx; axis; rot
-    const stCode = { sphere: 0, hemi: 2, third: 3, tetra: 4, cube: 7, antiprism: 8 };
+    const stCode = { sphere: 0, hemi: 2, third: 3, tetra: 4, cube: 7, antiprism: 8, bond2back: 9 };
     const stv = SPLIT_TYPE[n];
     au[off + 8] = (typeof stv === 'string') ? (stCode[stv] || 0) : (stv || 0);
     au[off + 9] = SPLIT_IDX[n] || 0;
@@ -2841,6 +3118,15 @@ async function uploadInitialData() {
     const lData = window.CUSTOM_LABEL_INIT(S, hGrid, nucPos, NELEC);
     device.queue.writeBuffer(labelBuf, 0, lData);
     console.log("Custom label init complete");
+  }
+
+  // Full custom initialisation: labels AND psi from the driver, e.g. a core domain seeded with a tabulated 1D
+  // radial density inside a fixed sphere (h2_beta.html ?core2hom=). Returns { u: Float32Array(S3), l: Uint32Array(S3) }.
+  if (window.CUSTOM_INIT_FULL) {
+    const ini = window.CUSTOM_INIT_FULL(S, hGrid, nucPos, NELEC);
+    device.queue.writeBuffer(U_buf[0], 0, ini.u);
+    device.queue.writeBuffer(labelBuf, 0, ini.l);
+    console.log("Custom full init (labels + psi) complete");
   }
 
   // Copy to double-buffered slots
@@ -3938,6 +4224,7 @@ async function initGPU() {
       await device.queue.onSubmittedWorkDone();
       console.log("Direct Pother: GPU-initialized P_direct + PotherBuf with 0.5/r, NELEC=" + NELEC);
     }
+    if (WEAK) await setupWeak(compileShader);
 
     // Nuclear dynamics bind groups
     // gradPtotal: direct Coulomb force from U² density on nuclei
@@ -4074,12 +4361,71 @@ async function initGPU() {
   }
 }
 
+// ---------------- WEAK INTERFACE: setup and encoders ----------------
+let weak = null;
+function weakDispatch(pass, total) {
+  const wg = Math.ceil(total / 256);
+  if (wg <= 65535) pass.dispatchWorkgroups(wg, 1, NELEC);
+  else pass.dispatchWorkgroups(DISPATCH_X, Math.ceil(wg / DISPATCH_X), NELEC);
+}
+async function setupWeak(compileShader) {
+  useCheb = false; useLOBPCG = false;
+  const big = NELEC * S3 * 4, st = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
+  const mk = () => device.createBuffer({ size: big, usage: st });
+  const B = { Uw: [mk(), mk()], W: mk(), Wt: mk(), Pd: mk() };
+  const pl = async (name, code) => device.createComputePipelineAsync({ layout: 'auto',
+    compute: { module: await compileShader(name, code), entryPoint: 'main' } });
+  const P = {
+    winit: await pl('weakWinit', weakWinitWGSL()), blur: await pl('weakBlur', weakBlurWGSL()),
+    seed: await pl('weakSeed', weakSeedWGSL()), upd: await pl('weakUpdate', weakUpdateWGSL()),
+    rho: await pl('weakRhoOther', weakRhoOtherWGSL()), norm: await pl('weakNorm', weakNormWGSL()),
+    nrm: await pl('weakNormalize', weakNormalizeWGSL()), asm: await pl('weakAssemble', weakAssembleWGSL()),
+    en: await pl('weakEnergy', weakEnergyWGSL()),
+  };
+  const bg = (pipe, bufs) => device.createBindGroup({ layout: pipe.getBindGroupLayout(0),
+    entries: bufs.map((b, i) => ({ binding: i, resource: { buffer: b } })) });
+  const dom = [];
+  for (let m = 0; m < NELEC; m++) {
+    const d = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    device.queue.writeBuffer(d, 0, new Uint32Array([m, 0, 0, 0])); dom.push(d);
+  }
+  const G = {
+    winit: bg(P.winit, [paramsBuf, labelBuf, B.W]),
+    blur: [bg(P.blur, [paramsBuf, B.W, B.Wt]), bg(P.blur, [paramsBuf, B.Wt, B.W])],
+    seed: bg(P.seed, [paramsBuf, U_buf[cur], labelBuf, B.Uw[0]]),
+    upd: [0, 1].map(c => bg(P.upd, [paramsBuf, B.Uw[c], B.Uw[1 - c], B.W, K_buf, B.Pd, atomBuf])),
+    rho: [0, 1].map(c => dom.map(d => bg(P.rho, [paramsBuf, B.Uw[c], B.W, rhoTotalBuf, d, atomBuf]))),
+    norm: [0, 1].map(c => bg(P.norm, [paramsBuf, B.Uw[c], B.W, normAtomicBuf])),
+    nrm: [0, 1].map(c => bg(P.nrm, [paramsBuf, B.Uw[c], normFloatBuf, atomBuf])),
+    asm: [0, 1].map(c => bg(P.asm, [paramsBuf, B.Uw[c], labelBuf, U_buf[c]])),
+    en: [0, 1].map(c => bg(P.en, [paramsBuf, B.Uw[c], B.W, K_buf, B.Pd, partialsBuf])),
+  };
+  weak = { B, P, G };
+  // seed: u_m = U where label == m (zero elsewhere), both ping-pong copies; weights from the labels
+  const enc = device.createCommandEncoder();
+  let cp = enc.beginComputePass(); cp.setPipeline(P.seed); cp.setBindGroup(0, G.seed); weakDispatch(cp, S3); cp.end();
+  enc.copyBufferToBuffer(B.Uw[0], 0, B.Uw[1], 0, big);
+  encodeWeakW(enc);
+  device.queue.submit([enc.finish()]);
+  await device.queue.onSubmittedWorkDone();
+  weak.cur0 = cur;
+  console.log('WEAK interface set up: ' + NELEC + ' electron fields, ' + (5 * big / 1048576).toFixed(0) + ' MB');
+}
+function encodeWeakW(enc) {
+  let cp = enc.beginComputePass(); cp.setPipeline(weak.P.winit); cp.setBindGroup(0, weak.G.winit); weakDispatch(cp, S3); cp.end();
+  for (let q = 0; q < WEAK_W; q++) {
+    cp = enc.beginComputePass(); cp.setPipeline(weak.P.blur); cp.setBindGroup(0, weak.G.blur[q % 2]); weakDispatch(cp, S3); cp.end();
+  }
+  if (WEAK_W % 2 === 1) enc.copyBufferToBuffer(weak.B.Wt, 0, weak.B.W, 0, NELEC * S3 * 4);
+}
+
 async function doSteps(n) {
   const t0 = performance.now();
   device.pushErrorScope('validation');
   device.pushErrorScope('out-of-memory');
   const enc = device.createCommandEncoder();
   let needForceReadback = false;
+  if (WEAK) encodeWeakW(enc);     // per-electron weights from the current labels, once per frame
 
   for (let s = 0; s < n; s++) {
     const next = 1 - cur;
@@ -4152,12 +4498,17 @@ async function doSteps(n) {
     // over all electrons at every cell of the FULL grid, so running it per step added
     // NELEC full-grid direct-sum dispatches to every iteration and locked the page on a
     // fine mesh. The p5 relaxation removes the need for it.
+    // USER_POT_EVERY = k: solve the per-electron potentials only every k-th step. They hold ~85% of the step cost
+    // (NELEC x (1 + JACOBI_DIRECT) full-grid passes against ONE for the u update) and change little per step; in
+    // between, PotherBuf keeps the last solve. Default 1 = every step, exactly as before.
+    const POT_EVERY = Math.max(1, window.USER_POT_EVERY | 0 || 1);
+    if ((tStep + s) % POT_EVERY === 0)
     for (let m = 0; m < NELEC; m++) {
       if (Z[m] === 0) continue;
       // Compute rhoOther (density of all electrons except m) into rhoTotalBuf
       vp = enc.beginComputePass();
-      vp.setPipeline(computeRhoOtherPL);
-      vp.setBindGroup(0, computeRhoOtherBG[m][cur]);
+      if (WEAK) { vp.setPipeline(weak.P.rho); vp.setBindGroup(0, weak.G.rho[cur][m]); }
+      else { vp.setPipeline(computeRhoOtherPL); vp.setBindGroup(0, computeRhoOtherBG[m][cur]); }
       dispatchLinear(vp, INTERIOR);
       vp.end();
       // Jacobi iterations on P_direct[m] (persistent, accumulates across frames)
@@ -4176,6 +4527,7 @@ async function doSteps(n) {
       vp.setBindGroup(0, copyPotherForLabelBG[m]);
       dispatchLinear(vp, INTERIOR);
       vp.end();
+      if (WEAK) enc.copyBufferToBuffer(P_directBuf[m], 0, weak.B.Pd, m * S3 * 4, S3 * 4);
     }
 
     } else if (N_ELECTRONS > 1 && !window.NO_VEE) {
@@ -4232,7 +4584,10 @@ async function doSteps(n) {
 
     // --- U update ---
     let cp;
-    if (useCheb) {
+    if (WEAK) {
+      cp = enc.beginComputePass(); cp.setPipeline(weak.P.upd); cp.setBindGroup(0, weak.G.upd[cur]);
+      weakDispatch(cp, INTERIOR); cp.end();
+    } else if (useCheb) {
       // Chebyshev semi-iterative acceleration of ITP
       // ψ_{n+1} = ω_n * (ITP step of ψ_n) + (1-ω_n) * ψ_{n-1}
       // Spectral radius of iteration matrix G = I - dt·H:
@@ -4290,7 +4645,17 @@ async function doSteps(n) {
       cp.end();
     }
 
-    if ((s + 1) % NORM_INTERVAL === 0 || s === n - 1) {
+    if (WEAK) {
+      if ((s + 1) % NORM_INTERVAL === 0 || s === n - 1) {
+        enc.clearBuffer(normAtomicBuf);
+        cp = enc.beginComputePass(); cp.setPipeline(weak.P.norm); cp.setBindGroup(0, weak.G.norm[next]); weakDispatch(cp, INTERIOR); cp.end();
+        cp = enc.beginComputePass(); cp.setPipeline(decodeNormsPL); cp.setBindGroup(0, decodeNormsBG);
+        cp.dispatchWorkgroups(Math.ceil(NELEC / 64)); cp.end();
+        cp = enc.beginComputePass(); cp.setPipeline(weak.P.nrm); cp.setBindGroup(0, weak.G.nrm[next]); weakDispatch(cp, INTERIOR); cp.end();
+      }
+      // owner field U = u_label, for the label flips, the viewer and every readout
+      cp = enc.beginComputePass(); cp.setPipeline(weak.P.asm); cp.setBindGroup(0, weak.G.asm[next]); dispatchLinear(cp, INTERIOR); cp.end();
+    } else if ((s + 1) % NORM_INTERVAL === 0 || s === n - 1) {
       // Atomic norm accumulation: clear → accumulate → decode → normalize
       enc.clearBuffer(normAtomicBuf);
       cp = enc.beginComputePass();
@@ -4399,8 +4764,8 @@ async function doSteps(n) {
   // --- Energy reduce (after SIC so V_ee uses current frame's PotherBuf) ---
   {
     let cp = enc.beginComputePass();
-    cp.setPipeline(reduceEnergyPL);
-    cp.setBindGroup(0, reduceEnergyBG[cur]);
+    if (WEAK) { cp.setPipeline(weak.P.en); cp.setBindGroup(0, weak.G.en[cur]); }
+    else { cp.setPipeline(reduceEnergyPL); cp.setBindGroup(0, reduceEnergyBG[cur]); }
     cp.dispatchWorkgroups(WG_REDUCE);
     cp.end();
 
@@ -4536,7 +4901,10 @@ async function doSteps(n) {
   E_ee = sumsData[2];  // SIC already removed self-interaction from PotherBuf
   // Per-H correction: exclusion sphere around each nucleus clips T and V_eK
   // This is a per-nucleus artifact independent of bonding
-  {
+  // DISABLED when ENERGY_INNER (the default): this hand-tuned patch for the OLD readout (inner spheres skipped)
+  // added +0.025 Ha per bare H on every grid except NN = 100 and 300 -- the whole of the "box dependence" of
+  // E(H) (h=0.1: -0.4911 at NN=100, -0.4661 at NN=80/110/128; 2026-11-11). With the spheres counted it is wrong.
+  if (!ENERGY_INNER) {
     const H_RAW = { 100: [0.5, -1.0], 200: [0.503, -1.028], 300: [0.5, -1.0] };
     const raw = H_RAW[NN] || H_RAW[200];
     let nH = 0;
@@ -4700,6 +5068,16 @@ async function doSteps(n) {
 
   tStep += n;
   lastMs = performance.now() - t0;
+
+  // USER_SPLIT_RELEASE = [n,...] with USER_SPLIT_RELEASE_STEP: those domains are SEEDED by their split sector
+  // (co-located siblings otherwise tie at initialisation and one comes up empty) and their sector constraint is
+  // dropped at that step, so the boundary between them becomes free (density continuity) from then on.
+  if (window.USER_SPLIT_RELEASE && !window._splitReleased && tStep >= (window.USER_SPLIT_RELEASE_STEP || 500)) {
+    for (const idx of window.USER_SPLIT_RELEASE) SPLIT_TYPE[idx] = 0;
+    fillAtomBuf();
+    window._splitReleased = true;
+    console.log('SPLIT RELEASED at step ' + tStep + ': domains ' + window.USER_SPLIT_RELEASE.join(',') + ' now free');
+  }
 
   E_KK = 0;
   if (addNucRepulsion) {
@@ -5247,7 +5625,10 @@ async function doLOBPCGStep() {
   E_eK = sumsData[1];
   E_ee = sumsData[2];
   // Per-H correction (same as ITP path)
-  {
+  // DISABLED when ENERGY_INNER (the default): this hand-tuned patch for the OLD readout (inner spheres skipped)
+  // added +0.025 Ha per bare H on every grid except NN = 100 and 300 -- the whole of the "box dependence" of
+  // E(H) (h=0.1: -0.4911 at NN=100, -0.4661 at NN=80/110/128; 2026-11-11). With the spheres counted it is wrong.
+  if (!ENERGY_INNER) {
     const H_RAW = { 100: [0.5, -1.0], 200: [0.503, -1.028], 300: [0.5, -1.0] };
     const raw = H_RAW[NN] || H_RAW[200];
     let nH = 0;
@@ -6265,8 +6646,37 @@ function draw() {
         console.log("=== Dynamics auto-enabled at step " + phaseSteps + " ===");
       }
 
-      // Adaptive convergence check
-      if (!dynamicsEnabled && window.CONVERGENCE_THRESHOLD && phaseSteps > 200) {
+      // WINDOWED convergence (opt-in: window.CONVERGENCE_WINDOW = W steps). A free boundary never stops
+      // flickering -- cells flip back and forth at the interface -- so E jumps ~1e-3 Ha every ~1000 steps
+      // forever (H2 R=2 h=0.1: -1.1437..-1.1457 over 73k steps). The step-to-step test below then either
+      // never fires (tight threshold) or fires early while T and V_eK still drift by 0.03 Ha (2e-4 stopped H2
+      // at step 1450, E=-1.137, against -1.1362 fixed / -1.1445 free when truly settled). This compares the
+      // MEAN over the last W steps with the mean over the W before, and reports the windowed means.
+      // A boundary held frozen until UNLOCK_AT_STEP must not be declared converged before it has been released
+      // and a full window has passed since (the frozen-phase plateau would stop the run).
+      if (!dynamicsEnabled && window.CONVERGENCE_THRESHOLD && window.CONVERGENCE_WINDOW && phaseSteps > 200
+          && !(window.UNLOCK_AT_STEP && phaseSteps < window.UNLOCK_AT_STEP + window.CONVERGENCE_WINDOW)) {
+        const W = window.CONVERGENCE_WINDOW;
+        if (!window._cwin) window._cwin = [];
+        window._cwin.push([phaseSteps, E, E_T, E_eK, E_ee, E_KK]);
+        while (window._cwin.length && window._cwin[0][0] < phaseSteps - 2 * W) window._cwin.shift();
+        const a = window._cwin.filter(x => x[0] <= phaseSteps - W), b = window._cwin.filter(x => x[0] > phaseSteps - W);
+        if (a.length >= 4 && b.length >= 4 && window._cwin[0][0] <= phaseSteps - 2 * W + 100 && isFinite(E)) {
+          const mean = (arr, c) => arr.reduce((t, x) => t + x[c], 0) / arr.length;
+          const mA = mean(a, 1), mB = mean(b, 1);
+          const sd = Math.sqrt(b.reduce((t, x) => t + (x[1] - mB) ** 2, 0) / b.length);
+          if (Math.abs(mB - mA) < window.CONVERGENCE_THRESHOLD) {
+            const Tm = mean(b, 2), Km = mean(b, 3), Em = mean(b, 4), Nm = mean(b, 5);
+            console.log("=== CONVERGED (window " + W + ") at step " + phaseSteps + ": <E>=" + mB.toFixed(6)
+              + " sd=" + sd.toFixed(6) + " d<E>=" + Math.abs(mB - mA).toFixed(6) + " ==="
+              + "  T=" + Tm.toFixed(5) + " V_eK=" + Km.toFixed(5) + " V_ee=" + Em.toFixed(5) + " V_KK=" + Nm.toFixed(5));
+            phase = 1; window._cwin = [];
+            if (window.onSweepDone) window.onSweepDone(mB, phaseSteps, Tm, Km, Em, Nm);
+          }
+        }
+      }
+      // Adaptive convergence check (step-to-step; the default)
+      else if (!dynamicsEnabled && window.CONVERGENCE_THRESHOLD && phaseSteps > 200) {
         if (window._prevE !== undefined && Math.abs(E - window._prevE) < window.CONVERGENCE_THRESHOLD && isFinite(E)) {
           if (!window._convCount) window._convCount = 0;
           window._convCount++;
