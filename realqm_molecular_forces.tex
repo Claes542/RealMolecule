@@ -105,6 +105,9 @@ shorter than the fitted one. We use the fitted radius throughout, and state the 
 it; an outer core shell beyond $1s^2$ (Na and below) has no box-independent interface in one
 dimension, and there only the fitted radius exists. At $h = 0.1$ the hard core excludes whole
 cells, so the fitted radius is defined to a few hundredths of $a_0$.
+% H2O O+3 wedges rc0.65 (ref -3.80097): hom -5.41638 (mu_y +1.01 D); split sd 1e-3 rejected. O+6 tet rc0.71 (ref -15.71951): hom -19.53561, split -19.23416.
+% NH3 N+3 rc0.81 (ref -3.35652): hom -6.70925 (mu_z +0.16 D), split -6.70080 (+1.42 D, inverted). N+5 rc0.82 (ref -9.71835): hom -14.61953 (mu_z -4.18 D).
+% OH box12 O+3 rc0.59 (ref -3.81541): hom 1.65 -4.53391 1.83 -4.53800 2.0 -4.52864; split 1.65 -4.66843 1.83 -4.66487 2.0 -4.64908.
 % BeH2 box12 rc1.37 (Be ref -1.00715): hom 2.3 -2.21481 2.5 -2.21838 2.7 -2.20541 (sd<=4e-6); split sd 1e-3, rejected.
 % BH box12 rc1.08: E(R) split 2.1 -3.34532 2.3 -3.38409 2.5 -3.37957; hom 2.1 -3.26044 2.3 -3.26588 2.5 -3.25960; refs B -2.62898 H -0.48209.
 % B fitted: pseudo-B +3, bb=2,1, box 12, h=0.1; E(rc) 0.7 -3.48229, 0.9 -2.97445, 1.04 -2.69126, 1.06 -2.66469, 1.087 -2.60805, 1.1 -2.60292, 1.3 -2.32130; 1.08 -2.62898 (0.2% below target -2.62329); 1.08->1.087 jumps 0.021 Ha (cell staircase). Box 20 at 1.087: -2.61030.
@@ -190,6 +193,20 @@ density, the overlay that Pauli permits for opposite spins, each feeling half it
 pair is a restricted Hartree--Fock pair. A one-dimensional radial check on Li$^+$ makes the last
 point exact: the 2hom $1s^2$ pair gives $-7.23630$ against the Hartree--Fock $-7.2364$. The true
 state avoids partially and dynamically.
+
+Why two electrons may share a domain, and not three, is a statement about the kinetic energy. Read
+as the self-repulsion of a charge cloud, a pressure against compression, the kinetic energy of a
+density $\rho$ is the von Weizs\"acker term $T_{\rm vW}[\rho] = \tfrac12\int|\nabla\sqrt\rho|^2$. For a
+2hom pair, $\rho = 2u^2$ and $T_{\rm vW}[2u^2] = 2\cdot\tfrac12\int|\nabla u|^2$: the pair is one cloud
+of charge two, its compression energy that of the combined density, and its mutual repulsion
+counted once. In standard quantum mechanics the same holds---for one or two electrons of opposite
+spin in one orbital the kinetic energy is exactly $T_{\rm vW}$ of the density---so within a domain
+the 2hom pair coincides with the restricted Hartree--Fock pair. For three or more, standard quantum
+mechanics adds the Pauli kinetic energy $T_{\rm P} = T_s - T_{\rm vW} > 0$, the cost of the nodes that
+antisymmetry forces between electrons of the same spin. A domain holding three would carry only
+$T_{\rm vW}$ and collapse; the third electron therefore takes its own domain, and disjointness takes
+over the exclusion. Two is the number of electrons whose kinetic energy the shared density
+describes exactly.
 
 \subsection{H$_2$ and He}
 
@@ -300,12 +317,12 @@ H$_2$   & $1{+}1$                       & pending & $1.368$ & $1.401$ & $-2.3\%$
 LiH     & Li$^+$ ($r_c$) + pair         & $2.85$  & ---     & $3.015$ & $-5\%$   & $0.095$ & $0.063$--$0.073$ & $0.092$ \\
 BH      & B $2{+}3$ ($2_{\rm hom}{+}1$) & $2.29$  & ---     & $2.329$ & $-1.6\%$ & $0.155$ & $0.276$ & $0.135$ \\ % TODO verify exp: re 1.2324 A; De = D0 81.5 kcal/mol + ZPE (we/2, we~2367 cm-1)
 NH      & N $2{+}2{+}3$                 & pending & ---     & & & & & \\
-OH      & O $2{+}3{+}3$                 & pending & ---     & & & & & \\
+OH      & O $+3$ ($2_{\rm hom}{+}1$)     & $1.79$  & ---     & $1.832$ & $-2\%$ & $0.241$ & $0.371$ & $0.170$ \\ % TODO verify exp (re 0.9697 A, De 4.62 eV, mu 1.66 D from memory)
 BeH$_2$ & Be $2{+}2_{\rm split}$         & $2.44$  & ---     & $2.52^{a}$ & $-3\%$ & $0.248^{b}$ & n.c. & $0.2231$ \\ % exp atomisation 0.2231 Ha from osti.gov (per Claes); TODO full citation
 HF      & F $2{+}4{+}3$                 & pending & ---     & & & & & \\
 NaH     & Na                            & pending & ---     & & & & & \\
-H$_2$O  &                               & pending & ---     & & & & & \\
-NH$_3$  &                               & pending & ---     & & & & & \\
+H$_2$O  & O $+3$ ($1{+}1{+}1$)           & obs.$^{c}$ & ---  & $1.809$ & ---     & $0.651$ & n.c. & $0.37$ \\ % TODO verify exp atomisation; forces pending
+NH$_3$  & N $+3$ / $+5$                  & obs.$^{c}$ & ---  & $1.913$ & ---     & $1.91$ / $3.45$ & --- & $0.47$ \\ % TODO verify exp
 CH$_4$  &                               & pending & ---     & & & & & \\
 \bottomrule
 \end{tabular}
@@ -315,7 +332,12 @@ length from the 2hom construction (2split: $2.98$--$2.99$). BH is three-dimensio
 $12\,a_0$, $h = 0.1$, pseudo-B $r_c = 1.08$), $R = 2.1, 2.3, 2.5$; bond length from 2hom (2split: $2.38$). BeH$_2$: pseudo-Be $r_c = 1.37$, box
 $12\,a_0$, $R = 2.3, 2.5, 2.7$; $^{a}$gas-phase $r_0$ (vibrationally averaged); $^{b}$atomisation
 energy (two bonds), experiment $0.2231\,E_h$~\cite{osti}; n.c.: the 2split runs do not converge (the two sides trade cells and the
-symmetry breaks). The axisymmetric reduction is used for
+symmetry breaks). OH: pseudo-O $+3$ (only the outer $3$-shell carried, as 2hom lone pair $+1$
+behind a plane), $r_c = 0.59$, $R = 1.65, 1.83, 2.0$; 2split $R_e \approx 1.69$; dipole $3.6$\,D (2hom),
+$2.7$\,D (2split) against $1.66$. $^{c}$Single point at the observed geometry; the binding is the
+atomisation energy. H$_2$O: pseudo-O $+3$, the outer shell as three single electrons in $120^\circ$
+wedges, $r_c = 0.65$; dipole $+1.01$\,D against $1.85$, right sign. NH$_3$: pseudo-N $+3$ (lone pair
+frozen, $r_c = 0.81$) and $+5$ (lone pair a 2hom domain, $r_c = 0.82$); see Section~\ref{sec:limits}. The axisymmetric reduction is used for
 X$_2$ only. Remaining rows to be filled from the runs in progress.}
 \label{tab:geom}
 \end{table}
@@ -420,6 +442,16 @@ placed by continuity, carries no counterpart of that cost. Inner shells therefor
 walls---the valence presses into them and the bond collapses---and are excluded by a fixed core
 radius per atom. This is a frozen-core model, and its radius is a
 property of the atom, set by its ionisation energy.
+
+\paragraph{Strong pseudo-cores.} The same missing cost limits the valence a pseudo-atom may carry.
+With cores of charge up to $+3$ (LiH, BeH$_2$, BH, OH, and H$_2$O with pseudo-O $+3$) the 2hom
+binding is within $0.003$--$0.3\,E_h$ of experiment. With $+5$ and $+6$, carrying the whole valence
+shell, the valence floods the protons at no kinetic price: H$_2$O with pseudo-O $+6$ over-binds by
+$2.5\,E_h$, NH$_3$ with pseudo-N $+5$ by $3\,E_h$, the kinetic energy rising by less than a third of
+what the added H electrons alone should cost. Freezing the lone pair instead (pseudo-N $+3$) keeps
+the error to $1.4\,E_h$ but leaves a spherical core and inverts the dipole of NH$_3$. The missing term
+is the Pauli kinetic energy between domains; until it is supplied, molecules whose heavy atom
+carries more than three valence electrons are outside the model's range.
 
 \paragraph{Large molecules.} The last reduction step (reduced valence charges, $h = 0.25$--$0.4\,a_0$)
 has been checked against reference chemistry only on small fragments: the formamide dimer and a

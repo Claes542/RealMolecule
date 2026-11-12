@@ -59,7 +59,7 @@
     var info = document.getElementById('info');
     var el0 = q.get('el') || 'X';
     info.innerHTML = '<div style="color:#9f9;font-weight:bold">'
-      + (MODE === 'xh' ? el0 + 'H at R = ' + (q.get('R') || '2.0') + ' a0' : 'Atom ' + el0)
+      + (MODE === 'xh' ? el0 + 'H at R = ' + (q.get('R') || '2.0') + ' a0' : MODE === 'h2o' ? 'H2O, O-H ' + (q.get('R') || '1.809') + ' a0, ' + (q.get('ang') || '104.5') + ' deg' : 'Atom ' + el0)
       + ' &mdash; molecule.js</div>'
       + '<div style="color:#aaa;font-size:11px;word-break:break-all">' + location.search.slice(1) + '</div>'
       + '<div id="mon" style="margin-top:8px;color:#9f9">relaxing&hellip;</div>'
@@ -223,6 +223,100 @@
   else if (MODE === 'xh2') { add(-R); addX(0); add(+R); }
   // mode=x2: homonuclear X2 at +-R/2; with ?bb= each atom's BOND half faces the other atom
   else if (MODE === 'x2') { addX(-R / 2, +1); addX(+R / 2, -1); }
+  // mode=o / mode=h2o: pseudo-O (+6, hard core rcX) with its 2+3+3 valence as FOUR fixed tetrahedral sectors
+  // (molecule.js splitType 4): each 3-shell = 2hom lone pair + 1, so sectors [1, 1, 2, 2] (two singles facing the
+  // H's, two 2hom lone pairs). h2o: H at O-H = R (default 1.809), angle ?ang= (default 104.5) in the xy-plane,
+  // bisector +y. ?bpair=1&Hbare=1: each single takes its H's electron -> 2hom bond pair over the O sector and a bare
+  // proton (four 2hom domains). Kernel shares 1, 1, 2, 2. The tetra frame is chosen so that two sector directions lie
+  // in the H-O-H plane symmetric about the bisector (ideal 109.47 deg) and the lone pairs in the perpendicular plane.
+  // mode=n / mode=nh3: pseudo-N +3 (1s2 and the inner 2-shell -- the lone pair -- frozen), outer 3-shell as three
+  // single electrons in 120 deg wedges about the C3 axis z (molecule.js splitType 3, rot 0); wedge i faces H i.
+  // NH3: N-H = R (default 1.913), H-N-H ?ang= (default 106.7), H's below N (-z). bpair: 2hom bond pairs, bare H.
+  else if (MODE === 'n' || MODE === 'nh3') {
+    var RN = q.get('R') ? R : 1.913, AN = parseFloat(q.get('ang') || '106.7') * Math.PI / 180;
+    var sth = Math.sqrt((1 - Math.cos(AN)) / 1.5), cth = Math.sqrt(1 - sth * sth);
+    var bpN = q.get('bpair') === '1' && MODE === 'nh3';
+    if (q.get('n5') === '1') {
+      // ?n5=1: pseudo-N +5 (only 1s2 frozen): lone pair 2hom along +z (tetra idx 3 = -axis, axis -z) and three bond
+      // singles in the tetra sectors at 70.53 deg from -z (idx 0,1,2 -> H2, H1, H0 with rot = pi/3). Kernel 1,1,1,2.
+      for (var t5 = 0; t5 < 4; t5++) {
+        var lp5 = t5 === 3, ne5 = lp5 ? 2 : (bpN ? 2 : 1);
+        atoms.push({ i: N2, j: N2, k: N2, Z: ne5, el: lp5 ? 'Nlp' : 'Nb' + t5 });
+        Z.push(ne5); Znuc.push(lp5 ? 2 : 1); RC.push(RCX);
+        SPT[atoms.length - 1] = 4; SPI[atoms.length - 1] = t5; SPA[atoms.length - 1] = [0, 0, -1]; SPR[atoms.length - 1] = Math.PI / 3;
+      }
+    } else
+    for (var wn = 0; wn < 3; wn++) {
+      var neN = bpN ? 2 : 1;
+      atoms.push({ i: N2, j: N2, k: N2, Z: neN, el: 'Nw' + wn });
+      Z.push(neN); Znuc.push(1); RC.push(RCX);
+      SPT[atoms.length - 1] = 3; SPI[atoms.length - 1] = wn; SPA[atoms.length - 1] = [0, 0, 1]; SPR[atoms.length - 1] = 0;
+    }
+    if (MODE === 'nh3') {
+      for (var hn = 0; hn < 3; hn++) {
+        var psi = (hn - 1) * 2 * Math.PI / 3;           // sector hn is centred at azimuth (hn-1)*120 deg in (e1, e2)
+        var hx = -RN * sth * Math.sin(psi), hy = RN * sth * Math.cos(psi), hz = -RN * cth;   // e1=(0,1,0), e2=(-1,0,0)
+        var hbN = q.get('Hbare') === '1';
+        atoms.push({ i: N2 + hx / h, j: N2 + hy / h, k: N2 + hz / h, Z: hbN ? 0 : 1, el: hbN ? 'H+' : 'H' });
+        Z.push(hbN ? 0 : 1); Znuc.push(1); RC.push(0);
+      }
+    }
+  }
+  // ?o3=1: pseudo-O +3 (1s2 and the inner 3-shell frozen) with the OUTER 3-shell as three single electrons in 120 deg
+  // wedges about the axis normal to the molecular plane (molecule.js splitType 3, axis z, rot pi): wedge 1 behind O
+  // (-y), wedges 0 and 2 facing the two H's (60 deg from the bisector). Kernel share 1 each. bpair: each bond wedge
+  // takes its H's electron (2hom bond pair over the wedge and a bare proton).
+  else if ((MODE === 'o' || MODE === 'h2o') && q.get('o3') === '1') {
+    var RO3 = q.get('R') ? R : 1.809, ANG3 = parseFloat(q.get('ang') || '104.5') * Math.PI / 180;
+    var bp3 = q.get('bpair') === '1' && MODE === 'h2o';
+    var tag3 = ['bM', 'back', 'bP'];
+    for (var w3 = 0; w3 < 3; w3++) {
+      var ne3 = (w3 !== 1 && bp3) ? 2 : 1;
+      atoms.push({ i: N2, j: N2, k: N2, Z: ne3, el: 'O' + tag3[w3] });
+      Z.push(ne3); Znuc.push(1); RC.push(RCX);
+      SPT[atoms.length - 1] = 3; SPI[atoms.length - 1] = w3; SPA[atoms.length - 1] = [0, 0, 1]; SPR[atoms.length - 1] = Math.PI;
+    }
+    if (MODE === 'h2o') {
+      [[Math.sin(ANG3 / 2), Math.cos(ANG3 / 2)], [-Math.sin(ANG3 / 2), Math.cos(ANG3 / 2)]].forEach(function (u) {
+        var hb3 = q.get('Hbare') === '1';
+        atoms.push({ i: N2 + RO3 * u[0] / h, j: N2 + RO3 * u[1] / h, k: N2, Z: hb3 ? 0 : 1, el: hb3 ? 'H+' : 'H' });
+        Z.push(hb3 ? 0 : 1); Znuc.push(1); RC.push(0);
+      });
+    }
+  }
+  else if (MODE === 'o' || MODE === 'h2o') {
+    var RO = q.get('R') ? R : 1.809, ANG = parseFloat(q.get('ang') || '104.5') * Math.PI / 180;
+    var cb = 1 / Math.sqrt(3), sb = Math.sqrt(2 / 3);            // cos, sin of half the tetrahedral angle
+    var ax = [0, cb, sb];                                         // axis = -(lone pair 3 direction)
+    var e1 = Math.abs(ax[2]) < 0.9 ? [ax[1], -ax[0], 0] : [0, ax[2], -ax[1]];
+    var e1L = Math.hypot(e1[0], e1[1], e1[2]); e1 = e1.map(function (v) { return v / e1L; });
+    var e2 = [ax[1] * e1[2] - ax[2] * e1[1], ax[2] * e1[0] - ax[0] * e1[2], ax[0] * e1[1] - ax[1] * e1[0]];
+    var bP = [sb, cb, 0], bM = [-sb, cb, 0], lP = [0, -cb, sb];   // ideal bond +x, bond -x, lone pair (other is -ax)
+    function dot(u, v) { return u[0] * v[0] + u[1] * v[1] + u[2] * v[2]; }
+    var rot = Math.atan2(dot(bP, e2), dot(bP, e1));
+    var bp2 = q.get('bpair') === '1' && MODE === 'h2o';
+    var tags = [];
+    for (var kq = 0; kq < 3; kq++) {
+      var ph = rot + 2.0943951 * kq, d = [0, 1, 2].map(function (c) { return (1 / 3) * ax[c] + Math.sqrt(8 / 9) * (Math.cos(ph) * e1[c] + Math.sin(ph) * e2[c]); });
+      tags.push(dot(d, bP) > 0.99 ? 'bP' : dot(d, bM) > 0.99 ? 'bM' : dot(d, lP) > 0.99 ? 'lP' : '?');
+    }
+    tags.push('lM');
+    for (var t4 = 0; t4 < 4; t4++) {
+      var isBond = tags[t4] === 'bP' || tags[t4] === 'bM';
+      var ne4 = isBond ? (bp2 ? 2 : 1) : 2;
+      atoms.push({ i: N2, j: N2, k: N2, Z: ne4, el: 'O' + tags[t4] });
+      Z.push(ne4); Znuc.push(isBond ? 1 : 2); RC.push(RCX);
+      SPT[atoms.length - 1] = 4; SPI[atoms.length - 1] = t4; SPA[atoms.length - 1] = ax; SPR[atoms.length - 1] = rot;
+    }
+    if (MODE === 'h2o') {
+      [[Math.sin(ANG / 2), Math.cos(ANG / 2)], [-Math.sin(ANG / 2), Math.cos(ANG / 2)]].forEach(function (u) {
+        var hb = q.get('Hbare') === '1';
+        atoms.push({ i: N2 + RO * u[0] / h, j: N2 + RO * u[1] / h, k: N2, Z: hb ? 0 : 1, el: hb ? 'H+' : 'H' });
+        Z.push(hb ? 0 : 1); Znuc.push(1); RC.push(0);
+      });
+    }
+    console.log('h2_beta tetra O: sector tags ' + tags.join(',') + ' rot=' + rot.toFixed(4));
+  }
   else { add(-R / 2); add(+R / 2); }
   window.USER_RC = RC;
   if (C2H !== null) {
@@ -267,7 +361,7 @@
   // so an h-ladder would refine a different problem at every rung). Must be >= 2h on every rung.
   if (q.get('rsing')) window.USER_R_SING = parseFloat(q.get('rsing'));
   console.log('h2_beta geometry: mode=' + MODE + ' h=' + h.toFixed(5) + ' N=' + gridN + ' atoms ' +
-    atoms.map(function (a, n) { return a.el + '(' + Z[n] + 'e,kernel+' + Znuc[n] + ',rc' + RC[n] + ')@x=' + ((a.i - N2) * h).toFixed(4); }).join(' ') +
+    atoms.map(function (a, n) { return a.el + '(' + Z[n] + 'e,kernel+' + Znuc[n] + ',rc' + RC[n] + ')@x=' + ((a.i - N2) * h).toFixed(4) + ((a.j !== N2 || a.k !== N2) ? ',y=' + ((a.j - N2) * h).toFixed(4) + ',z=' + ((a.k - N2) * h).toFixed(4) : ''); }).join(' ') +
     (window.USER_R_SING ? ' R_SING=' + window.USER_R_SING : ''));
 
   window.USER_ATOMS = atoms;
@@ -330,7 +424,7 @@
         }
         return 'y=' + off + ': ' + (out.join(' ') || 'none');
       });
-      console.log(tag + ' step=' + window._tStep + ' E=' + Number(window._E).toFixed(5) + (window._dip_x !== undefined ? ' mu_x=' + Number(window._dip_x).toFixed(4) + 'au(' + (2.5417 * window._dip_x).toFixed(3) + 'D)' : '') + ' ' + rows.join('  ;  '));
+      console.log(tag + ' step=' + window._tStep + ' E=' + Number(window._E).toFixed(5) + (window._dip_x !== undefined ? ' mu_x=' + Number(window._dip_x).toFixed(4) + 'au(' + (2.5417 * window._dip_x).toFixed(3) + 'D)' + (window._dip_y !== undefined ? ' mu_y=' + Number(window._dip_y).toFixed(4) + 'au(' + (2.5417 * window._dip_y).toFixed(3) + 'D) mu_z=' + Number(window._dip_z).toFixed(4) + 'au' : '') : '') + ' ' + rows.join('  ;  '));
     } catch (e) { console.log(tag + ' readout failed: ' + e); }
   };
   if (q.get('blog')) setInterval(function () { window._logBoundary('BLOG'); }, 1000 * parseFloat(q.get('blog')));
@@ -363,8 +457,8 @@
     var FIXED = q.get('fixed') ? 1 : 0;
     var JAC = parseInt(q.get('jac') || '10');
     var cfg = '_h' + h.toFixed(3) + '_j' + JAC + '_x' + BOX.toFixed(1) + '_f' + FIXED + (q.get('weak') ? '_w' + q.get('weak') : '') + (q.get('inner') ? '_i' : '') + (q.get('Hbare') === '1' ? '_Hb0' : '') + (q.get('bpair') === '1' ? '_bp' : '') + (q.get('cone') ? '_cone' + q.get('cone') : '') + (C2H !== null ? '_c2h' + C2H + 'n' + (q.get('nval') || '1') + 'u' + (q.get('unlock') || 'fix') : '');
-    cfg += (q.get('rsing') ? '_s' + q.get('rsing') : '') + ((MODE === 'x' || MODE === 'xh' || MODE === 'xh2' || MODE === 'x2') ? '_' + ELX + ZX + 'rc' + RCX + (BB.length >= 2 ? '_bb' + BB.join('') : '') : '') + (q.get('ZnX') ? '_Zn' + q.get('ZnX') : '') + (q.get('ZH') ? '_ZH' + q.get('ZH') : '') + (q.get('val') === '1' ? '_val' : '') + (q.get('core2') === '1' ? '_c2r' + (q.get('rel') || '500') + (q.get('coreax') || '') : '') + (q.get('pairH') === '1' ? '_pH' + (q.get('relH') || 'fix') + (q.get('pairax') || '') : '') + (q.get('hback') === '1' ? '_hb' + (q.get('relHb') || 'fix') : '') + (XPL !== null ? '_xp' + XPL + (q.get('relX') ? 'r' + q.get('relX') : '') : '');
-    var k = (MODE === 'h' || MODE === 'x') ? (MODE + (ZA > 1 ? 'Z' + ZA : '') + cfg)
+    cfg += (q.get('rsing') ? '_s' + q.get('rsing') : '') + ((MODE === 'n' || MODE === 'nh3') ? (q.get('n5') === '1' ? '_N5tet' : '_N3w') + '_rc' + RCX + '_a' + (q.get('ang') || '106.7') : '') + ((MODE === 'o' || MODE === 'h2o') ? (q.get('o3') === '1' ? '_O3w' : '_O6tet') + '_rc' + RCX + '_a' + (q.get('ang') || '104.5') : '') + ((MODE === 'x' || MODE === 'xh' || MODE === 'xh2' || MODE === 'x2') ? '_' + ELX + ZX + 'rc' + RCX + (BB.length >= 2 ? '_bb' + BB.join('') : '') : '') + (q.get('ZnX') ? '_Zn' + q.get('ZnX') : '') + (q.get('ZH') ? '_ZH' + q.get('ZH') : '') + (q.get('val') === '1' ? '_val' : '') + (q.get('core2') === '1' ? '_c2r' + (q.get('rel') || '500') + (q.get('coreax') || '') : '') + (q.get('pairH') === '1' ? '_pH' + (q.get('relH') || 'fix') + (q.get('pairax') || '') : '') + (q.get('hback') === '1' ? '_hb' + (q.get('relHb') || 'fix') : '') + (XPL !== null ? '_xp' + XPL + (q.get('relX') ? 'r' + q.get('relX') : '') : '');
+    var k = (MODE === 'h' || MODE === 'x' || MODE === 'o' || MODE === 'n') ? (MODE + (ZA > 1 ? 'Z' + ZA : '') + cfg)
           : ('h2_R' + R.toFixed(2) + '_b' + BETA.toFixed(3) + '_c' + CURV.toFixed(2) + cfg);
     if (!Array.isArray(st[k])) st[k] = [];
     st[k].push(Number(E));
@@ -374,7 +468,7 @@
                 + ' V_ee=' + Number(E_ee).toFixed(5) + ' V_KK=' + Number(E_KK).toFixed(5)
                 // molecule.js dipole (au, nuclear minus electronic); +x points from X toward H in xh mode,
                 // so mu_x > 0 means X negative, H positive (the experimental sign for OH, NH, HF, CH)
-                + (window._dip_x !== undefined ? ' mu_x=' + Number(window._dip_x).toFixed(4) + 'au(' + (2.5417 * window._dip_x).toFixed(3) + 'D)' : ''));
+                + (window._dip_x !== undefined ? ' mu_x=' + Number(window._dip_x).toFixed(4) + 'au(' + (2.5417 * window._dip_x).toFixed(3) + 'D)' + (window._dip_y !== undefined ? ' mu_y=' + Number(window._dip_y).toFixed(4) + 'au(' + (2.5417 * window._dip_y).toFixed(3) + 'D) mu_z=' + Number(window._dip_z).toFixed(4) + 'au' : '') : ''));
     // F_x per NUCLEUS (siblings on one nucleus summed), total = electronic volume integral + nuclear repulsion.
     // Hellmann-Feynman only: it omits the moving core-sphere and free-boundary terms, so compare against -dE/dR.
     // NOT window._nucForceTotal: molecule.js gives EVERY entry on a nucleus the whole nuclear repulsion (summing
