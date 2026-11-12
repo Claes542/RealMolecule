@@ -229,6 +229,32 @@
   // bisector +y. ?bpair=1&Hbare=1: each single takes its H's electron -> 2hom bond pair over the O sector and a bare
   // proton (four 2hom domains). Kernel shares 1, 1, 2, 2. The tetra frame is chosen so that two sector directions lie
   // in the H-O-H plane symmetric about the bisector (ideal 109.47 deg) and the lone pairs in the perpendicular plane.
+  // mode=c / mode=ch4: pseudo-C +4 (only 1s2 frozen), four single electrons in tetrahedral sectors (splitType 4,
+  // axis -z, rot pi/3), kernel share 1 each. CH4: one H on each sector axis at C-H = R (default 2.054), exact T_d.
+  // bpair: each sector takes its H's electron (2hom bond pair over the sector and a bare proton).
+  else if (MODE === 'c' || MODE === 'ch4') {
+    var RC4 = q.get('R') ? R : 2.054, bpC = q.get('bpair') === '1' && MODE === 'ch4';
+    var axC = [0, 0, -1], e1C = [0, -1, 0], e2C = [-1, 0, 0], rotC = Math.PI / 3;
+    for (var tc = 0; tc < 4; tc++) {
+      var neC = bpC ? 2 : 1;
+      atoms.push({ i: N2, j: N2, k: N2, Z: neC, el: 'Cs' + tc });
+      Z.push(neC); Znuc.push(1); RC.push(RCX);
+      SPT[atoms.length - 1] = 4; SPI[atoms.length - 1] = tc; SPA[atoms.length - 1] = axC; SPR[atoms.length - 1] = rotC;
+    }
+    if (MODE === 'ch4') {
+      for (var hc = 0; hc < 4; hc++) {
+        var dC;
+        if (hc === 3) dC = [0, 0, 1];
+        else {
+          var phC = rotC + 2 * Math.PI / 3 * hc;
+          dC = [0, 1, 2].map(function (c) { return axC[c] / 3 + Math.sqrt(8 / 9) * (Math.cos(phC) * e1C[c] + Math.sin(phC) * e2C[c]); });
+        }
+        var hbC = q.get('Hbare') === '1';
+        atoms.push({ i: N2 + RC4 * dC[0] / h, j: N2 + RC4 * dC[1] / h, k: N2 + RC4 * dC[2] / h, Z: hbC ? 0 : 1, el: hbC ? 'H+' : 'H' });
+        Z.push(hbC ? 0 : 1); Znuc.push(1); RC.push(0);
+      }
+    }
+  }
   // mode=n / mode=nh3: pseudo-N +3 (1s2 and the inner 2-shell -- the lone pair -- frozen), outer 3-shell as three
   // single electrons in 120 deg wedges about the C3 axis z (molecule.js splitType 3, rot 0); wedge i faces H i.
   // NH3: N-H = R (default 1.913), H-N-H ?ang= (default 106.7), H's below N (-z). bpair: 2hom bond pairs, bare H.
@@ -457,8 +483,8 @@
     var FIXED = q.get('fixed') ? 1 : 0;
     var JAC = parseInt(q.get('jac') || '10');
     var cfg = '_h' + h.toFixed(3) + '_j' + JAC + '_x' + BOX.toFixed(1) + '_f' + FIXED + (q.get('weak') ? '_w' + q.get('weak') : '') + (q.get('inner') ? '_i' : '') + (q.get('Hbare') === '1' ? '_Hb0' : '') + (q.get('bpair') === '1' ? '_bp' : '') + (q.get('cone') ? '_cone' + q.get('cone') : '') + (C2H !== null ? '_c2h' + C2H + 'n' + (q.get('nval') || '1') + 'u' + (q.get('unlock') || 'fix') : '');
-    cfg += (q.get('rsing') ? '_s' + q.get('rsing') : '') + ((MODE === 'n' || MODE === 'nh3') ? (q.get('n5') === '1' ? '_N5tet' : '_N3w') + '_rc' + RCX + '_a' + (q.get('ang') || '106.7') : '') + ((MODE === 'o' || MODE === 'h2o') ? (q.get('o3') === '1' ? '_O3w' : '_O6tet') + '_rc' + RCX + '_a' + (q.get('ang') || '104.5') : '') + ((MODE === 'x' || MODE === 'xh' || MODE === 'xh2' || MODE === 'x2') ? '_' + ELX + ZX + 'rc' + RCX + (BB.length >= 2 ? '_bb' + BB.join('') : '') : '') + (q.get('ZnX') ? '_Zn' + q.get('ZnX') : '') + (q.get('ZH') ? '_ZH' + q.get('ZH') : '') + (q.get('val') === '1' ? '_val' : '') + (q.get('core2') === '1' ? '_c2r' + (q.get('rel') || '500') + (q.get('coreax') || '') : '') + (q.get('pairH') === '1' ? '_pH' + (q.get('relH') || 'fix') + (q.get('pairax') || '') : '') + (q.get('hback') === '1' ? '_hb' + (q.get('relHb') || 'fix') : '') + (XPL !== null ? '_xp' + XPL + (q.get('relX') ? 'r' + q.get('relX') : '') : '');
-    var k = (MODE === 'h' || MODE === 'x' || MODE === 'o' || MODE === 'n') ? (MODE + (ZA > 1 ? 'Z' + ZA : '') + cfg)
+    cfg += (q.get('rsing') ? '_s' + q.get('rsing') : '') + ((MODE === 'c' || MODE === 'ch4') ? '_C4tet_rc' + RCX : '') + ((MODE === 'n' || MODE === 'nh3') ? (q.get('n5') === '1' ? '_N5tet' : '_N3w') + '_rc' + RCX + '_a' + (q.get('ang') || '106.7') : '') + ((MODE === 'o' || MODE === 'h2o') ? (q.get('o3') === '1' ? '_O3w' : '_O6tet') + '_rc' + RCX + '_a' + (q.get('ang') || '104.5') : '') + ((MODE === 'x' || MODE === 'xh' || MODE === 'xh2' || MODE === 'x2') ? '_' + ELX + ZX + 'rc' + RCX + (BB.length >= 2 ? '_bb' + BB.join('') : '') : '') + (q.get('ZnX') ? '_Zn' + q.get('ZnX') : '') + (q.get('ZH') ? '_ZH' + q.get('ZH') : '') + (q.get('val') === '1' ? '_val' : '') + (q.get('core2') === '1' ? '_c2r' + (q.get('rel') || '500') + (q.get('coreax') || '') : '') + (q.get('pairH') === '1' ? '_pH' + (q.get('relH') || 'fix') + (q.get('pairax') || '') : '') + (q.get('hback') === '1' ? '_hb' + (q.get('relHb') || 'fix') : '') + (XPL !== null ? '_xp' + XPL + (q.get('relX') ? 'r' + q.get('relX') : '') : '');
+    var k = (MODE === 'h' || MODE === 'x' || MODE === 'o' || MODE === 'n' || MODE === 'c') ? (MODE + (ZA > 1 ? 'Z' + ZA : '') + cfg)
           : ('h2_R' + R.toFixed(2) + '_b' + BETA.toFixed(3) + '_c' + CURV.toFixed(2) + cfg);
     if (!Array.isArray(st[k])) st[k] = [];
     st[k].push(Number(E));
