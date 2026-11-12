@@ -528,6 +528,14 @@ fn inSplitAtom(dx: f32, dy: f32, dz: f32, r: f32, n: u32) -> bool {
     if (atoms[n].splitIdx == 0u) { return dotp < 0.0; }
     return dotp >= 0.0;
   }
+  // 11 = CONE: idx 1 owns the cone about +axis with cos(half-angle) = splitRot (default 1/3, half-angle 70.53 deg,
+  // one third of the solid angle -- the single of a 2hom+1 shell); idx 0 owns the rest (the 2hom pair, 2/3).
+  if (st == 11u) {
+    var cc11 = atoms[n].splitRot;
+    if (cc11 == 0.0) { cc11 = 0.33333333; }
+    if (atoms[n].splitIdx == 1u) { return dotp >= cc11 * r; }
+    return dotp < cc11 * r;
+  }
   // 9 = BOND + TWO BACK (3-split of an outer shell along a bond): idx 0 owns the half-space facing +axis
   // (the bond); idx 1 and 2 share the back half, divided by a plane CONTAINING the axis (e1 as in 'third',
   // rotated by splitRot). Every lobe is a 1e domain -- the 3D form of the axisym 2hom-back | 1-bond.
@@ -2913,7 +2921,7 @@ function fillAtomBuf() {
     af[off + 6] = perZeff ? perZeff[n] || Z[n] : (window.INIT_ZEFF || Z[n]);
     af[off + 7] = perRcut ? perRcut[n] || 1e6 : (window.INIT_RCUT || 1e6);
     // Shell split (optional): splitType 0/1=sphere, 2=hemi, 3=third; sector idx; axis; rot
-    const stCode = { sphere: 0, hemi: 2, third: 3, tetra: 4, cube: 7, antiprism: 8, bond2back: 9 };
+    const stCode = { sphere: 0, hemi: 2, third: 3, tetra: 4, cube: 7, antiprism: 8, bond2back: 9, cone: 11 };
     const stv = SPLIT_TYPE[n];
     au[off + 8] = (typeof stv === 'string') ? (stCode[stv] || 0) : (stv || 0);
     au[off + 9] = SPLIT_IDX[n] || 0;
@@ -3690,6 +3698,23 @@ async function initGPU() {
     // path (rhoTotalBuf does not -- computeRho sits in the else branch of the direct-Poisson
     // switch and so never runs on the verified USER_DIRECT_POTHER path). `q` is returned per
     // domain as the check: each should come out at its USER_Z.
+    // Full label grid + amplitude, for the 3D boundary viewer (boundary3d.js). psi^2 is the density of
+    // the cell's domain (int psi^2 = USER_Z per domain); labels >= NELEC are excluded (hard core) cells.
+    window.readLabelsPsi = async function () {
+      const rbL = device.createBuffer({ size: bs, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+      const rbU = device.createBuffer({ size: bs, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+      const enc = device.createCommandEncoder();
+      enc.copyBufferToBuffer(labelBuf,   0, rbL, 0, bs);
+      enc.copyBufferToBuffer(U_buf[cur], 0, rbU, 0, bs);
+      device.queue.submit([enc.finish()]);
+      await rbL.mapAsync(GPUMapMode.READ);
+      await rbU.mapAsync(GPUMapMode.READ);
+      const lab = new Uint32Array(rbL.getMappedRange().slice(0));
+      const psi = new Float32Array(rbU.getMappedRange().slice(0));
+      rbL.unmap(); rbL.destroy(); rbU.unmap(); rbU.destroy();
+      return { S: S, h: hGrid, NELEC: NELEC, lab: lab, psi: psi };
+    };
+
     window.readDomainChargeCentroids = async function () {
       const rbL = device.createBuffer({ size: bs, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
       const rbU = device.createBuffer({ size: bs, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
