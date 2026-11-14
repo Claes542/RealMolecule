@@ -48,8 +48,8 @@ shapes and angles, O$_2$ and F$_2$, multiple bonds, dipoles, reaction energies--
 end. Every energy above five domains is checked against an independent
 recomputation from the converged density.
 Molecules are built by successive reduction---all electrons, frozen $1s^2$ core, reduced
-dimension for X$_2$, reduced valence charges on a coarse mesh---and the last step carries
-proteins of over two thousand atoms on one GPU in a web browser.
+dimension for X$_2$, reduced valence charges on a coarse mesh---and the last step brings proteins of over two thousand
+atoms within computational reach, on one GPU in a web browser.
 \end{abstract}
 
 % =====================================================================================
@@ -145,12 +145,13 @@ step before it can still be run.
   midplane of a homonuclear X$_2$, by symmetry, or planes through the nuclei, by construction: the
   axisymmetric solver (Section~\ref{sec:solver}).
 \item \emph{Large molecules}: pseudo-atoms with reduced valence charges on a coarse mesh. The same
-  \texttt{molecule.js} then carries a 238-residue protein (green fluorescent protein, $2307$ atoms)
-  on a $300^3$ grid at $h = 0.4\,a_0$, and crambin ($540$ atoms) on $200^3$ at $h = 0.25\,a_0$,
-  on the GPU of a laptop in a web browser, in minutes to hours. % TODO: measure wall time per run
-  At this level the mesh no longer resolves the bond, and the protein folds shown are guided by
-  contact restraints; the step makes the computation possible, and what it preserves is tested only
-  on small fragments (Section~\ref{sec:limits}).
+  \texttt{molecule.js} has been run on a 238-residue protein (green fluorescent protein, $2307$ atoms,
+  $300^3$ grid, $h = 0.4\,a_0$) and on crambin ($540$ atoms, $200^3$, $h = 0.25\,a_0$) on the GPU of a
+  laptop in a web browser. % TODO: measure wall time per run
+  This shows that large molecules are within computational reach; it is not a validation. At this
+  mesh the bond is not resolved, the folds shown use contact restraints, and at this size the solver
+  uses the total-Poisson path for the electron repulsion (Section~\ref{sec:solver}), which must be
+  repaired before results there can be judged.
 \end{enumerate}
 
 
@@ -769,6 +770,7 @@ beyond it; each is stated with the result found:
 \item \emph{Bond order:} each bond is one pair, so the triple and single C--C bonds of HC$\equiv$C--C$\equiv$N
   relax to nearly equal lengths (Section~\ref{sec:x2}).
 \item \emph{Dipoles:} LiH right; BH, OH and H$_2$O off in sign or size; NaH and HF not yet run.
+\item \emph{Large molecules:} within computational reach, not yet validated (Section~\ref{sec:reduction}).
 \item \emph{Reaction energies:} quotable only where every atom keeps its bonding; an isodesmic test among
   linear molecules alternates by about $\pm2.5$\,kcal/mol between meshes, below what is needed.
 \end{itemize}
@@ -786,11 +788,8 @@ they are.
 % O +4 (2+2+4): no minimum down to 2.0. Isodesmic NCCN+HCCH->HCN+HC3N: +0.5/-5.8/-0.8/-3.2 kcal/mol at h .1/.07/.05/.04
 % (matchX); +8.7/-3.0/+5.5/-1.3 with face-placed references. All exp values from memory: TODO verify.
 
-\paragraph{Large molecules.} The last reduction step (reduced valence charges, $h = 0.25$--$0.4\,a_0$)
-has been checked against reference chemistry only on small fragments: the formamide dimer and a
-five-residue polyglycine helix, both on $200^3$, give bond and hydrogen-bond geometries in line with
-reference values. Folding runs on whole proteins use contact restraints; without them the fold is
-not found. % memory: project_validation, feedback_blind_folding
+% Earlier fragment checks (formamide dimer, five-residue polyglycine helix, 200^3; memory project_validation) used
+% molecule.js on the total-Poisson path and older pseudo-atom settings; folding runs need contact restraints.
 
 % =====================================================================================
 \section{Conclusion}
