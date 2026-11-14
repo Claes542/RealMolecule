@@ -232,6 +232,38 @@
   // mode=c / mode=ch4: pseudo-C +4 (only 1s2 frozen), four single electrons in tetrahedral sectors (splitType 4,
   // axis -z, rot pi/3), kernel share 1 each. CH4: one H on each sector axis at C-H = R (default 2.054), exact T_d.
   // bpair: each sector takes its H's electron (2hom bond pair over the sector and a bare proton).
+  // mode=c2h6: staggered ethane from two CH4-type pseudo-C +4 (1s2 frozen, four single electrons in tetrahedral
+  // sectors, splitType 4, kernel share 1 each); C-C along z at ?CC= (default 2.901 a0 = 1.535 A), C-H at ?R=
+  // (default 2.067 = 1.094 A) on the sector axes (tetrahedral angles, not the exp 111 deg). Lower C axis -z (its
+  // idx 3 points +z at the other C), upper C axis +z, rot pi/3 and -pi/3: staggered (H azimuths -150/90/-30 and
+  // 30/150/-90 deg, checked with jsc). H keep their own electrons (4-split, as CH4); ?bpair=1&Hbare=1 for 2hom bond pairs.
+  // ?half=1: every nucleus half a cell off the grid planes. For the offset test of 2026-11-14 (per C or per C-H?).
+  else if (MODE === 'c2h6') {
+    var CC6 = parseFloat(q.get('CC') || '2.901'), RH6 = q.get('R') ? R : 2.067, bp6 = q.get('bpair') === '1';
+    var HO6 = q.get('half') === '1' ? 0.5 : 0;
+    var B6 = [];
+    [[-1, Math.PI / 3], [+1, -Math.PI / 3]].forEach(function (cs, ci) {
+      var sgn = cs[0], rot6 = cs[1], ax6 = [0, 0, sgn], zc = sgn * CC6 / 2, cFirst = atoms.length;
+      var e16 = [0, ax6[2], 0], e26 = [ax6[1] * e16[2] - ax6[2] * e16[1], ax6[2] * e16[0] - ax6[0] * e16[2], ax6[0] * e16[1] - ax6[1] * e16[0]];
+      for (var t6 = 0; t6 < 4; t6++) {
+        var ne6 = (t6 < 3 && bp6) ? 2 : 1;
+        atoms.push({ i: N2 + HO6, j: N2 + HO6, k: N2 + HO6 + zc / h, Z: ne6, el: 'C' + ci + 's' + t6 });
+        Z.push(ne6); Znuc.push(1); RC.push(RCX);
+        SPT[atoms.length - 1] = 4; SPI[atoms.length - 1] = t6; SPA[atoms.length - 1] = ax6; SPR[atoms.length - 1] = rot6;
+      }
+      for (var h6 = 0; h6 < 3; h6++) {
+        var ph6 = rot6 + 2 * Math.PI / 3 * h6;
+        var d6 = [0, 1, 2].map(function (c) { return ax6[c] / 3 + Math.sqrt(8 / 9) * (Math.cos(ph6) * e16[c] + Math.sin(ph6) * e26[c]); });
+        var hb6 = q.get('Hbare') === '1';
+        atoms.push({ i: N2 + HO6 + RH6 * d6[0] / h, j: N2 + HO6 + RH6 * d6[1] / h, k: N2 + HO6 + (zc + RH6 * d6[2]) / h, Z: hb6 ? 0 : 1, el: hb6 ? 'H+' : 'H' });
+        Z.push(hb6 ? 0 : 1); Znuc.push(1); RC.push(0);
+        console.log('c2h6 H on C' + ci + ': dir ' + d6.map(function (v) { return v.toFixed(4); }).join(',') + ' azimuth ' + (Math.atan2(d6[1], d6[0]) * 180 / Math.PI).toFixed(1));
+        B6.push([cFirst, atoms.length - 1]);                  // C-H, drawn from the C's first sector entry
+      }
+      if (ci === 1) B6.push([cFirst - 7, cFirst]);            // C-C (first entry of C0 sits 7 entries earlier)
+    });
+    window.USER_BOND_PAIRS = B6; window.USER_BONDS_ONLY = true;
+  }
   else if (MODE === 'c' || MODE === 'ch4') {
     var RC4 = q.get('R') ? R : 2.054, bpC = q.get('bpair') === '1' && MODE === 'ch4';
     var axC = [0, 0, -1], e1C = [0, -1, 0], e2C = [-1, 0, 0], rotC = Math.PI / 3;
@@ -475,8 +507,11 @@
   // Since V_ee is the only term that acts at the equilibrium separation AND grows under
   // contraction, an error there is the standing candidate for ClO2's monotone E(R).
   // Default unchanged.
+  // DEFAULT DIRECT since 2026-11-14: above five domains molecule.js otherwise takes the total-Poisson + SIC path,
+  // whose V_ee was found 2.5 Ha low in CH4 against an independent FFT recomputation of its own density
+  // (scratchpad check_energy.py). ?pot=sic restores it for comparison.
   if (q.get('pot') === 'sic') window.USER_DIRECT_POTHER = false;
-  else if (q.get('pot') === 'direct') window.USER_DIRECT_POTHER = true;
+  else window.USER_DIRECT_POTHER = true;
   // rhodiag=1 -> molecule.js reports integral(rho_other) in document.title at step 200.
   // It must be 1.0 (exactly one other electron).
   if (q.get('rhodiag')) window.USER_RHO_DIAG = 1;
@@ -548,8 +583,8 @@
     // A lone atom has no R, beta or curvature, so those are left out of its key entirely.
     var FIXED = q.get('fixed') ? 1 : 0;
     var JAC = parseInt(q.get('jac') || '10');
-    var cfg = '_h' + h.toFixed(3) + '_j' + JAC + '_x' + BOX.toFixed(1) + '_f' + FIXED + (q.get('weak') ? '_w' + q.get('weak') : '') + (q.get('inner') ? '_i' : '') + (q.get('Hbare') === '1' ? '_Hb0' : '') + (q.get('bpair') === '1' ? '_bp' : '') + (q.get('cone') ? '_cone' + q.get('cone') : '') + (C2H !== null ? '_c2h' + C2H + 'n' + (q.get('nval') || '1') + 'u' + (q.get('unlock') || 'fix') : '');
-    cfg += (q.get('rsing') ? '_s' + q.get('rsing') : '') + ((MODE === 'c' || MODE === 'ch4') ? (q.get('c4hom') === '1' ? '_C4hom' : q.get('c4pair') === '1' ? '_C4pair' : q.get('planar') === '1' ? '_C4quad' : q.get('c2hom') === '1' ? '_C2hom' : q.get('c2split') === '1' ? '_C2split' : '_C4tet') + '_rc' + RCX : '') + ((MODE === 'n' || MODE === 'nh3') ? (q.get('n5') === '1' ? '_N5tet' : '_N3w') + '_rc' + RCX + '_a' + (q.get('ang') || '106.7') : '') + ((MODE === 'o' || MODE === 'h2o') ? (q.get('o3') === '1' ? '_O3w' + (q.get('relO') ? 'r' + q.get('relO') : '') : q.get('c2v') === '1' ? '_O6c2v_lp' + (q.get('lpang') || '109.47') : '_O6tet') + (q.get('half') === '1' ? '_half' : '') + '_rc' + RCX + '_a' + (q.get('ang') || '104.5') : '') + ((MODE === 'x' || MODE === 'xh' || MODE === 'xh2' || MODE === 'x2') ? '_' + ELX + ZX + 'rc' + RCX + (BB.length >= 2 ? '_bb' + BB.join('') : '') : '') + (q.get('ZnX') ? '_Zn' + q.get('ZnX') : '') + (q.get('ZH') ? '_ZH' + q.get('ZH') : '') + (q.get('val') === '1' ? '_val' : '') + (q.get('core2') === '1' ? '_c2r' + (q.get('rel') || '500') + (q.get('coreax') || '') : '') + (q.get('pairH') === '1' ? '_pH' + (q.get('relH') || 'fix') + (q.get('pairax') || '') : '') + (q.get('hback') === '1' ? '_hb' + (q.get('relHb') || 'fix') : '') + (XPL !== null ? '_xp' + XPL + (q.get('relX') ? 'r' + q.get('relX') : '') : '');
+    var cfg = (q.get('pot') === 'sic' ? '' : '_pd') + '_h' + h.toFixed(3) + '_j' + JAC + '_x' + BOX.toFixed(1) + '_f' + FIXED + (q.get('weak') ? '_w' + q.get('weak') : '') + (q.get('inner') ? '_i' : '') + (q.get('Hbare') === '1' ? '_Hb0' : '') + (q.get('bpair') === '1' ? '_bp' : '') + (q.get('cone') ? '_cone' + q.get('cone') : '') + (C2H !== null ? '_c2h' + C2H + 'n' + (q.get('nval') || '1') + 'u' + (q.get('unlock') || 'fix') : '');
+    cfg += (MODE === 'c2h6' ? '_C2H6_CC' + (q.get('CC') || '2.901') + '_rc' + RCX + (q.get('half') === '1' ? '_half' : '') : '') + (q.get('rsing') ? '_s' + q.get('rsing') : '') + ((MODE === 'c' || MODE === 'ch4') ? (q.get('c4hom') === '1' ? '_C4hom' : q.get('c4pair') === '1' ? '_C4pair' : q.get('planar') === '1' ? '_C4quad' : q.get('c2hom') === '1' ? '_C2hom' : q.get('c2split') === '1' ? '_C2split' : '_C4tet') + '_rc' + RCX : '') + ((MODE === 'n' || MODE === 'nh3') ? (q.get('n5') === '1' ? '_N5tet' : '_N3w') + '_rc' + RCX + '_a' + (q.get('ang') || '106.7') : '') + ((MODE === 'o' || MODE === 'h2o') ? (q.get('o3') === '1' ? '_O3w' + (q.get('relO') ? 'r' + q.get('relO') : '') : q.get('c2v') === '1' ? '_O6c2v_lp' + (q.get('lpang') || '109.47') : '_O6tet') + (q.get('half') === '1' ? '_half' : '') + '_rc' + RCX + '_a' + (q.get('ang') || '104.5') : '') + ((MODE === 'x' || MODE === 'xh' || MODE === 'xh2' || MODE === 'x2') ? '_' + ELX + ZX + 'rc' + RCX + (BB.length >= 2 ? '_bb' + BB.join('') : '') : '') + (q.get('ZnX') ? '_Zn' + q.get('ZnX') : '') + (q.get('ZH') ? '_ZH' + q.get('ZH') : '') + (q.get('val') === '1' ? '_val' : '') + (q.get('core2') === '1' ? '_c2r' + (q.get('rel') || '500') + (q.get('coreax') || '') : '') + (q.get('pairH') === '1' ? '_pH' + (q.get('relH') || 'fix') + (q.get('pairax') || '') : '') + (q.get('hback') === '1' ? '_hb' + (q.get('relHb') || 'fix') : '') + (XPL !== null ? '_xp' + XPL + (q.get('relX') ? 'r' + q.get('relX') : '') : '');
     var k = (MODE === 'h' || MODE === 'x' || MODE === 'o' || MODE === 'n' || MODE === 'c') ? (MODE + (ZA > 1 ? 'Z' + ZA : '') + cfg)
           : ('h2_R' + R.toFixed(2) + '_b' + BETA.toFixed(3) + '_c' + CURV.toFixed(2) + cfg);
     if (!Array.isArray(st[k])) st[k] = [];
@@ -592,6 +627,17 @@
             + ' nuc ' + ((b.Fn[0] * u[0] + b.Fn[1] * u[1] + b.Fn[2] * u[2]) / r).toFixed(5) + ')' : ''); }).join('  '));
       }
     } catch (e) { console.log('FORCE readout failed: ' + e); }
+    // ?dump=name: post the converged state to a local receiver (scratchpad dump_server.py, port 8767, ?dumpport=) for an
+    // energy recomputation independent of molecule.js (2026-11-14). Meta first, then psi, label and K arrays.
+    if (q.get('dump') && window.dumpState) {
+      var DU = 'http://127.0.0.1:' + (q.get('dumpport') || '8767') + '/dump?name=' + encodeURIComponent(q.get('dump'));
+      var meta = { NN: gridN, h: h, box: BOX, E: Number(E), T: Number(E_T), VeK: Number(E_eK), Vee: Number(E_ee), VKK: Number(E_KK),
+                   atoms: atoms.map(function (a, n) { return { i: a.i, j: a.j === undefined ? N2 : a.j, k: a.k === undefined ? N2 : a.k,
+                     Z: Z[n], Znuc: Znuc[n], rc: RC[n], el: a.el }; }) };
+      fetch(DU + '&part=meta', { method: 'POST', body: JSON.stringify(meta) })
+        .then(function () { return window.dumpState(DU); })
+        .catch(function (e) { console.log('DUMP failed: ' + e); });
+    }
     var st2 = JSON.parse(localStorage.getItem(KEY + '_parts') || '{}');
     st2[k] = [E_T, E_eK, E_ee, E_KK]; localStorage.setItem(KEY + '_parts', JSON.stringify(st2));
   };

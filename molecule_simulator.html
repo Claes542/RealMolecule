@@ -77,16 +77,17 @@
   <div class="wrap"><table id="lin"></table></div>
 
   <h2>Energy offset and the range</h2>
-  <div class="note ink2">A free wall between domains carries no Pauli kinetic energy (the cost, in standard quantum
-  mechanics, of the nodes that keep electrons of the same spin apart). Where a heavy atom carries many electrons
-  around it this missing term shows as an energy offset: CH<sub>4</sub> with pseudo-C +4 over-binds by
-  3.2&nbsp;E<sub>h</sub>, NH<sub>3</sub> by 1.4, and on forming CH<sub>4</sub> the kinetic energy <i>falls</i> where the virial
-  theorem requires it to rise. In CH<sub>4</sub> the offset hardly depends on geometry, so the bond (+10%) and the
-  shape (tetrahedral below square planar, rows above) survive. Where lone pairs press on a bond from both sides it
-  does change geometry: O<sub>2</sub> over-binds twofold with a short bond and F<sub>2</sub> has no minimum; no choice
-  of r<sub>c</sub> or shell configuration repairs these (article, Sections on X<sub>2</sub>, CH<sub>4</sub> and
-  Limitations). Energies are quotable within one composition, and for processes joining fragments without changing
-  any atom's bonding &mdash; the next step.</div>
+  <div class="note ink2">Bond lengths are in range: every X&ndash;H bond comes out a few per cent short (CH<sub>4</sub>
+  &minus;4%, residual forces on H inward everywhere). Where a heavy atom carries its whole valence the binding is two
+  to three times too large (CH<sub>4</sub> 1.40 vs 0.67, NH<sub>3</sub> 0.95 vs 0.47), by an amount attached to each
+  heavy atom (ethane twice methane), so it cancels in processes that keep each atom's bonding. Shapes and free angles
+  are not in range: CH<sub>4</sub> has no preference for the tetrahedron over the square, and the H<sub>2</sub>O angle
+  closes or opens depending on whether the lone pairs are frozen. Where lone pairs press on a bond from both sides
+  the geometry changes too: O<sub>2</sub> over-binds twofold with a short bond and F<sub>2</sub> has no minimum.
+  <b>Correction 2026-11-14:</b> above five domains molecule.js used a total-Poisson path whose electron repulsion is
+  2.5&ndash;4&nbsp;E<sub>h</sub> low in CH<sub>4</sub>; the earlier &ldquo;3.2&nbsp;E<sub>h</sub> offset, bond +10%, tetrahedron
+  preferred&rdquo; came from it. Every live run here now uses the per-electron path, and the quoted energies were
+  checked by an independent recomputation from the converged density (article, Solvers section).</div>
 
   <div class="muted" style="margin-top:20px">Other pages: <a href="molecule.html">free molecule builder (proteins,
   dynamics)</a> &middot; <a href="molecule_simulator_molfast.html">earlier mol_fast simulator (archived)</a>
@@ -124,17 +125,17 @@ var CASES = [
     refs: [{ label: 'O', q: 'mode=o&o3=1&rcX=0.65&el=O&' + C12, E: -3.80097, n: 1 }, Object.assign({ n: 2 }, H12)],
     exp: 'atomisation ~0.37', expD: 0.37, note: 'dipole right sign (1.0 D vs 1.85)' },
   { id: 'ch4', name: 'CH<sub>4</sub>', limit: true, model: 'pseudo-C +4 (r<sub>c</sub> 1.0), four tetrahedral singles, 2hom bonds', geom: 'R 2.054, T<sub>d</sub>',
-    mol: { q: 'mode=ch4&rcX=1.0&el=C&R=2.054&Hbare=1&bpair=1&' + C12, E: -11.19098 },
+    mol: { q: 'mode=ch4&rcX=1.0&el=C&R=2.054&Hbare=1&bpair=1&' + C12, E: -8.64645 },
     refs: [{ label: 'C', q: 'mode=c&rcX=1.0&el=C&' + C12, E: -5.43727, n: 1 }, Object.assign({ n: 4 }, H12)],
-    exp: 'R<sub>e</sub> 2.054; atomisation ~0.67', expD: 0.67, note: 'geometry: R<sub>e</sub> 2.25 (+10%), T<sub>d</sub> preferred; energy: offset ~3.15 nearly R-independent' },
-  { id: 'ch4q', name: 'CH<sub>4</sub> square planar', limit: true, model: 'pseudo-C +4 (r<sub>c</sub> 1.0), four 90&deg; quadrants, H keep own electrons', geom: 'R 2.054, D<sub>4h</sub>',
-    mol: { q: 'mode=ch4&planar=1&rcX=1.0&el=C&R=2.054&' + C12, E: -11.15120 },
+    exp: 'R<sub>e</sub> 2.054; atomisation ~0.67', expD: 0.67, note: 'R<sub>e</sub> 1.97 (&minus;4%); independently checked atomisation 1.40 (solver 1.28); no T<sub>d</sub> preference (see square planar). Values of 2026-11-13 (&minus;11.19, +10%) were the faulty total-Poisson path' },
+  { id: 'ch4q', name: 'CH<sub>4</sub> square planar', limit: true, model: 'pseudo-C +4 (r<sub>c</sub> 1.0), four 90&deg; quadrants, 2hom bonds', geom: 'R 2.054, D<sub>4h</sub>',
+    mol: { q: 'mode=ch4&planar=1&rcX=1.0&el=C&R=2.054&Hbare=1&bpair=1&' + C12, E: -8.64893 },
     refs: [{ label: 'C', q: 'mode=c&rcX=1.0&el=C&' + C12, E: -5.43727, n: 1 }, Object.assign({ n: 4 }, H12)],
-    exp: 'D<sub>4h</sub> ~0.2 above T<sub>d</sub>', expD: 0.47, note: 'shape test: E(D<sub>4h</sub>) &minus; E(T<sub>d</sub>, 2split &minus;11.18844) = +0.037 (right sign, ~6&times; soft)' },
+    exp: 'D<sub>4h</sub> ~0.2 above T<sub>d</sub>', expD: 0.47, note: 'shape test: E(D<sub>4h</sub>) &minus; E(T<sub>d</sub>) = &minus;0.002 (checked): NO tetrahedral preference' },
   { id: 'nh3', name: 'NH<sub>3</sub>', limit: true, model: 'pseudo-N +3 (r<sub>c</sub> 0.81), lone pair frozen in core, three wedges, 2hom bonds', geom: 'R 1.913, 106.7&deg;',
-    mol: { q: 'mode=nh3&rcX=0.81&el=N&R=1.913&ang=106.7&Hbare=1&bpair=1&' + C12, E: -6.70925 },
+    mol: { q: 'mode=nh3&rcX=0.81&el=N&R=1.913&ang=106.7&Hbare=1&bpair=1&' + C12, E: -5.68562 },
     refs: [{ label: 'N', q: 'mode=n&rcX=0.81&el=N&' + C12, E: -3.35652, n: 1 }, Object.assign({ n: 3 }, H12)],
-    exp: 'atomisation ~0.47', expD: 0.47, note: 'LIMIT: three bond pairs crowd one centre (cf. CH<sub>4</sub>)' }
+    exp: 'atomisation ~0.47', expD: 0.47, note: 'checked atomisation 0.95 (2&times;); H forces inward 0.06, angle closes 0.04' }
 ];
 var LIN = [ // all-2hom linear chains, tools/axisym_linear.py preset 'chain', h 0.1, 2026-11-13; exp from memory
   // [molecule, construction, bond scanned, R_e computed, R_exp, atomisation at R_exp, max, exp atomisation, verdict]

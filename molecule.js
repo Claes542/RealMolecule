@@ -3447,6 +3447,25 @@ async function initGPU() {
     // normal. Replicating the shader's exclusion and neighbour logic here would risk reporting
     // a large residual that is an artefact of getting that logic subtly wrong -- the interior
     // is the part where the answer is unambiguous, and it is where a stalled iteration shows.
+    // window.dumpState(url): POST the converged psi (one array, every cell), the domain label per cell and the
+    // kernel K to `url`, for an energy recomputation independent of this solver (2026-11-14: the total-Poisson
+    // + SIC path was found to under-count V_ee by 3 Ha in CH4). Three POSTs: ?part=psi|lab|K, raw little-endian.
+    window.dumpState = async function (url) {
+      const readB = async function (src) {
+        const rb = device.createBuffer({ size: bs, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+        const enc = device.createCommandEncoder();
+        enc.copyBufferToBuffer(src, 0, rb, 0, bs);
+        device.queue.submit([enc.finish()]);
+        await rb.mapAsync(GPUMapMode.READ);
+        const a = rb.getMappedRange().slice(0); rb.unmap(); rb.destroy(); return a;
+      };
+      const parts = [['psi', U_buf[cur]], ['lab', labelBuf], ['K', K_buf]];
+      for (const [nm, b] of parts) {
+        const ab = await readB(b);
+        await fetch(url + (url.indexOf('?') >= 0 ? '&' : '?') + 'part=' + nm, { method: 'POST', body: ab });
+      }
+      console.log('DUMPED ' + parts.map(p => p[0]).join(',') + ' S=' + S + ' to ' + url);
+    };
     window.readELResidual = async function () {
       const readBuf = async function (src, asU32) {
         const rb = device.createBuffer({ size: bs, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
@@ -6961,7 +6980,8 @@ function draw() {
     }
     const ANG = 0.529177;  // bohr to angstrom
     const _hidden = window.USER_HIDDEN_ATOMS || [];
-    for (let a = 0; a < NELEC; a++) {
+    // USER_BONDS_ONLY: draw only the driver's USER_BOND_PAIRS, not this distance rule (which classifies by electron count)
+    for (let a = 0; a < (window.USER_BONDS_ONLY ? 0 : NELEC); a++) {
       if (Z[a] === 0 || _hidden.indexOf(a) >= 0) continue;
       for (let b = a+1; b < NELEC; b++) {
         if (Z[b] === 0 || _hidden.indexOf(b) >= 0) continue;
