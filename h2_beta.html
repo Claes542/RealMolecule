@@ -235,13 +235,62 @@
   else if (MODE === 'c' || MODE === 'ch4') {
     var RC4 = q.get('R') ? R : 2.054, bpC = q.get('bpair') === '1' && MODE === 'ch4';
     var axC = [0, 0, -1], e1C = [0, -1, 0], e2C = [-1, 0, 0], rotC = Math.PI / 3;
+    // ?c2hom=1: pseudo-C +2 (4-electron core: 1s2 + inner 2-shell) with the outer 2 as ONE 2hom domain (no split),
+    // and in ch4 four H atoms each with its own electron -- bonding by single domains meeting the closed pair.
+    if (q.get('c4hom') === '1') {
+      // ?c4hom=1: pseudo-C +4 (1s2 frozen) with all four valence electrons in ONE domain (4hom) -- outside the pair
+      // rule, run as a test; in ch4 the four H's keep their own electrons.
+      atoms.push({ i: N2, j: N2, k: N2, Z: 4, el: 'C4h' });
+      Z.push(4); Znuc.push(4); RC.push(RCX);
+    } else if (q.get('c2hom') === '1') {
+      atoms.push({ i: N2, j: N2, k: N2, Z: 2, el: 'Cp' });
+      Z.push(2); Znuc.push(2); RC.push(RCX);
+    } else if (q.get('c2split') === '1' || q.get('c4pair') === '1') {
+      // ?c4pair=1: pseudo-C +4 (1s2 frozen) with the four valence electrons as TWO 2hom pairs in the same two
+      // half-spaces (kernel share 2 each); in ch4 the four H's keep their own electrons. Two C domains, one C|C wall,
+      // against four sectors and six walls in the tetrahedral construction (test of wall count, 2026-11-13).
+      // ?c2split=1: pseudo-C +2 with the outer 2 as two singles in half-spaces (splitType 2). The plane through C is
+      // perpendicular to an S4 axis of the H tetrahedron, so each half faces two H's: axis = (H0+H1) - (H2+H3).
+      var dT = [];
+      for (var hq = 0; hq < 4; hq++) {
+        if (hq === 3) { dT.push([0, 0, 1]); continue; }
+        var phq = rotC + 2 * Math.PI / 3 * hq;
+        dT.push([0, 1, 2].map(function (c) { return axC[c] / 3 + Math.sqrt(8 / 9) * (Math.cos(phq) * e1C[c] + Math.sin(phq) * e2C[c]); }));
+      }
+      var axS = [0, 1, 2].map(function (c) { return dT[0][c] + dT[1][c] - dT[2][c] - dT[3][c]; });
+      var axSL = Math.hypot(axS[0], axS[1], axS[2]); axS = axS.map(function (v) { return v / axSL; });
+      for (var sh = 0; sh < 2; sh++) {
+        var neP = q.get('c4pair') === '1' ? 2 : 1;
+        atoms.push({ i: N2, j: N2, k: N2, Z: neP, el: (neP === 2 ? 'Cp' : 'Ch') + sh });
+        Z.push(neP); Znuc.push(neP); RC.push(RCX);
+        SPT[atoms.length - 1] = 2; SPI[atoms.length - 1] = sh; SPA[atoms.length - 1] = axS;
+      }
+    } else if (q.get('planar') === '1') {
+      // ?planar=1: square-planar (D4h) control for the tetrahedral sectors: the same four single electrons (bpair: 2hom
+      // bond pairs), kernel share 1 each, in four 90 deg QUADRANTS about z (molecule.js splitType 12, rot 0); in ch4 one H
+      // on each quadrant bisector in the xy-plane at C-H = R. Same r_c and composition as the Td run (2026-11-13).
+      for (var pq = 0; pq < 4; pq++) {
+        var neQ = bpC ? 2 : 1;
+        atoms.push({ i: N2, j: N2, k: N2, Z: neQ, el: 'Cq' + pq });
+        Z.push(neQ); Znuc.push(1); RC.push(RCX);
+        SPT[atoms.length - 1] = 12; SPI[atoms.length - 1] = pq; SPA[atoms.length - 1] = [0, 0, 1]; SPR[atoms.length - 1] = 0;
+      }
+      if (MODE === 'ch4') {
+        // quadrant k centre: phi = -pi + (k + 1/2) pi/2 in the (e1, e2) = ((0,1,0), (-1,0,0)) frame -> (-sin phi, cos phi, 0)
+        for (var hp = 0; hp < 4; hp++) {
+          var phP = -Math.PI + (hp + 0.5) * Math.PI / 2, hbP = q.get('Hbare') === '1';
+          atoms.push({ i: N2 - RC4 * Math.sin(phP) / h, j: N2 + RC4 * Math.cos(phP) / h, k: N2, Z: hbP ? 0 : 1, el: hbP ? 'H+' : 'H' });
+          Z.push(hbP ? 0 : 1); Znuc.push(1); RC.push(0);
+        }
+      }
+    } else
     for (var tc = 0; tc < 4; tc++) {
       var neC = bpC ? 2 : 1;
       atoms.push({ i: N2, j: N2, k: N2, Z: neC, el: 'Cs' + tc });
       Z.push(neC); Znuc.push(1); RC.push(RCX);
       SPT[atoms.length - 1] = 4; SPI[atoms.length - 1] = tc; SPA[atoms.length - 1] = axC; SPR[atoms.length - 1] = rotC;
     }
-    if (MODE === 'ch4') {
+    if (MODE === 'ch4' && q.get('planar') !== '1') {
       for (var hc = 0; hc < 4; hc++) {
         var dC;
         if (hc === 3) dC = [0, 0, 1];
@@ -301,6 +350,9 @@
       atoms.push({ i: N2, j: N2, k: N2, Z: ne3, el: 'O' + tag3[w3] });
       Z.push(ne3); Znuc.push(1); RC.push(RCX);
       SPT[atoms.length - 1] = 3; SPI[atoms.length - 1] = w3; SPA[atoms.length - 1] = [0, 0, 1]; SPR[atoms.length - 1] = Math.PI;
+      // ?relO=<step>: release the three O wedge walls at that step (USER_SPLIT_RELEASE) -> free walls placed by
+      // density continuity, so the 120 deg frame no longer imposes the bond directions (angle test, 2026-11-13)
+      if (q.get('relO')) REL.push(atoms.length - 1);
     }
     if (MODE === 'h2o') {
       [[Math.sin(ANG3 / 2), Math.cos(ANG3 / 2)], [-Math.sin(ANG3 / 2), Math.cos(ANG3 / 2)]].forEach(function (u) {
@@ -382,7 +434,7 @@
     window.USER_SPLIT_AXIS = atoms.map(function (a, n) { return SPA[n] || [0, 0, 1]; });
     window.USER_SPLIT_ROT  = atoms.map(function (a, n) { return SPR[n] || 0; });
   }
-  if (REL.length) { window.USER_SPLIT_RELEASE = REL; window.USER_SPLIT_RELEASE_STEP = parseInt((q.get('pairH') === '1' ? q.get('relH') : q.get('hback') === '1' ? q.get('relHb') : XPL !== null ? q.get('relX') : q.get('rel')) || '500'); }
+  if (REL.length) { window.USER_SPLIT_RELEASE = REL; window.USER_SPLIT_RELEASE_STEP = parseInt((q.get('pairH') === '1' ? q.get('relH') : q.get('hback') === '1' ? q.get('relHb') : XPL !== null ? q.get('relX') : q.get('relO') ? q.get('relO') : q.get('rel')) || '500'); }
   // ?rsing= pins molecule.js's kernel clamp -Z/max(r, R_SING) to an absolute radius (default 2h moves with h,
   // so an h-ladder would refine a different problem at every rung). Must be >= 2h on every rung.
   if (q.get('rsing')) window.USER_R_SING = parseFloat(q.get('rsing'));
@@ -483,7 +535,7 @@
     var FIXED = q.get('fixed') ? 1 : 0;
     var JAC = parseInt(q.get('jac') || '10');
     var cfg = '_h' + h.toFixed(3) + '_j' + JAC + '_x' + BOX.toFixed(1) + '_f' + FIXED + (q.get('weak') ? '_w' + q.get('weak') : '') + (q.get('inner') ? '_i' : '') + (q.get('Hbare') === '1' ? '_Hb0' : '') + (q.get('bpair') === '1' ? '_bp' : '') + (q.get('cone') ? '_cone' + q.get('cone') : '') + (C2H !== null ? '_c2h' + C2H + 'n' + (q.get('nval') || '1') + 'u' + (q.get('unlock') || 'fix') : '');
-    cfg += (q.get('rsing') ? '_s' + q.get('rsing') : '') + ((MODE === 'c' || MODE === 'ch4') ? '_C4tet_rc' + RCX : '') + ((MODE === 'n' || MODE === 'nh3') ? (q.get('n5') === '1' ? '_N5tet' : '_N3w') + '_rc' + RCX + '_a' + (q.get('ang') || '106.7') : '') + ((MODE === 'o' || MODE === 'h2o') ? (q.get('o3') === '1' ? '_O3w' : '_O6tet') + '_rc' + RCX + '_a' + (q.get('ang') || '104.5') : '') + ((MODE === 'x' || MODE === 'xh' || MODE === 'xh2' || MODE === 'x2') ? '_' + ELX + ZX + 'rc' + RCX + (BB.length >= 2 ? '_bb' + BB.join('') : '') : '') + (q.get('ZnX') ? '_Zn' + q.get('ZnX') : '') + (q.get('ZH') ? '_ZH' + q.get('ZH') : '') + (q.get('val') === '1' ? '_val' : '') + (q.get('core2') === '1' ? '_c2r' + (q.get('rel') || '500') + (q.get('coreax') || '') : '') + (q.get('pairH') === '1' ? '_pH' + (q.get('relH') || 'fix') + (q.get('pairax') || '') : '') + (q.get('hback') === '1' ? '_hb' + (q.get('relHb') || 'fix') : '') + (XPL !== null ? '_xp' + XPL + (q.get('relX') ? 'r' + q.get('relX') : '') : '');
+    cfg += (q.get('rsing') ? '_s' + q.get('rsing') : '') + ((MODE === 'c' || MODE === 'ch4') ? (q.get('c4hom') === '1' ? '_C4hom' : q.get('c4pair') === '1' ? '_C4pair' : q.get('planar') === '1' ? '_C4quad' : q.get('c2hom') === '1' ? '_C2hom' : q.get('c2split') === '1' ? '_C2split' : '_C4tet') + '_rc' + RCX : '') + ((MODE === 'n' || MODE === 'nh3') ? (q.get('n5') === '1' ? '_N5tet' : '_N3w') + '_rc' + RCX + '_a' + (q.get('ang') || '106.7') : '') + ((MODE === 'o' || MODE === 'h2o') ? (q.get('o3') === '1' ? '_O3w' + (q.get('relO') ? 'r' + q.get('relO') : '') : '_O6tet') + '_rc' + RCX + '_a' + (q.get('ang') || '104.5') : '') + ((MODE === 'x' || MODE === 'xh' || MODE === 'xh2' || MODE === 'x2') ? '_' + ELX + ZX + 'rc' + RCX + (BB.length >= 2 ? '_bb' + BB.join('') : '') : '') + (q.get('ZnX') ? '_Zn' + q.get('ZnX') : '') + (q.get('ZH') ? '_ZH' + q.get('ZH') : '') + (q.get('val') === '1' ? '_val' : '') + (q.get('core2') === '1' ? '_c2r' + (q.get('rel') || '500') + (q.get('coreax') || '') : '') + (q.get('pairH') === '1' ? '_pH' + (q.get('relH') || 'fix') + (q.get('pairax') || '') : '') + (q.get('hback') === '1' ? '_hb' + (q.get('relHb') || 'fix') : '') + (XPL !== null ? '_xp' + XPL + (q.get('relX') ? 'r' + q.get('relX') : '') : '');
     var k = (MODE === 'h' || MODE === 'x' || MODE === 'o' || MODE === 'n' || MODE === 'c') ? (MODE + (ZA > 1 ? 'Z' + ZA : '') + cfg)
           : ('h2_R' + R.toFixed(2) + '_b' + BETA.toFixed(3) + '_c' + CURV.toFixed(2) + cfg);
     if (!Array.isArray(st[k])) st[k] = [];
@@ -503,15 +555,27 @@
     try {
       var Fe = window._nucForceElec, byPos = {}, keys = [];
       if (Fe) {
-        atoms.forEach(function (a, n) { var key = a.i.toFixed(3);
-          if (!byPos[key]) { byPos[key] = { x: (a.i - N2) * h, el: a.el.replace(/[abf]$/, ''), Fe: 0, Zn: 0 }; keys.push(key); }
-          byPos[key].Fe += Fe[n] ? Fe[n][0] : 0; byPos[key].Zn += Znuc[n]; });
-        keys.forEach(function (ka) { var A = byPos[ka], fn = 0;
-          keys.forEach(function (kb) { if (kb === ka) return; var B = byPos[kb], d = A.x - B.x;
-            fn += A.Zn * B.Zn * d / Math.abs(d * d * d); });
+        // nuclei grouped by their full 3D position (2026-11-13: keying on x alone merged H atoms sharing an x in
+        // H2O/NH3/CH4, and the 1D distance over-counted their repulsion); vector forces, 3D distances.
+        atoms.forEach(function (a, n) { var aj = a.j === undefined ? N2 : a.j, ak = a.k === undefined ? N2 : a.k;
+          var key = [a.i, aj, ak].map(function (v) { return Number(v).toFixed(3); }).join(',');
+          if (!byPos[key]) { byPos[key] = { p: [(a.i - N2) * h, (aj - N2) * h, (ak - N2) * h], el: String(a.el || '?').replace(/[abf]$/, ''),
+                                            Fe: [0, 0, 0], Zn: 0 }; keys.push(key); }
+          for (var c = 0; c < 3; c++) byPos[key].Fe[c] += Fe[n] ? Fe[n][c] : 0;
+          byPos[key].Zn += Znuc[n]; });
+        keys.forEach(function (ka) { var A = byPos[ka], fn = [0, 0, 0];
+          keys.forEach(function (kb) { if (kb === ka) return; var B = byPos[kb];
+            var d = [A.p[0] - B.p[0], A.p[1] - B.p[1], A.p[2] - B.p[2]], r = Math.hypot(d[0], d[1], d[2]);
+            for (var c = 0; c < 3; c++) fn[c] += A.Zn * B.Zn * d[c] / (r * r * r); });
           A.Fn = fn; });
-        console.log('FORCE ' + keys.map(function (k) { var b = byPos[k];
-          return b.el + '@x=' + b.x.toFixed(4) + ' Fx=' + (b.Fe + b.Fn).toFixed(5) + ' (el ' + b.Fe.toFixed(5) + ' nuc ' + b.Fn.toFixed(5) + ')'; }).join('  '));
+        // radial component along the bond from the heaviest centre (positive = pushed outward, bond wants to lengthen)
+        var C0 = keys.map(function (k) { return byPos[k]; }).reduce(function (m, b) { return b.Zn > m.Zn ? b : m; });
+        console.log('FORCE ' + keys.map(function (k) { var b = byPos[k], F = [0, 1, 2].map(function (c) { return b.Fe[c] + b.Fn[c]; });
+          var u = [b.p[0] - C0.p[0], b.p[1] - C0.p[1], b.p[2] - C0.p[2]], r = Math.hypot(u[0], u[1], u[2]);
+          var Fr = r > 1e-9 ? (F[0] * u[0] + F[1] * u[1] + F[2] * u[2]) / r : NaN;
+          return b.el + '@(' + b.p.map(function (v) { return v.toFixed(3); }).join(',') + ') F=(' + F.map(function (v) { return v.toFixed(5); }).join(',')
+            + ')' + (r > 1e-9 ? ' Fr=' + Fr.toFixed(5) + ' (el ' + ((b.Fe[0] * u[0] + b.Fe[1] * u[1] + b.Fe[2] * u[2]) / r).toFixed(5)
+            + ' nuc ' + ((b.Fn[0] * u[0] + b.Fn[1] * u[1] + b.Fn[2] * u[2]) / r).toFixed(5) + ')' : ''); }).join('  '));
       }
     } catch (e) { console.log('FORCE readout failed: ' + e); }
     var st2 = JSON.parse(localStorage.getItem(KEY + '_parts') || '{}');

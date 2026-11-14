@@ -1,1102 +1,269 @@
 <!DOCTYPE html>
 <html><head>
-  <meta charset="utf-8">
-  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
-  <title>Molecule simulator — H, C, N, O</title>
-  <style>
-    body { margin:0; background:#000; color:#fff; font-family:monospace }
-    select,button { background:#1a2228; color:#dfe; border:1px solid #456; padding:3px 6px; font-family:monospace }
-    a { color:#6cf }
-  </style>
-</head><body>
-<!-- Panel on the LEFT and narrow; the solver's canvas is drawn at the page origin, so a panel
-     pinned top-right sat on top of the 3D view. Canvas and 3D view are also shrunk below via
-     USER_CANVAS_PX / USER_VIEW3D_*, and the page is laid out so neither overlaps the other. -->
-<div id="panel" style="position:fixed;top:8px;left:8px;background:rgba(0,0,0,.92);padding:9px 11px;
-     border:1px solid #345;border-radius:6px;width:220px;max-height:96vh;overflow-y:auto;
-     font-size:11.5px;z-index:1000;color:#cde">
-  <div style="font-weight:bold;color:#8df">Molecule simulator &mdash; H, C, N, O</div>
-  <div id="picker" style="margin:7px 0"></div>
-  <div id="geom" style="color:#9ab;font-size:11px"></div>
-  <div id="checks" style="margin-top:7px"></div>
-  <div style="color:#789;font-size:11px;margin-top:7px">
-    Forces evaluated at the <b>measured</b> geometry, where the true force is zero &mdash; so each
-    residual is model error directly. <code>?mol=</code> <code>?h=</code> <code>?dyn=1</code>
-    <code>?steps=</code>
-  </div>
-</div>
-<div id="loadStatus" style="color:#ff0;padding:20px;font-size:14px;margin-left:276px">Loading…</div>
+<meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Molecule Simulator</title>
+<!-- THE one molecule simulator (2026-11-13). Collects the validated cases of realqm_molecular_forces.tex and
+     runs/checks each one live with molecule.js through h2_beta.html (an iframe, same origin: its console is hooked
+     to catch the CONVERGED and FORCE lines). Recorded values are the article's; every E below was grepped from
+     the run logs, not retyped. The earlier mol_fast page is kept as molecule_simulator_molfast.html. -->
 <style>
-  /* p5 appends its canvases to the body. A `body > canvas` rule did NOT take (measured: the
-     canvas still began at x=0 under the panel), so target canvas directly and force it. The
-     plots are also shrunk below: panel edge 252 + 24px gap + canvas 336 = 612 fits a 627 px window side by side,
-     where the stock 620 px canvas could not. */
-  /* Target ONLY p5's main canvas. A bare `canvas` rule with display:block !important also
-     un-hid p5's offscreen createGraphics buffer (the 3D view), which then rendered a second,
-     duplicate plot below the page. The buffer is id defaultCanvas1 and must stay hidden. */
-  #defaultCanvas0 { margin-left: 276px !important; display: block !important; position: relative; z-index: 1; }
-  /* The picker must sit above the canvas unconditionally: a select is a native control and was
-     being overlapped at the panel edge. Explicit stacking rather than relying on document order. */
-  #panel, #panel * { position: relative; z-index: 1001; }
-  #mol { width: 100%; box-sizing: border-box; }
-  #defaultCanvas1 { display: none !important; }
+  :root { --bg:#05090c; --panel:#0b141a; --ink:#e6ecef; --ink2:#a9b6bd; --muted:#6f7f88; --rule:#1f2c34;
+          --acc:#4fc3f7; --ok:#7bc67e; --warn:#e0b050; --bad:#e57373; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--ink); font:13px/1.45 ui-monospace,Menlo,monospace }
+  a { color:var(--acc) }
+  header { padding:14px 16px 6px }
+  h1 { font-size:18px; color:var(--acc); margin:0 0 4px }
+  h2 { font-size:14px; color:var(--acc); margin:18px 0 6px }
+  .muted { color:var(--muted) } .ink2 { color:var(--ink2) }
+  main { padding:0 16px 30px; max-width:1300px }
+  .wrap { overflow-x:auto }
+  table { border-collapse:collapse; width:100%; min-width:860px }
+  th, td { padding:4px 7px; border-bottom:1px solid var(--rule); text-align:right; vertical-align:top }
+  th { color:var(--muted); font-weight:normal } td.l, th.l { text-align:left }
+  tr.limit td { color:#b9a6a6 }
+  button { background:#12222c; color:#dff; border:1px solid #2d4b5a; border-radius:4px; padding:2px 7px;
+           font:12px ui-monospace,Menlo,monospace; cursor:pointer; margin:1px }
+  button:hover { background:#1a3240 } button:disabled { opacity:.4; cursor:default }
+  .ok { color:var(--ok) } .warn { color:var(--warn) } .bad { color:var(--bad) }
+  #runbar { margin:14px 0 6px; padding:8px 10px; background:var(--panel); border:1px solid var(--rule); border-radius:6px }
+  iframe { width:100%; height:760px; border:1px solid var(--rule); background:#000; display:none; margin-top:6px }
+  .note { background:var(--panel); border:1px solid var(--rule); border-radius:6px; padding:9px 11px; margin:8px 0 }
+  code { color:#bfe }
 </style>
+</head><body>
+<header>
+  <h1>Molecule Simulator</h1>
+  <div class="ink2">RealQM, hard partition: every electron (or opposite-spin pair, <b>2hom</b>) owns a domain;
+  domains meet at free walls placed by density continuity. Heavy atoms are pseudo-atoms: inner shells frozen into a
+  core of charge Z<sub>x</sub> with hard radius r<sub>c</sub> fitted to the sum of the ionisation energies of the
+  electrons carried. Solver <code>molecule.js</code> (WebGPU), box 12&nbsp;a<sub>0</sub> (LiH 20), h&nbsp;=&nbsp;0.1.</div>
+  <div class="ink2" style="margin-top:4px"><b>Judged by geometry.</b> Bond lengths and shapes are the result; binding
+  (atomisation) energies are shown as a <i>diagnostic</i>. Where an atom carries many valence electrons the binding
+  carries a large offset set by the composition and nearly independent of geometry (CH<sub>4</sub>: 3.2&nbsp;E<sub>h</sub>,
+  constant to 0.03 over R&nbsp;2.05&ndash;2.45), which cancels at fixed composition and in processes that keep every
+  atom's bonding.</div>
+  <div class="muted" style="margin-top:4px">Article: <a href="realqm_molecular_forces.pdf">RealQM for Molecules: Validation (PDF)</a>
+  &middot; requires WebGPU (Chrome/Edge 113+, Safari 17+) &middot; a run takes 2&ndash;15 min</div>
+</header>
+<main>
+  <h2>Best cases &mdash; run and check</h2>
+  <div class="muted">Each row: the recorded molecule and reference energies, the binding they give, experiment. <b>Run</b>
+  recomputes one piece live; the row then shows the live energy, its difference from the record, and the binding from
+  live values where available. The page under the table is the live solver (its <b>3D boundary</b> button shows the
+  free domain walls).</div>
+  <div class="wrap"><table id="best"></table></div>
+
+  <div id="runbar"><b>Live run:</b> <span id="status" class="muted">idle</span>
+    <span style="float:right"><button id="all">check all (sequential)</button> <button id="stop">stop</button></span>
+    <div id="force" class="muted" style="margin-top:4px;white-space:pre-wrap"></div></div>
+  <iframe id="sim"></iframe>
+
+  <h2>Homonuclear X<sub>2</sub> &mdash; axisymmetric solver</h2>
+  <div class="muted">Exact reduction for linear molecules (2D z,&rho; grid), run from the command line:
+  <code>python3 tools/axisym_linear.py &lt;preset&gt; R=&hellip;</code>. Only a &sigma; pair is representable.
+  R-scan 0.8&ndash;1.3 R<sub>exp</sub>; lengths a<sub>0</sub>, energies E<sub>h</sub>. Runs and densities:
+  <a href="linear_molecule_simulator.html">linear molecule viewer</a>.</div>
+  <div class="wrap"><table id="x2"></table></div>
+
+  <h2>Linear molecules &mdash; all-2hom chains, axisymmetric solver</h2>
+  <div class="muted">One 2hom &sigma; pair per bond, a fixed plane at each heavy nucleus, the same pseudo-atoms as
+  above (no refit per molecule). <code>python3 tools/axisym_linear.py chain spec=H-C-N bonds=2.0135,2.1792</code>.
+  R<sub>e</sub> from a parabola through the 0.9/1.0/1.1 &times; R<sub>exp</sub> points. LiH and BeH<sub>2</sub>
+  differ from the 3D runs above (BeH<sub>2</sub> 0.284 vs 0.248): quote only after a mesh ladder. NCCN and
+  HC<sub>4</sub>H were too jagged at h&nbsp;0.1 (plane offsets) to read.</div>
+  <div class="wrap"><table id="lin"></table></div>
+
+  <h2>Energy offset and the range</h2>
+  <div class="note ink2">A free wall between domains carries no Pauli kinetic energy (the cost, in standard quantum
+  mechanics, of the nodes that keep electrons of the same spin apart). Where a heavy atom carries many electrons
+  around it this missing term shows as an energy offset: CH<sub>4</sub> with pseudo-C +4 over-binds by
+  3.2&nbsp;E<sub>h</sub>, NH<sub>3</sub> by 1.4, and on forming CH<sub>4</sub> the kinetic energy <i>falls</i> where the virial
+  theorem requires it to rise. In CH<sub>4</sub> the offset hardly depends on geometry, so the bond (+10%) and the
+  shape (tetrahedral below square planar, rows above) survive. Where lone pairs press on a bond from both sides it
+  does change geometry: O<sub>2</sub> over-binds twofold with a short bond and F<sub>2</sub> has no minimum; no choice
+  of r<sub>c</sub> or shell configuration repairs these (article, Sections on X<sub>2</sub>, CH<sub>4</sub> and
+  Limitations). Energies are quotable within one composition, and for processes joining fragments without changing
+  any atom's bonding &mdash; the next step.</div>
+
+  <div class="muted" style="margin-top:20px">Other pages: <a href="molecule.html">free molecule builder (proteins,
+  dynamics)</a> &middot; <a href="molecule_simulator_molfast.html">earlier mol_fast simulator (archived)</a>
+  &middot; <a href="gallery.html">gallery</a></div>
+</main>
 <script>
-window.onerror = function (m, u, l, c) {
-  var pre = document.createElement('pre');
-  pre.style.cssText = 'color:#f66;background:#200;padding:12px;white-space:pre-wrap';
-  pre.textContent = 'ERROR: ' + m + '\n  at ' + u + ':' + l + ':' + c;
-  document.body.insertBefore(pre, document.body.firstChild);
-};
-// Measured geometries converted from internal coordinates to Cartesian (bohr), centred.
-// GENERATED, not hand-entered. Zx: H1 C4 N3 O3.
-// The four linear additions were chosen because the measurements predict that linear
-// geometries with DEEP kernels pass: they lie on a grid axis, so no cubic-grid anisotropy,
-// and their domains are firmly held, so no shallow-kernel non-convergence.
-// WHAT SigmaF MEANS depends on the molecule's symmetry, and the distinction is easy to misread.
-// SigmaF = 0 is NOT an identity: it equals the net force of the electron cloud on the nuclei and
-// vanishes only when the electronic state is converged -- so it is a CONVERGENCE meter. But a
-// symmetric molecule has SigmaF = 0 forced by symmetry whatever the accuracy, so there it reports
-// only whether the algorithm PRESERVES symmetry and bounds nothing.
-//   'full'    every direction cancelled (CO2, CH4, N2, C2H2...) -> symmetry preservation only
-//   'axis'    one axis unprotected (H2O's C2, NH3's C3, H2CO's C=O) -> real meter along it
-//   'none'    nothing cancels (CO, HCN, N2O, HC3N) -> a genuine convergence measurement
-// Measured 2026-11-03: the asymmetric cases run 11-89% while CO2 and C3O2 read 0.1-0.2%, which is
-// symmetry being preserved, not convergence being good.
-var SYM = { h:'full', c:'full', n:'full', o:'full', he_split:'full', he_v:'full', heplus:'full', hyd2:'full', hyd3:'full', hyd4:'full', c4s:'full', c_sh:'full', c_sh222:'full', heli3:'full', heli4:'full', heli6:'full', heli7:'full', heli8:'full', hehp:'none', h2:'full', n2:'full', o2:'full', co:'none', oh:'none', nh:'none', ch:'none', co2:'full', n2o:'none', hcn:'none',
-            c2h2:'full', c2n2:'full', c3o2:'full', hc3n:'none', c4h2:'full',
-            h2o:'axis', h2o_split:'axis', nh3:'axis', ch4:'full', h2co:'axis',
-            h2o_a90:'axis', h2o_a109:'axis', h2o_a120:'axis', h2o_z2:'axis' };
-var SYMNOTE = {
-  full: ['symmetry-cancelled', '#8a9', 'SigmaF is forced to zero by symmetry here, so it measures only whether the algorithm preserves symmetry — it does NOT bound the convergence error.'],
-  axis: ['partly cancelled', '#dc8', 'Symmetry cancels SigmaF except along the unique axis, so the residual IS a convergence measurement in that direction.'],
-  none: ['genuine convergence meter', '#8cf', 'No symmetry cancels SigmaF here, so the residual measures electronic non-convergence directly.'] };
+// ---- the cases (energies grepped from the run logs of 2026-11-12/13; exp values from memory, to be verified) ----
+var C12 = 'box=12&h=0.1&inner=1&win=2000&conv=0.00003&blog=120&reset';
+var C20 = 'box=20&h=0.1&inner=1&win=2000&conv=0.00003&reset';
+var H12 = { label: 'H', q: 'mode=h&' + C12, E: -0.48209 };
+var H20 = { label: 'H', q: 'mode=h&' + C20, E: -0.48200 };
+var CASES = [
+  { id: 'lih', name: 'LiH', model: 'pseudo-Li +1 (r<sub>c</sub> 1.99), one 2hom bond pair, bare H<sup>+</sup>', geom: 'R 2.80',
+    mol: { q: 'mode=xh&anchor=1&ZX=2&ZnX=1&rcX=1.99&el=Li&Hbare=1&R=2.8&' + C20, E: -0.77436 },
+    refs: [{ label: 'Li', q: 'mode=x&ZX=1&rcX=1.99&el=Li&' + C20, E: -0.19777, n: 1 }, Object.assign({ n: 1 }, H20)],
+    exp: 'R<sub>e</sub> 3.015, D<sub>e</sub> 0.092', expD: 0.092, note: 'scan: R<sub>e</sub> 2.85' },
+  { id: 'bh', name: 'BH', model: 'pseudo-B +3 (r<sub>c</sub> 1.08), 2hom lone pair | 1 (plane), 2hom bond', geom: 'R 2.30',
+    mol: { q: 'mode=xh&anchor=1&ZX=3&bb=2,1&rcX=1.08&el=B&Hbare=1&bpair=1&R=2.3&' + C12, E: -3.26588 },
+    refs: [{ label: 'B', q: 'mode=x&ZX=3&bb=2,1&rcX=1.08&el=B&' + C12, E: -2.62898, n: 1 }, Object.assign({ n: 1 }, H12)],
+    exp: 'R<sub>e</sub> 2.329, D<sub>e</sub> 0.135', expD: 0.135, note: 'scan: R<sub>e</sub> 2.29' },
+  { id: 'beh2', name: 'BeH<sub>2</sub>', model: 'pseudo-Be +2 (r<sub>c</sub> 1.37), 1+1 halves, two 2hom bonds', geom: 'R 2.50, linear',
+    mol: { q: 'mode=xh2&ZX=2&bb=1,1&rcX=1.37&el=Be&Hbare=1&bpair=1&R=2.5&' + C12, E: -2.21838 },
+    refs: [{ label: 'Be', q: 'mode=x&ZX=2&bb=1,1&rcX=1.37&el=Be&' + C12, E: -1.00715, n: 1 }, Object.assign({ n: 2 }, H12)],
+    exp: 'r<sub>0</sub> 2.52, atomisation 0.2231', expD: 0.2231, note: 'scan: R<sub>e</sub> 2.44' },
+  { id: 'ch2', name: 'CH<sub>2</sub> (linear)', model: 'pseudo-C +2 (r<sub>c</sub> 0.90), 1+1 halves, two 2hom bonds', geom: 'R 2.05, linear',
+    mol: { q: 'mode=xh2&ZX=2&bb=1,1&rcX=0.90&el=C&Hbare=1&bpair=1&R=2.05&' + C12, E: -2.59863 },
+    refs: [{ label: 'C', q: 'mode=x&ZX=2&bb=1,1&rcX=0.90&el=C&' + C12, E: -1.31516, n: 1 }, Object.assign({ n: 2 }, H12)],
+    exp: 'atomisation ~0.29 (bent)', expD: 0.29, note: 'real CH<sub>2</sub> is bent' },
+  { id: 'oh', name: 'OH', model: 'pseudo-O +3 (r<sub>c</sub> 0.59), 2hom lone pair | 1 (plane), 2hom bond', geom: 'R 1.83',
+    mol: { q: 'mode=xh&anchor=1&ZX=3&bb=2,1&rcX=0.59&el=O&Hbare=1&bpair=1&R=1.83&' + C12, E: -4.53800 },
+    refs: [{ label: 'O', q: 'mode=x&ZX=3&bb=2,1&rcX=0.59&el=O&' + C12, E: -3.81541, n: 1 }, Object.assign({ n: 1 }, H12)],
+    exp: 'R<sub>e</sub> 1.832, D<sub>e</sub> 0.170', expD: 0.170, note: 'scan: R<sub>e</sub> 1.79' },
+  { id: 'h2o', name: 'H<sub>2</sub>O', model: 'pseudo-O +3 (r<sub>c</sub> 0.65), three 120&deg; wedges, two 2hom bonds', geom: 'R 1.809, 104.5&deg;',
+    mol: { q: 'mode=h2o&o3=1&rcX=0.65&el=O&R=1.809&ang=104.5&Hbare=1&bpair=1&' + C12, E: -5.41638 },
+    refs: [{ label: 'O', q: 'mode=o&o3=1&rcX=0.65&el=O&' + C12, E: -3.80097, n: 1 }, Object.assign({ n: 2 }, H12)],
+    exp: 'atomisation ~0.37', expD: 0.37, note: 'dipole right sign (1.0 D vs 1.85)' },
+  { id: 'ch4', name: 'CH<sub>4</sub>', limit: true, model: 'pseudo-C +4 (r<sub>c</sub> 1.0), four tetrahedral singles, 2hom bonds', geom: 'R 2.054, T<sub>d</sub>',
+    mol: { q: 'mode=ch4&rcX=1.0&el=C&R=2.054&Hbare=1&bpair=1&' + C12, E: -11.19098 },
+    refs: [{ label: 'C', q: 'mode=c&rcX=1.0&el=C&' + C12, E: -5.43727, n: 1 }, Object.assign({ n: 4 }, H12)],
+    exp: 'R<sub>e</sub> 2.054; atomisation ~0.67', expD: 0.67, note: 'geometry: R<sub>e</sub> 2.25 (+10%), T<sub>d</sub> preferred; energy: offset ~3.15 nearly R-independent' },
+  { id: 'ch4q', name: 'CH<sub>4</sub> square planar', limit: true, model: 'pseudo-C +4 (r<sub>c</sub> 1.0), four 90&deg; quadrants, H keep own electrons', geom: 'R 2.054, D<sub>4h</sub>',
+    mol: { q: 'mode=ch4&planar=1&rcX=1.0&el=C&R=2.054&' + C12, E: -11.15120 },
+    refs: [{ label: 'C', q: 'mode=c&rcX=1.0&el=C&' + C12, E: -5.43727, n: 1 }, Object.assign({ n: 4 }, H12)],
+    exp: 'D<sub>4h</sub> ~0.2 above T<sub>d</sub>', expD: 0.47, note: 'shape test: E(D<sub>4h</sub>) &minus; E(T<sub>d</sub>, 2split &minus;11.18844) = +0.037 (right sign, ~6&times; soft)' },
+  { id: 'nh3', name: 'NH<sub>3</sub>', limit: true, model: 'pseudo-N +3 (r<sub>c</sub> 0.81), lone pair frozen in core, three wedges, 2hom bonds', geom: 'R 1.913, 106.7&deg;',
+    mol: { q: 'mode=nh3&rcX=0.81&el=N&R=1.913&ang=106.7&Hbare=1&bpair=1&' + C12, E: -6.70925 },
+    refs: [{ label: 'N', q: 'mode=n&rcX=0.81&el=N&' + C12, E: -3.35652, n: 1 }, Object.assign({ n: 3 }, H12)],
+    exp: 'atomisation ~0.47', expD: 0.47, note: 'LIMIT: three bond pairs crowd one centre (cf. CH<sub>4</sub>)' }
+];
+var LIN = [ // all-2hom linear chains, tools/axisym_linear.py preset 'chain', h 0.1, 2026-11-13; exp from memory
+  // [molecule, construction, bond scanned, R_e computed, R_exp, atomisation at R_exp, max, exp atomisation, verdict]
+  ['HCN', 'H&ndash;C(+2, 1+1)&ndash;N(+2, 1 behind + 1)', 'C&ndash;N', '2.25', '2.179', 0.475, 0.476, 0.497, 'ok'],
+  ['HCN', '', 'C&ndash;H', '1.97', '2.014', 0.475, 0.475, null, 'ok'],
+  ['CO', 'C(+2, 1 behind + 1)&ndash;O(+3 with 2 behind)', 'C&ndash;O', '2.19', '2.132', 0.344, 0.345, 0.413, 'ok'],
+  ['CO<sub>2</sub>', 'O(+3, 2 behind + 1)&ndash;C(+2, 1+1)&ndash;O', 'both', '2.15', '2.192', 0.681, 0.682, 0.61, 'ok'],
+  ['C<sub>2</sub>H<sub>2</sub>', 'H&ndash;C(+2, 1+1)&ndash;C&ndash;H', 'C&ndash;C', '2.50', '2.274', 0.573, 0.595, 0.646, 'ok'],
+  ['BeH<sub>2</sub>', 'H&ndash;Be(+2, 1+1)&ndash;H', 'both', '2.38', '2.507', 0.284, 0.287, 0.223, 'warn'],
+  ['LiH', 'Li(+1)&ndash;H', 'Li&ndash;H', '&lt; 2.71', '3.015', 0.096, null, 0.092, 'warn']];
+var X2 = [ // tools/axisym_linear.py presets, 2026-11-13; exp from memory
+  ['Li<sub>2</sub>', '2+1, +1', 2.00, '5.1', '5.15', 0.021, 0.054, '5.05 / 0.038', 'ok'],
+  ['Na<sub>2</sub>', '2+4+4+1, +1', 2.16, '5.5', '5.55', 0.020, 0.050, '5.82 / 0.028', 'ok'],
+  ['B<sub>2</sub>', '2+2+1, +1', 0.88, '2.87', '2.9', 0.045, 0.109, '3.005 / 0.110', 'ok'],
+  ['C<sub>2</sub>', '2+2+2, +2', 0.91, '2.55', '2.58', 0.242, 0.322, '2.348 / 0.232', 'ok'],
+  ['N<sub>2</sub>', '2+3+2, +2', 0.59, '1.95', '1.95', 0.370, 0.480, '2.074 / 0.364', 'ok'],
+  ['O<sub>2</sub>', '2+3+3, +3', 0.59, '2.0', '2.05', 0.349, 0.48, '2.282 / 0.192', 'bad'],
+  ['F<sub>2</sub>', '2+4+3, +3', 0.49, 'none', 'none', null, null, '2.668 / 0.061', 'bad']];
 
-// -----------------------------------------------------------------------------------------------
-// BINDING ENERGY, reported in the output instead of being recomputed by hand afterwards.
-//
-//     E_bind = sum_i E(atom_i) - E(molecule),      positive = bound.
-//
-// The subtraction is legitimate only when the atomic references were computed on the SAME grid
-// with the SAME settings as the molecule. That is not a formality: mixed boxes were measured to
-// corrupt a cross-molecule difference by 2.7x (CO gave 0.0369 on mixed boxes against 0.0137 on
-// matched ones). So the references are KEYED BY GRID, and a run whose grid has no reference set
-// reports n/a together with the reason, rather than silently subtracting a number measured
-// somewhere else. Declaring one mesh for every molecule is what turns these into fixed constants
-// of the model instead of per-run bookkeeping.
-//
-// Key is 'box|h|gate'. Each set records how it was measured; add a set, do not edit one.
-var E_ATOM_SETS = {
-  // Measured 2026-11-08 at the CALIBRATED softening (eq:sigmacal, sigma = 0.627). H only so far;
-  // C, N and O still need running there before any molecular row beyond H2 can report an E_bind.
-  '12|0.100|0.1|s0.627': { H: -0.499854 },   // measured at box 12, not transferred
-  '20|0.100|0.1|s0.627': { H: -0.499901 },   // E(H) is box-free to 1e-4, verified at both
-  // THE DECLARED GRID: box 20, h 0.10 (200^3), eps = h, soft 1, rinit 3, wdiff 0.05, wd 1,
-  // 232500 steps, gate 0.9. The atom is nearly box-free (-0.000082 Ha from box 12) while the
-  // MOLECULE is not (+0.005967), so E_bind drops 3.5 points of D_e on moving here from box 12 --
-  // larger than the 2.1-point seed scatter, hence real. Measured 2026-11-05.
-  '20|0.100|0.9': { H: -0.486591 },
-  // box 12, h 0.10, eps = h, soft 1, rinit 3, wdiff 0.05, wd 1, 232500 steps, gate 0.9
-  '12|0.100|0.9': { H: -0.486509 },
-  // same grid, baseline kinetic accounting (gate 0.1)
-  '12|0.100|0.1': { H: -0.486422 },
-  // box 15, h 0.1389, eps 0.14, 119500 steps, gate 0.1. N and O are BIT-IDENTICAL here (both
-  // carry Z_x = 3), so nothing computed from this set distinguishes nitrogen from oxygen.
-  '15|0.139|0.1': { H: -0.482258, C: -13.999484, N: -6.847492, O: -6.847492 }
-};
-// Experimental dissociation energy (Ha). TWO conventions, and the output reports the error against
-// BOTH, because for H2 they differ by 6.0% -- larger than the model's own run-to-run scatter, so
-// quoting one silently picks a 6-point answer:
-//   De = the depth of the well at its own minimum. The MATCHED target: the model has no nuclear
-//        motion, so what it computes is a well depth, not the energy of a vibrational state.
-//   D0 = the directly measured dissociation energy, from the vibrational ground state.
-//        De = D0 + ZPE, so De is a hybrid of a measurement and a spectroscopic correction.
-// Only values checked against a standard compilation are listed. A molecule absent here still gets
-// its E_bind, with no error column -- which is the honest output, not an incomplete one.
-var D_EXP = {
-  h2: { De: 0.174470, D0: 0.164560 }    // 4.747 / 4.478 eV; ZPE 0.00991 Ha
-};
+// ---- live results, per viewer (browser storage only; never required) ----
+var LIVE = {};
+try { LIVE = JSON.parse(localStorage.getItem('molsim_live') || '{}'); } catch (e) { LIVE = {}; }
+function save() { try { localStorage.setItem('molsim_live', JSON.stringify(LIVE)); } catch (e) {} }
 
-// ABSOLUTE (total) energy references, Ha. Reported alongside E_bind because the two errors are of
-// very different size and only quoting the binding energy conceals that: for H2 the total is
-// 2.4% too shallow (0.0287 Ha) while the binding energy is off by 0.0017 Ha, so 94% of the error
-// CANCELS in the difference. The binding energy is good BECAUSE of that cancellation, not because
-// the totals are. Reporting E_bind alone overstates the model by a factor of 17 on this system.
-//
-// PROVENANCE MATTERS and is carried per entry: 'exact' is an analytic result, 'computed' is
-// somebody's calculation and not an observable at all -- H2's -1.17447 is Kolos-Wolniewicz in the
-// Born-Oppenheimer limit, so agreeing with it is agreeing with a calculation, not with nature.
-// Experimental dipole moments, Debye. The SIGN/direction matters more than the magnitude here:
-// a construction that inverts the polarity is wrong whatever its energy says, and the inversion is
-// reproducible (OH: +0.778 split vs -0.470 as one domain, same kernel and electron count).
-// Symmetric molecules have mu = 0 BY SYMMETRY, which makes them null tests rather than targets --
-// a nonzero value there is pure error, so they are listed at 0 deliberately.
-var MU_EXP = {
-  h2o: 1.8546, nh3: 1.4718, co: 0.1098, hcn: 2.985, h2co: 2.332, n2o: 0.1608,
-  h2: 0.0, n2: 0.0, o2: 0.0, co2: 0.0, ch4: 0.0, c2h2: 0.0, c2n2: 0.0
-};
-
-var E_TOT_REF = {
-  h:  { E: -0.500000,  src: 'exact' },
-  h2: { E: -1.174470,  src: 'computed (Kolos-Wolniewicz, BO)' }
-};
-
-// Absolute error of the total energy. Independent of the grid key, since a total needs no atomic
-// reference -- so this one is available on every run, including the single atoms.
-function totalErrReport(key) {
-  if (window._E === undefined) return null;
-  var R = E_TOT_REF[key];
-  if (!R) return { why: 'no checked total-energy reference for this molecule' };
-  var dE = window._E - R.E;
-  return { E: window._E, ref: R.E, src: R.src, dE: dE, pct: 100 * dE / Math.abs(R.E) };
+function f5(x) { return x === undefined || x === null ? '' : Number(x).toFixed(5); }
+function f3(x) { return x === undefined || x === null ? '' : Number(x).toFixed(3); }
+function liveCell(key, rec) {
+  var L = LIVE[key]; if (!L) return '<span class="muted">&ndash;</span>';
+  var d = L.E - rec, cls = Math.abs(d) < 2e-4 ? 'ok' : Math.abs(d) < 2e-3 ? 'warn' : 'bad';
+  return f5(L.E) + ' <span class="' + cls + '">(' + (d >= 0 ? '+' : '') + d.toFixed(5) + ')</span>';
+}
+function binding(c, useLive) {
+  var s = 0;
+  c.refs.forEach(function (r) { var L = useLive && LIVE[c.id + ':' + r.label]; s += r.n * (L ? L.E : r.E); });
+  var Lm = useLive && LIVE[c.id + ':mol'];
+  return s - (Lm ? Lm.E : c.mol.E);
+}
+function render() {
+  var h = '<tr><th class="l">molecule</th><th class="l">model</th><th class="l">geometry</th><th>E molecule</th><th>live</th>'
+        + '<th class="l">references (E)</th><th>D<sub>e</sub> 2hom</th><th>with live</th><th class="l">experiment</th><th class="l">run</th></tr>';
+  CASES.forEach(function (c) {
+    var anyLive = LIVE[c.id + ':mol'] || c.refs.some(function (r) { return LIVE[c.id + ':' + r.label]; });
+    var refs = c.refs.map(function (r) {
+      return (r.n > 1 ? r.n + '&times;' : '') + r.label + ' ' + f5(r.E) + ' ' + liveCell(c.id + ':' + r.label, r.E); }).join('<br>');
+    var D = binding(c, false), err = 100 * (D / c.expD - 1);
+    h += '<tr class="' + (c.limit ? 'limit' : '') + '"><td class="l"><b>' + c.name + '</b></td><td class="l">' + c.model
+      + (c.note ? '<br><span class="muted">' + c.note + '</span>' : '') + '</td><td class="l">' + c.geom + '</td><td>' + f5(c.mol.E)
+      + '</td><td>' + liveCell(c.id + ':mol', c.mol.E) + '</td><td class="l">' + refs + '</td><td>' + f3(D)
+      + ' <span class="' + (Math.abs(err) < 25 ? 'ok' : Math.abs(err) < 100 ? 'warn' : 'bad') + '">(' + (err >= 0 ? '+' : '') + err.toFixed(0) + '%)</span></td><td>'
+      + (anyLive ? f3(binding(c, true)) : '<span class="muted">&ndash;</span>') + '</td><td class="l">' + c.exp + '</td><td class="l">'
+      + '<button data-k="' + c.id + ':mol">molecule</button>'
+      + c.refs.map(function (r) { return '<button data-k="' + c.id + ':' + r.label + '">' + r.label + '</button>'; }).join('') + '</td></tr>';
+  });
+  document.getElementById('best').innerHTML = h;
+  var x = '<tr><th class="l">X<sub>2</sub></th><th class="l">configuration, core</th><th>r<sub>c</sub></th><th>R<sub>e</sub> 2hom</th><th>R<sub>e</sub> 2split</th>'
+        + '<th>D<sub>e</sub> 2hom</th><th>D<sub>e</sub> 2split</th><th class="l">exp. R<sub>e</sub> / D<sub>e</sub></th><th class="l">verdict</th></tr>';
+  X2.forEach(function (r) {
+    x += '<tr><td class="l"><b>' + r[0] + '</b></td><td class="l">' + r[1] + '</td><td>' + r[2].toFixed(2) + '</td><td>' + r[3] + '</td><td>' + r[4]
+      + '</td><td>' + (r[5] === null ? 'rising' : r[5].toFixed(3)) + '</td><td>' + (r[6] === null ? 'rising' : r[6].toFixed(3)) + '</td><td class="l">' + r[7]
+      + '</td><td class="l ' + r[8] + '">' + (r[8] === 'ok' ? 'exp. between 2hom and 2split' : (r[3] === 'none' ? 'no minimum' : 'over-binds ~2&times;')) + '</td></tr>';
+  });
+  document.getElementById('x2').innerHTML = x;
+  var y = '<tr><th class="l">molecule</th><th class="l">construction</th><th class="l">bond</th><th>R<sub>e</sub></th><th>R<sub>exp</sub></th>'
+        + '<th>atomis. at R<sub>exp</sub></th><th>max</th><th>exp.</th><th class="l">verdict</th></tr>';
+  LIN.forEach(function (r) {
+    var e = r[7] ? 100 * (r[5] / r[7] - 1) : null;
+    y += '<tr><td class="l"><b>' + r[0] + '</b></td><td class="l">' + r[1] + '</td><td class="l">' + r[2] + '</td><td>' + r[3] + '</td><td>' + r[4]
+      + '</td><td>' + r[5].toFixed(3) + (e === null ? '' : ' <span class="' + (Math.abs(e) < 25 ? 'ok' : 'warn') + '">(' + (e >= 0 ? '+' : '') + e.toFixed(0) + '%)</span>')
+      + '</td><td>' + (r[6] === null ? 'rising' : r[6].toFixed(3)) + '</td><td>' + (r[7] === null ? '' : r[7].toFixed(3)) + '</td><td class="l ' + r[8] + '">'
+      + (r[8] === 'ok' ? 'in range' : 'needs mesh ladder') + '</td></tr>';
+  });
+  document.getElementById('lin').innerHTML = y;
+  Array.prototype.forEach.call(document.querySelectorAll('#best button'), function (b) {
+    b.onclick = function () { queue = [b.getAttribute('data-k')]; next(); }; });
 }
 
-function bindReport(key, M, box, h) {
-  if (window._E === undefined) return { why: 'no energy yet' };
-  if (M.atoms.length < 2) return { why: 'single atom - this run IS a reference' };
-  var gate = (window.USER_W_KIN_GATE !== undefined ? window.USER_W_KIN_GATE : 0.1);
-  // sigma MUST be in the key. It was not, and that silently paired a sigma=0.627 molecule with a
-  // sigma=1 atom: H2 then reported E_bind = 0.188011 (+7.8%, apparently OVER-binding) where the
-  // matched atom (-0.499901) gives 0.161053 (-7.7%, UNDER-binding). The sign inverted, and a whole
-  // conclusion was drawn from it before the mismatch was noticed. sigma sets the cusp resolution
-  // and therefore every energy, so a reference at a different sigma is not a reference at all.
-  var sig = (window.USER_SOFT !== undefined ? window.USER_SOFT : 1);
-  var gkey = box + '|' + h.toFixed(3) + '|' + gate + '|s' + Number(sig).toFixed(3);
-  var set = E_ATOM_SETS[gkey];
-  if (!set) return { why: 'no atomic references at ' + gkey + ' (box|h|gate); run the single atoms on THIS grid' };
-  var sum = 0, miss = [];
-  for (var i = 0; i < M.atoms.length; i++) {
-    var el = M.atoms[i].el;
-    if (set[el] === undefined) { if (miss.indexOf(el) < 0) miss.push(el); } else sum += set[el];
-  }
-  if (miss.length) return { why: 'no ' + miss.join('/') + ' reference at ' + gkey };
-  var eb = sum - window._E, out = { eb: eb, gkey: gkey };
-  var D = D_EXP[key];
-  if (D) {
-    // the ERROR, both as an absolute energy and as a fraction, against both conventions
-    out.err = [];
-    ['De', 'D0'].forEach(function (nm) {
-      if (D[nm] === undefined) return;
-      out.err.push({ name: nm, ref: D[nm], dE: eb - D[nm], pct: 100 * (eb - D[nm]) / D[nm] });
-    });
-  }
-  return out;
+// ---- live runner: h2_beta.html in an iframe; its console.log is wrapped to catch CONVERGED / FORCE ----
+var queue = [], current = null;
+function find(key) {
+  var p = key.split(':'), c = CASES.filter(function (x) { return x.id === p[0]; })[0];
+  if (p[1] === 'mol') return { c: c, q: c.mol.q, label: c.name.replace(/<[^>]+>/g, '') + ' molecule' };
+  var r = c.refs.filter(function (x) { return x.label === p[1]; })[0];
+  return { c: c, q: r.q, label: r.label + ' reference (' + c.name.replace(/<[^>]+>/g, '') + ')' };
 }
-
-var MOLS = {
-  h: { name: 'H  single atom  [E_bind reference + null test]', ext: 0.000, nelec: 1, atoms: [
-      { x:  0.00000, y:  0.00000, z:  0.00000, el:'H', Z:1 },
-  ]},
-  c: { name: 'C  single atom  [E_bind reference]', ext: 0.000, nelec: 4, atoms: [
-      { x:  0.00000, y:  0.00000, z:  0.00000, el:'C', Z:4 },
-  ]},
-  // SHELL MODEL WITH A PSEUDO INNER CORE (Claes 2026-11-08): kernel Z_x = 4 carries the 1s pair as a
-  // pseudocore (?rc= at its PHYSICAL radius, Slater 0.263 for C), valence explicit and SPLIT into
-  // four one-electron tetrahedral sectors. Compare with `c` (one 4-electron blob) at equal rc.
-  // FAILED 2026-11-09: at rc 0 the lone atom is not spherical (mu 0.134 D -- the kernel cell is owned
-  // by one sector); at rc 0.263 it diverges (E -7.97, mu 0.50). Blob `c` is the working entry.
-  c4s: { name: 'C  pseudo-1s + valence split 4 x 1e (tetra)  [shell model, pseudo core]', ext: 0.000, nelec: 4, atoms: [
-      { x: 0, y: 0, z: 0, el:'C', Z:4, sp:4 },
-  ]},
-  // ALL-ELECTRON carbon, hom2 core + valence, both free (?sh=1; add ?shv=1 for a hom4 valence). The
-  // 3D version of atom_simulator's 2+4: no r_c, the core/valence boundary found by non-overlap.
-  // FAILED 2026-11-09: E = NaN from step 0-500, hom or split valence. Not debugged.
-  c_sh: { name: 'C  all-electron 2+4 on Z=6  [?sh=1; ?shv=1 = hom valence]', ext: 0.000, nelec: 6, atoms: [
-      { x: 0, y: 0, z: 0, el:'C', Z:4, Zfull:6, sh:[2,4] },
-  ]},
-  // atom_simulator's PHYSICAL carbon, 2+2+2 (1D: -37.376, 1.2% from exact). In ?sh=1 the inner two
-  // shells are shape-locked spheres -- so here TWO VALENCE electrons are locked spherical too.
-  // FAILED 2026-11-09: E = NaN from step 0-500, as c_sh. Not debugged.
-  c_sh222: { name: 'C  all-electron 2+2+2 on Z=6  [?sh=1; 1D physical config]', ext: 0.000, nelec: 6, atoms: [
-      { x: 0, y: 0, z: 0, el:'C', Z:4, Zfull:6, sh:[2,2,2] },
-  ]},
-  n: { name: 'N  single atom  [E_bind reference]', ext: 0.000, nelec: 3, atoms: [
-      { x:  0.00000, y:  0.00000, z:  0.00000, el:'N', Z:3 },
-  ]},
-  o: { name: 'O  single atom  [E_bind reference]', ext: 0.000, nelec: 3, atoms: [
-      { x:  0.00000, y:  0.00000, z:  0.00000, el:'O', Z:3 },
-  ]},
-  // SPLIT ATOMIC REFERENCES. The blob entries above carry Z_x electrons in ONE domain, which has
-  // no intra-domain repulsion, and that is the suspected whole cause of their over-binding
-  // (C 2.57x, N/O 2.03x against the sum of their ionization energies; H, with one electron and
-  // therefore NO pairs, is right to 3%). Dividing each over-binding by the pairs the blob fails
-  // to count gives 1.43 Ha/pair for C and 1.16 for O, i.e. <1/r12> implying r12 = 0.70 and
-  // 0.86 a0 -- a valence-shell separation, so the magnitudes fit.
-  //   PREDICTION under splitting: E(C) rises by ~8.55 Ha to about -5.45, E(O) by ~3.47 to about
-  //   -3.37. A much smaller rise means the over-binding is NOT the missing repulsion.
-  // These are separate entries so the blob references stay reproducible.
-  // SECOND ROW AT FULL VALENCE, Z_x = 1..8. Required for an ATOMIC validation because Z_x is the
-  // only label distinguishing elements: at the molecular truncations (H1 C4 N3 O3) lithium is
-  // bit-identical to hydrogen and B = N = O collapse onto one object at Z_x = 3. Reference is the
-  // sum of IEs to strip the whole valence, = |E_neutral - E_core| from atom_simulator.html's
-  // REF_ETOT and its fitted coreE(Z); validated on carbon to 0.2% against the recorded 2.57x.
-  // He+ : ONE electron on a Z=2 kernel. Exact energy -Z^2/2 = -2.0, no interface, no partition,
-  // no two-electron content -- so this is the Z=2 member of the hydrogenic family and the system
-  // that fixes sigma(2), exactly as H fixes sigma(1).
-  // WHY IT IS NEEDED (measured 2026-11-08): sigma calibrated on H (0.627 at h=0.10) does NOT
-  // transfer to Z=2. It UNDER-softens the sharper Z=2 cusp, and helium came out -2.415723 against
-  // exact -2.903724, i.e. 16.8% shallow -- WORSE than the 10.5% at sigma=1 -- with mu = 0.512 D
-  // where sphericity demands identically zero. One sigma cannot serve two kernel charges.
-  // So the scheme is sigma(Z), one value per kernel charge, each fixed on the corresponding
-  // hydrogenic ion. Still no molecular observable consumed; a function of Z, not one constant.
-  // CONSTRUCTION: sp:1 gives one domain with the full kernel charge and target 1 electron.
-  heplus: { name: 'He+  1e on Z=2  [fixes sigma(2); exact -2.0]', ext: 0, nelec: 1, atoms: [
-      { x:0, y:0, z:0, el:'He', Z:2, sp:1, ax:[0,0,1] },
-  ]},
-  // ONE-ELECTRON IONS on the plain single-domain path (ne:1). sigma(Z) is calibrated HERE, against
-  // the exact -Z^2/2, because He+ at the hydrogen sigma 0.627 gives -2.053 (2.7% deep): sigma
-  // already depends on Z with ONE electron, so a 2hom fit would mix that with the pair's shape.
-  hyd2: { name: 'He+  1e on Z=2, single domain  [sigma(2); exact -2.0]', ext: 0, nelec: 1, atoms: [ { x:0,y:0,z:0, el:'He', Z:2, ne:1 } ]},
-  hyd3: { name: 'Li2+ 1e on Z=3, single domain  [sigma(3); exact -4.5]', ext: 0, nelec: 1, atoms: [ { x:0,y:0,z:0, el:'Li', Z:3, ne:1 } ]},
-  hyd4: { name: 'Be3+ 1e on Z=4, single domain  [sigma(4); exact -8.0]', ext: 0, nelec: 1, atoms: [ { x:0,y:0,z:0, el:'Be', Z:4, ne:1 } ]},
-  // HE-LIKE IONS: two electrons in ONE domain on a kernel of charge Z -- the 2hom core, which is
-  // the construction the atom model actually uses for inner shells. Calibrating sigma HERE rather
-  // than on a one-electron ion calibrates it in the configuration it will be used in.
-  //
-  // CALIBRATE AGAINST THE RHF ENERGY OF THE ION, NOT THE EXACT ONE. 2hom is the RHF ansatz for a
-  // two-electron closed shell (one spatial shape, one Coulomb pair -- confirmed: Vee = 1.0197
-  // against RHF's J = 1.0258 for He, 0.6%). The exact energy includes correlation, which the
-  // construction has none of, so calibrating to it would make sigma absorb a physical omission --
-  // the r_c failure mode. RHF targets leave correlation a declared omission.
-  //
-  // MEASURED so far (He, Z=2, box 12): sigma 0.2846 -> -3.022386 ; sigma 0.627 -> -2.771193,
-  // against RHF -2.861680. So sigma(2) ~ 0.504, against sigma(1) = 0.627 -- sigma DECREASES with Z,
-  // since a more compact density needs less artificial weakening to reach the right depth.
-  // Two points fit sigma(Z) ~ 0.627 Z^(-1/3) (0.498 predicted vs 0.504 measured), predicting
-  // sigma(3) ~ 0.435 for Li+. HOLD THAT LOOSELY -- it is two points.
-  //
-  // RHF REFERENCES NOT ASSERTED: only He's -2.861680 is used here. Look up the He-like RHF series
-  // before quoting Li+/Be2+/C4+/N5+/O6+; do not recall them.
-  heli3: { name: 'Li+  2e on Z=3, one domain  [2hom core; tests sigma(3)]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'Li', Z:3, ne:2 } ]},
-  heli4: { name: 'Be2+ 2e on Z=4, one domain  [2hom core]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'Be', Z:4, ne:2 } ]},
-  heli6: { name: 'C4+  2e on Z=6, one domain  [2hom core of carbon]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'C', Z:6, ne:2 } ]},
-  heli7: { name: 'N5+  2e on Z=7, one domain  [2hom core of nitrogen]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'N', Z:7, ne:2 } ]},
-  heli8: { name: 'O6+  2e on Z=8, one domain  [2hom core of oxygen]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'O', Z:8, ne:2 } ]},
-  // HELIUM, restored 2026-11-07 (removed in the H,C,N,O reduction). Needed because He is the
-  // SECOND minimal two-electron system and the other half of the hard-vs-diffuse bracket: its
-  // interface passes THROUGH the kernel, cutting the density maximum, where H2's midplane sits in
-  // the tail between two kernels. Measured: INT_Gamma u^2 dS = 1.681 for He against 0.496 for H2.
-  // USE he_split, NOT he_v: he_v puts both electrons in ONE domain, which counts NO
-  // electron-electron pair inside itself and therefore carries no V_ee -- kept only as that control.
-  // CAVEAT: He's split plane is IMPOSED (sp:2 along z); nothing in the system picks it, unlike H2's
-  // midplane which symmetry fixes. So this row carries an arbitrary orientation that H2's does not.
-  he_split: { name: 'He  split 2x1e hemi  [two-domain He: the bracket entry]', ext: 0, nelec: 2, atoms: [
-      { x:0,y:0,z:0, el:'He', Z:2, sp:2, ax:[0,0,1] },
-  ]},
-  // HOMOGENEOUS He: both electrons in ONE domain sharing one shape. NOT a no-V_ee control -- I
-  // labelled it that from a memory about a different solver. mol_fast carries multi-occupancy
-  // (fm = 1/selfN for selfN > 1, mol_fast.js:838), so this domain gets Vee = INT(P_m - P_m/2)u^2,
-  // i.e. exactly ONE pair.
-  // CONNECTION TO HF: for a two-electron closed shell, both electrons in one spatial shape with
-  // exactly one Coulomb pair IS the restricted Hartree-Fock ansatz -- RHF's exchange cancels
-  // precisely half the self-interaction, leaving one J integral, which the i != j rule gives
-  // directly. So this should land on the RHF limit -2.861680, and its shortfall against the exact
-  // -2.903724 is the correlation energy (-0.0420). It is the natural BALANCE to the hard split:
-  // one shared shape (correlation-free, under-binds) against one territory each (over-binds 4.2%).
-  he_v: { name: 'He  homogeneous: 2e in ONE domain, one shared shape  [= RHF ansatz]', ext: 0, nelec: 2, atoms: [ { x:0,y:0,z:0, el:'He', Z:2 } ]},
-  // HeH+ : the ASYMMETRIC two-electron system, and the only one here that can settle the
-  // formulation question. H2 and He both have interfaces fixed by symmetry, where amplitude
-  // matching and zero flux COINCIDE (the two constructions agree to 4e-8), so neither can
-  // distinguish them. HeH+ has unequal kernels, so its interface is at no symmetry plane.
-  // CONSTRUCTION: sp:1 on He decouples the electron count from the kernel charge -- the sp branch
-  // gives one domain per q with Z on the first and target 1 each -- so this is 2 domains, 2
-  // electrons, kernels Z=2 and Z=1. Net charge +1.
-  // GEOMETRY: R_e = 1.4632 a0 (0.7743 A), placed symmetric about the origin like the other entries.
-  // NOT commensurate at h=0.10, so scan 1.3 and 1.5 via ?sep= and bracket it.
-  // CONFOUND TO DECLARE: the two kernels have DIFFERENT Z, so one softening sigma cannot be
-  // calibrated for both -- sigma fixed on H (Z=1) is not right for He (Z=2), whose cusp is sharper.
-  // An error here could be the interface asymmetry OR the Z mismatch. The clean alternative with
-  // equal kernels is H2 with the interface displaced off-centre, which is already measured in
-  // tools/axisym_h1.py (the two constructions differ ~5x there).
-  // REFERENCE ENERGY NOT VERIFIED: do not quote a total energy or D_e for HeH+ from memory. Look
-  // it up before use; only R_e = 1.4632 is asserted here.
-  hehp: { name: 'HeH+  2e on Z=2 and Z=1  [ASYMMETRIC interface -- the formulation test]',
-          ext: 0.7316, nelec: 2, atoms: [
-      { x: -0.73160, y: 0.00000, z: 0.00000, el:'He', Z:2, sp:1, ax:[1,0,0] },
-      { x:  0.73160, y: 0.00000, z: 0.00000, el:'H',  Z:1 },
-  ]},
-  h2: { name: 'H2 hydrogen', ext: 0.700, nelec: 2, atoms: [
-      { x: -0.70014, y:  0.00000, z:  0.00000, el:'H', Z:1 },
-      { x:  0.70014, y:  0.00000, z:  0.00000, el:'H', Z:1 },
-  ]},
-  n2: { name: 'N2 nitrogen', ext: 1.037, nelec: 6, atoms: [
-      { x: -1.03746, y:  0.00000, z:  0.00000, el:'N', Z:3 },
-      { x:  1.03746, y:  0.00000, z:  0.00000, el:'N', Z:3 },
-  ]},
-  o2: { name: 'O2 oxygen', ext: 1.141, nelec: 6, atoms: [
-      { x: -1.14139, y:  0.00000, z:  0.00000, el:'O', Z:3 },
-      { x:  1.14139, y:  0.00000, z:  0.00000, el:'O', Z:3 },
-  ]},
-  // X-H DIATOMICS (2026-11-09), observed R_e (Huber-Herzberg): OH 0.9697 A, NH 1.0362 A, CH 1.1199 A.
-  // Two centres, and hydrogen has no core -- the most favourable case the model has. No X-H bond
-  // length had ever been computed in this project; scan with ?R= (a0). Heavy atom at -R/2, H at +R/2.
-  oh: { name: 'OH hydroxyl  [X-H scan]', ext: 0.916, nelec: 4, atoms: [
-      { x: -0.91622, y: 0, z: 0, el:'O', Z:3 },
-      { x:  0.91622, y: 0, z: 0, el:'H', Z:1 },
-  ]},
-  nh: { name: 'NH imidogen  [X-H scan]', ext: 0.979, nelec: 4, atoms: [
-      { x: -0.97905, y: 0, z: 0, el:'N', Z:3 },
-      { x:  0.97905, y: 0, z: 0, el:'H', Z:1 },
-  ]},
-  ch: { name: 'CH methylidyne  [X-H scan]', ext: 1.058, nelec: 5, atoms: [
-      { x: -1.05815, y: 0, z: 0, el:'C', Z:4 },
-      { x:  1.05815, y: 0, z: 0, el:'H', Z:1 },
-  ]},
-  co: { name: 'CO carbon monoxide', ext: 1.066, nelec: 7, atoms: [
-      { x: -1.06581, y:  0.00000, z:  0.00000, el:'C', Z:4 },
-      { x:  1.06581, y:  0.00000, z:  0.00000, el:'O', Z:3 },
-  ]},
-  co2: { name: 'CO2 carbon dioxide', ext: 2.196, nelec: 10, atoms: [
-      { x: -2.19586, y:  0.00000, z:  0.00000, el:'O', Z:3 },
-      { x:  0.00000, y:  0.00000, z:  0.00000, el:'C', Z:4 },
-      { x:  2.19586, y:  0.00000, z:  0.00000, el:'O', Z:3 },
-  ]},
-  n2o: { name: 'N2O nitrous oxide [new]', ext: 2.203, nelec: 9, atoms: [
-      { x: -2.16726, y:  0.00000, z:  0.00000, el:'N', Z:3 },
-      { x: -0.03527, y:  0.00000, z:  0.00000, el:'N', Z:3 },
-      { x:  2.20254, y:  0.00000, z:  0.00000, el:'O', Z:3 },
-  ]},
-  hcn: { name: 'HCN hydrogen cyanide', ext: 2.123, nelec: 8, atoms: [
-      { x: -2.06799, y:  0.00000, z:  0.00000, el:'H', Z:1 },
-      { x: -0.05543, y:  0.00000, z:  0.00000, el:'C', Z:4 },
-      { x:  2.12342, y:  0.00000, z:  0.00000, el:'N', Z:3 },
-  ]},
-  c2h2: { name: 'C2H2 acetylene', ext: 3.145, nelec: 10, atoms: [
-      { x: -3.14450, y:  0.00000, z:  0.00000, el:'H', Z:1 },
-      { x: -1.13667, y:  0.00000, z:  0.00000, el:'C', Z:4 },
-      { x:  1.13667, y:  0.00000, z:  0.00000, el:'C', Z:4 },
-      { x:  3.14450, y:  0.00000, z:  0.00000, el:'H', Z:1 },
-  ]},
-  c2n2: { name: 'C2N2 cyanogen', ext: 3.499, nelec: 14, atoms: [
-      { x: -3.49883, y:  0.00000, z:  0.00000, el:'N', Z:3 },
-      { x: -1.31241, y:  0.00000, z:  0.00000, el:'C', Z:4 },
-      { x:  1.31241, y:  0.00000, z:  0.00000, el:'C', Z:4 },
-      { x:  3.49883, y:  0.00000, z:  0.00000, el:'N', Z:3 },
-  ]},
-  c3o2: { name: 'C3O2 carbon suboxide [new]', ext: 4.634, nelec: 18, atoms: [
-      { x: -4.63361, y:  0.00000, z:  0.00000, el:'O', Z:3 },
-      { x: -2.43586, y:  0.00000, z:  0.00000, el:'C', Z:4 },
-      { x:  0.00000, y:  0.00000, z:  0.00000, el:'C', Z:4 },
-      { x:  2.43586, y:  0.00000, z:  0.00000, el:'C', Z:4 },
-      { x:  4.63361, y:  0.00000, z:  0.00000, el:'O', Z:3 },
-  ]},
-  hc3n: { name: 'HC3N cyanoacetylene [new]', ext: 4.626, nelec: 16, atoms: [
-      { x: -4.44550, y:  0.00000, z:  0.00000, el:'H', Z:1 },
-      { x: -2.44636, y:  0.00000, z:  0.00000, el:'C', Z:4 },
-      { x: -0.16773, y:  0.00000, z:  0.00000, el:'C', Z:4 },
-      { x:  2.43329, y:  0.00000, z:  0.00000, el:'C', Z:4 },
-      { x:  4.62631, y:  0.00000, z:  0.00000, el:'N', Z:3 },
-  ]},
-  c4h2: { name: 'C4H2 diacetylene [new]', ext: 5.599, nelec: 18, atoms: [
-      { x: -5.59926, y:  0.00000, z:  0.00000, el:'H', Z:1 },
-      { x: -3.59142, y:  0.00000, z:  0.00000, el:'C', Z:4 },
-      { x: -1.30769, y:  0.00000, z:  0.00000, el:'C', Z:4 },
-      { x:  1.30769, y:  0.00000, z:  0.00000, el:'C', Z:4 },
-      { x:  3.59142, y:  0.00000, z:  0.00000, el:'C', Z:4 },
-      { x:  5.59926, y:  0.00000, z:  0.00000, el:'H', Z:1 },
-  ]},
-  h2o_split: { name: 'H2O water  [O split 3x1e]', ext: 1.477, nelec: 5, atoms: [
-      { x:  0.00000, y:  0.73827, z:  0.00000, el:'O', Z:3, sp:3, ax:[0,0,1] },
-      { x: -1.43024, y: -0.36914, z:  0.00000, el:'H', Z:1 },
-      { x:  1.43024, y: -0.36914, z:  0.00000, el:'H', Z:1 },
-  ]},
-  h2o: { name: 'H2O water  [O as one blob]', ext: 1.477, nelec: 5, atoms: [
-      { x:  0.00000, y:  0.73827, z:  0.00000, el:'O', Z:3 },
-      { x: -1.43024, y: -0.36914, z:  0.00000, el:'H', Z:1 },
-      { x:  1.43024, y: -0.36914, z:  0.00000, el:'H', Z:1 },
-  ]},
-  h2o_a90: { name: 'H2O  angle 90 deg   [on-lattice <110>]', ext: 1.348, nelec: 5, atoms: [   // bonds on face diagonals: |x|=|y|
-      { x:  0.00000, y:  0.85270, z:  0.00000, el:'O', Z:3 },
-      { x: -1.27905, y: -0.42635, z:  0.00000, el:'H', Z:1 },
-      { x:  1.27905, y: -0.42635, z:  0.00000, el:'H', Z:1 },
-  ]},
-  h2o_a109: { name: 'H2O  angle 109.47 deg [off-lattice]', ext: 1.517, nelec: 5, atoms: [   // tetrahedral angle, no cubic orbit
-      { x:  0.00000, y:  0.69623, z:  0.00000, el:'O', Z:3 },
-      { x: -1.47692, y: -0.34811, z:  0.00000, el:'H', Z:1 },
-      { x:  1.47692, y: -0.34811, z:  0.00000, el:'H', Z:1 },
-  ]},
-  h2o_a120: { name: 'H2O  angle 120 deg  [off-lattice]', ext: 1.595, nelec: 5, atoms: [   // no cubic orbit
-      { x:  0.00000, y:  0.60295, z:  0.00000, el:'O', Z:3 },
-      { x: -1.56651, y: -0.30148, z:  0.00000, el:'H', Z:1 },
-      { x:  1.56651, y: -0.30148, z:  0.00000, el:'H', Z:1 },
-  ]},
-  h2o_z2: { name: 'H2O  O as +2 [no lone sector, depth confound]', ext: 1.477, nelec: 4, atoms: [   // Z=2: 2 electrons, 2 bonds
-      { x:  0.00000, y:  0.73829, z:  0.00000, el:'O', Z:2 },
-      { x: -1.43022, y: -0.36915, z:  0.00000, el:'H', Z:1 },
-      { x:  1.43022, y: -0.36915, z:  0.00000, el:'H', Z:1 },
-  ]},
-  nh3: { name: 'NH3 ammonia', ext: 1.781, nelec: 6, atoms: [
-      { x:  0.00000, y: -0.00000, z: -0.54003, el:'N', Z:3 },
-      { x:  1.77167, y: -0.00000, z:  0.18001, el:'H', Z:1 },
-      { x: -0.88584, y:  1.53431, z:  0.18001, el:'H', Z:1 },
-      { x: -0.88584, y: -1.53431, z:  0.18001, el:'H', Z:1 },
-  ]},
-  ch4: { name: 'CH4 methane', ext: 2.054, nelec: 8, atoms: [
-      { x:  0.00000, y:  0.00000, z:  0.00000, el:'C', Z:4 },
-      { x:  1.18595, y:  1.18595, z:  1.18595, el:'H', Z:1 },
-      { x:  1.18595, y: -1.18595, z: -1.18595, el:'H', Z:1 },
-      { x: -1.18595, y:  1.18595, z: -1.18595, el:'H', Z:1 },
-      { x: -1.18595, y: -1.18595, z:  1.18595, el:'H', Z:1 },
-  ]},
-  h2co: { name: 'H2CO formaldehyde', ext: 2.267, nelec: 9, atoms: [
-      { x:  0.00000, y: -0.01582, z:  0.00000, el:'C', Z:4 },
-      { x:  0.00000, y:  2.26697, z:  0.00000, el:'O', Z:3 },
-      { x: -1.79334, y: -1.12557, z:  0.00000, el:'H', Z:1 },
-      { x:  1.79334, y: -1.12557, z:  0.00000, el:'H', Z:1 },
-  ]},
-};
-
-(function () {
-  // A MOLECULE SIMULATOR ON MEASURED GEOMETRIES.
-  //
-  // Each entry carries experimental internal coordinates converted to Cartesian and centred.
-  // At the measured geometry the true force on every nucleus is ZERO, so the computed force is
-  // model error read directly -- no reference calculation, no scan, no minimum-finding.
-  //
-  // WHAT THE PAGE CHECKS ON EVERY RUN, because a plausible-looking number is the failure mode:
-  //   V_KK   exact arithmetic (sum Z_a Z_b / R_ab) on the geometry ACTUALLY BUILT
-  //   Fsum   must vanish: it equals the net force of the electron cloud on the nuclei, so it is
-  //          a CONVERGENCE meter -- but symmetry cancels it, so it informs only in unprotected
-  //          directions. Symmetric molecules get a per-atom zero check instead where one applies.
-  //
-  // LIMITS, measured 2026-11: mol_fast caps at 16 domains. Shallow kernels do not converge, so
-  // C+4/N+3/O+3 and never C+2. Threefold and bent geometries (NH3, H2O) suffer cubic-grid
-  // anisotropy and are the worst cases. Absolute energies are not converged at these meshes and
-  // depend strongly on the kernel softening -- H2's bond moves 1.375 -> 1.625 as eps goes
-  // 0 -> h in an independent solver -- so read DIRECTIONS and error bars, not absolute numbers.
-  var qp  = new URLSearchParams(location.search);
-  var key = qp.get('mol') || 'ch4';
-  if (!MOLS[key]) key = 'ch4';
-  var M = MOLS[key];
-  // ?R= (a0) : BOND-LENGTH SCAN for a diatomic -- kernels at -R/2 and +R/2 on x, nothing rounded.
-  // With R a multiple of 2h both kernels sit exactly on grid nodes (commensurate). Copied, so the
-  // MOLS entry keeps its observed geometry for every other use.
-  var R_SCAN = parseFloat(qp.get('R'));
-  if (isFinite(R_SCAN) && M.atoms.length === 2) {
-    M = Object.assign({}, M, { atoms: [
-      Object.assign({}, M.atoms[0], { x: -R_SCAN / 2, y: 0, z: 0 }),
-      Object.assign({}, M.atoms[1], { x:  R_SCAN / 2, y: 0, z: 0 }) ] });
-  }
-
-  // Box from the molecule's own extent: the outermost nucleus plus room for its electron cloud
-  // (~3 a0) plus margin. Undersized boxes were a real error source -- several runs were silently
-  // wall-clipped before the extents were checked.
-  // Auto-sized from the molecule's own extent. ?box= OVERRIDES it, which is required for any
-  // comparison that varies geometry: opening water's bond angle changes the extent, which changes
-  // the auto box and therefore the mesh, so an angle ladder on the default sizing silently compares
-  // rows at different h. Rows must share a box to be read against one another.
-  var box = parseFloat(qp.get('box') || '0') || Math.ceil((M.ext + 3.0) * 2 + 4);
-  if (box < (M.ext + 3.0) * 2) console.warn('box ' + box + ' is smaller than the molecule needs');
-  var hTarget = parseFloat(qp.get('h') || '0.14');
-  var N = Math.round(box / hTarget / 2) * 2;
-  var h = box / N, N2 = Math.round(N / 2);
-
-  // An atom may carry sp:n, meaning its valence is SPLIT into n one-electron domains at that
-  // site rather than held as one n-electron blob. That is the house construction -- n unit charges
-  // give n(n-1)/2 pairs, each counted once -- and for water it is the difference between right and
-  // wrong: the recorded result is that correct polarity needs SPLIT O and r_c = 0, while a
-  // non-split blob inverts it. Only the FIRST sibling carries the kernel charge; mol_fast sums
-  // Z over entries at a site, so the others take Z:0. Angular split type follows the count.
-  // ?sep= OVERRIDES a diatomic's separation, keeping the centroid. This is what lets the
-  // dissociation path be walked: E_bind = integral of F dR from R_e to infinity is the WORK done
-  // against the restoring force to pull the molecule apart. That route never computes a separated
-  // atom -- the composition is identical at every point and the dissociation limit is reached by
-  // the same code with the same domains -- so the atomic references' 2-2.6x over-binding, which
-  // currently cancels only by assumption, drops out by construction.
-  // It requires the force to be a TRUE GRADIENT, which the volume integral is (agreeing with
-  // -dE/dR to 4-6%) and the old sampled point-gradient was not, so this was previously unavailable.
-  if (qp.get('sep') && M.atoms.length === 2) {
-    var sepWant = parseFloat(qp.get('sep'));
-    var ax = M.atoms[0], bx = M.atoms[1];
-    var d0 = Math.sqrt(Math.pow(ax.x-bx.x,2) + Math.pow(ax.y-bx.y,2) + Math.pow(ax.z-bx.z,2));
-    var f = sepWant / d0, cx = (ax.x+bx.x)/2, cy = (ax.y+bx.y)/2, cz = (ax.z+bx.z)/2;
-    M = JSON.parse(JSON.stringify(M));          // do not mutate the shared MOLS entry
-    var P = [[ax.x,ax.y,ax.z],[bx.x,bx.y,bx.z]], C = [cx,cy,cz];
-    for (var q = 0; q < 2; q++) {
-      M.atoms[q].x = C[0] + (P[q][0]-C[0])*f;
-      M.atoms[q].y = C[1] + (P[q][1]-C[1])*f;
-      M.atoms[q].z = C[2] + (P[q][2]-C[2])*f;
-    }
-    M.ext = Math.max(M.ext, sepWant/2);
-  }
-
-  var SPLIT_BY_N = { 2: 'hemi', 3: 'third', 4: 'tetra' };
-  // HOISTED, like USER_RC before it: declared inside M.atoms.forEach it is out of scope in the
-  // title readout, which is a separate closure -- "FREE is not defined" on every run. Second time
-  // tonight; the rule is that anything the TITLE reports must be declared at this level.
-  var FREE = (qp.get('free') || '').split(',').filter(function (x) { return x !== ''; }).map(Number);
-  var USER_RC = parseFloat(qp.get('rc')); if (!isFinite(USER_RC)) USER_RC = 0;
-  // -----------------------------------------------------------------------------------------
-  // NESTED SHELLS (?sh=1). An atom entry carrying `sh: [n0, n1, ..., nv]` is built ALL-ELECTRON:
-  // the kernel takes the FULL nuclear charge and every electron is represented, so the valence is
-  // excluded from the core region BY THE CORE ELECTRONS THEMSELVES, through non-overlap. No r_c,
-  // no clamp-vs-depletion choice, nothing calibrated -- Z is the only supplied quantity, and the
-  // core is COMPRESSIBLE where a radius merely forbids.
-  //
-  // Copied from mol_fast_oh_drho.html's ?shells=242L, which is the only form with a recorded
-  // justification. Two rules from there, both measured, neither optional:
-  //
-  //   * INNER shells are spherical blobs (`sph:true`) with r_in/r_out SEEDING the sort order.
-  //     Core electrons are inert and spherical; a freely-deforming 3D core is what the valence
-  //     invades. The radii are recomputed from the density each update, so only the ORDERING is
-  //     imposed, not the size.
-  //   * the VALENCE is SPLIT and gets NO r_in. Measured on OH at r_c = 0: a 2e valence gives
-  //     mu_x = +0.778 (correct) split into two 1e domains and -0.470 (INVERTED) as a single blob
-  //     -- a spherical domain cannot move charge between its near and far sides, so under
-  //     pressure it TRANSLATES bodily (shell 2 shifted +0.117 a.u. toward the hydrogen). And an
-  //     r_in on the valence WALLS it at R2 so it cannot retreat, which inverts the polarity the
-  //     same way r_c does. Its inner limit must be found by non-overlap, not decreed.
-  var R1 = parseFloat(qp.get('r1')); if (!isFinite(R1)) R1 = 0.30;
-  var R2 = parseFloat(qp.get('r2')); if (!isFinite(R2)) R2 = 0.80;
-  var SH = qp.get('sh') === '1';
-  // mol_fast gates r_in/r_out (p.shells[m].x/.y) behind SHELL_MODE -- without this the nesting
-  // fields are silently ignored and every shell competes isotropically, which is NOT the
-  // construction. mol_fast_oh_drho.html sets it for exactly this reason.
-  if (SH) window.USER_SHELL_MODE = true;
-  // ?order=1 : radial ORDER with free radii (mol_fast USER_SHELL_ORDER, as mol_fast_oh_drho ?order=1).
-  // Every USER_SHELL_UPDATE (?supd=, default 250) steps the domains on one kernel are ranked by mean
-  // radius and each boundary is put at the radius enclosing the cumulative electron count -- the 1D
-  // solver's construction. Without it nothing keeps the valence out of the core (c_sh, wd=0: E -65.0
-  // against -37.845 exact, VeK -125).
-  if (SH && qp.get('order') === '1') {
-    window.USER_SHELL_ORDER = true;
-    window.USER_SHELL_UPDATE = parseInt(qp.get('supd') || '250', 10);
-  }
-  // ?clamp=1 selects the CLAMP core model instead of hard depletion. Two different mechanisms for
-  // the same job, and mol_fast implements them as an either/or:
-  //   hard depletion (default) -- drives the WEIGHT to zero inside r_c, so the density is
-  //     territorially excluded. Measured on carbon at r_c=0.7: E -15.106 -> -6.702, removing 87%
-  //     of the over-binding and moving <r> from 0.45 to 1.15 a0.
-  //   clamp (this flag)        -- flattens the KERNEL, r_soft = max(r_soft, r_c), capping the
-  //     attraction at -Z/r_c. Density may still sit inside r_c, feeling no inward force there.
-  // Recorded two-centre result: the clamp beats depletion only on SHALLOW plateaus and breaks at
-  // kernel depth >= 1.3 Ha, which a +4 kernel far exceeds -- so expect it to be the worse model
-  // here, and treat a better result as the one needing scrutiny.
-  window.USER_CLAMP_RC = qp.get('clamp') === '1';
-  // ?corefix=1 : let split siblings share the kernel's own cell. See mol_fast.js.
-  window.USER_CORE_SYMM = qp.get('corefix') === '1';
-  // ?sax=x,y,z overrides every entry's split axis. The physics is rotation-invariant; the GRID is
-  // not, so comparing [0,0,1] (dividing plane lying on cell faces) against a rotated axis
-  // (cutting cells obliquely) separates a construction effect from a cubic-grid artefact.
-  var SAX = (function () {
-    var v = qp.get('sax'); if (!v) return null;
-    var a = v.split(',').map(Number);
-    return (a.length === 3 && a.every(isFinite)) ? a : null;
-  })();
-  var nuclei = [], targets = [], labels = [];
-  M.atoms.forEach(function (a, ai) {
-    // ?rc= INNER CUTOFF (core-exclusion radius), default 0. This is not a cosmetic knob: with
-    // r_c = 0 the pseudokernel is a bare +Z_x with nothing holding the valence out of the vacant
-    // core, and the valence COLLAPSES. Measured on carbon at the declared grid: VeK = -35.3303 for
-    // 4 electrons on a +4 kernel gives <1/r> = 2.21, i.e. <r> = 0.45 a0 against a real 2s/2p mean
-    // radius near 1.6 -- about 3.5x too close in, which accounts for the whole 2.78x over-binding.
-    // In a real atom orthogonality to 1s does this job; here only r_c can. Calibrated values
-    // recorded elsewhere in this project: O 0.787, Cl 1.108, both from the ionization energy.
-    // CAUTION: check cells per r_c before trusting a radius -- at h = 0.1, r_c = 0.4 is only four
-    // cells and the cusp is then under-resolved.
-    // ?free=1,2 releases ONLY the listed atoms (0-based), everything else held. Without it, ?dyn=1
-    // releases all kernels at once -- and that is the suspected cause of the three-centre failure:
-    // with several kernels moving, each one's force depends on where the others currently are, so
-    // the relaxation is a FEEDBACK LOOP and can settle into a limit cycle rather than a minimum.
-    // Recorded symptom: three-centre relaxation oscillates ~0.03 Ha out to 3e5 steps. Releasing one
-    // kernel at a time removes the coupling entirely -- each step is a 1D descent -- at the cost of
-    // needing an outer iteration over which atom is free, and of breaking the molecule's symmetry
-    // during each step (so SigmaF is not a valid check mid-sequence; only at the end).
-    // mol_fast already honours `fixed` per nucleus (mol_fast.js:35); only this page set it uniformly.
-    var heldFlag = FREE.length ? (FREE.indexOf(ai) < 0) : !qp.get('dyn');
-    // PER-ELEMENT CORE RADIUS: ?rcC= / ?rcN= / ?rcO= (any element symbol) override ?rc= for that
-    // element, so hydrogen -- which has no core -- can keep r_c = 0 while the heavy atoms carry one.
-    // Absent, every atom takes ?rc= exactly as before (bit-identical for existing URLs). In the
-    // default (non-shell) mode each atom's r_c depletes EVERY domain, not just its own: the core
-    // excludes the neighbour's valence too.
-    var rcEl = parseFloat(qp.get('rc' + a.el));
-    var base = { i: N2 + a.x / h, j: N2 + a.y / h, k: N2 + a.z / h,
-                 rc: isFinite(rcEl) ? rcEl : USER_RC, fixed: heldFlag };
-    // the shell test must come FIRST: a shell atom carries `sh` but no `sp`, so `!a.sp` would
-    // otherwise swallow it and build ONE domain holding every electron (measured: ndom=3 instead
-    // of 5 for h2o_sh, E = -89.6 with VeK = -224).
-    if (!a.sp && !(SH && a.sh)) {
-      nuclei.push(Object.assign({}, base, { Z: a.Z }));
-      // `ne` = electrons in this domain when it differs from the kernel charge (an ION). Without it
-      // the count defaults to Z: heli3 was built as NEUTRAL Li, three electrons in one blob
-      // (measured q_u = 3.000, Vee = 4.68), because `nelec` on the entry is only a label.
-      targets.push(a.ne != null ? a.ne : a.Z); labels.push(a.el);
-    } else if (SH && a.sh) {
-      // inner shells: spherical blobs, radii seeded and then free; the FIRST carries the kernel
-      var nsh = a.sh.length, rads = [R1, R2];
-      for (var sIdx = 0; sIdx < nsh - 1; sIdx++) {
-        var d = Object.assign({}, base, {
-          Z: sIdx === 0 ? a.Zfull : 0, rc: 0, z_init: sIdx === 0 ? a.Zfull : a.sh[sIdx],
-          sph: true, shell_id: sIdx });
-        if (sIdx > 0) d.r_in = rads[sIdx - 1];
-        d.r_out = rads[sIdx];
-        nuclei.push(d); targets.push(a.sh[sIdx]); labels.push(a.el + '.s' + sIdx);
-      }
-      // valence: SPLIT, and deliberately NO r_in and NO r_out
-      // ?shv=1: keep the valence as ONE homogeneous domain (the 1D atom simulator's hom valence)
-      // instead of splitting it -- the 3D counterpart of atom_simulator's 2+4 construction.
-      var nv = a.sh[nsh - 1], nvd = qp.get('shv') === '1' ? 1 : Math.min(nv, 4), per = nv / nvd;
-      for (var v = 0; v < nvd; v++) {
-        nuclei.push(Object.assign({}, base, {
-          Z: 0, rc: 0, z_init: nv, split: SPLIT_BY_N[nvd] || 'sphere', split_idx: v,
-          split_axis: SAX || a.ax || [1, 0, 0], shell_id: nsh - 1,
-          split_fix: qp.get('sfix') === '0' ? false : true }));
-        targets.push(per); labels.push(a.el + '.v' + v);
-      }
-    } else {
-      for (var q = 0; q < a.sp; q++) {
-        nuclei.push(Object.assign({}, base, {
-          Z: q === 0 ? a.Z : 0, split: SPLIT_BY_N[a.sp] || 'sphere', split_idx: q,
-          split_axis: SAX || a.ax || [0, 0, 1], z_init: 2.0,
-          split_fix: qp.get('sfix') === '0' ? false : true }));
-        targets.push(1); labels.push(a.el + '.' + q);
-      }
-    }
-  });
-  // THE DISPLACEMENT METRIC. SigmaF is a force residual: symmetry-cancelled for symmetric
-  // molecules (CO2 and CH4 read ~0 whatever the accuracy), mesh-unconverged, and in arbitrary
-  // units. Displacement from the OBSERVED geometry under released kernels has none of those
-  // defects -- it is a length, in the units the model claims to predict, and it is NOT
-  // symmetry-protected: CO2 can contract symmetrically with SigmaF staying exactly zero while
-  // every bond is wrong. Reported as radial (% of each bond) and angular (degrees) SEPARATELY,
-  // because the two are in different accuracy classes: ~1% on water's angle against ~41% on H2's
-  // bond length. Requires ?dyn=1; with the kernels held every displacement is identically zero.
-  //   kernelOf[a] = the domain carrying atom a's charge. Split siblings share a site but are
-  //   separate domains that dynamics can move apart, so the atom's position is the kernel's.
-  var kernelOf = [], kd = 0;
-  M.atoms.forEach(function (at, ai) { kernelOf[ai] = kd; kd += (at.sp || 1); });
-  var startPos = kernelOf.map(function (d) {
-    return [nuclei[d].i, nuclei[d].j, nuclei[d].k];
-  });
-  // bonds = pairs closer than 3.2 a0 in the OBSERVED geometry, with the angle at every atom
-  // carrying two or more of them
-  function posAU(idx, live) {
-    var n = live ? (window._nuclei && window._nuclei[kernelOf[idx]]) : null;
-    var p = n ? [n.i, n.j, n.k] : startPos[idx];
-    return [p[0]*h, p[1]*h, p[2]*h];
-  }
-  function dist(u, v) { var d=0; for (var c=0;c<3;c++) d += (u[c]-v[c])*(u[c]-v[c]); return Math.sqrt(d); }
-  // Bonded if d < 1.3*(r_cov_i + r_cov_j), covalent radii in a0. A FLAT cutoff cannot work: it
-  // either counts water's non-bonded H-H (2.8605 a0) as a bond -- which then generates spurious
-  // O-H-H angles of 37.75 deg -- or it misses H2's genuine H-H at 1.40. The radius sum separates
-  // them: 1.3*(0.59+0.59) = 1.53, above H2's bond and below water's H...H gap.
-  var RCOV = { H: 0.59, C: 1.44, N: 1.34, O: 1.25 };
-  var bonds = [], nbr = M.atoms.map(function () { return []; });
-  for (var bi = 0; bi < M.atoms.length; bi++)
-    for (var bj = bi+1; bj < M.atoms.length; bj++) {
-      var d0 = dist(posAU(bi,false), posAU(bj,false));
-      var lim = 1.3 * ((RCOV[M.atoms[bi].el] || 1.3) + (RCOV[M.atoms[bj].el] || 1.3));
-      if (d0 < lim) { bonds.push([bi,bj,d0]); nbr[bi].push(bj); nbr[bj].push(bi); }
-    }
-  var angles = [];
-  M.atoms.forEach(function (at, ai) {
-    for (var x = 0; x < nbr[ai].length; x++)
-      for (var y = x+1; y < nbr[ai].length; y++) angles.push([nbr[ai][x], ai, nbr[ai][y]]);
-  });
-  function angleAt(tri, live) {
-    var A=posAU(tri[0],live), B=posAU(tri[1],live), C=posAU(tri[2],live), u=[],v=[];
-    for (var c=0;c<3;c++) { u.push(A[c]-B[c]); v.push(C[c]-B[c]); }
-    var du=Math.sqrt(u[0]*u[0]+u[1]*u[1]+u[2]*u[2]), dv=Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
-    var dot=(u[0]*v[0]+u[1]*v[1]+u[2]*v[2])/(du*dv);
-    return Math.acos(Math.max(-1,Math.min(1,dot))) * 180/Math.PI;
-  }
-  var angles0 = angles.map(function (t) { return angleAt(t,false); });
-
-  // V_KK by hand on the built geometry -- the one check nothing can satisfy accidentally
-  var vkkExp = 0;
-  for (var a = 0; a < M.atoms.length; a++)
-    for (var b = a + 1; b < M.atoms.length; b++) {
-      var A1 = M.atoms[a], B1 = M.atoms[b];
-      var d = Math.sqrt(Math.pow(A1.x-B1.x,2) + Math.pow(A1.y-B1.y,2) + Math.pow(A1.z-B1.z,2));
-      if (d > 0) vkkExp += A1.Z * B1.Z / d;
-    }
-
-  window.USER_NN = N;
-  window.USER_SCREEN = box;
-  window.USER_NUCLEI = nuclei;
-  window.USER_NORM_TARGETS = targets;
-  window.USER_WEIGHTED_DENSITY = true;    // the consistent functional: every term weighted by w
-  // KINETIC TERM: w-WEIGHTED (default here) or CUT OFF at a w threshold.
-  //   ?wkinw=0          use the GATE instead of w-weighting
-  //   ?wkingate=<t>     the threshold; mol_fast inherits 0.1 from h2o.js, the ORIGINAL p5 uses 0.5
-  // mol_fast.js:153 is explicit that this is not cosmetic: "on a DIFFUSE w the choice decides how
-  // many interface cells pay kinetic cost, which is exactly what sets a bond length". A HIGHER
-  // threshold means fewer interface cells pay, less kinetic energy, more binding, shorter bond.
-  // 0.5 is worth testing because it is the p5 value -- an independent, pre-existing choice, and p5
-  // is the construction that gave H2 ~ -1.17. Searching for a value that fits would be a FIT;
-  // testing one chosen elsewhere is not.
-  window.USER_W_KIN_WEIGHT = qp.get('wkinw') !== '0';
-  if (qp.get('wkingate')) window.USER_W_KIN_GATE = parseFloat(qp.get('wkingate'));
-  // KERNEL SOFTENING, eps = SOFT*h. This was hard-coded to 1 with no recorded reason, overriding
-  // mol_fast's own default of 2. But the collapse criterion is Z*h/c <~ 0.1 with eps = c*h, and at
-  // h = 0.14 that gives Z*h/c = 0.42 for O+3 and 0.56 for C+4 -- 4 to 6 times INSIDE the collapse
-  // regime. h2o_mol.html sets soft = ceil(Z_max*h/0.1) for exactly this reason, its header noting
-  // that getting it wrong is what left ClO2 with a monotone E(R) and no minimum at all.
-  // ?soft= overrides; ?soft=auto applies the criterion from the deepest kernel actually present.
-  var zMax = Math.max.apply(null, nuclei.map(function (q) { return q.Z; }).concat([1]));
-  // MEASURED 2026-11-04: SigmaF is monotone in the ABSOLUTE softening length eps = SOFT*h, and
-  // is NOT monotone in Z*h/c -- six water runs collapse onto one curve in eps (0.140 -> 0.471,
-  // 0.175 -> 0.394, 0.280 -> 0.375, 0.420 -> 0.229, 0.700 -> 0.177, 0.980 -> 0.160) with no
-  // feature at the Z*h/c = 0.1 criterion. So eps is the quantity to control:
-  //   ?eps=<a0>  fixes the softening LENGTH, setting SOFT = eps/h. Required for any comparison
-  //              across molecules (whose boxes and therefore h differ) or across meshes -- with
-  //              SOFT held fixed instead, refining h silently sharpens the kernel and the ladder
-  //              measures eps rather than h.
-  //   ?soft=     fixes the MULTIPLE, so eps rides on h. This is the shipped default (soft=1).
-  //              NOTE it does NOT spoil the published table: hTarget is pinned at 0.14, so h spans
-  //              only 0.1389-0.1413 across the sixteen molecules (1.7%), which moves SigmaF by
-  //              ~0.8% -- the table is a valid comparison at eps ~ 0.14. What it cannot support is
-  //              an ABSOLUTE value, since water's SigmaF runs 0.16 to 0.62 over eps 0.98 to 0.08.
-  var softQ = qp.get('soft'), epsQ = qp.get('eps');
-  window.USER_SOFT = epsQ ? (parseFloat(epsQ) / h)
-                   : (softQ === 'auto') ? Math.max(1, Math.ceil(zMax * h / 0.1))
-                   : (softQ ? parseFloat(softQ) : 1);
-  // R_init caps each domain's INITIAL territory at 3.0 au from its own nucleus, leaving everything
-  // beyond unowned (w = 0 for every domain) -- permanently, since neither u nor w can move first
-  // into it, so amplitude leaking there steals normalisation from the core.
-  //
-  // MEASURED 2026-11-04, H2 at h=0.10, eps=h, consistent scheme, ONLY R_init varied:
-  //     rinit=3.0  E=-1.134067  bond +28.3%
-  //     rinit=4.5  E=-1.138203  bond +28.2%
-  // i.e. 0.004 Ha and 0.1 percentage points. **THE HALO IS A MINOR EFFECT HERE.**
-  // mol_fast.js:1354 attributes V_eK +0.165 and E +0.127 Ha to it, but that figure comes from
-  // comparing mol_fast against the ORIGINAL P5, which differs in far more than R_init -- p5 imposes
-  // a hard symmetric midplane where mol_fast evolves a free front -- so the whole scheme difference
-  // was charged to the halo. The direct ladder the comment itself asks for gives 30x less.
-  // ?rinit= DEFAULT LEFT AT THE INHERITED 3.0 deliberately: changing it would silently shift every
-  // number measured against the old behaviour, including the sixteen-molecule table. Pass
-  // ?rinit=<au> to test, e.g. half the box to cover it.
-  window.USER_R_INIT = parseFloat(qp.get('rinit') || '3.0');
-  // ?wdiff= interface sharpness. With weighted density + weighted kinetic term this is a
-  // CONVERGENCE parameter, not a fitted one -- sharpening w approaches the true disjoint-domain
-  // problem (mol_fast.js:183). Default 0.05 is inherited, and no ladder has ever been run on it.
-  if (qp.get('wdiff')) window.USER_W_DIFF = parseFloat(qp.get('wdiff'));
-  // ?wfloor= the one w cut-off that touches the DYNAMICS (mol_fast.js:412, inside the w-update):
-  //   if (nw < W_FLOOR && w_max_other > 0.5) nw = 0
-  // Default 0, i.e. no cut-off at all -- w is only clamped non-negative. It exists because the
-  // diffusion term smears a residue behind a RETREATING front which advection later regrows, seen
-  // directly as a charge seeded inside the Li+ core being expelled and then reappearing. Not to be
-  // confused with W_KIN_GATE (0.1), which thresholds w for the kinetic ENERGY only and is measured
-  // to leave geometry and forces bit-identical.
-  if (qp.get('wfloor')) window.USER_W_FLOOR = parseFloat(qp.get('wfloor'));
-  // ?udecay= clears the FROZEN RESIDUE. Where w = 0 every term of the u update is gated to zero,
-  // so u is "FROZEN at whatever the initial seed left -- not relaxed, just stationary"
-  // (mol_fast.js:270), and with wd=0 that stale density is counted as real charge: "it is the sense
-  // in which this solver's domains OVERLAP while the model's do not". U_DECAY multiplies the
-  // amplitude by (1-d) each step wherever w < 0.5, so non-overlap holds for the DENSITY and not
-  // only for the occupancy. Default 0 because every page here was tuned with the residue present.
-  // p5 achieves the same end differently: it ZEROES u outside each domain at initialisation.
-  if (qp.get('udecay')) window.USER_U_DECAY = parseFloat(qp.get('udecay'));
-  // ?uzero=1 is p5's ACTUAL mechanism, and mol_fast.js:150 says so: "zero u outside its own
-  // Voronoi cell AT INITIALISATION, as the original p5 solver does".
-  // WHY IT IS THE RIGHT MIMIC. p5 never has to choose between u^2 and u^2*w, because confining the
-  // amplitude makes them IDENTICAL -- u = 0 wherever w = 0. The choice only arises in mol_fast
-  // because its u is frozen at the seed outside its territory, so the density must be weighted to
-  // avoid counting that residue, and weighting is what introduces the partial-weight interface
-  // kinetic term. Confine u and the question disappears.
-  if (qp.get('uzero')) window.USER_U_ZERO_INIT = true;
-  // ?fn=1 STRONG homogeneous Neumann per domain: the kinetic flux through any face joining cells of
-  // different ownership is OMITTED (face weight 0 instead of the averaged 0.5), which is exactly
-  // "faces joining two KEPT cells" in tools/axisym_realqm.py. Zero flux IS du/dn = 0 -- nothing is
-  // imposed, the face simply is not assembled. The energy's kinetic term uses the same face weights,
-  // so the diagnostic still mirrors the solver.
-  if (qp.get('fn')) window.USER_FACE_NEUMANN = true;
-  // ?zinit= the SEED's decay rate. The initial amplitude is exp(-z_init*r) (mol_fast.js:1448),
-  // defaulting to Z. Outside its own territory u is never relaxed -- "frozen at whatever the initial
-  // seed left" -- and with wd=1 it carries no density either, so it is neither relaxed NOR
-  // constrained, yet it enters the interface kinetic term through Du = u_out - u_c.
-  // THE TEST: if the binding energy depends on z_init, that term's magnitude is set by an arbitrary
-  // initialisation and the -1.0% result is an artefact. If E_bind is flat in z_init, the seed washes
-  // out and the frozen value is effectively determined by the problem.
-  var zi = qp.get('zinit');
-  if (zi) nuclei.forEach(function (q) { q.z_init = parseFloat(zi); });
-  // ?wd=0 switches the density from u^2*w back to u^2 -- p5's choice (its Poisson source is
-  // 2*PI*dt*u^2 with no w factor, and its normalisation is over u^2). Only meaningful together
-  // with udecay, since wd=0 alone reinstates the overlap p5 does not have.
-  if (qp.get('wd') === '0') window.USER_WEIGHTED_DENSITY = false;
-  // ?wadv= FRONT SPEED. mol_fast's default 1 "makes the front crawl ... the u-field then
-  // equilibrates at essentially fixed territory and the geometry is the last thing to settle,
-  // which is the WRONG ORDER for a free-boundary problem" (mol_fast.js:250). The original p5 uses
-  // advection 10 with diffusion 2, where mol_fast ships 1 with 0.05 -- so p5's territory and
-  // amplitude settle together, as a free-boundary problem should.
-  // STABILITY IS MEASURED AND TIGHT: W_ADV=2 conserves charge, 4 at diff=0.1 diverged, 10 ended
-  // with 4.3 and 5.3 units of charge instead of 3. But that test paired high advection with LOW
-  // diffusion; p5 pairs it with HIGH diffusion, which damps the front. The file's own prescription
-  // is "keep W_ADV at a few, raise W_DIFF to damp the front instead, and ALWAYS check charge
-  // conservation -- q_u per domain must come back at its target".
-  if (qp.get('wadv')) window.USER_W_ADV = parseFloat(qp.get('wadv'));
-  window.USER_FORCE_VOLUME = true;        // volume integral, not the point gradient
-  window.USER_DYNAMICS = !!qp.get('dyn');
-  window.USER_STEPS = parseInt(qp.get('steps') || '120000', 10);
-  // Smaller plots: the default 620 px canvas plus a 220x280 3D view crowds the readout panel.
-  // ?px= overrides. Defaults in mol_fast.js are untouched, so other pages are unaffected.
-  window.USER_CANVAS_PX = parseInt(qp.get('px') || '336', 10);
-  // the 3D view is drawn inside the scaled frame, so leave it at its native size
-  // and let the frame scaling shrink it along with everything else.
-
-  // picker
-  var sel = '<select id="mol" onchange="location.search=\'?mol=\'+this.value">';
-  Object.keys(MOLS).forEach(function (k) {
-    sel += '<option value="' + k + '"' + (k === key ? ' selected' : '') + '>' + MOLS[k].name + '</option>';
-  });
-  document.getElementById('picker').innerHTML = sel + '</select>';
-  document.getElementById('geom').innerHTML =
-    M.atoms.length + ' atoms / ' + nuclei.length + ' domains, ' + M.nelec + ' electrons &middot; Z=[' +
-    M.atoms.map(function (a) { return a.el + a.Z; }).join(' ') + ']<br>' +
-    'box ' + box + ' a<sub>0</sub>, n=' + N + ', h=' + h.toFixed(4) +
-    ' &middot; extent ' + M.ext.toFixed(2) + ' a<sub>0</sub>' +
-    (nuclei.length > 16 ? ' <b style="color:#f66">exceeds the 16-domain cap</b>' : '');
-
+function setStatus(t) { document.getElementById('status').innerHTML = t; }
+function next() {
+  if (!queue.length) { current = null; return; }
+  current = queue.shift();
+  var j = find(current), fr = document.getElementById('sim');
+  fr.style.display = 'block';
+  document.getElementById('force').textContent = '';
+  setStatus('running <b>' + j.label + '</b> &hellip; <span class="muted">h2_beta.html?' + j.q + '</span>');
   var t0 = Date.now();
-  // CHARGE CONSERVATION. readDomainCentroids is async and returns q_u (what the solver normalises)
-  // and q_uw (the charge inside the domain's own territory). With WEIGHTED_DENSITY the density IS
-  // u^2*w and normalisation enforces int u^2 w = target, so q_uw should return AT its target; a
-  // drift means the front has broken the partition, and the file notes these failures "announce
-  // themselves there long before the picture looks wrong".
-  var qReport = '';
-  setInterval(function () {
-    // q_uw lives in readDomainProfiles, NOT readDomainCentroids -- I called the wrong one and
-    // got q=[?,?]. The field is at mol_fast.js:1968, inside the profiles readback.
-    if (typeof window.readDomainProfiles !== 'function') return;
-    window.readDomainProfiles().then(function (out) {
-      var arr = Array.isArray(out) ? out : (out && out.domains) || (out && out.profiles);
-      if (!arr || !arr.length) { qReport = ' q=unavailable'; return; }
-      var bad = 0, parts = [];
-      // q_u is what the solver NORMALISES and is the conservation check the source demands
-      // ("q_u per domain must come back at its target"). q_uw is the charge inside the domain's
-      // OWN TERRITORY, which is legitimately < target whenever u extends beyond w -- and it does,
-      // since the u-update's flux carries face-averaged w and so pushes amplitude into the first
-      // cell outside. Claes observed exactly this in p5: u fills the vacuum while w keeps the gap.
-      // Flagging on q_uw therefore reports a normal feature as a failure; only q_u can fail.
-      arr.forEach(function (d, di) {
-        // WHICH integral is normalised depends on WEIGHTED_DENSITY: wd=1 enforces int u^2 w
-        // (so q_uw hits the target and q_u legitimately exceeds it by the residue), wd=0 enforces
-        // int u^2 (so q_u hits it and q_uw falls short by the residue). Checking the wrong one
-        // reports a normal feature as a failure -- which this check did twice before.
-        var tgt = targets[di], q = d.q_u, qw = d.q_uw;
-        var qchk = window.USER_WEIGHTED_DENSITY ? qw : q;
-        if (qchk !== undefined && Math.abs(qchk - tgt) > 0.02 * Math.max(1, tgt)) bad++;
-        parts.push((q === undefined ? '?' : q.toFixed(3))
-                   + '/' + (qw === undefined ? '?' : qw.toFixed(3)));
-      });
-      qReport = ' q_u/q_uw=[' + parts.join(' ') + ']' + (bad ? ' CHARGE_DRIFT=' + bad : '');
-    }).catch(function () {});
-  }, 6000);
-  setInterval(function () {
-    var ls = document.getElementById('loadStatus');
-    if (ls && document.getElementById('defaultCanvas0')) ls.style.display = 'none';
-    var F = window.nucForce, rows = '', sx = 0, sy = 0, sz = 0, fmax = 0;
-    if (F) {
-      for (var a = 0; a < nuclei.length; a++) {
-        var f = F[a] || [0,0,0], m = Math.sqrt(f[0]*f[0]+f[1]*f[1]+f[2]*f[2]);
-        sx += f[0]; sy += f[1]; sz += f[2]; fmax = Math.max(fmax, m);
-        rows += '<tr><td>' + labels[a] + '</td><td align=right>' + m.toFixed(5) + '</td></tr>';
-      }
-    }
-    // DISPLACEMENT FROM THE OBSERVED GEOMETRY -- the measure of success, reported as a length.
-    var maxRad = 0, maxAng = 0;
-    function geomReport() {
-      if (!window._nuclei) return '';
-      if (!qp.get('dyn')) return '<br><span style="color:#789;font-size:10.5px">nuclei held'
-        + ' &mdash; displacement is zero by construction; add ?dyn=1 to measure it</span>';
-      var rows = '';
-      bonds.forEach(function (b) {
-        var d = dist(posAU(b[0],true), posAU(b[1],true)), pc = 100*(d-b[2])/b[2];
-        maxRad = Math.max(maxRad, Math.abs(pc));
-        rows += M.atoms[b[0]].el + '&ndash;' + M.atoms[b[1]].el + ' ' + d.toFixed(4)
-             + ' vs ' + b[2].toFixed(4) + ' (<b style="color:'
-             + (Math.abs(pc) < 2 ? '#6c6' : Math.abs(pc) < 10 ? '#fc6' : '#f66') + '">'
-             + (pc>=0?'+':'') + pc.toFixed(1) + '%</b>)<br>';
-      });
-      angles.forEach(function (t, ti) {
-        var a1 = angleAt(t,true), da = a1 - angles0[ti];
-        maxAng = Math.max(maxAng, Math.abs(da));
-        rows += M.atoms[t[0]].el + '&ndash;' + M.atoms[t[1]].el + '&ndash;' + M.atoms[t[2]].el
-             + ' ' + a1.toFixed(2) + '&deg; vs ' + angles0[ti].toFixed(2) + '&deg; (<b style="color:'
-             + (Math.abs(da) < 2 ? '#6c6' : Math.abs(da) < 10 ? '#fc6' : '#f66') + '">'
-             + (da>=0?'+':'') + da.toFixed(2) + '&deg;</b>)<br>';
-      });
-      return '<br><b>displacement from observed</b><br><span style="font-size:10.5px">'
-        + rows + '</span>';
-    }
-    // AXIAL FORCE for a diatomic -- the integrand of E_bind = int F dR, i.e. the component that
-    // changes the separation:  F_R = (F2 - F1).e / 2,  e the bond unit vector.
-    // SIGN: F_R > 0 pushes the atoms APART (net repulsion), F_R < 0 pulls them TOGETHER.
-    // So the work to dissociate is  E_bind = -int_{Re}^{inf} F_R dR, positive for a bound molecule.
-    // Using (F2-F1)/2 rather than one atom's force cancels any spurious NET force on the pair,
-    // which matters: mol_fast_h2_scan.html carries a constant ~0.05 Ha/bohr offset with 42-91%
-    // per-atom asymmetry, and that page's forces are unusable because of it.
-    var fax = null;
-    if (M.atoms.length === 2 && F && F[0] && F[1]) {
-      var p0 = posAU(0, !!qp.get('dyn')), p1 = posAU(1, !!qp.get('dyn')), e = [], L = 0;
-      for (var c = 0; c < 3; c++) { e.push(p1[c] - p0[c]); L += e[c]*e[c]; }
-      L = Math.sqrt(L);
-      if (L > 0) {
-        fax = 0;
-        for (var c2 = 0; c2 < 3; c2++) fax += (F[1][c2] - F[0][c2]) * (e[c2]/L);
-        fax /= 2;
-      }
-    }
-    var fs = Math.sqrt(sx*sx + sy*sy + sz*sz);
-    var rel = fmax > 0 ? 100 * fs / fmax : 0;
-    // V_KK against exact arithmetic on the geometry ACTUALLY BUILT. With the kernels released the
-    // reference must be recomputed from their CURRENT positions -- comparing a relaxed V_KK against
-    // the starting geometry flagged a red MISMATCH on every dynamics run, which is a false alarm
-    // that discredits a check that in fact passes exactly (H2 held: 0.7141 vs 0.71414).
-    var vkk = window._E_KK, vkkRef = vkkExp;
-    if (qp.get('dyn') && window._nuclei) {
-      vkkRef = 0;
-      for (var p1 = 0; p1 < M.atoms.length; p1++)
-        for (var p2 = p1 + 1; p2 < M.atoms.length; p2++) {
-          var d2 = dist(posAU(p1, true), posAU(p2, true));
-          if (d2 > 0) vkkRef += M.atoms[p1].Z * M.atoms[p2].Z / d2;
-        }
-    }
-    var vok = (vkk !== undefined) && Math.abs(vkk - vkkRef) < 1e-3 * Math.max(1, vkkRef);
-    document.getElementById('checks').innerHTML =
-      '<table style="font-size:11px"><tr><th align=left>atom</th><th>|F|</th></tr>' + rows + '</table>'
-      + '<b>&Sigma;F</b> = ' + fs.toFixed(6) + '  (<b style="color:'
-      + (rel < 5 ? '#6c6' : rel < 20 ? '#fc6' : '#f66') + '">' + rel.toFixed(1) + '%</b> of |F|max)'
-      + '<br><span style="color:' + SYMNOTE[SYM[key]][1] + ';font-size:10.5px" title="'
-      + SYMNOTE[SYM[key]][2] + '">&#9432; ' + SYMNOTE[SYM[key]][0] + '</span>'
-      + '<br>V<sub>KK</sub> ' + (vkk === undefined ? '—' : vkk.toFixed(5))
-      + ' vs exact ' + vkkRef.toFixed(5)
-      + (qp.get('dyn') ? ' <span style="color:#789">(current geometry)</span>' : '')
-      + ' <b style="color:' + (vok ? '#6c6' : '#f66') + '">' + (vok ? 'OK' : 'MISMATCH') + '</b>'
-      + (function () {
-          if (window._mu_mag === undefined) return '';
-          var D = window._mu_mag * 2.5417, ex = MU_EXP[key];
-          var dir = (window._mu_x === undefined) ? '' :
-            ' dir=(' + window._mu_x.toFixed(3) + ',' + window._mu_y.toFixed(3) + ',' + window._mu_z.toFixed(3) + ')';
-          var t = '<br><b>&mu;</b> = ' + D.toFixed(3) + ' D' + dir;
-          if (ex === undefined) return t + '<span style="color:#889;font-size:10.5px"> (no checked value)</span>';
-          if (ex === 0) return t + ' vs <b>0 by symmetry</b> &mdash; <b style="color:'
-            + (D < 0.05 ? '#6c6' : D < 0.2 ? '#fc6' : '#f66') + '">' + D.toFixed(3) + ' D is pure error</b>';
-          return t + ' vs ' + ex.toFixed(3) + ' D = <b style="color:'
-            + (Math.abs(D - ex) / ex < 0.1 ? '#6c6' : Math.abs(D - ex) / ex < 0.3 ? '#fc6' : '#f66') + '">'
-            + (D >= ex ? '+' : '') + (100 * (D - ex) / ex).toFixed(1) + '%</b>';
-        })()
-      + '<br>E = ' + (window._E === undefined ? '—' : window._E.toFixed(6))
-      + (function () {
-          var t = totalErrReport(key);
-          if (!t) return '';
-          if (t.why) return '<span style="color:#889;font-size:10.5px"> &mdash; <i>' + t.why + '</i></span>';
-          return '<br><span style="font-size:10.5px">absolute error vs ' + t.ref.toFixed(6)
-               + ' <span style="color:#789">[' + t.src + ']</span>: <b style="color:'
-               + (Math.abs(t.pct) < 1 ? '#6c6' : Math.abs(t.pct) < 5 ? '#fc6' : '#f66') + '">'
-               + (t.dE >= 0 ? '+' : '') + t.dE.toFixed(6) + ' Ha ('
-               + (t.pct >= 0 ? '+' : '') + t.pct.toFixed(2) + '%)</b></span>';
-        })()
-      + (function () {
-          var b = bindReport(key, M, box, h);
-          if (b.eb === undefined)
-            return '<br><span style="color:#889;font-size:10.5px">E<sub>bind</sub> — <i>'
-                   + b.why + '</i></span>';
-          var t = '<br><b>E<sub>bind</sub></b> = ' + b.eb.toFixed(6)
-                + (b.eb > 0 ? '' : ' <b style="color:#f66">UNBOUND</b>')
-                + '<span style="color:#789;font-size:10.5px"> (refs ' + b.gkey + ')</span>';
-          if (!b.err) return t + '<br><span style="color:#889;font-size:10.5px">'
-            + 'error — <i>no checked experimental value for this molecule</i></span>';
-          // the ERROR against both conventions. They disagree by 6 points for H2, so showing one
-          // would be choosing an answer; the sign of the disagreement is the useful part.
-          t += '<br><span style="font-size:10.5px">error vs ';
-          b.err.forEach(function (e, i) {
-            t += (i ? ' &nbsp;|&nbsp; ' : '') + 'D<sub>' + e.name.slice(1) + '</sub>=' + e.ref.toFixed(6)
-               + ': <b style="color:'
-               + (Math.abs(e.pct) < 5 ? '#6c6' : Math.abs(e.pct) < 20 ? '#fc6' : '#f66') + '">'
-               + (e.dE >= 0 ? '+' : '') + e.dE.toFixed(6) + ' Ha ('
-               + (e.pct >= 0 ? '+' : '') + e.pct.toFixed(1) + '%)</b>';
-          });
-          return t + '</span>';
-        })()
-      + geomReport();
-    document.title = 'MOLSIM ' + key + ' t=' + ((Date.now()-t0)/1000).toFixed(0) + 's'
-      + ' step=' + (window._tStep === undefined ? '?' : window._tStep)
-      + ' E=' + (window._E === undefined ? 'n/a' : window._E.toFixed(6))
-      // ABSOLUTE error alongside the total, so the title never shows a good binding energy without
-      // the much larger total error it was differenced out of.
-      + (function () {
-          var t = totalErrReport(key);
-          return (!t || t.why) ? '' : ' errE=' + (t.dE >= 0 ? '+' : '') + t.dE.toFixed(6)
-               + '(' + (t.pct >= 0 ? '+' : '') + t.pct.toFixed(2) + '%)';
-        })()
-      + (window._mu_mag !== undefined ? ' mu=' + (window._mu_mag*2.5417).toFixed(3) + 'D' : '')
-      // SIGNED axial component, mol_fast convention mu = sum Z R - int rho r (points - to +). Diatomics
-      // are built heavy/first atom at -x: for CO (C at -x) mu_x > 0 is the EXPERIMENTAL C-O+ sign and
-      // mu_x < 0 is Hartree-Fock's wrong sign; for OH/NH/CH mu_x > 0 means X negative.
-      + (window._mu_x !== undefined ? ' mux=' + (window._mu_x*2.5417 >= 0 ? '+' : '') + (window._mu_x*2.5417).toFixed(3) + 'D' : '')
-      + ' Fsum=' + fs.toFixed(6) + ' (' + rel.toFixed(1) + '%)'
-      // E_bind in the TITLE as well as the panel: the drivers read the title, and computing the
-      // subtraction by hand between messages is how a mismatched-step atomic reference survived
-      // long enough to put a wrong -11.4% on record.
-      + (function () {
-          var b = bindReport(key, M, box, h);
-          if (b.eb === undefined) return ' Ebind=n/a';
-          return ' Ebind=' + b.eb.toFixed(6)
-               + (b.err || []).map(function (e) {
-                   return ' err' + e.name + '=' + (e.dE >= 0 ? '+' : '') + e.dE.toFixed(6)
-                        + '(' + (e.pct >= 0 ? '+' : '') + e.pct.toFixed(1) + '%)';
-                 }).join('');
-        })()
-      + (fax !== null ? ' Fax=' + (fax>=0?'+':'') + fax.toFixed(6) + ' R=' + L.toFixed(4) : '')
-      + ' VKK=' + (vkk === undefined ? 'n/a' : vkk.toFixed(4)) + '/' + vkkRef.toFixed(4)
-      // TERM BY TERM, so a difference against another implementation can be localised to one
-      // integral rather than inferred from the total. p5 prints [T, Vee+VeK, VKK] and Vee, so
-      // VeK = (Vee+VeK) - Vee recovers its fourth term and all four are comparable.
-      + (window._E_T !== undefined ? ' [T=' + window._E_T.toFixed(4)
-          + ' VeK=' + window._E_eK.toFixed(4)
-          + ' Vee=' + window._E_ee.toFixed(4)
-          + ' VKK=' + window._E_KK.toFixed(4) + ']' : '')
-      // ASSEMBLED-FIELD KINETIC ENERGY, the overlap-defect meter (mol_fast.js NRED_SLOTS comment).
-      // Tpsi = 1/2 int |grad(sum_m w_m u_m)|^2 against the per-domain T beside it; Npsi = int Psi^2,
-      // which must be read FIRST -- Tpsi is only comparable to T when Npsi is near the electron
-      // count, since sum_m w_m is not constrained to 1 here. gap = T - Tpsi, predicted POSITIVE.
-      + (window._T_psi !== undefined ? ' [Tpsi=' + window._T_psi.toFixed(4)
-          + ' gap=' + window._T_psi_gap.toFixed(4)
-          + ' Npsi=' + window._N_psi.toFixed(4) + '/'
-          + targets.reduce(function (s, t) { return s + t; }, 0).toFixed(0)
-          // SAME-PASS norm, the diagnostic's real self-test: for ONE domain Npsi <= normraw
-          // exactly. q_u/q_uw below come from a DIFFERENT readback and must not be used for this.
-          + ' normraw=' + (window._norm_raw || []).map(function (q) { return q.toFixed(4); }).join(',')
-          + ']' : '')
-      // ROBIN SURFACE MEASURE, sum_m INT u_m^2 |grad w_m| dV -- the phase-field form of
-      // INT_Gamma u^2 dS, which is what a Robin beta needs and what lets beta live in mol_fast
-      // without cut cells. Printed HALVED, because summing over all m counts each interface twice
-      // (once per side), so Ssurf/2 is what compares with axisym's 0.496 for H2 at D=2.1.
-      + (window._S_surf !== undefined ? ' Ssurf/2=' + (window._S_surf/2).toFixed(4) : '')
-      + (qp.get('dyn') ? ' dR=' + maxRad.toFixed(1) + '% dAng=' + maxAng.toFixed(2) + 'deg' : '')
-      + ' soft=' + window.USER_SOFT.toFixed(2) + ' eps=' + (window.USER_SOFT*h).toFixed(3)
-      + (FREE.length ? ' free=[' + FREE.join(',') + ']' : '')
-      + ' rc=' + USER_RC.toFixed(3) + ['C','N','O'].map(function (e) { var v = qp.get('rc' + e); return v !== null ? ' rc' + e + '=' + parseFloat(v).toFixed(3) : ''; }).join('') + (window.USER_CLAMP_RC ? ' CLAMP' : '')
-      + (SAX ? ' sax=[' + SAX.join(',') + ']' : '')
-      + (window.USER_CORE_SYMM ? ' corefix=1' : '')
-      + ' rinit=' + window.USER_R_INIT + ' wdiff=' + (window.USER_W_DIFF !== undefined ? window.USER_W_DIFF : 0.05)
-      + ' wkinw=' + (window.USER_W_KIN_WEIGHT ? 1 : 0)
-      + ' wkingate=' + (window.USER_W_KIN_GATE !== undefined ? window.USER_W_KIN_GATE : 0.1)
-      + ' wfloor=' + (window.USER_W_FLOOR !== undefined ? window.USER_W_FLOOR : 0)
-      + ' wadv=' + (window.USER_W_ADV !== undefined ? window.USER_W_ADV : 1)
-      + ' wd=' + (window.USER_WEIGHTED_DENSITY ? 1 : 0)
-      + ' udecay=' + (window.USER_U_DECAY !== undefined ? window.USER_U_DECAY : 0)
-      + ' uzero=' + (window.USER_U_ZERO_INIT ? 1 : 0)
-      + ' fn=' + (window.USER_FACE_NEUMANN ? 1 : 0)
-      + ' zinit=' + (nuclei[0] && nuclei[0].z_init !== undefined ? nuclei[0].z_init : 'dflt') + qReport
-      + ' | n=' + N + ' box=' + box + ' h=' + h.toFixed(4) + ' nat=' + M.atoms.length + ' ndom=' + nuclei.length;
-    // ?log=1: echo the title to the console, so a HEADLESS Chrome run (--enable-logging=stderr)
-    // can be read without AppleScript or a visible window.
-    if (qp.get('log') === '1') console.log(document.title);
-  }, 1500);
-})();
-
-// BOTH solvers define setup()/draw() for p5 and sit inert until p5 drives them, so p5 must load
-// AFTER the solver. A plain <script src> for the solver alone yields no canvas, no iteration and
-// no energies -- silently, with the page looking fine. Made this mistake twice in one session.
-var s = document.createElement('script');
-s.src = 'mol_fast.js?t=' + Date.now();
-s.onload = function () {
-  var p = document.createElement('script');
-  p.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
-  document.body.appendChild(p);
+  fr.onload = function () {
+    try {
+      var w = fr.contentWindow, orig = w.console.log.bind(w.console);
+      w.console.log = function () {
+        var s = Array.prototype.join.call(arguments, ' ');
+        try { handle(s, t0); } catch (e) {}
+        return orig.apply(null, arguments);
+      };
+    } catch (e) { setStatus('<span class="bad">cannot hook the solver console: ' + e + '</span>'); }
+  };
+  fr.src = 'h2_beta.html?' + j.q;
+}
+function handle(s, t0) {
+  if (!current) return;
+  var m = /^CONVERGED \S+ E=(-?[0-9.]+)/.exec(s);
+  if (m) {
+    LIVE[current] = { E: parseFloat(m[1]), when: new Date().toISOString().slice(0, 16), sec: Math.round((Date.now() - t0) / 1000) };
+    save(); render();
+    console.log('MOLSIM captured ' + current + ' E=' + m[1]);
+    setStatus('<span class="ok">converged</span> ' + find(current).label + ': E = ' + m[1] + ' (' + LIVE[current].sec + ' s)');
+    var done = current;
+    setTimeout(function () { if (current === done) next(); }, 1500);
+  }
+  if (/^FORCE /.test(s)) document.getElementById('force').textContent = s;
+}
+document.getElementById('all').onclick = function () {
+  queue = [];
+  CASES.forEach(function (c) { if (c.limit) return; queue.push(c.id + ':mol'); c.refs.forEach(function (r) { queue.push(c.id + ':' + r.label); }); });
+  next();
 };
-document.body.appendChild(s);
+document.getElementById('stop').onclick = function () {
+  queue = []; current = null; var fr = document.getElementById('sim'); fr.src = 'about:blank'; setStatus('stopped');
+};
+render();
+// ?run=bh:mol (or several, comma-separated): start those runs on load -- a deep link to one case
+(function () { var r = new URLSearchParams(location.search).get('run');
+  if (r) { queue = r.split(',').filter(function (k) { try { return !!find(k).q; } catch (e) { return false; } }); next(); } })();
 </script>
 </body></html>

@@ -566,6 +566,21 @@ fn inSplitAtom(dx: f32, dy: f32, dz: f32, r: f32, n: u32) -> bool {
     let sector = u32(floor((th + 3.14159265) / 2.09439510)) % 3u;
     return sector == atoms[n].splitIdx;
   }
+  // 12 = QUADRANT: four 90 deg wedges about the axis (same frame and rot convention as 3). Sector k covers
+  // th - rot in [-pi + k pi/2, -pi + (k+1) pi/2). Added 2026-11-13 for square-planar CH4 (D4h vs Td).
+  if (st == 12u) {
+    let qx = dx - dotp*a0; let qy = dy - dotp*a1; let qz = dz - dotp*a2;
+    var f1x: f32; var f1y: f32; var f1z: f32;
+    if (abs(a2) < 0.9) { f1x = a1; f1y = -a0; f1z = 0.0; } else { f1x = 0.0; f1y = a2; f1z = -a1; }
+    let f1L = max(sqrt(f1x*f1x+f1y*f1y+f1z*f1z), 1e-12);
+    f1x = f1x/f1L; f1y = f1y/f1L; f1z = f1z/f1L;
+    let f2x = a1*f1z - a2*f1y; let f2y = a2*f1x - a0*f1z; let f2z = a0*f1y - a1*f1x;
+    var tq = atan2(qx*f2x + qy*f2y + qz*f2z, qx*f1x + qy*f1y + qz*f1z) - atoms[n].splitRot;
+    if (tq < -3.14159265) { tq = tq + 6.28318530; }
+    if (tq >  3.14159265) { tq = tq - 6.28318530; }
+    let sq = u32(floor((tq + 3.14159265) / 1.57079633)) % 4u;
+    return sq == atoms[n].splitIdx;
+  }
   if (st == 4u) {
     // TETRAHEDRAL: four lobes. idx 3 points along -axis (the lone pair of an sp3 centre);
     // idx 0,1,2 at the tetrahedral polar angle 70.53 deg from +axis, 120 deg apart in azimuth,
@@ -2921,7 +2936,7 @@ function fillAtomBuf() {
     af[off + 6] = perZeff ? perZeff[n] || Z[n] : (window.INIT_ZEFF || Z[n]);
     af[off + 7] = perRcut ? perRcut[n] || 1e6 : (window.INIT_RCUT || 1e6);
     // Shell split (optional): splitType 0/1=sphere, 2=hemi, 3=third; sector idx; axis; rot
-    const stCode = { sphere: 0, hemi: 2, third: 3, tetra: 4, cube: 7, antiprism: 8, bond2back: 9, cone: 11 };
+    const stCode = { sphere: 0, hemi: 2, third: 3, tetra: 4, cube: 7, antiprism: 8, bond2back: 9, cone: 11, quad: 12 };
     const stv = SPLIT_TYPE[n];
     au[off + 8] = (typeof stv === 'string') ? (stCode[stv] || 0) : (stv || 0);
     au[off + 9] = SPLIT_IDX[n] || 0;
