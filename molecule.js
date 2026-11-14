@@ -581,6 +581,30 @@ fn inSplitAtom(dx: f32, dy: f32, dz: f32, r: f32, n: u32) -> bool {
     let sq = u32(floor((tq + 3.14159265) / 1.57079633)) % 4u;
     return sq == atoms[n].splitIdx;
   }
+  // 13 = C2v FOUR DIRECTIONS (an sp3 centre bent to an H-X-H angle): nearest of four unit vectors. Axis a = the
+  // bond bisector, e1 as in 'third' (in the bond plane), e2 = a x e1. idx 0,1 = bonds  cos(hb) a +- sin(hb) e1,
+  // hb = splitRot = half the bond angle; idx 2,3 = lone pairs  -cos(hl) a +- sin(hl) e2, hl = half the lone-pair
+  // angle, carried in cylOX (that field is read only by splitType 5). hb = hl = 54.7356 deg is splitType 4
+  // exactly. Added 2026-11-14 for the H2O angle with explicit 2hom lone pairs.
+  if (st == 13u) {
+    var g1x: f32; var g1y: f32; var g1z: f32;
+    if (abs(a2) < 0.9) { g1x = a1; g1y = -a0; g1z = 0.0; } else { g1x = 0.0; g1y = a2; g1z = -a1; }
+    let g1L = max(sqrt(g1x*g1x+g1y*g1y+g1z*g1z), 1e-12);
+    g1x = g1x/g1L; g1y = g1y/g1L; g1z = g1z/g1L;
+    let g2x = a1*g1z - a2*g1y; let g2y = a2*g1x - a0*g1z; let g2z = a0*g1y - a1*g1x;
+    let u1 = (dx*g1x + dy*g1y + dz*g1z) / r;
+    let u2 = (dx*g2x + dy*g2y + dz*g2z) / r;
+    let ua = dotp / r;
+    let hb = atoms[n].splitRot; let hl = atoms[n].cylOX;
+    var d13: array<f32, 4>;
+    d13[0] = cos(hb)*ua + sin(hb)*u1;
+    d13[1] = cos(hb)*ua - sin(hb)*u1;
+    d13[2] = -cos(hl)*ua + sin(hl)*u2;
+    d13[3] = -cos(hl)*ua - sin(hl)*u2;
+    var b13: u32 = 0u; var bd13: f32 = d13[0];
+    for (var k13: u32 = 1u; k13 < 4u; k13 = k13 + 1u) { if (d13[k13] > bd13) { bd13 = d13[k13]; b13 = k13; } }
+    return b13 == atoms[n].splitIdx;
+  }
   if (st == 4u) {
     // TETRAHEDRAL: four lobes. idx 3 points along -axis (the lone pair of an sp3 centre);
     // idx 0,1,2 at the tetrahedral polar angle 70.53 deg from +axis, 120 deg apart in azimuth,
@@ -2936,7 +2960,7 @@ function fillAtomBuf() {
     af[off + 6] = perZeff ? perZeff[n] || Z[n] : (window.INIT_ZEFF || Z[n]);
     af[off + 7] = perRcut ? perRcut[n] || 1e6 : (window.INIT_RCUT || 1e6);
     // Shell split (optional): splitType 0/1=sphere, 2=hemi, 3=third; sector idx; axis; rot
-    const stCode = { sphere: 0, hemi: 2, third: 3, tetra: 4, cube: 7, antiprism: 8, bond2back: 9, cone: 11, quad: 12 };
+    const stCode = { sphere: 0, hemi: 2, third: 3, tetra: 4, cube: 7, antiprism: 8, bond2back: 9, cone: 11, quad: 12, c2v: 13 };
     const stv = SPLIT_TYPE[n];
     au[off + 8] = (typeof stv === 'string') ? (stCode[stv] || 0) : (stv || 0);
     au[off + 9] = SPLIT_IDX[n] || 0;

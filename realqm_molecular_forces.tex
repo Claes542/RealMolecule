@@ -42,7 +42,7 @@ a large offset that depends on the composition and hardly on the geometry---CH$_
 $3.2\,E_h$, constant to $0.03\,E_h$ over $R = 2.05$--$2.45$, yet its bond comes out $10\%$ long and the
 tetrahedron is preferred to the square---so atomisation energies are a diagnostic, and energies are
 quoted only for processes in which every atom keeps its bonding. Free angles are not yet in range:
-the bond angle of H$_2$O closes below $95^\circ$.
+the H$_2$O angle closes below $95^\circ$ with its lone pairs frozen into the core, and is pushed open with them as domains of their own.
 Molecules are built by successive reduction---all electrons, frozen $1s^2$ core, reduced
 dimension for X$_2$, reduced valence charges on a coarse mesh---and the last step carries
 proteins of over two thousand atoms on one GPU in a web browser.
@@ -685,6 +685,31 @@ carbon ends the chain with an electron behind it (CH, linear CH$_2$) the C--H bo
 remaining carbon electrons of the real radical lie off the axis, which a $\sigma$-only model cannot
 represent.
 
+\paragraph{A chain released.} The scans above hold every other bond at its observed length. Released
+as a whole from the observed geometry, cyanoacetylene HC$\equiv$C--C$\equiv$N relaxes in all four bonds
+together (coordinate descent at fixed $h = 0.05$, steps of $0.1\,a_0$, a parabola per bond):
+\begin{center}
+\small
+\begin{tabular}{lccc}
+\toprule
+bond & observed & relaxed & change \\
+\midrule
+C--H         & $1.997$ & $1.993$ & $-0.2\%$ \\
+C$\equiv$C   & $2.273$ & $2.560$ & $+12.6\%$ \\
+C--C         & $2.604$ & $2.545$ & $-2.3\%$ \\
+C$\equiv$N   & $2.190$ & $2.162$ & $-1.3\%$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+% Run 2026-11-14: scratchpad relax_chain.py H-C-C-C-N 1.997,2.273,2.604,2.190 0.05; converged in two sweeps;
+% E at relaxed lattice point -6.994632 (observed -6.976019). Observed bonds from memory, TODO verify.
+The bonds whose type is set by the atoms (C--H, C$\equiv$N) stay within $1.3\%$; the two carbon--carbon
+bonds come out nearly equal. The chain construction gives every bond one 2hom pair whatever its
+order, with the rest of carbon's valence frozen into the $+2$ core, so a triple and a single C--C bond
+are the same construction and relax to the same length. Bond alternation, the difference between
+multiple and single bonds along a chain, is not represented. This is the same defect as the
+$10\%$-long C$\equiv$C of C$_2$H$_2$; the bonds of CO$_2$, all of one kind, are within $2\%$.
+
 \subsection{CH$_4$: geometry with an energy offset}
 \label{sec:ch4}
 
@@ -759,6 +784,7 @@ BeH$_2$ & $2.5$ & $-0.018$ & \\
 OH & $1.83$ & $-0.028$ & \\
 H$_2$O & $1.809$, $104.5^\circ$ & $-0.083$, $-0.096$ & $+0.009$, $+0.014$ \\
 \quad walls released & & $-0.080$ & $+0.016$ \\
+\quad O $+6$, explicit lone pairs & & $+0.153$, $+0.152$ & $-0.025$, $-0.025$ \\
 NH$_3$ & $1.913$, $106.7^\circ$ & $+0.086$ to $+0.098$ & $\approx+0.035$ \\
 CH$_4$ & $2.054$, $T_d$ & $+0.102$ to $+0.113$ & $0$ (symmetry) \\
 \midrule
@@ -779,7 +805,7 @@ typical bond stiffness. The heavy centres with many electrons push their H out (
 or pull it in (H$_2$O, $-0.09$). A force must be read against the stiffness: the triple bond of
 C$_2$H$_2$ carries $+0.19$ for a $10\%$ error, CO$_2$ $-0.022$ for $2\%$.
 
-\paragraph{Angles.} The angular forces close the angle in both free cases, H$_2$O and NH$_3$. For water
+\paragraph{Angles.} With lone pairs frozen into the core, the angular forces close the angle in both free cases, H$_2$O and NH$_3$. For water
 the energy at fixed O--H $= 1.809$ falls steadily as the angle closes, with the oxygen wedges fixed and
 with their walls released after 500 steps (free walls placed by continuity):
 \begin{center}
@@ -798,8 +824,25 @@ pairs meet at a wall on the bisector that charges nothing for pressing them toge
 proton repulsion holds the angle open; the lone pairs, frozen into a spherical core, push nothing. The
 angular force at the observed geometry is small ($0.01$--$0.016$), but the bend is soft, so the
 minimum moves far. (Releasing the walls raises the energy by $0.03$, since continuity is not
-energy-minimising, and raises the dipole from $1.01$ to $1.43$\,D against $1.85$.) Bond lengths and
-symmetry-fixed shapes are in the model's range; free angles at a centre with several pairs are not yet.
+energy-minimising, and raises the dipole from $1.01$ to $1.43$\,D against $1.85$.)
+
+The lone pairs can be given their own domains. Pseudo-O $+6$ (only $1s^2$ frozen, $r_c = 0.71$) carries
+all six valence electrons as four 2hom domains: two bond pairs over bare protons and two lone pairs above
+and below the plane. Each domain owns the cells nearest its direction from O. The bond directions follow
+the H atoms and the lone pairs are tetrahedral ($109.47^\circ$). At the tetrahedral angle this partition
+reproduces the regular tetrahedral one exactly, once O lies half a cell off every grid plane; with cells
+on a wall the two differ by $0.005$--$0.007$, and the grid position of O alone moves the energy by up to
+$0.07$. At the observed geometry the lone pairs reverse the angular force: it is $-0.025$ per H, opening
+the angle, and stays opening down to $95^\circ$ ($-0.006$) and up to $109.47^\circ$ ($-0.027$). The radial
+force is $+0.15$, outward, the strong-core sign of NH$_3$ and CH$_4$. The energy at these angles still
+falls as the angle closes ($-19.60477$, $-19.61140$, $-19.62667$, $-19.63975$ at $109.47^\circ$,
+$104.5^\circ$, $100^\circ$, $95^\circ$), but there the walls turn with the H atoms, and the energy slope
+carries the cost of turning walls that are not placed by energy. The force, at fixed walls, is the
+quantity to read. With lone pairs frozen the bend closes, and with lone pairs explicit it opens; neither
+holds the observed angle. Bond lengths and symmetry-fixed shapes are in the model's range; free angles at
+a centre with several pairs are not.
+% Runs 2026-11-14: h2_beta mode=h2o rcX=0.71 Hbare bpair c2v=1 half=1 (molecule.js splitType 13), box 12, h 0.1;
+% control tet vs c2v at 109.47 with half=1: both -19.60477 (identical from step 50). Logs scratchpad c2v_*.log.
 
 % =====================================================================================
 \section{Limitations}
@@ -900,6 +943,29 @@ bond dissociation, and reactions that change coordination do not cancel it. Reac
 fragments of unchanged bonding are the intended next step; they are small, of the order of the
 mesh and step noise at $h = 0.1$, and will need step and mesh ladders.
 
+A first attempt shows the resolution. The reaction NC--CN + HC$\equiv$CH $\to$ HCN + HC$\equiv$C--C$\equiv$N
+keeps the composition and the number of each bond type (two C--H, two C$\equiv$N, one C$\equiv$C, one
+C--C on each side); only the neighbours of the C--C bond change. From axisymmetric atomisation
+energies of the four all-2hom chains at the observed geometries, $\Delta E$ is
+\begin{center}
+\small
+\begin{tabular}{lcccc}
+\toprule
+$h$ & $0.10$ & $0.07$ & $0.05$ & $0.04$ \\
+\midrule
+atom references on a cell face        & $+8.7$ & $-3.0$ & $+5.5$ & $-1.3$ \\
+references at the molecule's offset   & $+0.5$ & $-5.8$ & $-0.8$ & $-3.2$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+in kcal/mol. The first row alternates in sign: each heavy-atom reference sat on a cell face with its
+plane exactly through it, while in the molecule the plane through the nucleus is snapped to a face and
+misses it by up to $h/2$. Placing each reference at its nucleus's offset within the cell, as is done
+for H, removes most of that, but the second row still alternates by about $\pm2.5$, which is the
+remaining snapping of planes through the nuclei. Reaction energies of a few kcal/mol, and the
+hydrogen bond of a dimer, are therefore below the present resolution of the axisymmetric solver.
+% Runs 2026-11-14: scratchpad isod.sh; tools/axisym_linear.py chain ... matchX=1 (new option).
+
 % =====================================================================================
 \section{Conclusion}
 
@@ -919,7 +985,7 @@ composition; CH$_4$ over-binds by $3.2\,E_h$ and still has its bond within $10\%
 preferred, though with too little angular stiffness. Bond lengths of linear molecules built from the
 same pseudo-atoms (C$_2$H$_2$, HCN, CO, CO$_2$) are within $3$--$10\%$, and the residual forces on H at
 the observed geometry are $0.01$--$0.03\,E_h/a_0$ for cores up to $+3$. Free angles are not yet right:
-in H$_2$O and NH$_3$ the bond pairs meet at a wall that charges nothing, and the angle closes. Atomisation energies are
+with lone pairs frozen, the bond pairs of H$_2$O and NH$_3$ meet at a wall that charges nothing and the angle closes; with explicit lone pairs (H$_2$O, O $+6$) the force opens it. Atomisation energies are
 therefore a diagnostic; energies are quotable within one composition, and for processes that join
 fragments without changing any atom's bonding.
 

@@ -815,7 +815,27 @@ def run(name, o):
     print('  domains %s' % ' | '.join('%s:%de' % (d['label'], d['n']) for d in mol.domains), flush=True)
     m = mol.relax_curved() if mol.curved else mol.relax()
     frags = []
+    # matchX=1 (2026-11-14): each heavy-atom reference at the SAME in-cell offset as its nucleus in the molecule,
+    # with its fixed plane snapped the same way -- the H rule below extended to C, N, O... Without it the atom sits on
+    # a face with its plane exactly through it while in the molecule the plane misses the nucleus by up to h/2, and
+    # chain reaction energies oscillated by +-5 kcal/mol over h = 0.1..0.04.
+    matchX = o.get('matchX') == '1'
+    xcache = {}
     for lab, cnt, nuc, dom, pl in p['frags']:
+        if matchX:
+            Xn = [n for n in mol.nuclei if n['label'] == lab and not (n['Z'] == 1 and n['rc'] == 0)]
+            assert len(Xn) == cnt, (lab, len(Xn), cnt)
+            for n in Xn:
+                off = round((n['z'] - mol.g.zmin) % mol.h, 9)
+                if (lab, off) not in xcache:
+                    nuc_o = [(e, z + off, Z, rc) for e, z, Z, rc in nuc]; pl_o = [(z + off, md) for z, md in pl]
+                    a = Linear(nuc_o, dom, pl_o, h=mol.h, L=mol.L, soft=soft, hfix=0.0, name=lab, iface=iface,
+                               beta=float(o.get('beta', 0)), beta_thru=(float(o['bthru']) if 'bthru' in o else None))
+                    a.h = mol.h; xcache[(lab, off)] = a.scf()
+                r = xcache[(lab, off)]
+                frags.append(dict(label=lab, count=1, E=r['E'], T=r['T'], VK=r['VK'], Vee=r['Vee'], z0=off))
+                print('  atom %-3s E=%.6f  (in-cell offset %.4f)' % (lab, r['E'], off))
+            continue
         a = Linear(nuc, dom, pl, h=mol.h, L=mol.L, soft=soft, hfix=0.0, name=lab, iface=iface,
                    beta=float(o.get('beta', 0)), beta_thru=(float(o['bthru']) if 'bthru' in o else None)); a.h = mol.h
         r = a.scf(); frags.append(dict(label=lab, count=cnt, E=r['E'], T=r['T'], VK=r['VK'], Vee=r['Vee']))

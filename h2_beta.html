@@ -379,17 +379,31 @@
       tags.push(dot(d, bP) > 0.99 ? 'bP' : dot(d, bM) > 0.99 ? 'bM' : dot(d, lP) > 0.99 ? 'lP' : '?');
     }
     tags.push('lM');
+    // ?c2v=1: splitType 13 instead of the regular tetrahedron. Bond directions follow the H's (half-angle ANG/2
+    // about the bisector +y, in the xy-plane), lone pairs in the yz-plane at half-angle ?lpang=/2 (default 109.47).
+    // Axis +y gives e1 = +x, e2 = -z in molecule.js's frame rule. idx 0 = bond +x, 1 = bond -x, 2,3 = lone pairs.
+    // ?half=1: O (and the H's) shifted half a cell in x, y and z, so no cell lies on the two mirror planes of the
+    // molecule or on a bond/lone-pair wall (y = 0, x = +-z); tied cells go to one side by index order or rounding.
+    var HOFF = q.get('half') === '1' ? 0.5 : 0;
+    var C2V = q.get('c2v') === '1', LPANG = parseFloat(q.get('lpang') || '109.4712206') * Math.PI / 180;
+    if (C2V) { tags = ['bP', 'bM', 'lP', 'lM']; window.USER_SPLIT_CYL_ORG = []; }
     for (var t4 = 0; t4 < 4; t4++) {
       var isBond = tags[t4] === 'bP' || tags[t4] === 'bM';
       var ne4 = isBond ? (bp2 ? 2 : 1) : 2;
-      atoms.push({ i: N2, j: N2, k: N2, Z: ne4, el: 'O' + tags[t4] });
+      atoms.push({ i: N2 + HOFF, j: N2 + HOFF, k: N2 + HOFF, Z: ne4, el: 'O' + tags[t4] });
       Z.push(ne4); Znuc.push(isBond ? 1 : 2); RC.push(RCX);
-      SPT[atoms.length - 1] = 4; SPI[atoms.length - 1] = t4; SPA[atoms.length - 1] = ax; SPR[atoms.length - 1] = rot;
+      if (C2V) {
+        SPT[atoms.length - 1] = 13; SPI[atoms.length - 1] = t4; SPA[atoms.length - 1] = [0, 1, 0]; SPR[atoms.length - 1] = ANG / 2;
+        window.USER_SPLIT_CYL_ORG[atoms.length - 1] = [LPANG / 2, 0, 0];
+      } else {
+        SPT[atoms.length - 1] = 4; SPI[atoms.length - 1] = t4; SPA[atoms.length - 1] = ax; SPR[atoms.length - 1] = rot;
+      }
     }
+    if (C2V) console.log('h2_beta c2v O: bond angle ' + (ANG * 180 / Math.PI).toFixed(2) + ', lone-pair angle ' + (LPANG * 180 / Math.PI).toFixed(2));
     if (MODE === 'h2o') {
       [[Math.sin(ANG / 2), Math.cos(ANG / 2)], [-Math.sin(ANG / 2), Math.cos(ANG / 2)]].forEach(function (u) {
         var hb = q.get('Hbare') === '1';
-        atoms.push({ i: N2 + RO * u[0] / h, j: N2 + RO * u[1] / h, k: N2, Z: hb ? 0 : 1, el: hb ? 'H+' : 'H' });
+        atoms.push({ i: N2 + HOFF + RO * u[0] / h, j: N2 + HOFF + RO * u[1] / h, k: N2 + HOFF, Z: hb ? 0 : 1, el: hb ? 'H+' : 'H' });
         Z.push(hb ? 0 : 1); Znuc.push(1); RC.push(0);
       });
     }
@@ -535,7 +549,7 @@
     var FIXED = q.get('fixed') ? 1 : 0;
     var JAC = parseInt(q.get('jac') || '10');
     var cfg = '_h' + h.toFixed(3) + '_j' + JAC + '_x' + BOX.toFixed(1) + '_f' + FIXED + (q.get('weak') ? '_w' + q.get('weak') : '') + (q.get('inner') ? '_i' : '') + (q.get('Hbare') === '1' ? '_Hb0' : '') + (q.get('bpair') === '1' ? '_bp' : '') + (q.get('cone') ? '_cone' + q.get('cone') : '') + (C2H !== null ? '_c2h' + C2H + 'n' + (q.get('nval') || '1') + 'u' + (q.get('unlock') || 'fix') : '');
-    cfg += (q.get('rsing') ? '_s' + q.get('rsing') : '') + ((MODE === 'c' || MODE === 'ch4') ? (q.get('c4hom') === '1' ? '_C4hom' : q.get('c4pair') === '1' ? '_C4pair' : q.get('planar') === '1' ? '_C4quad' : q.get('c2hom') === '1' ? '_C2hom' : q.get('c2split') === '1' ? '_C2split' : '_C4tet') + '_rc' + RCX : '') + ((MODE === 'n' || MODE === 'nh3') ? (q.get('n5') === '1' ? '_N5tet' : '_N3w') + '_rc' + RCX + '_a' + (q.get('ang') || '106.7') : '') + ((MODE === 'o' || MODE === 'h2o') ? (q.get('o3') === '1' ? '_O3w' + (q.get('relO') ? 'r' + q.get('relO') : '') : '_O6tet') + '_rc' + RCX + '_a' + (q.get('ang') || '104.5') : '') + ((MODE === 'x' || MODE === 'xh' || MODE === 'xh2' || MODE === 'x2') ? '_' + ELX + ZX + 'rc' + RCX + (BB.length >= 2 ? '_bb' + BB.join('') : '') : '') + (q.get('ZnX') ? '_Zn' + q.get('ZnX') : '') + (q.get('ZH') ? '_ZH' + q.get('ZH') : '') + (q.get('val') === '1' ? '_val' : '') + (q.get('core2') === '1' ? '_c2r' + (q.get('rel') || '500') + (q.get('coreax') || '') : '') + (q.get('pairH') === '1' ? '_pH' + (q.get('relH') || 'fix') + (q.get('pairax') || '') : '') + (q.get('hback') === '1' ? '_hb' + (q.get('relHb') || 'fix') : '') + (XPL !== null ? '_xp' + XPL + (q.get('relX') ? 'r' + q.get('relX') : '') : '');
+    cfg += (q.get('rsing') ? '_s' + q.get('rsing') : '') + ((MODE === 'c' || MODE === 'ch4') ? (q.get('c4hom') === '1' ? '_C4hom' : q.get('c4pair') === '1' ? '_C4pair' : q.get('planar') === '1' ? '_C4quad' : q.get('c2hom') === '1' ? '_C2hom' : q.get('c2split') === '1' ? '_C2split' : '_C4tet') + '_rc' + RCX : '') + ((MODE === 'n' || MODE === 'nh3') ? (q.get('n5') === '1' ? '_N5tet' : '_N3w') + '_rc' + RCX + '_a' + (q.get('ang') || '106.7') : '') + ((MODE === 'o' || MODE === 'h2o') ? (q.get('o3') === '1' ? '_O3w' + (q.get('relO') ? 'r' + q.get('relO') : '') : q.get('c2v') === '1' ? '_O6c2v_lp' + (q.get('lpang') || '109.47') : '_O6tet') + (q.get('half') === '1' ? '_half' : '') + '_rc' + RCX + '_a' + (q.get('ang') || '104.5') : '') + ((MODE === 'x' || MODE === 'xh' || MODE === 'xh2' || MODE === 'x2') ? '_' + ELX + ZX + 'rc' + RCX + (BB.length >= 2 ? '_bb' + BB.join('') : '') : '') + (q.get('ZnX') ? '_Zn' + q.get('ZnX') : '') + (q.get('ZH') ? '_ZH' + q.get('ZH') : '') + (q.get('val') === '1' ? '_val' : '') + (q.get('core2') === '1' ? '_c2r' + (q.get('rel') || '500') + (q.get('coreax') || '') : '') + (q.get('pairH') === '1' ? '_pH' + (q.get('relH') || 'fix') + (q.get('pairax') || '') : '') + (q.get('hback') === '1' ? '_hb' + (q.get('relHb') || 'fix') : '') + (XPL !== null ? '_xp' + XPL + (q.get('relX') ? 'r' + q.get('relX') : '') : '');
     var k = (MODE === 'h' || MODE === 'x' || MODE === 'o' || MODE === 'n' || MODE === 'c') ? (MODE + (ZA > 1 ? 'Z' + ZA : '') + cfg)
           : ('h2_R' + R.toFixed(2) + '_b' + BETA.toFixed(3) + '_c' + CURV.toFixed(2) + cfg);
     if (!Array.isArray(st[k])) st[k] = [];
