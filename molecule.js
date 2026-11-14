@@ -384,8 +384,13 @@ const POISSON_INTERVAL = window.USER_POISSON_INTERVAL || 50;
 // carried over), Jacobi weight 0.3333 (screened Poisson), SIC self-solve under-converged with a wrong-signed
 // coarse step, V-cycle trigger never fires (s < STEPS_PER_FRAME = POISSON_INTERVAL). Above 30 entries that
 // path is still used for speed; its energies and forces are NOT validated.
-const USE_DIRECT_POTHER = (window.USER_DIRECT_POTHER !== undefined) ? window.USER_DIRECT_POTHER : (NELEC <= 30);
-if (!USE_DIRECT_POTHER) console.warn('molecule.js: NELEC=' + NELEC + ' uses the total-Poisson+SIC path; V_ee is known to be under-counted there (not validated).');
+// LOCAL path (USER_POT_LOCAL, in development 2026-11-14): one P_total with far-field walls relaxed by p5, minus each
+// domain's self-potential solved on a small box around it (rho_m has compact support). Cost ~ a few full-grid passes,
+// memory one grid -- not one per electron. Step 1: P_total only (LOCAL_SELF=false keeps the self-repulsion in).
+const USE_LOCAL_POT = window.USER_POT_LOCAL === true;
+const LOCAL_SELF = window.USER_LOCAL_SELF !== false;
+const USE_DIRECT_POTHER = USE_LOCAL_POT ? false : (window.USER_DIRECT_POTHER !== undefined) ? window.USER_DIRECT_POTHER : (NELEC <= 30);
+if (!USE_DIRECT_POTHER && !USE_LOCAL_POT) console.warn('molecule.js: NELEC=' + NELEC + ' uses the total-Poisson+SIC path; V_ee is known to be under-counted there (not validated).');
 // WEAK INTERFACE (opt-in, window.USER_WEAK_W = n): mol_fast's weak Neumann on molecule.js's partition. Each
 // electron m carries its OWN amplitude u_m and weight w_m; w_m is the label indicator chi_m smoothed by n
 // linear passes, so sum_m w_m = 1 (a partition of unity) and the ramp is ~sqrt(n) cells wide. Update as in
@@ -1311,6 +1316,170 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
   Pdirect[id] = val;
   Pother[id] += val;
+}
+`;
+
+// LOCAL path: P_total seed over the FULL grid (walls included) = 0.5 * sum_n Z_n / r_n, every electron as a point
+// charge at its nucleus. The walls are never updated by the relaxation, so they carry the far-field tail.
+const initPtotalWGSL = `
+${paramStructWGSL}
+${atomStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> atoms: array<Atom>;
+@group(0) @binding(2) var<storage, read_write> P0: array<f32>;
+@group(0) @binding(3) var<storage, read_write> P1: array<f32>;
+${cellIdxWGSL}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let NF = p.NN + 1u;
+  let cell = cellIdx(gid);
+  if (cell >= NF * NF * NF) { return; }
+  let k = cell % NF; let j = (cell / NF) % NF; let i = cell / (NF * NF);
+  let id = i * p.S2 + j * p.S + k;
+  let xi = f32(i) * p.h; let yj = f32(j) * p.h; let zk = f32(k) * p.h;
+  var val: f32 = 0.0;
+  for (var n: u32 = 0u; n < ${NELEC}u; n++) {
+    let Za = atoms[n].Z;
+    if (Za <= 0.0) { continue; }
+    let dx = xi - atoms[n].posI * p.h; let dy = yj - atoms[n].posJ * p.h; let dz = zk - atoms[n].posK * p.h;
+    val += 0.5 * Za / sqrt(dx*dx + dy*dy + dz*dz + p.h2);
+  }
+  P0[id] = val; P1[id] = val;
+}
+`;
+
+// LOCAL path, self part. Each self group (a domain, or the lobes of one USER_SPLIT_GROUP) gets a box around its
+// cells plus a margin; rho of the group has compact support inside it. P_self of the group is relaxed on the box
+// (p5, warm-started) with walls from a strided direct sum over the box's own density, and subtracted inside the
+// group's cells: Pother = P_total - frac * P_self (frac 1, or 1/Z for one 2hom domain: it keeps (Z-1)/Z of its own).
+// Boxes are packed in one buffer; a thread finds its box by binary search over the offsets.
+const localBoxHeadWGSL = `
+struct Box { ox: u32, oy: u32, oz: u32, nx: u32, ny: u32, nz: u32, off: u32, _p: u32 }
+struct LB { NB: u32, TOT: u32, wstride: u32, faceOnly: u32 }
+fn findBox(t: u32) -> u32 {
+  var lo: u32 = 0u; var hi: u32 = lb.NB - 1u;
+  loop { if (lo >= hi) { break; } let mid = (lo + hi + 1u) / 2u; if (boxes[mid].off <= t) { lo = mid; } else { hi = mid - 1u; } }
+  return lo;
+}
+`;
+const localBoxRhoWGSL = `
+${paramStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> boxes: array<Box>;
+@group(0) @binding(2) var<uniform> lb: LB;
+@group(0) @binding(3) var<storage, read> U: array<f32>;
+@group(0) @binding(4) var<storage, read> label: array<u32>;
+@group(0) @binding(5) var<storage, read> domBox: array<u32>;
+@group(0) @binding(6) var<storage, read_write> rhoBox: array<f32>;
+${localBoxHeadWGSL}
+${cellIdxWGSL}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let t = cellIdx(gid);
+  if (t >= lb.TOT) { return; }
+  let b = findBox(t); let B = boxes[b]; let l = t - B.off;
+  let c = l % B.nz; let bb = (l / B.nz) % B.ny; let a = l / (B.nz * B.ny);
+  let id = (B.ox + a) * p.S2 + (B.oy + bb) * p.S + (B.oz + c);
+  let d = label[id];
+  var r: f32 = 0.0;
+  if (d < ${NELEC}u) { if (domBox[d] == b) { let u = U[id]; r = u * u; } }
+  rhoBox[t] = r;
+}
+`;
+const localBoxWallWGSL = `
+${paramStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> boxes: array<Box>;
+@group(0) @binding(2) var<uniform> lb: LB;
+@group(0) @binding(3) var<storage, read> rhoBox: array<f32>;
+@group(0) @binding(4) var<storage, read_write> Pa: array<f32>;
+@group(0) @binding(5) var<storage, read_write> Pb: array<f32>;
+${localBoxHeadWGSL}
+${cellIdxWGSL}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let t = cellIdx(gid);
+  if (t >= lb.TOT) { return; }
+  let b = findBox(t); let B = boxes[b]; let l = t - B.off;
+  let c = l % B.nz; let bb = (l / B.nz) % B.ny; let a = l / (B.nz * B.ny);
+  let face = (a == 0u || bb == 0u || c == 0u || a == B.nx - 1u || bb == B.ny - 1u || c == B.nz - 1u);
+  if (lb.faceOnly == 1u && !face) { return; }
+  // strided direct sum over the box's own density: 0.5 * sum rho dV / r (softened by half a stride)
+  let st = lb.wstride; let w = f32(st * st * st) * p.h3;
+  let soft = 0.25 * f32(st * st) * p.h2;
+  var val: f32 = 0.0;
+  for (var a2: u32 = st / 2u; a2 < B.nx; a2 += st) {
+    for (var b2: u32 = st / 2u; b2 < B.ny; b2 += st) {
+      for (var c2: u32 = st / 2u; c2 < B.nz; c2 += st) {
+        let r = rhoBox[B.off + (a2 * B.ny + b2) * B.nz + c2];
+        if (r <= 0.0) { continue; }
+        let dx = (f32(a2) - f32(a)) * p.h; let dy = (f32(b2) - f32(bb)) * p.h; let dz = (f32(c2) - f32(c)) * p.h;
+        val += 0.5 * r * w / sqrt(dx*dx + dy*dy + dz*dz + soft);
+      }
+    }
+  }
+  Pa[t] = val; Pb[t] = val;
+}
+`;
+const localBoxRelaxWGSL = `
+${paramStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> boxes: array<Box>;
+@group(0) @binding(2) var<uniform> lb: LB;
+@group(0) @binding(3) var<storage, read> rhoBox: array<f32>;
+@group(0) @binding(4) var<storage, read> Pin: array<f32>;
+@group(0) @binding(5) var<storage, read_write> Pout: array<f32>;
+${localBoxHeadWGSL}
+${cellIdxWGSL}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let t = cellIdx(gid);
+  if (t >= lb.TOT) { return; }
+  let b = findBox(t); let B = boxes[b]; let l = t - B.off;
+  let c = l % B.nz; let bb = (l / B.nz) % B.ny; let a = l / (B.nz * B.ny);
+  let Pc = Pin[t];
+  if (a == 0u || bb == 0u || c == 0u || a == B.nx - 1u || bb == B.ny - 1u || c == B.nz - 1u) { Pout[t] = Pc; return; }
+  let sy = B.nz; let sx = B.nz * B.ny;
+  let lap = Pin[t + sx] + Pin[t - sx] + Pin[t + sy] + Pin[t - sy] + Pin[t + 1u] + Pin[t - 1u] - 6.0 * Pc;
+  Pout[t] = Pc + p.dt * (lap * p.inv_h2 + p.TWO_PI * rhoBox[t]);
+}
+`;
+const localScatterWGSL = `
+${paramStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> boxes: array<Box>;
+@group(0) @binding(2) var<uniform> lb: LB;
+@group(0) @binding(3) var<storage, read> Ptot: array<f32>;
+@group(0) @binding(4) var<storage, read> Pbox: array<f32>;
+@group(0) @binding(5) var<storage, read> label: array<u32>;
+@group(0) @binding(6) var<storage, read> domBox: array<u32>;
+@group(0) @binding(7) var<storage, read> domFrac: array<f32>;
+@group(0) @binding(8) var<storage, read_write> Pother: array<f32>;
+@group(0) @binding(9) var<storage, read_write> ovf: array<atomic<u32>>;
+${localBoxHeadWGSL}
+${cellIdxWGSL}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let NM = p.NN - 1u;
+  let cell = cellIdx(gid);
+  if (cell >= NM * NM * NM) { return; }
+  let k = (cell % NM) + 1u; let j = ((cell / NM) % NM) + 1u; let i = (cell / (NM * NM)) + 1u;
+  let id = i * p.S2 + j * p.S + k;
+  var P = Ptot[id];
+  let d = label[id];
+  if (d < ${NELEC}u) {
+    let b = domBox[d];
+    if (b < lb.NB) {
+      let B = boxes[b];
+      // inside the box but not on its face (the face carries only the wall value)
+      if (i > B.ox && j > B.oy && k > B.oz && i < B.ox + B.nx - 1u && j < B.oy + B.ny - 1u && k < B.oz + B.nz - 1u) {
+        P -= domFrac[d] * Pbox[B.off + ((i - B.ox) * B.ny + (j - B.oy)) * B.nz + (k - B.oz)];
+      } else {
+        atomicAdd(&ovf[0], 1u);
+      }
+    }
+  }
+  Pother[id] = P;
 }
 `;
 
@@ -2781,6 +2950,13 @@ let gpuInitAccumPL, gpuInitFinalPL;
 let computeRhoPL, computeResidualPL, restrictPL, coarseSmoothPL, prolongCorrectPL;
 let computeRhoSelfPL, subtractPselfPL;
 let computeRhoOtherPL, copyPotherForLabelPL, initPdirectPL, relaxPdirectPL;
+let initPtotalPL, relaxTotalBG = [], localSeedP = null;
+// LOCAL self boxes: pipelines, buffers, bind groups; rebuilt by layoutLocalBoxes() when the labels outgrow them
+const LOC = { PL: {}, built: false, need: true, NB: 0, TOT: 0, B: {}, G: {}, frames: 0, relayouts: 0 };
+const LOCAL_MARGIN = window.USER_LOCAL_MARGIN || 1.0;      // au of padding around each group's cells
+const LOCAL_WSTRIDE = window.USER_LOCAL_WSTRIDE || 2;       // stride of the wall direct sum
+const LOCAL_CHECK = window.USER_LOCAL_CHECK || 10;          // frames between overflow checks
+const LOCAL_WALL_EVERY = window.USER_LOCAL_WALL_EVERY || 5; // frames between wall updates
 let P_directBuf = [], P_directScratchBuf = [];
 let computeRhoOtherBG = [], jacobiDirectBG = [], copyPotherForLabelBG = [], initPdirectBG = [], relaxDirectBG = [];
 let updateBG = [], evolveBoundaryBG = [], fixBoundaryUBG = [], jacobiFineBG = [];
@@ -3190,6 +3366,7 @@ async function uploadInitialData() {
   cpEnc.copyBufferToBuffer(labelBuf, 0, labelInitBuf, 0, S3 * 4);   // buffer-domain reference
   cpEnc.copyBufferToBuffer(P_buf[0], 0, PotherBuf, 0, S3 * 4);
   device.queue.submit([cpEnc.finish()]);
+  if (localSeedP) localSeedP();   // LOCAL path: far-field walls back after the clear
 
   // Fill W with 1.0
   const Wd = new Float32Array(S3); Wd.fill(1.0);
@@ -3993,6 +4170,18 @@ async function initGPU() {
       const relaxPdirectMod = await compileShader('relaxPdirect', relaxPdirectWGSL);
       relaxPdirectPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: relaxPdirectMod, entryPoint: 'main' } });
     }
+    if (USE_LOCAL_POT) {
+      const relaxPdirectMod = await compileShader('relaxPdirect', relaxPdirectWGSL);
+      relaxPdirectPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: relaxPdirectMod, entryPoint: 'main' } });
+      const initPtotalMod = await compileShader('initPtotal', initPtotalWGSL);
+      initPtotalPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: initPtotalMod, entryPoint: 'main' } });
+      if (LOCAL_SELF) {
+        for (const [nm, src] of [['rho', localBoxRhoWGSL], ['wall', localBoxWallWGSL], ['relax', localBoxRelaxWGSL], ['scatter', localScatterWGSL]]) {
+          const mod = await compileShader('localBox_' + nm, src);
+          LOC.PL[nm] = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: mod, entryPoint: 'main' } });
+        }
+      }
+    }
     jacobiSmoothPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: jacobiSmoothMod, entryPoint: 'main' } });
     computeRhoPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: computeRhoMod, entryPoint: 'main' } });
     computeResidualPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: computeResidualMod, entryPoint: 'main' } });
@@ -4313,6 +4502,34 @@ async function initGPU() {
       await device.queue.onSubmittedWorkDone();
       console.log("Direct Pother: GPU-initialized P_direct + PotherBuf with 0.5/r, NELEC=" + NELEC);
     }
+    if (USE_LOCAL_POT && N_ELECTRONS > 1) {
+      for (let c = 0; c < 2; c++)
+        relaxTotalBG[c] = device.createBindGroup({ layout: relaxPdirectPL.getBindGroupLayout(0), entries: [
+          { binding: 0, resource: { buffer: paramsBuf } },
+          { binding: 1, resource: { buffer: P_buf[c] } },
+          { binding: 2, resource: { buffer: P_buf[1 - c] } },
+          { binding: 3, resource: { buffer: rhoTotalBuf } },
+        ]});
+      // Seed P_total (both ping-pong buffers, walls included). Called here AND from every state (re)initialisation,
+      // which clears P_buf[0]: the first version seeded only here, initState then zeroed it, and the walls were 0
+      // again -- V_ee 8.82 against an independent 13.23 on CH4 (2026-11-14).
+      const seedBG = device.createBindGroup({ layout: initPtotalPL.getBindGroupLayout(0), entries: [
+        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 1, resource: { buffer: atomBuf } },
+        { binding: 2, resource: { buffer: P_buf[0] } },
+        { binding: 3, resource: { buffer: P_buf[1] } },
+      ]});
+      localSeedP = () => {
+        const ie = device.createCommandEncoder();
+        const cp = ie.beginComputePass();
+        cp.setPipeline(initPtotalPL); cp.setBindGroup(0, seedBG); dispatchLinear(cp, S3); cp.end();
+        ie.copyBufferToBuffer(P_buf[0], 0, PotherBuf, 0, S3 * 4);
+        device.queue.submit([ie.finish()]);
+      };
+      localSeedP();
+      await device.queue.onSubmittedWorkDone();
+      console.log('LOCAL pot: P_total seeded with 0.5*sum Z/r over the full grid; self ' + (LOCAL_SELF ? 'local boxes' : 'NOT removed (step-1 test)'));
+    }
     if (WEAK) await setupWeak(compileShader);
 
     // Nuclear dynamics bind groups
@@ -4508,13 +4725,101 @@ function encodeWeakW(enc) {
   if (WEAK_W % 2 === 1) enc.copyBufferToBuffer(weak.B.Wt, 0, weak.B.W, 0, NELEC * S3 * 4);
 }
 
+// Read the labels, build one box per self group (bounding box of its cells + LOCAL_MARGIN, clipped to the grid),
+// allocate the packed buffers, seed P_self over every box cell by the direct sum (faceOnly 0), keep it warm after.
+async function layoutLocalBoxes() {
+  const bs = S3 * 4;
+  const rb = device.createBuffer({ size: bs, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+  let e = device.createCommandEncoder(); e.copyBufferToBuffer(labelBuf, 0, rb, 0, bs); device.queue.submit([e.finish()]);
+  await rb.mapAsync(GPUMapMode.READ);
+  const lab = new Uint32Array(rb.getMappedRange().slice(0)); rb.unmap(); rb.destroy();
+  const g = window.USER_SPLIT_GROUP;
+  const grpOf = n => (g && g[n] !== undefined && g[n] !== null) ? 'g' + g[n] : 'd' + n;
+  const keys = [], boxOfKey = {}, members = [];
+  for (let n = 0; n < NELEC; n++) {
+    if (!(Z[n] > 0)) continue;
+    const kk = grpOf(n);
+    if (boxOfKey[kk] === undefined) { boxOfKey[kk] = keys.length; keys.push(kk); members.push([]); }
+    members[boxOfKey[kk]].push(n);
+  }
+  const NB = keys.length;
+  const lo = Array.from({ length: NB }, () => [S, S, S]), hi = Array.from({ length: NB }, () => [-1, -1, -1]);
+  const domBox = new Uint32Array(NELEC).fill(0xffffffff), domFrac = new Float32Array(NELEC);
+  for (let b = 0; b < NB; b++) for (const n of members[b]) {
+    domBox[n] = b;
+    domFrac[n] = (members[b].length === 1 && MULTI_OCC && Z[n] > 1) ? 1 / Z[n] : 1;
+  }
+  for (let i = 0; i < S; i++) for (let j = 0; j < S; j++) {
+    const base = i * S * S + j * S;
+    for (let k = 0; k < S; k++) {
+      const d = lab[base + k]; if (d >= NELEC) continue;
+      const b = domBox[d]; if (b === 0xffffffff) continue;
+      const L = lo[b], H = hi[b];
+      if (i < L[0]) L[0] = i; if (j < L[1]) L[1] = j; if (k < L[2]) L[2] = k;
+      if (i > H[0]) H[0] = i; if (j > H[1]) H[1] = j; if (k > H[2]) H[2] = k;
+    }
+  }
+  const M = Math.max(2, Math.round(LOCAL_MARGIN / hGrid));
+  const tbl = new Uint32Array(NB * 8); let off = 0;
+  for (let b = 0; b < NB; b++) {
+    if (hi[b][0] < 0) { lo[b] = [1, 1, 1]; hi[b] = [1, 1, 1]; }   // empty group: a 3x3x3 dummy box
+    const o = [0, 1, 2].map(q => Math.max(0, lo[b][q] - M)), e2 = [0, 1, 2].map(q => Math.min(S - 1, hi[b][q] + M));
+    const nx = e2[0] - o[0] + 1, ny = e2[1] - o[1] + 1, nz = e2[2] - o[2] + 1;
+    tbl.set([o[0], o[1], o[2], nx, ny, nz, off, 0], b * 8); off += nx * ny * nz;
+  }
+  const TOT = off;
+  for (const k of Object.keys(LOC.B)) LOC.B[k].destroy();
+  const ST = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
+  LOC.B.boxes = device.createBuffer({ size: tbl.byteLength, usage: ST }); device.queue.writeBuffer(LOC.B.boxes, 0, tbl);
+  LOC.B.domBox = device.createBuffer({ size: Math.max(16, NELEC * 4), usage: ST }); device.queue.writeBuffer(LOC.B.domBox, 0, domBox);
+  LOC.B.domFrac = device.createBuffer({ size: Math.max(16, NELEC * 4), usage: ST }); device.queue.writeBuffer(LOC.B.domFrac, 0, domFrac);
+  LOC.B.rho = device.createBuffer({ size: TOT * 4, usage: ST });
+  LOC.B.Pa = device.createBuffer({ size: TOT * 4, usage: ST });
+  LOC.B.Pb = device.createBuffer({ size: TOT * 4, usage: ST });
+  LOC.B.ovf = device.createBuffer({ size: 16, usage: ST });
+  LOC.B.ovfRb = device.createBuffer({ size: 16, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+  LOC.B.lbFace = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  LOC.B.lbAll = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  device.queue.writeBuffer(LOC.B.lbFace, 0, new Uint32Array([NB, TOT, LOCAL_WSTRIDE, 1]));
+  device.queue.writeBuffer(LOC.B.lbAll, 0, new Uint32Array([NB, TOT, LOCAL_WSTRIDE, 0]));
+  const BG = (pl, ents) => device.createBindGroup({ layout: LOC.PL[pl].getBindGroupLayout(0),
+    entries: ents.map((b, q) => ({ binding: q, resource: { buffer: b } })) });
+  LOC.G.rho = [0, 1].map(c => BG('rho', [paramsBuf, LOC.B.boxes, LOC.B.lbFace, U_buf[c], labelBuf, LOC.B.domBox, LOC.B.rho]));
+  LOC.G.wallFace = BG('wall', [paramsBuf, LOC.B.boxes, LOC.B.lbFace, LOC.B.rho, LOC.B.Pa, LOC.B.Pb]);
+  LOC.G.wallAll = BG('wall', [paramsBuf, LOC.B.boxes, LOC.B.lbAll, LOC.B.rho, LOC.B.Pa, LOC.B.Pb]);
+  LOC.G.relax = [BG('relax', [paramsBuf, LOC.B.boxes, LOC.B.lbFace, LOC.B.rho, LOC.B.Pa, LOC.B.Pb]),
+                 BG('relax', [paramsBuf, LOC.B.boxes, LOC.B.lbFace, LOC.B.rho, LOC.B.Pb, LOC.B.Pa])];
+  LOC.G.scatter = BG('scatter', [paramsBuf, LOC.B.boxes, LOC.B.lbFace, P_buf[0], LOC.B.Pa, labelBuf, LOC.B.domBox, LOC.B.domFrac, PotherBuf, LOC.B.ovf]);
+  LOC.NB = NB; LOC.TOT = TOT; LOC.built = true; LOC.need = false; LOC.relayouts++;
+  // seed: density, then the direct sum at every box cell
+  e = device.createCommandEncoder();
+  let cp = e.beginComputePass(); cp.setPipeline(LOC.PL.rho); cp.setBindGroup(0, LOC.G.rho[cur]); dispatchLinear(cp, TOT); cp.end();
+  // walls by the direct sum, interior from zero, then LOCAL_SEED_SWEEPS box sweeps (a direct sum at every box cell
+  // costs box x box / stride^3 -- tens of seconds at h = 0.1 -- so the interior is relaxed instead)
+  device.queue.writeBuffer(LOC.B.Pa, 0, new Float32Array(TOT)); device.queue.writeBuffer(LOC.B.Pb, 0, new Float32Array(TOT));
+  cp = e.beginComputePass(); cp.setPipeline(LOC.PL.wall); cp.setBindGroup(0, LOC.G.wallFace); dispatchLinear(cp, TOT); cp.end();
+  const NSEED = 2 * Math.round((window.USER_LOCAL_SEED_SWEEPS || 1000) / 2);
+  for (let q = 0; q < NSEED; q++) {
+    cp = e.beginComputePass(); cp.setPipeline(LOC.PL.relax); cp.setBindGroup(0, LOC.G.relax[q % 2]); dispatchLinear(cp, TOT); cp.end();
+  }
+  device.queue.submit([e.finish()]);
+  await device.queue.onSubmittedWorkDone();
+  console.log('LOCAL boxes #' + LOC.relayouts + ': ' + NB + ' groups, ' + TOT + ' cells (' + (TOT / S3).toFixed(2) + ' x grid), margin ' + M + ' cells, wall stride ' + LOCAL_WSTRIDE);
+}
+
 async function doSteps(n) {
+  if (USE_LOCAL_POT && LOCAL_SELF && N_ELECTRONS > 1 && LOC.need) await layoutLocalBoxes();
   const t0 = performance.now();
   device.pushErrorScope('validation');
   device.pushErrorScope('out-of-memory');
   const enc = device.createCommandEncoder();
   let needForceReadback = false;
   if (WEAK) encodeWeakW(enc);     // per-electron weights from the current labels, once per frame
+  if (USE_LOCAL_POT && LOCAL_SELF && LOC.built && LOC.frames % LOCAL_WALL_EVERY === 0) {
+    // every LOCAL_WALL_EVERY frames: fresh walls for the self boxes from the current densities
+    let lp = enc.beginComputePass(); lp.setPipeline(LOC.PL.rho); lp.setBindGroup(0, LOC.G.rho[cur]); dispatchLinear(lp, LOC.TOT); lp.end();
+    lp = enc.beginComputePass(); lp.setPipeline(LOC.PL.wall); lp.setBindGroup(0, LOC.G.wallFace); dispatchLinear(lp, LOC.TOT); lp.end();
+  }
 
   for (let s = 0; s < n; s++) {
     const next = 1 - cur;
@@ -4619,6 +4924,30 @@ async function doSteps(n) {
       if (WEAK) enc.copyBufferToBuffer(P_directBuf[m], 0, weak.B.Pd, m * S3 * 4, S3 * 4);
     }
 
+    } else if (N_ELECTRONS > 1 && !window.NO_VEE && USE_LOCAL_POT) {
+    // --- LOCAL path: P_total by p5 relaxation (even sweep count: ends in P_buf[0]) ---
+    vp = enc.beginComputePass();
+    vp.setPipeline(computeRhoPL);
+    vp.setBindGroup(0, computeRhoBG[cur]);
+    dispatchLinear(vp, INTERIOR);
+    vp.end();
+    const JL = 2 * Math.max(1, Math.round((window.USER_JACOBI_DIRECT !== undefined ? window.USER_JACOBI_DIRECT : 10) / 2));
+    for (let js = 0; js < JL; js++) {
+      vp = enc.beginComputePass();
+      vp.setPipeline(relaxPdirectPL);
+      vp.setBindGroup(0, relaxTotalBG[js % 2]);
+      dispatchLinear(vp, INTERIOR);
+      vp.end();
+    }
+    if (LOCAL_SELF && LOC.built) {
+      vp = enc.beginComputePass(); vp.setPipeline(LOC.PL.rho); vp.setBindGroup(0, LOC.G.rho[cur]); dispatchLinear(vp, LOC.TOT); vp.end();
+      for (let js = 0; js < JL; js++) {
+        vp = enc.beginComputePass(); vp.setPipeline(LOC.PL.relax); vp.setBindGroup(0, LOC.G.relax[js % 2]); dispatchLinear(vp, LOC.TOT); vp.end();
+      }
+      vp = enc.beginComputePass(); vp.setPipeline(LOC.PL.scatter); vp.setBindGroup(0, LOC.G.scatter); dispatchLinear(vp, INTERIOR); vp.end();
+    } else {
+      enc.copyBufferToBuffer(P_buf[0], 0, PotherBuf, 0, S3 * 4);
+    }
     } else if (N_ELECTRONS > 1 && !window.NO_VEE) {
     // --- Total Poisson + SIC path (for larger systems) ---
     // Compute rho_total from U[cur] + labels
@@ -4784,8 +5113,8 @@ async function doSteps(n) {
   // --- Compute Pother = P_total - P_self (remove self-repulsion) ---
   if (N_ELECTRONS <= 1 || window.NO_VEE) {
     enc.clearBuffer(PotherBuf);  // no V_ee
-  } else if (USE_DIRECT_POTHER) {
-    // PotherBuf already built per-step in the direct Poisson loop above
+  } else if (USE_DIRECT_POTHER || USE_LOCAL_POT) {
+    // PotherBuf already built per-step in the direct (or local) Poisson loop above
   } else {
   enc.copyBufferToBuffer(P_buf[0], 0, PotherBuf, 0, S3 * 4);
   // Only run SIC periodically to avoid GPU timeout with many atoms
@@ -4920,6 +5249,16 @@ async function doSteps(n) {
     enc.copyBufferToBuffer(forceSumsBuf, 0, forceSumsReadBuf, 0, NELEC * 3 * 4);
   }
   device.queue.submit([enc.finish()]);
+
+  // LOCAL self boxes: every LOCAL_CHECK frames, count domain cells that fell outside their box; any -> relayout
+  if (USE_LOCAL_POT && LOCAL_SELF && LOC.built && (++LOC.frames % LOCAL_CHECK === 0)) {
+    const e2 = device.createCommandEncoder();
+    e2.copyBufferToBuffer(LOC.B.ovf, 0, LOC.B.ovfRb, 0, 16); e2.clearBuffer(LOC.B.ovf);
+    device.queue.submit([e2.finish()]);
+    await LOC.B.ovfRb.mapAsync(GPUMapMode.READ);
+    const nOut = new Uint32Array(LOC.B.ovfRb.getMappedRange().slice(0))[0]; LOC.B.ovfRb.unmap();
+    if (nOut > 0) { LOC.need = true; console.log('LOCAL boxes: ' + nOut + ' cell-steps outside their box -> relayout'); }
+  }
 
   // One-shot diagnostic: integral of rho_other over the interior, which MUST be 1.0 (one
   // other electron). At this point in the frame rhoTotalBuf holds rho_other for the last
@@ -6324,6 +6663,7 @@ async function moveNuclei(gpuForces) {
     clrEnc.clearBuffer(U_buf[0]);
     clrEnc.clearBuffer(P_buf[0]);
     device.queue.submit([clrEnc.finish()]);
+    if (localSeedP) { localSeedP(); LOC.need = true; }   // LOCAL path: re-seed with the moved nuclei, new boxes
 
     // Clear bestR2
     const bU = new Float32Array(S3);
