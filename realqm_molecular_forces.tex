@@ -25,8 +25,9 @@ RealQM~\cite{realqm} describes a molecule as a partition of space into non-overl
 electron (or a pair counted once) as a real density, with the domain boundaries placed where the
 density is continuous and each electron free at its wall (a homogeneous Neumann condition). We
 solve this \emph{hard-partition} model as it stands, converged in the mesh, with nothing adjusted to
-molecular data (each core radius is set once per atom, from its ionisation energies), using a three-dimensional solver (\texttt{molecule.js}) and, for homonuclear X$_2$, where the
-boundary is the midplane by symmetry, an exact axisymmetric reduction that serves as an independent check: on H$_2$ the two give binding
+molecular data (each core radius is set once per atom, from its ionisation energies), using a three-dimensional solver (\texttt{molecule.js}) and, for linear molecules whose
+boundaries are fixed by symmetry or construction (homonuclear X$_2$, where the boundary is the
+midplane), an exact axisymmetric reduction that serves as an independent check: on H$_2$ the two give binding
 energies of $0.2251$ and $0.2241\,E_h$ at the same mesh. Each electron pair can be carried in
 two parameter-free constructions to choose from: \emph{2split}, two one-electron domains
 (complete, permanent avoidance), and \emph{2hom}, one pair domain (no avoidance beyond the mean
@@ -36,6 +37,12 @@ A free boundary carries no Pauli cost, so inner shells
 are excluded by a fixed core radius per atom: every all-electron LiH with free core boundaries
 collapses, while the pseudo-Li core with one 2hom bonding pair gives $R_e = 2.85\,a_0$ (exact
 $3.015$), $D_e = 0.095\,E_h$ (exact $0.092$) and a dipole of the right sign, $11\%$ high.
+The model is judged by geometry. Where an atom carries many valence electrons its binding carries
+a large offset that depends on the composition and hardly on the geometry---CH$_4$ over-binds by
+$3.2\,E_h$, constant to $0.03\,E_h$ over $R = 2.05$--$2.45$, yet its bond comes out $10\%$ long and the
+tetrahedron is preferred to the square---so atomisation energies are a diagnostic, and energies are
+quoted only for processes in which every atom keeps its bonding. Free angles are not yet in range:
+the bond angle of H$_2$O closes below $95^\circ$.
 Molecules are built by successive reduction---all electrons, frozen $1s^2$ core, reduced
 dimension for X$_2$, reduced valence charges on a coarse mesh---and the last step carries
 proteins of over two thousand atoms on one GPU in a web browser.
@@ -128,8 +135,9 @@ step before it can still be run.
   (Section~\ref{sec:atoms}); only valence electrons are computed, in domains of at most two, with
   the inner boundary $r_c$ fixed and all outer boundaries free. A free boundary carries no Pauli
   cost, so the core sphere must be fixed (Section~\ref{sec:lih}). LiH and BH are computed this way.
-\item \emph{Reduced dimension} for homonuclear X$_2$, where the boundary is the midplane by
-  symmetry: the axisymmetric solver (Section~\ref{sec:solver}).
+\item \emph{Reduced dimension} for linear molecules whose boundaries are fixed planes---the
+  midplane of a homonuclear X$_2$, by symmetry, or planes through the nuclei, by construction: the
+  axisymmetric solver (Section~\ref{sec:solver}).
 \item \emph{Large molecules}: pseudo-atoms with reduced valence charges on a coarse mesh. The same
   \texttt{molecule.js} then carries a 238-residue protein (green fluorescent protein, $2307$ atoms)
   on a $300^3$ grid at $h = 0.4\,a_0$, and crambin ($540$ atoms) on $200^3$ at $h = 0.25\,a_0$,
@@ -155,8 +163,10 @@ changes by less than $10^{-4}\,E_h$ between successive windows, since a free bou
 flipping single cells indefinitely and a step-to-step test either never fires or fires early.
 
 \paragraph{Axisymmetric reduction.} For a homonuclear X$_2$ the domain boundary is the midplane by
-symmetry, and the model reduces exactly to $(z,\rho)$ with a plane boundary. We use it only there:
-in a heteronuclear molecule the boundary curves, and a plane would impose it. The
+symmetry, and the model reduces exactly to $(z,\rho)$ with a plane boundary. The same holds for
+any linear molecule whose walls are all fixed planes, such as planes through the nuclei separating
+the halves of a pseudo-atom's valence, with every bond a 2hom pair (Section~\ref{sec:x2}). We use it
+only there: a free wall between unlike atoms curves, and a plane would impose it. The
 Neumann condition is imposed by assembling the stiffness only over faces inside a domain. Each
 domain's lowest state is an exact sparse eigensolve, and the potentials are iterated to
 self-consistency. Mesh ladders down to $h = 0.05$ are cheap.
@@ -246,9 +256,29 @@ $D_{\text{2hom}} < D_e < D_{\text{2split}}$ and $E_{\text{2split}} < E < E_{\tex
 the model's energy statement. An intermediate construction that reproduced the exact value would be
 a fit.
 
+The two constructions are distinct cases with no bridge between them. A pair either has a wall
+through it or it does not, and no parameter of the model carries one into the other. Charging the
+wall (Section~\ref{sec:why}) does not do it: as $\beta$ grows the density moves away from the wall,
+not towards the shared pair. The situation is like a bifurcation. The pair sits on one branch or
+the other, and the states in between are not solutions of the model. The exact value lies between
+the two branches in energy, but it is not on a path that joins them.
+
 The geometry is sharper than the energy. The 2split H$_2$ converges in the axisymmetric reduction to
 $R_e = 1.368\,a_0$, short of the exact $1.401$ by $2.3\%$ and flat to $0.2\%$ under a $2.5$-fold
 mesh refinement.
+
+What makes the H$_2$ bond is not agreed among experts, even though the exact energy is not in
+doubt. One account, from Slater~\cite{slater} and Feynman~\cite{feynman}, is electrostatic: charge
+gathers between the nuclei, and the Hellmann--Feynman force on each nucleus pulls it inward. The
+other, from Hellmann~\cite{hellmann} and Ruedenberg~\cite{ruedenberg}, puts the cause in the kinetic
+energy: an electron spread over both atoms lowers its kinetic energy, and the potential energy
+follows. The two accounts are still argued
+today~\cite{bacskay}. Both read the same virial balance, $\Delta T = -\Delta E$ and $\Delta V = 2\Delta E$
+at equilibrium, which holds whichever is the cause. The model takes no side by assumption. Its
+2split bond is made by charge held in the bond region at no kinetic cost
+(Section~\ref{sec:why}), so it is closer to the electrostatic account. That is a property of the
+construction, not a settlement of the question.
+% TODO verify the five references (author, journal, volume, year) before submission.
 
 \subsection{What places the 2split side}
 \label{sec:why}
@@ -280,6 +310,115 @@ nucleus and the nuclear attraction falls, with the kinetic energy almost unchang
 the wall is the model's central assumption; it sets the 2split energy, while the 2hom pair has no
 wall.
 
+\subsection{Two states of a pair}
+\label{sec:states}
+
+The two constructions are two different states of the pair, and standard quantum mechanics has
+both. The 2hom pair, two electrons of opposite spin carrying one density over one domain, is the
+restricted Hartree--Fock singlet: one doubly occupied orbital. In H$_2$ at $R = 1.4$ the
+axisymmetric 2hom energy is $-1.133585$ at $h = 0.1$, against the Hartree--Fock limit
+$-1.133630$~\cite{kolos}. The two share the known Hartree--Fock behaviour: H$^-$ is unbound, and the
+pair does not dissociate into two neutral atoms, because half of it stays ionic. The 2split pair is
+the Heitler--London state. Each electron keeps to its own region, which is avoidance in the extreme,
+and spin plays no part: without an exchange term the singlet and the triplet are the same. It
+dissociates correctly and binds H$^-$. The exact ground state is neither. It is a correlated
+singlet, which standard quantum mechanics builds by mixing the shared and the separated
+configurations. A real density with one construction per pair has no such mixture, and that is why
+the exact energy lies between the two and is reached by neither (Section~\ref{sec:h2}).
+
+In Hartree--Fock the two states are joined by a bifurcation. The restricted solution is stable near
+equilibrium and becomes unstable beyond the Coulson--Fischer point, about $R = 2.3$, where it breaks
+symmetry into the unrestricted solution, which separates the electrons like
+2split~\cite{coulson}.
+% Coulson-Fischer ~2.3 a0 (from memory) is consistent with the kappa = 0 break between R = 2.2 and 2.4 below; TODO verify ref.
+The model has the two branches but not the path between them. Domains are disjoint, and two
+electrons share a domain only with the same density, so the partial overlap through which the
+Hartree--Fock solution breaks symmetry is not available. A 2hom pair therefore cannot decay into a
+2split pair. It is also lower in energy at no $R$:
+\begin{center}
+\small
+\begin{tabular}{rrrr}
+\toprule
+$R$ & $D$(2hom) & $D$(2split) & $E_{\rm split} - E_{\rm hom}$ \\
+\midrule
+$1.0$ & $0.0847$ & $0.2305$ & $-0.1458$ \\
+$1.2$ & $0.1246$ & $0.2679$ & $-0.1434$ \\
+$1.4$ & $0.1332$ & $0.2747$ & $-0.1416$ \\
+$1.6$ & $0.1259$ & $0.2663$ & $-0.1404$ \\
+$2.0$ & $0.0912$ & $0.2308$ & $-0.1396$ \\
+$2.4$ & $0.0489$ & $0.1894$ & $-0.1406$ \\
+$3.0$ & $-0.0111$ & $0.1336$ & $-0.1447$ \\
+$4.0$ & $-0.0887$ & $0.0679$ & $-0.1566$ \\
+$5.0$ & $-0.1410$ & $0.0308$ & $-0.1718$ \\
+$6.0$ & $-0.1755$ & $0.0114$ & $-0.1869$ \\
+$8.0$ & $-0.2135$ & $-0.0037$ & $-0.2098$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+% Run: scratchpad h2branch.py (tools/axisym_hom2.hom2/split2), h = 0.1, soft 0.285h, box 12, kernels on
+% cell faces; D = 2E(H) - E on the same mesh, E(H) = -0.500217. 2hom at R >= 5 from homsym2.py (same
+% equations, u mirror-symmetrised each iteration): unconstrained, the 2hom SCF at R = 6 lands on the
+% localised H- + H+ solution (97.5% on one side), E = -0.741679, 0.083 above the symmetric -0.824892;
+% the unconstrained R = 5 value (-0.783500) is likewise not the symmetric branch. 2split R = 6, 8
+% rerun: converged in 5-6 iterations, same values. Single mesh h = 0.1; no ladder yet.
+(Axisymmetric, $h = 0.1$, $D = 2E_{\rm H} - E$ on the same mesh; 2hom mirror-symmetric.) The two
+curves do not cross: 2split is lower at every $R$, by $0.14$ near equilibrium and by more as the
+bond stretches. If a path existed, energy minimisation would take every pair to 2split, including a
+bonding pair at equilibrium, where 2hom is the closer one to experiment
+(Section~\ref{sec:bracket}). The free wall over-favours avoidance. So the construction of a pair is
+not chosen by energy. It is chosen by the physical rule of the next subsection: shared pairs are
+2hom, and electrons that must avoid each other are 2split.
+
+\paragraph{Breaking a bond requires 2split.} The scan shows the division of labour directly. The
+2hom pair stops binding near $R = 3$ and rises steeply beyond it, $0.21$ above two atoms at
+$R = 8$, because half of the shared pair stays ionic, as in restricted Hartree--Fock. Left without
+the mirror symmetry, a stretched 2hom pair does not turn into a 2split pair. It collapses onto one
+nucleus, the ionic state H$^-$ + H$^+$ ($97.5\%$ of the density on one side at $R = 6$), which is a
+higher solution than the symmetric pair. Only 2split goes to two neutral atoms. Its tail falls off
+too slowly, however: it still binds $0.011$ at $R = 6$, where the exact binding is nearly zero, and
+it is slightly repulsive ($0.004$) at $R = 8$. This matters for the later aim of reactions between
+fragments. A reaction breaks or forms bonds, so somewhere along its path a pair has to change from
+2hom to 2split, and the model has no path between them. The energies at the two ends of a reaction
+can be computed in the model; a barrier between them needs a rule for where the pair changes,
+which the model does not yet have.
+
+\paragraph{A bridge by competition.} Reaction--diffusion systems suggest a bridge. Two densities
+that diffuse and compete through a term $\kappa u_1^2u_2^2$ separate into disjoint regions as
+$\kappa\to\infty$, the strong-competition limit~\cite{ctv}. We give each electron its own density
+over the whole space and add $\kappa\int u_1^2u_2^2$ to the energy. At $\kappa = 0$ this is
+unrestricted Hartree--Fock for two opposite spins: the Hartree repulsion between two orbitals, with
+no exchange term. Started each time from the electrons on opposite sides (axisymmetric, $h = 0.1$):
+\begin{center}
+\small
+\begin{tabular}{rrrrr}
+\toprule
+$R$ & $\kappa$ & $D$ & orbital overlap & state \\
+\midrule
+$1.4$ & $0$    & $0.1332$  & $1.000$ & symmetric $=$ 2hom \\
+$1.4$ & $5$    & $-0.0429$ & $1.000$ & symmetric \\
+$1.4$ & $6$    & $-0.0707$ & $0.973$ & broken \\
+$1.4$ & $1000$ & $-0.5604$ & $0.045$ & segregated \\
+$2.2$ & $0$    & $0.0702$  & $1.000$ & symmetric \\
+$2.4$ & $0$    & $0.0497$  & $0.923$ & broken \\
+$4.0$ & $0$    & $0.0012$  & $0.265$ & broken \\
+\bottomrule
+\end{tabular}
+\end{center}
+% Run: scratchpad kappa2.py (2026-11-14); fresh broken seed per kappa; D = 2E(H) - E, E(H) = -0.500217.
+% Iterations rise near the break (kappa 5: 178; R 2.2: 130) -- critical slowing down.
+The family has a pitchfork bifurcation. At $\kappa = 0$ the symmetric solution breaks between
+$R = 2.2$ and $2.4$, which is the Coulson--Fischer point. At $R = 1.4$ it breaks between
+$\kappa = 5$ and $6$. Near both breaks the iteration slows down, as it does at a bifurcation. In
+the $(R,\kappa)$ plane a curve of symmetry breaking separates the shared pair from separated
+electrons, and the broken $\kappa = 0$ branch dissociates correctly ($D = 0.001$ at $R = 4$).
+The far end of the family, however, is not 2split. Segregation by competition forces the densities
+to vanish at the interface, and this hard wall costs energy: at $R = 1.4$, $\kappa = 1000$ is
+$0.56$ above two atoms, while 2split binds by $0.275$. No overlap penalty reaches the free Neumann
+wall. The wall is the model's own assumption and the source of its over-binding
+(Section~\ref{sec:why}), and 2split stands outside the family of overlapping states. A switching rule
+by competition is therefore available, but it switches into the hard-wall branch. Using it for
+reactions would add these states to the model rather than join its two constructions.
+
 \subsection{Beyond two electrons}
 \label{sec:bracket}
 
@@ -296,10 +435,29 @@ need 2split: the 2hom H$^-$ is unbound, exactly as in Hartree--Fock, while the 2
 and a 2hom pair cannot dissociate a bond into two neutral atoms. We report both, and choose
 by this rule.
 
+The results below divide the roles as follows. \emph{Geometry is common to both cases:} where both
+were run, the bond lengths differ by a few per cent at most (Li$_2$ $5.1$/$5.15$, N$_2$
+$1.95$/$1.95$, LiH $2.85$/$2.98$, BH $2.29$/$2.38$; Table~\ref{tab:geom} and
+Section~\ref{sec:x2}), so the bond length does not depend on the choice. \emph{2split is the general
+case and over-binds:} its $D_e$ is above experiment in most molecules computed, up to about
+twice (BH $0.276$ against $0.135$, OH $0.371$ against $0.170$). The exceptions are LiH
+($0.063$--$0.073$ against $0.092$) and B$_2$ (at experiment). \emph{2hom is the Pauli pair:} two
+opposite spins sharing one domain, the most Pauli exclusion allows, with kinetic energy exactly
+$T_{\rm vW}$. It is the closer energy for a shared pair at equilibrium (LiH $0.095$ against
+$0.092$, C$_2$ $0.242$ against $0.232$, N$_2$ $0.370$ against $0.364$) and under-binds where the
+electrons should avoid each other. It also gives the LiH dipole, of the right sign and $11\%$ high,
+where one electron per domain inverts it. Dipoles in general are not settled by either case. In
+BH only a cone-shaped boundary corrects the dipole, at the cost of bond length and binding
+(Section~\ref{sec:bh}). In OH both cases are about twice too large. H$_2$O needs split O for the
+right sign.
+
 % =====================================================================================
 \section{Results}
 \label{sec:results}
 
+The criterion is geometry: bond lengths, and where tested the preferred shape. Binding energies
+are listed as a diagnostic of the construction, not as a target; across compositions they carry an
+offset that cancels only within one composition (Section~\ref{sec:ch4}).
 \textbf{[In progress.]} Bond lengths from an $R$-scan at three meshes ($h = 0.10, 0.07, 0.05$) per
 bond with \texttt{molecule.js}, extrapolated in $h$, with the kernel clamp pinned so that the
 ladder refines a fixed problem; axisymmetric values beside them for X$_2$ only.
@@ -311,7 +469,7 @@ Energies for both constructions, 2hom and 2split, at the computed geometry.
 \setlength{\tabcolsep}{3.5pt}
 \begin{tabular}{llrrrrrrr}
 \toprule
-& & \multicolumn{4}{c}{bond length ($a_0$)} & \multicolumn{3}{c}{binding energy $D_e$ ($E_h$)} \\
+& & \multicolumn{4}{c}{bond length ($a_0$)} & \multicolumn{3}{c}{binding $D_e$ ($E_h$), diagnostic} \\
 \cmidrule(lr){3-6}\cmidrule(lr){7-9}
 molecule & construction & 3D & axisym & exp. & error & 2hom & 2split & exp. \\
 \midrule
@@ -325,7 +483,7 @@ HF      & F $2{+}4{+}3$                 & pending & ---     & & & & & \\
 NaH     & Na                            & pending & ---     & & & & & \\
 H$_2$O  & O $+3$ ($1{+}1{+}1$)           & obs.$^{c}$ & ---  & $1.809$ & ---     & $0.651$ & n.c. & $0.37$ \\ % TODO verify exp atomisation; forces pending
 NH$_3$  & N $+3$ / $+5$                  & obs.$^{c}$ & ---  & $1.913$ & ---     & $1.91$ / $3.45$ & --- & $0.47$ \\ % TODO verify exp
-CH$_4$  & C $+4$ ($1{+}1{+}1{+}1$)       & obs.$^{c}$ & ---  & $2.054$ & ---     & $3.83$ & $3.82$ & $0.67$ \\ % TODO verify exp
+CH$_4$  & C $+4$ ($1{+}1{+}1{+}1$)       & $2.25^{d}$ & ---  & $2.054$ & $+10\%$ & $3.83$ & $3.82$ & $0.67$ \\ % TODO verify exp
 \bottomrule
 \end{tabular}
 \caption{Bond lengths and the 2hom and 2split binding energies against experiment. H$_2$ energies are
@@ -339,8 +497,9 @@ behind a plane), $r_c = 0.59$, $R = 1.65, 1.83, 2.0$; 2split $R_e \approx 1.69$;
 $2.7$\,D (2split) against $1.66$. $^{c}$Single point at the observed geometry; the binding is the
 atomisation energy. H$_2$O: pseudo-O $+3$, the outer shell as three single electrons in $120^\circ$
 wedges, $r_c = 0.65$; dipole $+1.01$\,D against $1.85$, right sign. NH$_3$: pseudo-N $+3$ (lone pair
-frozen, $r_c = 0.81$) and $+5$ (lone pair a 2hom domain, $r_c = 0.82$); see Section~\ref{sec:limits}. The axisymmetric reduction is used for
-X$_2$ only. Remaining rows to be filled from the runs in progress.}
+frozen, $r_c = 0.81$) and $+5$ (lone pair a 2hom domain, $r_c = 0.82$); see Section~\ref{sec:limits}.
+$^{d}$CH$_4$: 2split, $T_d$ imposed, $R = 1.85$--$2.45$; energies at $2.054$ (Section~\ref{sec:ch4}). The axisymmetric reduction is used for
+X$_2$ and for linear molecules with fixed walls only. Remaining rows to be filled from the runs in progress.}
 \label{tab:geom}
 \end{table}
 
@@ -421,6 +580,227 @@ single electrons on either side of a fixed plane through Be, each facing one H. 
 2split construction does not settle: the two H domains and the two Be halves trade cells without
 end, the symmetry breaks (a residual dipole of $0.2$\,D), and the convergence window never closes.
 
+\subsection{Homonuclear X$_2$}
+\label{sec:x2}
+
+For X$_2$ the axisymmetric solver is used. Each X is a pseudo-atom whose inner shells, as given by
+the Atom Simulator configuration, are frozen into a core of charge $Z_x$ with $r_c$ fitted to the sum
+of the ionisation energies of the electrons carried; the outer shell lies along the axis as a
+domain behind X (a 2hom lone pair, or one electron) and one bonding electron, separated by a fixed
+plane through X. The two bonding electrons form either a 2split pair (the midplane) or one 2hom
+domain between the nuclei. Only a $\sigma$ pair is representable. $R$-scan $0.8$--$1.3\,R_{\rm exp}$,
+$h \approx 0.1$ (adjusted per $R$ to keep the nuclei on cell faces, a jitter of about
+$\pm0.005\,E_h$):
+\begin{center}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llcccccc}
+\toprule
+X$_2$ & configuration & $r_c$ & \multicolumn{2}{c}{$R_e$: 2hom / 2split} & \multicolumn{2}{c}{$D_e$: 2hom / 2split} & exp.\ $R_e$ / $D_e$ \\
+\midrule
+Li$_2$ & $2{+}1$, $+1$        & $2.00$ & $5.1$  & $5.15$ & $0.021$ & $0.054$ & $5.05$ / $0.038$ \\
+Na$_2$ & $2{+}4{+}4{+}1$, $+1$ & $2.16$ & $5.5$  & $5.55$ & $0.020$ & $0.050$ & $5.82$ / $0.028$ \\
+B$_2$  & $2{+}2{+}1$, $+1$    & $0.88$ & $2.87$ & $2.9$  & $0.045$ & $0.109$ & $3.005$ / $0.110$ \\
+C$_2$  & $2{+}2{+}2$, $+2$    & $0.91$ & $2.55$ & $2.58$ & $0.242$ & $0.322$ & $2.348$ / $0.232$ \\
+N$_2$  & $2{+}3{+}2$, $+2$    & $0.59$ & $1.95$ & $1.95$ & $0.370$ & $0.480$ & $2.074$ / $0.364$ \\
+O$_2$  & $2{+}3{+}3$, $+3$    & $0.59$ & $2.0$  & $2.05$ & $0.349$ & $0.48$  & $2.282$ / $0.192$ \\
+F$_2$  & $2{+}4{+}3$, $+3$    & $0.49$ & \multicolumn{2}{c}{no minimum} & \multicolumn{2}{c}{$>0.35$ / $>0.52$} & $2.668$ / $0.061$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+% TODO verify all exp values (from memory). Runs: tools/axisym_linear.py presets li2_*, na2_*, b2sim_*, c2_*,
+% n2sim_*, o2_*, f2_* (2026-11-13). B as +3 (2hom+1, r_c 1.10) over-binds 2x (0.199/0.279); N as +3 (2hom+1, r_c 0.74):
+% R_e 2.3/2.35, D_e 0.283/0.398. O 2+3+1+2 (+2, r_c 0.49) and F 2+3+2+2 (+2, r_c 0.39): no minimum in either.
+For Li$_2$, Na$_2$, B$_2$, C$_2$ and N$_2$, cores $+1$ and $+2$, the experimental binding lies between
+the two constructions and the bond length is within $10\%$; B$_2$ and N$_2$ require the Atom
+Simulator configurations (as pseudo-$+3$ with a lone pair, B$_2$ over-binds twofold). O$_2$ over-binds
+about twofold with a short bond, and F$_2$ has no minimum: its binding grows down to $0.8\,R_{\rm exp}$.
+Other O and F configurations do not help (as $+2$, $2{+}3{+}1{+}2$ and $2{+}3{+}2{+}2$, both lose the
+minimum), and a $+1$ core cannot carry them, since a single electron over a hard core on a unit
+charge binds by less than $0.5\,E_h$, below IE$_1$ of O and F.
+
+Enlarging $r_c$ beyond the ionisation fit moves the error rather than removing it. For O at
+$r_c = 0.8$ (pseudo-O $16\%$ short of its ionisation energies) the O$_2$ minimum returns to
+$2.33$ ($+2\%$) with $D_e$ still $0.262$ (2hom); OH (3D, 2hom) binds $0.185$ at the observed bond
+($+9\%$) but its minimum moves beyond $2.0$; H$_2$O (3D, observed geometry) still binds $0.584$. For F,
+$r_c = 1.1$ gives a minimum at $3.07$ ($+15\%$) with $D_e = 0.20$, three times experiment. No single
+$r_c$ serves the oxygen molecules, and none makes F$_2$ weak. O$_2$ and F$_2$ are the molecules whose
+weakness is attributed, in standard quantum mechanics, to lone-pair (antibonding $\pi^*$)
+repulsion, the Pauli cost that free walls do not charge (Section~\ref{sec:limits}).
+
+\paragraph{Transfer of the carbon model: C$_2$H$_2$.} The C$_2$ carbon (pseudo-C $+2$, $r_c = 0.91$,
+valence $1{+}1$) carried unchanged into acetylene, with every bond a 2hom pair (each C--H pair the H
+electron and the outer C half over a bare proton; the C--C pair the two facing halves), has all its
+walls fixed at the planes through the C nuclei, so the axisymmetric solution is that of the
+three-dimensional construction. Each bond scanned with the other at its observed length:
+\begin{center}
+\small
+\begin{tabular}{lccc}
+\toprule
+C$_2$H$_2$ & C--C & C--H & atomisation at obs.\ geometry \\
+\midrule
+2hom   & $2.50$ ($+10\%$) & $2.0$ ($0\%$)  & $0.573$--$0.579$ \\
+2split$^{*}$ & $2.55$ ($+12\%$) & $1.95$ ($-3\%$) & $0.896$ \\
+exp.   & $2.274$ & $2.009$ & $\approx 0.646$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+% TODO verify exp (CC 1.2033 A, CH 1.0630 A; atomisation D0 ~389 kcal/mol + ZPE, from memory). Presets c2h2hom, c2h2_r.
+% 2hom C-H curve jagged (h shifts with CH): minimum located to ~0.1 a0.
+$^{*}$The 2split C$|$H walls are free and are held plane, an approximation. The experimental
+atomisation lies between the two constructions, 2hom the closer ($-11\%$); the C--H bond is right,
+and the C--C bond is $10\%$ long, as in C$_2$ ($+9\%$). The carbon model transfers with a consistent
+C--C bias, plausibly the single $\sigma$ pair standing in for multiple bonding. Carrying the carbon
+valence instead as one 2hom pair per atom ($r_c = 0.81$) gives C$_2$ the right length ($+2\%$) but
+$D_e = 0.359$ ($+55\%$), a binding of two closed pairs across a free wall that is the missing Pauli
+repulsion, and is not used.
+
+\paragraph{Other linear molecules.} The same pseudo-atoms, unchanged (C $+2$, N $+2$ with one
+electron behind, O $+3$ with a 2hom lone pair behind; each bond one 2hom $\sigma$ pair, a fixed plane
+at every heavy nucleus), give the following linear molecules (axisymmetric, $h \approx 0.1$; $R_e$
+from a parabola through the scan about $R_{\rm exp}$; atomisation at the observed geometry):
+\begin{center}
+\small
+\begin{tabular}{llccc}
+\toprule
+molecule & bond & $R_e$ (exp.) & atomisation (exp.) \\
+\midrule
+HCN      & C--N & $2.25$ ($2.179$), $+3\%$ & $0.475$ ($\approx0.50$) \\
+         & C--H & $1.97$ ($2.014$), $-2\%$ & \\
+CO       & C--O & $2.19$ ($2.132$), $+3\%$ & $0.344$ ($0.413$) \\
+CO$_2$   & C--O, both & $2.15$ ($2.192$), $-2\%$ & $0.681$ ($\approx0.61$) \\
+CH       & C--H & $1.93$ ($2.116$), $-9\%$ & $0.181$ ($\approx0.134$) \\
+CH$_2$, linear & C--H, both & $1.97$ ($2.03$, bent) & $0.355$ ($\approx0.30$) \\
+\bottomrule
+\end{tabular}
+\end{center}
+% TODO verify exp (all from memory). Runs: tools/axisym_linear.py preset 'chain', 2026-11-13;
+% scratchpad chains.py, co2.py, ch.py, ch2.py. CO2 scan: x0.90..1.20 Ea 0.65140 0.67893 0.68067 0.66948 0.64901 0.59208.
+% CH: 1.904 0.18095, 2.010 0.18017, 2.116 0.17616, 2.222 0.17036. CH2: 1.845 0.34892, 1.948 0.35490, 2.050 0.35294, 2.152 0.34712.
+% LiH and BeH2 in this preset differ from the 3D values (BeH2 0.284 vs 0.248 at h=0.1): mesh ladder before quoting.
+% NCCN and HC4H too jagged at h=0.1 (plane offsets) to read.
+Where carbon sits between two partners on the axis the bonds are within $3\%$, even with the
+$+3$ oxygen of CO and CO$_2$, whose lone pairs face away from each other, unlike those of O$_2$. Where
+carbon ends the chain with an electron behind it (CH, linear CH$_2$) the C--H bond is short: the
+remaining carbon electrons of the real radical lie off the axis, which a $\sigma$-only model cannot
+represent.
+
+\subsection{CH$_4$: geometry with an energy offset}
+\label{sec:ch4}
+
+Pseudo-C $+4$ ($1s^2$ frozen, $r_c = 1.0$) carries its four valence electrons as single electrons in
+four fixed tetrahedral sectors; each H keeps its electron (2split) or joins its sector as a 2hom
+pair. Three-dimensional, box $12\,a_0$, $h = 0.1$:
+\begin{center}
+\small
+\begin{tabular}{lcccc}
+\toprule
+$R$ ($a_0$) & $1.85$ & $2.054$ & $2.25$ & $2.45$ \\
+\midrule
+$E(T_d)$ & $-11.09131$ & $-11.18844$ & $-11.21482$ & $-11.18861$ \\
+atomisation & $3.73$ & $3.82$ & $3.85$ & $3.82$ \\
+$E(D_{4h})$, square planar & & $-11.15120$ & $-11.18467$ & \\
+$E(D_{4h}) - E(T_d)$ & & $+0.037$ & $+0.030$ & \\
+\bottomrule
+\end{tabular}
+\end{center}
+The bond is $R_e = 2.25$, $10\%$ long, the same bias as C--C in C$_2$ and C$_2$H$_2$. The
+atomisation, $3.8\,E_h$ against $0.67$, is in error by a nearly constant $3.15\,E_h$: it changes by
+$0.03$ between $2.05$ and $2.45$, while the part that varies with $R$ fixes the bond. The tetrahedron is
+preferred to the square plane (four $90^\circ$ quadrant sectors, the same electrons and $r_c$) at
+both lengths, by $0.03$--$0.04\,E_h$; in standard quantum chemistry planar CH$_4$ lies roughly
+$0.2\,E_h$ above. % TODO verify (D4h-Td ~130-150 kcal/mol, from memory)
+The shape is right, and the angular stiffness about six times too soft.
+
+The offset belongs to the electron count around carbon. Other ways of carrying the same four
+electrons give other offsets at $R = 2.054$: two 2hom pairs in half-spaces ($r_c = 0.92$, fitted the
+same way) $4.21$, one four-electron domain ($r_c = 0.87$, outside the pair rule, run as a test) $1.80$;
+so it does not follow the number of walls between carbon's domains. The kinetic energy shows where it
+comes from. By the virial theorem a bond at equilibrium raises the kinetic energy by $D_e$; here,
+with the H atom at $T = 0.454$ on the same mesh, forming CH$_4$ \emph{lowers} it by $0.84$ (four
+sectors) and $0.86$ (two pairs), where $+0.67$ is required, and the potential energy falls by
+$3.0$--$3.4$ instead of $1.34$. The free walls let the pairs relax into wide, nodeless sector shapes;
+in the molecule the eight valence electrons of real carbon fill $s$ and $p$ levels, whose nodes cost
+kinetic energy. The error is the missing Pauli kinetic energy of Section~\ref{sec:limits}, but it acts
+on the electron count of a centre, not on the walls, and it is carried almost entirely by the
+composition. It cancels in everything at fixed composition---bond lengths, angles, conformations---and
+in processes that keep each atom's bonding, and it does not cancel in atomisation or in reactions that
+change coordination.
+% Runs 2026-11-13: h2_beta mode=ch4 (?planar=1 -> molecule.js splitType 12; ?c4pair=1; ?c4hom=1). C+4 pair atom:
+% rc 0.9 -5.53842, 0.92 -5.43015, 0.93 -5.36737, 1.0 -5.13044; CH4 pair -11.57074. 4hom: atom -5.39812, CH4 -9.12439.
+% T: CH4 4split 2.65931 (bpair 2.72426), pair 2.66610, 4hom 3.52226; atoms 1.68647 / 1.70646 / 1.71774.
+% Force readout at R 2.25 (2split): Fr(H) +0.08 outward against dE/dR ~ 0: the 2split readout misses a wall term (Section sec:forces).
+
+\subsection{Forces at the observed geometry}
+\label{sec:forces}
+
+The force on a nucleus is read as the pull of the converged density, $\mathbf{F}_a = Z_a\int\rho\,
+(\mathbf{x}-\mathbf{R}_a)/|\mathbf{x}-\mathbf{R}_a|^3$ outside the kernel clamp, plus the nuclear
+repulsion. It equals $-\partial E/\partial\mathbf{R}_a$ only if the energy is stationary in everything
+that moves with the nucleus. A bare proton inside a 2hom bond pair carries no wall of its own, and
+there the readout agrees with the slope of $E(R)$: CH$_4$ $+0.011$ and $-0.043$ against $+0.026$ and
+$-0.049$ at $R = 2.25$ and $2.45$ (zero at $2.29$ against the energy minimum $2.32$), LiH, BeH$_2$ and
+BH within $0.002$--$0.011$. With 2split the H domain's wall moves with H and is placed by continuity,
+not by the energy, and the readout misses that wall term (BH: $-0.040$ against $+0.086$; CH$_4$:
+$+0.08$ against $0$). Forces are therefore read with bond pairs and bare protons; the spread between
+equivalent H atoms, about $\pm0.005$, is the mesh noise at $h = 0.1$.
+
+At the observed geometry the residual force on each H, along the bond (positive: the bond would
+lengthen) and across the angle (positive: the angle would close), is, in $E_h/a_0$:
+\begin{center}
+\small
+\begin{tabular}{llcc}
+\toprule
+molecule & geometry & along bond & across angle \\
+\midrule
+LiH & $3.0$ & $-0.022$ & \\
+BH & $2.3$ & $-0.013$ & \\
+BeH$_2$ & $2.5$ & $-0.018$ & \\
+OH & $1.83$ & $-0.028$ & \\
+H$_2$O & $1.809$, $104.5^\circ$ & $-0.083$, $-0.096$ & $+0.009$, $+0.014$ \\
+\quad walls released & & $-0.080$ & $+0.016$ \\
+NH$_3$ & $1.913$, $106.7^\circ$ & $+0.086$ to $+0.098$ & $\approx+0.035$ \\
+CH$_4$ & $2.054$, $T_d$ & $+0.102$ to $+0.113$ & $0$ (symmetry) \\
+\midrule
+\multicolumn{4}{l}{axisymmetric, $-\mathrm{d}E/\mathrm{d}R$ over $\pm10\%$ of the bond:} \\
+HCN & C--N / C--H & $+0.042$ / $-0.013$ & \\
+CO & C--O & $+0.045$ & \\
+CO$_2$ & C--O, per bond & $-0.022$ & \\
+C$_2$H$_2$ & C--C & $+0.19$ & \\
+CH & C--H & $-0.046$ & \\
+\bottomrule
+\end{tabular}
+\end{center}
+% Runs 2026-11-13: rf_nh3 (h2_beta mode=nh3 rc0.81 bpair Hbare), rf_ch4 (mode=ch4 rc1.0 bpair Hbare; energy slope +0.099),
+% ft_h2o (O3w rc0.65 bpair), h2oa_rel_104.5 (?relO=500); LiH box20, BH/BeH2/OH box12 (1D-key readout, H on the axis).
+% NH3 angular: tangential component of F(H) after removing the radial part, 0.035-0.04, toward the C3 axis and down.
+For hydrides with cores up to $+3$ the residual force is $0.013$--$0.028$, a few hundredths of a bohr at
+typical bond stiffness. The heavy centres with many electrons push their H out (NH$_3$, CH$_4$, $+0.1$)
+or pull it in (H$_2$O, $-0.09$). A force must be read against the stiffness: the triple bond of
+C$_2$H$_2$ carries $+0.19$ for a $10\%$ error, CO$_2$ $-0.022$ for $2\%$.
+
+\paragraph{Angles.} The angular forces close the angle in both free cases, H$_2$O and NH$_3$. For water
+the energy at fixed O--H $= 1.809$ falls steadily as the angle closes, with the oxygen wedges fixed and
+with their walls released after 500 steps (free walls placed by continuity):
+\begin{center}
+\small
+\begin{tabular}{lccc}
+\toprule
+H--O--H & $95^\circ$ & $104.5^\circ$ & $115^\circ$ \\
+\midrule
+$E$, fixed wedges & $-5.42394$ & $-5.41638$ & $-5.41240$ \\
+$E$, walls released & $-5.39597$ & $-5.38444$ & $-5.37126$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+The minimum lies below $95^\circ$ in both, so the closing is not set by the sector frame. The two bond
+pairs meet at a wall on the bisector that charges nothing for pressing them together, and only the
+proton repulsion holds the angle open; the lone pairs, frozen into a spherical core, push nothing. The
+angular force at the observed geometry is small ($0.01$--$0.016$), but the bend is soft, so the
+minimum moves far. (Releasing the walls raises the energy by $0.03$, since continuity is not
+energy-minimising, and raises the dipole from $1.01$ to $1.43$\,D against $1.85$.) Bond lengths and
+symmetry-fixed shapes are in the model's range; free angles at a centre with several pairs are not yet.
+
 % =====================================================================================
 \section{Limitations}
 \label{sec:limits}
@@ -453,8 +833,52 @@ $2.5\,E_h$, NH$_3$ with pseudo-N $+5$ by $3\,E_h$, and CH$_4$ with pseudo-C $+4$
 single electrons, no lone pair) by $3.2\,E_h$, so the cause is the charge of the core, not lone pairs; the kinetic energy rising by less than a third of
 what the added H electrons alone should cost. Freezing the lone pair instead (pseudo-N $+3$) keeps
 the error to $1.4\,E_h$ but leaves a spherical core and inverts the dipole of NH$_3$. The missing term
-is the Pauli kinetic energy between domains; until it is supplied, molecules whose heavy atom
-carries more than three valence electrons are outside the model's range.
+is the Pauli kinetic energy between domains; until it is supplied, the energies of molecules whose
+heavy atom carries more than three valence electrons are outside the model's range. Their geometry
+need not be: in CH$_4$ the over-binding is a near-constant offset, and the bond and shape survive
+(Section~\ref{sec:ch4}). Between two heavy atoms the
+limit is lower: in X$_2$ cores up to $+2$ work, while O$_2$ and F$_2$, with a lone pair on each side of
+the bond, over-bind or collapse (Section~\ref{sec:x2}).
+
+\paragraph{The Pauli kinetic energy between domains.} The limitations above have one source. The
+kinetic energy of a density $\rho$ is at least $T_{\rm vW}[\rho]$, the value it would have if every
+electron shared one nodeless amplitude $\sqrt\rho$; this is exact for one electron and for an
+opposite-spin pair in one state. Beyond two, Pauli exclusion puts electrons of the same spin into
+mutually orthogonal states, orthogonality forces nodes, and nodes cost curvature: the excess
+$T_{\rm P} = T_s - T_{\rm vW} \ge 0$. In the uniform electron gas it is the Fermi pressure
+$\propto\rho^{5/3}$ that keeps matter from collapsing. Between atoms it is the steep short-range
+repulsion of overlapping closed shells, the resistance of a core to valence (the $2s$ node inside
+$1s$), and the mutual repulsion of lone pairs. It acts between pairs: two pairs each carry both spins,
+so wherever two pairs overlap, electrons of equal spin overlap.
+
+RealQM treats the two places differently. Within a domain the kinetic energy is exact, since a
+domain holds one electron or a 2hom pair and $T_{\rm vW}$ is the whole of it; this is why the pair
+rule stops at two. Between domains it keeps electrons apart by separation rather than by nodes: at a
+free wall the amplitude may stay flat up to the wall, and being kept apart costs only a mild
+confinement, where overlapping same-spin orbitals would need a node. The model therefore
+under-charges $T_{\rm P}$ wherever domains are crowded. In an atom the error is largely absorbed: the
+radial walls fall near the true nodes (for Li the computed core--valence interface is at
+$1.98$--$2.05$, against $r_c = 1.99$ from the ionisation energy), and $r_c$ is fitted to the
+ionisation energies. In a molecule the new walls are lateral, between electrons that share the same
+region, and nothing absorbs the error. With few electrons per centre it is small (LiH, BH, Li$_2$,
+C$_2$, N$_2$); with many it decides the result: CH$_4$ with pseudo-C $+4$ over-binds by
+$3.2\,E_h$, O$_2$ twofold, and F$_2$---whose weak bond is, in standard quantum mechanics, the
+lone-pair repulsion itself---has no repulsive wall at all. Because the missing term grows as domains
+are pressed together, it can change geometry as well as energy: the O$_2$ bond is $10\%$ short. In
+CH$_4$ it hardly does: the error there is a near-constant offset attached to the electron count of
+carbon, and the kinetic energy falls on bonding where the virial theorem requires it to rise
+(Section~\ref{sec:ch4}).
+
+Supplying it means charging density that presses on a wall between domains whose electrons would
+have to be orthogonal. Candidates are a surface energy $\tfrac{\beta}{2}\int u_k^2$ on such walls
+(Section~\ref{sec:why}; in axisymmetric tests it did not give bond length and binding together),
+a node condition on walls between electrons of equal spin, and a local Fermi-gas term in $\rho^{5/3}$
+less its von Weizs\"acker part, applied where domains meet. A cost on walls alone is not supported by
+CH$_4$, whose offset does not follow the number of walls (Section~\ref{sec:ch4}); and since domains
+are disjoint, any local functional of the density adds up over them, so a $\rho^{5/3}$ term must be
+non-local or act at the walls to see the crowding. The test of any of them: F$_2$ weakly
+bound with a minimum near $2.67\,a_0$, CH$_4$ and H$_2$O no longer over-bound, and LiH, Li$_2$,
+C$_2$, N$_2$ left where they are.
 
 \paragraph{Large molecules.} The last reduction step (reduced valence charges, $h = 0.25$--$0.4\,a_0$)
 has been checked against reference chemistry only on small fragments: the formamide dimer and a
@@ -468,7 +892,13 @@ Intermolecular energies are outside the model's range, and so is dispersion.
 
 \paragraph{Energies across compositions.} Binding and reaction energies compare systems with
 different domain structures, whose errors differ; only differences within one composition
-(conformations, scans along a coordinate) are quotable.
+(conformations, scans along a coordinate) are quotable. The offset is attached to the electron count
+around each atom, so it also cancels in a process that joins fragments without changing any atom's
+bonding---association, docking, or a reaction written so that every atom keeps its bonds (an
+isodesmic design, used for the same reason in standard quantum chemistry). Atomisation energies,
+bond dissociation, and reactions that change coordination do not cancel it. Reaction energies from
+fragments of unchanged bonding are the intended next step; they are small, of the order of the
+mesh and step noise at $h = 0.1$, and will need step and mesh ladders.
 
 % =====================================================================================
 \section{Conclusion}
@@ -483,7 +913,17 @@ bond within $5\%$, its binding within $3\%$ and a dipole of the right sign. Othe
 \textbf{[pending]}. Nothing is adjusted to molecular data; each atom contributes one core radius, set from its
 ionisation energies.
 
-\begin{thebibliography}{9}
+The model is a geometry model. Where an atom carries many valence electrons the missing Pauli kinetic
+energy shows as a large offset in the binding, nearly independent of geometry and set by the
+composition; CH$_4$ over-binds by $3.2\,E_h$ and still has its bond within $10\%$ and the tetrahedron
+preferred, though with too little angular stiffness. Bond lengths of linear molecules built from the
+same pseudo-atoms (C$_2$H$_2$, HCN, CO, CO$_2$) are within $3$--$10\%$, and the residual forces on H at
+the observed geometry are $0.01$--$0.03\,E_h/a_0$ for cores up to $+3$. Free angles are not yet right:
+in H$_2$O and NH$_3$ the bond pairs meet at a wall that charges nothing, and the angle closes. Atomisation energies are
+therefore a diagnostic; energies are quotable within one composition, and for processes that join
+fragments without changing any atom's bonding.
+
+\begin{thebibliography}{99}
 
 \bibitem{realqm} C.\ Johnson. The RealQM programme is set out in three submitted articles:
 \emph{Quantum Mechanics as Multiphase 3D Continuum Mechanics} (RealQM), submitted to the
@@ -508,6 +948,22 @@ Reference Database 101.
 
 \bibitem{osti} BeH$_2$ atomisation energy, $0.2231\,E_h$; U.S.\ DOE Office of Scientific and Technical
 Information, \texttt{osti.gov}. % TODO: report title / OSTI ID
+\bibitem{slater} J.\ C.\ Slater, The virial and molecular structure, \emph{J.\ Chem.\ Phys.}\
+\textbf{1}, 687 (1933).
+\bibitem{feynman} R.\ P.\ Feynman, Forces in molecules, \emph{Phys.\ Rev.}\ \textbf{56}, 340 (1939).
+\bibitem{hellmann} H.\ Hellmann, Zur Rolle der kinetischen Elektronenenergie f\"ur die
+zwischenatomaren Kr\"afte, \emph{Z.\ Phys.}\ \textbf{85}, 180 (1933).
+\bibitem{ruedenberg} K.\ Ruedenberg, The physical nature of the chemical bond, \emph{Rev.\ Mod.\
+Phys.}\ \textbf{34}, 326 (1962).
+\bibitem{bacskay} G.\ B.\ Bacskay and S.\ Nordholm, Covalent bonding: the fundamental role of the
+kinetic energy, \emph{J.\ Phys.\ Chem.\ A} \textbf{117}, 7946 (2013).
+\bibitem{kolos} W.\ Ko\l{}os and C.\ C.\ J.\ Roothaan, Accurate electronic wave functions for the
+H$_2$ molecule, \emph{Rev.\ Mod.\ Phys.}\ \textbf{32}, 219 (1960).
+\bibitem{coulson} C.\ A.\ Coulson and I.\ Fischer, Notes on the molecular orbital treatment of the
+hydrogen molecule, \emph{Phil.\ Mag.}\ \textbf{40}, 386 (1949).
+\bibitem{ctv} M.\ Conti, S.\ Terracini and G.\ Verzini, Asymptotic estimates for the spatial
+segregation of competitive systems, \emph{Adv.\ Math.}\ \textbf{195}, 524 (2005).
+% TODO verify ctv reference (from memory).
 \end{thebibliography}
 
 \end{document}
