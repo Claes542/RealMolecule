@@ -1,7 +1,7 @@
 \chapter{Dimers, Hydrogen Bonds, and Reactive Chemistry}\label{ch:dimers}
 \index{S66 benchmark}\index{dimer geometries}\index{hydrogen bond}\index{proton transfer}\index{reactive chemistry}\index{H3 saddle}\index{water dimer}\index{methanol dimer}\index{formamide dimer}\index{HCl + NH3 reaction}\index{HF + H2O reaction}
 
-Chapter~\ref{ch:hydrides} established that Level 3 reproduces covalent bonding energies across periodic-table groups to 3--9\%. This chapter pushes the same architecture into two more demanding regimes: \textbf{non-covalent interactions} (hydrogen bonds, $\sim$5 kcal/mol --- below the model's absolute-energy noise floor) and \textbf{reactive chemistry} (proton transfer, bond exchange --- where standard quantum chemistry needs transition-state machinery that RealQM does not have). In both cases the question is whether the same Coulomb-gradient force law of Chapter~\ref{ch:equation} can do the work.
+Chapter~\ref{ch:hydrides} established bond lengths of light hydrides and simple linear molecules to a few per cent, with binding energies only as a diagnostic. This chapter pushes the same architecture into two more demanding regimes: \textbf{non-covalent interactions} (hydrogen bonds, $\sim$5 kcal/mol --- below the model's absolute-energy noise floor) and \textbf{reactive chemistry} (proton transfer, bond exchange --- where standard quantum chemistry needs transition-state machinery that RealQM does not have). In both cases the question is whether the same Coulomb-gradient force law of Chapter~\ref{ch:equation} can do the work.
 
 For non-covalent dimers, the answer is geometric: absolute interaction energies are below the noise floor, but equilibrium distances and angles match the CCSD(T)/CBS S66 benchmark to within 1--5\%. For reactive chemistry, the answer is dynamic: the local Coulomb forces that hold a bond together also break it and re-form it, with no separate machinery required.
 
@@ -13,6 +13,13 @@ Hobza's S66 benchmark~\cite{S66ref} is a set of 66 non-covalent dimer geometries
 S66 interaction energies are in the $-1$ to $-7$~kcal/mol range, well below the model's absolute-energy noise floor of $\sim$0.1~Ha (62~kcal/mol). \textbf{RealQM cannot directly validate S66 binding energies}: the variation in total energy as a dimer approaches the equilibrium distance is comparable to or smaller than the discretisation-level noise in the absolute energy, and the resulting binding-energy estimates would not be reliable.
 
 What \emph{can} be validated, however, is geometric: equilibrium distances and angles. These are determined by the location of the force-balance point along the approach coordinate, which is set by the gradient of the Coulomb potential rather than by the absolute energy. Even if the binding energy itself is below the absolute-energy noise floor, the gradient of the potential can be well-defined and the equilibrium geometry well-determined.
+
+\paragraph{Status of these runs.} The dimer, reaction and enzyme runs of this chapter were made with
+\texttt{molecule.js} at more than five domains, on its default total-Poisson path for the
+electron--electron repulsion. That path was later found to under-count the repulsion by several hartree
+(Chapter~\ref{ch:hydrides}), and it also shapes the density that sets the forces. The runs also used
+older pseudo-atom settings, including domains with more than two electrons. The results below have not
+been repeated on the corrected path and are reported as they were obtained, not as validated.
 
 \section{Five hydrogen-bonded dimers}\label{sec:five-dimers}
 
@@ -90,7 +97,7 @@ The scope of the claim is structural: reaction \emph{dynamics} --- the trajector
 
 \section{What is and is not validated}\label{sec:dimer-summary}
 
-\paragraph{Established.}
+\paragraph{Reported (on the earlier solver path, not yet repeated).}
 \begin{itemize}
 \item Equilibrium geometries of five H-bonded dimers match CCSD(T)/CBS reference to 1--5\%.
 \item Lone-pair locations and H-bond directions agree with the reference at the level needed to set the dimer geometry.
