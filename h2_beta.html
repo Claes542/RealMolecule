@@ -232,6 +232,26 @@
   // mode=c / mode=ch4: pseudo-C +4 (only 1s2 frozen), four single electrons in tetrahedral sectors (splitType 4,
   // axis -z, rot pi/3), kernel share 1 each. CH4: one H on each sector axis at C-H = R (default 2.054), exact T_d.
   // bpair: each sector takes its H's electron (2hom bond pair over the sector and a bare proton).
+  // mode=o4 / mode=o2t (2026-11-14): pseudo-O +4 from the Atom Simulator configuration 2+2+4 (1s2 and the inner 2
+  // frozen), its outer 4-shell as four single electrons in tetrahedral sectors (house rule: a 4 -> tetrahedron).
+  // Sectors by molecule.js splitType 13 (c2v) at the tetrahedral half-angles: two directions toward the partner atom
+  // (the double bond as two bent bonds), two away. o4: one atom, axis +z. o2t: O at z = -R/2 (axis +z) and +R/2 (axis
+  // -z); the bond sectors of both lie in the yz-plane, the away sectors in the xz-plane. Every entry Z=1, Znuc=1,
+  // r_c = rcX (fitted on o4 to -(IE1+..+IE4) of O). Nuclei half a cell off every grid plane (no cell on a sector wall).
+  else if (MODE === 'o4' || MODE === 'o2t') {
+    var HT = Math.acos(1 / Math.sqrt(3)), RO2 = q.get('R') ? R : 2.282;
+    window.USER_SPLIT_CYL_ORG = [];
+    var ctrs = MODE === 'o4' ? [[0, 1]] : [[-RO2 / 2, 1], [RO2 / 2, -1]];
+    ctrs.forEach(function (cz, ci) {
+      for (var t7 = 0; t7 < 4; t7++) {
+        atoms.push({ i: N2 + 0.5, j: N2 + 0.5, k: N2 + 0.5 + cz[0] / h, Z: 1, el: 'O' + ci + 't' + t7 });
+        Z.push(1); Znuc.push(1); RC.push(RCX);
+        SPT[atoms.length - 1] = 13; SPI[atoms.length - 1] = t7; SPA[atoms.length - 1] = [0, 0, cz[1]]; SPR[atoms.length - 1] = HT;
+        window.USER_SPLIT_CYL_ORG[atoms.length - 1] = [HT, 0, 0];
+      }
+    });
+    if (MODE === 'o2t') { window.USER_BOND_PAIRS = [[0, 4]]; window.USER_BONDS_ONLY = true; }
+  }
   // mode=c2h6: staggered ethane from two CH4-type pseudo-C +4 (1s2 frozen, four single electrons in tetrahedral
   // sectors, splitType 4, kernel share 1 each); C-C along z at ?CC= (default 2.901 a0 = 1.535 A), C-H at ?R=
   // (default 2.067 = 1.094 A) on the sector axes (tetrahedral angles, not the exp 111 deg). Lower C axis -z (its
@@ -584,7 +604,7 @@
     var FIXED = q.get('fixed') ? 1 : 0;
     var JAC = parseInt(q.get('jac') || '10');
     var cfg = (q.get('pot') === 'sic' ? '' : '_pd') + '_h' + h.toFixed(3) + '_j' + JAC + '_x' + BOX.toFixed(1) + '_f' + FIXED + (q.get('weak') ? '_w' + q.get('weak') : '') + (q.get('inner') ? '_i' : '') + (q.get('Hbare') === '1' ? '_Hb0' : '') + (q.get('bpair') === '1' ? '_bp' : '') + (q.get('cone') ? '_cone' + q.get('cone') : '') + (C2H !== null ? '_c2h' + C2H + 'n' + (q.get('nval') || '1') + 'u' + (q.get('unlock') || 'fix') : '');
-    cfg += (MODE === 'c2h6' ? '_C2H6_CC' + (q.get('CC') || '2.901') + '_rc' + RCX + (q.get('half') === '1' ? '_half' : '') : '') + (q.get('rsing') ? '_s' + q.get('rsing') : '') + ((MODE === 'c' || MODE === 'ch4') ? (q.get('c4hom') === '1' ? '_C4hom' : q.get('c4pair') === '1' ? '_C4pair' : q.get('planar') === '1' ? '_C4quad' : q.get('c2hom') === '1' ? '_C2hom' : q.get('c2split') === '1' ? '_C2split' : '_C4tet') + '_rc' + RCX : '') + ((MODE === 'n' || MODE === 'nh3') ? (q.get('n5') === '1' ? '_N5tet' : '_N3w') + '_rc' + RCX + '_a' + (q.get('ang') || '106.7') : '') + ((MODE === 'o' || MODE === 'h2o') ? (q.get('o3') === '1' ? '_O3w' + (q.get('relO') ? 'r' + q.get('relO') : '') : q.get('c2v') === '1' ? '_O6c2v_lp' + (q.get('lpang') || '109.47') : '_O6tet') + (q.get('half') === '1' ? '_half' : '') + '_rc' + RCX + '_a' + (q.get('ang') || '104.5') : '') + ((MODE === 'x' || MODE === 'xh' || MODE === 'xh2' || MODE === 'x2') ? '_' + ELX + ZX + 'rc' + RCX + (BB.length >= 2 ? '_bb' + BB.join('') : '') : '') + (q.get('ZnX') ? '_Zn' + q.get('ZnX') : '') + (q.get('ZH') ? '_ZH' + q.get('ZH') : '') + (q.get('val') === '1' ? '_val' : '') + (q.get('core2') === '1' ? '_c2r' + (q.get('rel') || '500') + (q.get('coreax') || '') : '') + (q.get('pairH') === '1' ? '_pH' + (q.get('relH') || 'fix') + (q.get('pairax') || '') : '') + (q.get('hback') === '1' ? '_hb' + (q.get('relHb') || 'fix') : '') + (XPL !== null ? '_xp' + XPL + (q.get('relX') ? 'r' + q.get('relX') : '') : '');
+    cfg += ((MODE === 'o4' || MODE === 'o2t') ? '_O4t_rc' + RCX : '') + (MODE === 'c2h6' ? '_C2H6_CC' + (q.get('CC') || '2.901') + '_rc' + RCX + (q.get('half') === '1' ? '_half' : '') : '') + (q.get('rsing') ? '_s' + q.get('rsing') : '') + ((MODE === 'c' || MODE === 'ch4') ? (q.get('c4hom') === '1' ? '_C4hom' : q.get('c4pair') === '1' ? '_C4pair' : q.get('planar') === '1' ? '_C4quad' : q.get('c2hom') === '1' ? '_C2hom' : q.get('c2split') === '1' ? '_C2split' : '_C4tet') + '_rc' + RCX : '') + ((MODE === 'n' || MODE === 'nh3') ? (q.get('n5') === '1' ? '_N5tet' : '_N3w') + '_rc' + RCX + '_a' + (q.get('ang') || '106.7') : '') + ((MODE === 'o' || MODE === 'h2o') ? (q.get('o3') === '1' ? '_O3w' + (q.get('relO') ? 'r' + q.get('relO') : '') : q.get('c2v') === '1' ? '_O6c2v_lp' + (q.get('lpang') || '109.47') : '_O6tet') + (q.get('half') === '1' ? '_half' : '') + '_rc' + RCX + '_a' + (q.get('ang') || '104.5') : '') + ((MODE === 'x' || MODE === 'xh' || MODE === 'xh2' || MODE === 'x2') ? '_' + ELX + ZX + 'rc' + RCX + (BB.length >= 2 ? '_bb' + BB.join('') : '') : '') + (q.get('ZnX') ? '_Zn' + q.get('ZnX') : '') + (q.get('ZH') ? '_ZH' + q.get('ZH') : '') + (q.get('val') === '1' ? '_val' : '') + (q.get('core2') === '1' ? '_c2r' + (q.get('rel') || '500') + (q.get('coreax') || '') : '') + (q.get('pairH') === '1' ? '_pH' + (q.get('relH') || 'fix') + (q.get('pairax') || '') : '') + (q.get('hback') === '1' ? '_hb' + (q.get('relHb') || 'fix') : '') + (XPL !== null ? '_xp' + XPL + (q.get('relX') ? 'r' + q.get('relX') : '') : '');
     var k = (MODE === 'h' || MODE === 'x' || MODE === 'o' || MODE === 'n' || MODE === 'c') ? (MODE + (ZA > 1 ? 'Z' + ZA : '') + cfg)
           : ('h2_R' + R.toFixed(2) + '_b' + BETA.toFixed(3) + '_c' + CURV.toFixed(2) + cfg);
     if (!Array.isArray(st[k])) st[k] = [];
