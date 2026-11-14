@@ -379,7 +379,13 @@ const W_STEPS_PER_FRAME = Math.max(1, STEPS_PER_FRAME);  // match U steps per fr
 const BOUNDARY_INTERVAL = 20;
 const NORM_INTERVAL = 20;
 const POISSON_INTERVAL = window.USER_POISSON_INTERVAL || 50;
-const USE_DIRECT_POTHER = (window.USER_DIRECT_POTHER !== undefined) ? window.USER_DIRECT_POTHER : (NELEC <= 5);  // direct per-electron Poisson solve (no SIC needed)
+// Direct per-electron Poisson solve is the default up to 30 entries (2026-11-14). The total-Poisson+SIC path
+// under-counts V_ee by several Ha (CH4 ~2.5): P_total walls held at 0 (initPdirect's far-field fix never
+// carried over), Jacobi weight 0.3333 (screened Poisson), SIC self-solve under-converged with a wrong-signed
+// coarse step, V-cycle trigger never fires (s < STEPS_PER_FRAME = POISSON_INTERVAL). Above 30 entries that
+// path is still used for speed; its energies and forces are NOT validated.
+const USE_DIRECT_POTHER = (window.USER_DIRECT_POTHER !== undefined) ? window.USER_DIRECT_POTHER : (NELEC <= 30);
+if (!USE_DIRECT_POTHER) console.warn('molecule.js: NELEC=' + NELEC + ' uses the total-Poisson+SIC path; V_ee is known to be under-counted there (not validated).');
 // WEAK INTERFACE (opt-in, window.USER_WEAK_W = n): mol_fast's weak Neumann on molecule.js's partition. Each
 // electron m carries its OWN amplitude u_m and weight w_m; w_m is the label indicator chi_m smoothed by n
 // linear passes, so sum_m w_m = 1 (a partition of unity) and the ramp is ~sqrt(n) cells wide. Update as in
