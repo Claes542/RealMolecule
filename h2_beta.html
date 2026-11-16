@@ -73,7 +73,9 @@
   var CURV = parseFloat(q.get('curv') || '0.15');
   var BS   = parseFloat(q.get('bs') || '0.25');
 
-  var gridN = Math.max(48, Math.min(200, 2 * Math.round(BOX / HG / 2)));
+  // ?nmax= raises the 200-cell cap (2026-11-16: box 20 at h<0.1 and box 12 at h=0.05 were silently coarsened).
+  var gridN = Math.max(48, Math.min(parseInt(q.get('nmax') || '200'), 2 * Math.round(BOX / HG / 2)));
+  if (2 * Math.round(BOX / HG / 2) > gridN) console.warn('h2_beta: grid capped at ' + gridN + ' cells: h=' + (BOX / gridN).toFixed(4) + ' not the requested ' + HG);
   var scr = BOX, N2 = gridN / 2, h = scr / gridN;
 
   var atoms = [], Z = [], Znuc = [], RC = [], ZE = [];
@@ -286,6 +288,9 @@
   }
   else if (MODE === 'c' || MODE === 'ch4') {
     var RC4 = q.get('R') ? R : 2.054, bpC = q.get('bpair') === '1' && MODE === 'ch4';
+    // ?nH=1..3 (2026-11-15): CH_n -- H only on the first n tetrahedral sectors (same T_d directions and R), the other
+    // sectors keep their single C electron. With bpair only the sectors that carry an H become 2hom bond pairs.
+    var NHC = MODE === 'ch4' ? Math.max(1, Math.min(4, parseInt(q.get('nH') || '4'))) : 0;
     var axC = [0, 0, -1], e1C = [0, -1, 0], e2C = [-1, 0, 0], rotC = Math.PI / 3;
     // ?c2hom=1: pseudo-C +2 (4-electron core: 1s2 + inner 2-shell) with the outer 2 as ONE 2hom domain (no split),
     // and in ch4 four H atoms each with its own electron -- bonding by single domains meeting the closed pair.
@@ -294,6 +299,16 @@
       // rule, run as a test; in ch4 the four H's keep their own electrons.
       atoms.push({ i: N2, j: N2, k: N2, Z: 4, el: 'C4h' });
       Z.push(4); Znuc.push(4); RC.push(RCX);
+    } else if (q.get('clp') === '1') {
+      // ?clp=1 (2026-11-16): pseudo-C +4 (1s2 frozen) in the ground-state layout s2p2: the 2s2 as ONE 2hom lone pair
+      // and two single electrons, in three 120 deg wedges about z (molecule.js splitType 3, rot 0), kernel shares
+      // 2, 1, 1. Same r_c as the tetrahedral atom: E(clp) - E(tetra) is RealQM's promotion energy.
+      for (var wl = 0; wl < 3; wl++) {
+        var neL = wl === 0 ? 2 : 1;
+        atoms.push({ i: N2, j: N2, k: N2, Z: neL, el: wl === 0 ? 'Clp' : 'Cw' + wl });
+        Z.push(neL); Znuc.push(neL); RC.push(RCX);
+        SPT[atoms.length - 1] = 3; SPI[atoms.length - 1] = wl; SPA[atoms.length - 1] = [0, 0, 1]; SPR[atoms.length - 1] = 0;
+      }
     } else if (q.get('c2hom') === '1') {
       atoms.push({ i: N2, j: N2, k: N2, Z: 2, el: 'Cp' });
       Z.push(2); Znuc.push(2); RC.push(RCX);
@@ -337,13 +352,13 @@
       }
     } else
     for (var tc = 0; tc < 4; tc++) {
-      var neC = bpC ? 2 : 1;
+      var neC = (bpC && tc < NHC) ? 2 : 1;
       atoms.push({ i: N2, j: N2, k: N2, Z: neC, el: 'Cs' + tc });
       Z.push(neC); Znuc.push(1); RC.push(RCX);
       SPT[atoms.length - 1] = 4; SPI[atoms.length - 1] = tc; SPA[atoms.length - 1] = axC; SPR[atoms.length - 1] = rotC;
     }
     if (MODE === 'ch4' && q.get('planar') !== '1') {
-      for (var hc = 0; hc < 4; hc++) {
+      for (var hc = 0; hc < NHC; hc++) {
         var dC;
         if (hc === 3) dC = [0, 0, 1];
         else {
@@ -604,7 +619,7 @@
     // A lone atom has no R, beta or curvature, so those are left out of its key entirely.
     var FIXED = q.get('fixed') ? 1 : 0;
     var JAC = parseInt(q.get('jac') || '10');
-    var cfg = (q.get('pot') === 'sic' ? '' : q.get('pot') === 'local' ? '_pl' + (q.get('lself') === '0' ? 'n' : '') : '_pd') + '_h' + h.toFixed(3) + '_j' + JAC + '_x' + BOX.toFixed(1) + '_f' + FIXED + (q.get('weak') ? '_w' + q.get('weak') : '') + (q.get('inner') ? '_i' : '') + (q.get('Hbare') === '1' ? '_Hb0' : '') + (q.get('bpair') === '1' ? '_bp' : '') + (q.get('cone') ? '_cone' + q.get('cone') : '') + (C2H !== null ? '_c2h' + C2H + 'n' + (q.get('nval') || '1') + 'u' + (q.get('unlock') || 'fix') : '');
+    var cfg = (q.get('pot') === 'sic' ? '' : q.get('pot') === 'local' ? '_pl' + (q.get('lself') === '0' ? 'n' : '') : '_pd') + '_h' + h.toFixed(3) + '_j' + JAC + '_x' + BOX.toFixed(1) + '_f' + FIXED + (q.get('weak') ? '_w' + q.get('weak') : '') + (q.get('inner') ? '_i' : '') + (q.get('Hbare') === '1' ? '_Hb0' : '') + (q.get('bpair') === '1' ? '_bp' : '') + (q.get('nH') ? '_nH' + q.get('nH') : '') + (q.get('clp') === '1' ? '_clp' : '') + (q.get('cone') ? '_cone' + q.get('cone') : '') + (C2H !== null ? '_c2h' + C2H + 'n' + (q.get('nval') || '1') + 'u' + (q.get('unlock') || 'fix') : '');
     cfg += ((MODE === 'o4' || MODE === 'o2t') ? '_O4t_rc' + RCX : '') + (MODE === 'c2h6' ? '_C2H6_CC' + (q.get('CC') || '2.901') + '_rc' + RCX + (q.get('half') === '1' ? '_half' : '') : '') + (q.get('rsing') ? '_s' + q.get('rsing') : '') + ((MODE === 'c' || MODE === 'ch4') ? (q.get('c4hom') === '1' ? '_C4hom' : q.get('c4pair') === '1' ? '_C4pair' : q.get('planar') === '1' ? '_C4quad' : q.get('c2hom') === '1' ? '_C2hom' : q.get('c2split') === '1' ? '_C2split' : '_C4tet') + '_rc' + RCX : '') + ((MODE === 'n' || MODE === 'nh3') ? (q.get('n5') === '1' ? '_N5tet' : '_N3w') + '_rc' + RCX + '_a' + (q.get('ang') || '106.7') : '') + ((MODE === 'o' || MODE === 'h2o') ? (q.get('o3') === '1' ? '_O3w' + (q.get('relO') ? 'r' + q.get('relO') : '') : q.get('c2v') === '1' ? '_O6c2v_lp' + (q.get('lpang') || '109.47') : '_O6tet') + (q.get('half') === '1' ? '_half' : '') + '_rc' + RCX + '_a' + (q.get('ang') || '104.5') : '') + ((MODE === 'x' || MODE === 'xh' || MODE === 'xh2' || MODE === 'x2') ? '_' + ELX + ZX + 'rc' + RCX + (BB.length >= 2 ? '_bb' + BB.join('') : '') : '') + (q.get('ZnX') ? '_Zn' + q.get('ZnX') : '') + (q.get('ZH') ? '_ZH' + q.get('ZH') : '') + (q.get('val') === '1' ? '_val' : '') + (q.get('core2') === '1' ? '_c2r' + (q.get('rel') || '500') + (q.get('coreax') || '') : '') + (q.get('pairH') === '1' ? '_pH' + (q.get('relH') || 'fix') + (q.get('pairax') || '') : '') + (q.get('hback') === '1' ? '_hb' + (q.get('relHb') || 'fix') : '') + (XPL !== null ? '_xp' + XPL + (q.get('relX') ? 'r' + q.get('relX') : '') : '');
     var k = (MODE === 'h' || MODE === 'x' || MODE === 'o' || MODE === 'n' || MODE === 'c') ? (MODE + (ZA > 1 ? 'Z' + ZA : '') + cfg)
           : ('h2_R' + R.toFixed(2) + '_b' + BETA.toFixed(3) + '_c' + CURV.toFixed(2) + cfg);

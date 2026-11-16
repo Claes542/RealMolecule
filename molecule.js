@@ -387,6 +387,12 @@ const POISSON_INTERVAL = window.USER_POISSON_INTERVAL || 50;
 // LOCAL path (USER_POT_LOCAL, in development 2026-11-14): one P_total with far-field walls relaxed by p5, minus each
 // domain's self-potential solved on a small box around it (rho_m has compact support). Cost ~ a few full-grid passes,
 // memory one grid -- not one per electron. Step 1: P_total only (LOCAL_SELF=false keeps the self-repulsion in).
+// URL switches for ANY page (2026-11-14), used only when the page did not set the window variable itself:
+// ?pot=local|direct|sic, ?nodyn=1 (nuclei held), ?dumpat=STEP&dump=NAME[&dumpport=] (state to tools/check_energy.py)
+const _MQ = new URLSearchParams(location.search);
+if (_MQ.get('pot') === 'local' && window.USER_POT_LOCAL === undefined) window.USER_POT_LOCAL = true;
+if (_MQ.get('pot') === 'direct' && window.USER_DIRECT_POTHER === undefined) window.USER_DIRECT_POTHER = true;
+if (_MQ.get('pot') === 'sic' && window.USER_DIRECT_POTHER === undefined) window.USER_DIRECT_POTHER = false;
 const USE_LOCAL_POT = window.USER_POT_LOCAL === true;
 const LOCAL_SELF = window.USER_LOCAL_SELF !== false;
 const USE_DIRECT_POTHER = USE_LOCAL_POT ? false : (window.USER_DIRECT_POTHER !== undefined) ? window.USER_DIRECT_POTHER : (NELEC <= 30);
@@ -449,7 +455,7 @@ Object.defineProperty(window, '_dynOn', { get() { return dynamicsEnabled; }, con
 window._nucForce = nucForce;          // what the INTEGRATOR actually uses (4839); the total above is a display copy
 window._nucForceElec = nucForceElec;
 window._nucForceNuc  = nucForceNuc;
-let nucStepCount = 0, dynamicsEnabled = window.USER_DYNAMICS || false;
+let nucStepCount = 0, dynamicsEnabled = (window.USER_DYNAMICS || false) && !(new URLSearchParams(location.search).get('nodyn') === '1');
 Object.defineProperty(window, '_nucStepCount', { get() { return nucStepCount; }, configurable: true });
 // USER_NUC_MASS overrides the element table with a single mass in proton units, for runs
 // where the nuclei are moved to MEASURE a lattice frequency rather than to do chemistry.
@@ -5561,6 +5567,17 @@ async function doSteps(n) {
   }
 
   console.log("Step " + tStep + ": E=" + E.toFixed(6) + " T=" + E_T.toFixed(4) + " V_eK=" + E_eK.toFixed(4) + " V_ee=" + E_ee.toFixed(4) + " V_KK=" + E_KK.toFixed(4) + " (" + lastMs.toFixed(0) + "ms/" + n + "steps)");
+  {
+    const _dq = new URLSearchParams(location.search), _da = +_dq.get('dumpat');
+    if (_da > 0 && _dq.get('dump') && tStep >= _da && !window._dumpAtDone && window.dumpState) {
+      window._dumpAtDone = true;
+      const DU = 'http://127.0.0.1:' + (_dq.get('dumpport') || '8767') + '/dump?name=' + encodeURIComponent(_dq.get('dump'));
+      const meta = { NN: NN, h: hGrid, E: E, T: E_T, VeK: E_eK, Vee: E_ee, VKK: E_KK,
+        atoms: _atoms.map((a, q) => ({ i: nucPos[q][0], j: nucPos[q][1], k: nucPos[q][2], Z: Z[q], Znuc: Z_nuc[q], rc: r_cut[q] || 0, el: a.el || '' })) };
+      console.log('CONVERGED dumpat step ' + tStep + ' E=' + E.toFixed(5) + ' T=' + E_T.toFixed(5) + ' V_eK=' + E_eK.toFixed(5) + ' V_ee=' + E_ee.toFixed(5) + ' V_KK=' + E_KK.toFixed(5));
+      fetch(DU + '&part=meta', { method: 'POST', body: JSON.stringify(meta) }).then(() => window.dumpState(DU)).catch(e => console.log('DUMP failed: ' + e));
+    }
+  }
 
   // Force readback and nuclear dynamics
   if (needForceReadback) {
@@ -7070,7 +7087,7 @@ function draw() {
       }
 
       // Auto-enable dynamics after convergence (skip if adaptive sweep)
-      if (!dynamicsEnabled && !window.CONVERGENCE_THRESHOLD && !window.NO_AUTO_DYNAMICS && phaseSteps >= 10000) {
+      if (!dynamicsEnabled && !window.CONVERGENCE_THRESHOLD && !window.NO_AUTO_DYNAMICS && !(_MQ.get('nodyn') === '1') && phaseSteps >= 10000) {
         dynamicsEnabled = true;
         console.log("=== Dynamics auto-enabled at step " + phaseSteps + " ===");
       }
