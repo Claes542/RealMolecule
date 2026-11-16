@@ -772,10 +772,11 @@ intermolecular energies are outside the present model.
 \paragraph{Cases that do not yet work.} The selection above is a first one. The following were tried
 beyond it; each is stated with the result found:
 \begin{itemize}
-\item \emph{Heavy atoms carrying their whole valence} (CH$_4$, NH$_3$, H$_2$O): bonds a few per cent short
-  (CH$_4$ $-4\%$); binding two to three times too large, by an amount per heavy atom (ethane twice methane).
-\item \emph{Shapes and angles:} the CH$_4$ tetrahedron and square plane have the same energy within
-  $0.002\,E_h$ (true difference about $0.2$); the H$_2$O angle closes below $95^\circ$ with the lone pairs
+\item \emph{Heavy atoms carrying their whole valence} (CH$_4$, NH$_3$, H$_2$O): bonds short (CH$_4$
+  $-5\%$ at $h = 0.07$ and moving shorter with the mesh, about $-7\%$ extrapolated); binding two to three
+  times too large, by an amount per heavy atom (ethane twice methane). Carbon is analysed below.
+\item \emph{Shapes and angles:} the CH$_4$ square plane lies $0.002\,E_h$ \emph{below} the tetrahedron
+  (CCSD(T) puts it $0.225\,E_h$ above); the H$_2$O angle closes below $95^\circ$ with the lone pairs
   frozen into the core and is pushed open with them as domains of their own.
 \item \emph{O$_2$ and F$_2$:} O$_2$ over-binds about twofold with a bond $12\%$ short; F$_2$ has no minimum;
   no core configuration or radius tried reproduces either.
@@ -786,11 +787,63 @@ beyond it; each is stated with the result found:
 \item \emph{Reaction energies:} quotable only where every atom keeps its bonding; an isodesmic test among
   linear molecules alternates by about $\pm2.5$\,kcal/mol between meshes, below what is needed.
 \end{itemize}
-Most of these share one feature: where pairs are pressed together the free wall between them charges
-nothing, and the model has no repulsion between pairs beyond their Coulomb energy. Whether RealQM needs
-such a repulsion, and in what form, is the main open question; its test is F$_2$ weakly bound near
-$2.67\,a_0$, the H$_2$O angle and the CH$_4$ tetrahedron recovered, and LiH, Li$_2$, C$_2$, N$_2$ left where
-they are.
+\paragraph{Carbon: what the free wall does not charge.} Carbon was taken apart against Hartree--Fock
+(HF) and CCSD(T), computed with PySCF~\cite{pyscf} in the cc-pVQZ basis at the same geometry (C--H
+$2.054\,a_0$ on tetrahedral directions). RealQM is the 2hom construction on pseudo-C $+4$ ($r_c = 1.0$),
+every energy recomputed independently from the converged density. Three measurements point the same way.
+
+\emph{Each C--H bond is an independent unit.} Adding the $n$-th hydrogen to CH$_{n-1}$ gains $0.352\,E_h$ in
+RealQM for $n = 1,\dots,4$, constant to $2\%$; the exact gains grow from $0.13$ to $0.19$. The atomisation
+of CH$_4$ is $1.404\,E_h$ against $0.665$. Table~\ref{tab:c-h-bond} splits the fourth bond into kinetic and
+electrostatic parts.
+\begin{table}[h]
+\centering\small
+\caption{The fourth C--H bond, CH$_3$ + H $\to$ CH$_4$: contributions to the binding ($E_h$; positive
+binds). Electrostatic: $\Delta(V_{eK}+V_{ee}+V_{KK})$.}\label{tab:c-h-bond}
+\begin{tabular}{lrrr}
+\toprule
+ & $\Delta T$ & electrostatic & $\Delta E$ \\
+\midrule
+RealQM, $h = 0.10$ & $+0.018$ & $+0.329$ & $+0.347$ \\
+RealQM, $h = 0.07$ & $+0.013$ & $+0.336$ & $+0.349$ \\
+HF                 & $-0.143$ & $+0.290$ & $+0.147$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+The electrostatic gains agree within $0.05$. The difference is the kinetic energy: forming the bond costs
+HF $0.14\,E_h$ of kinetic energy, as the virial theorem requires near equilibrium, and costs RealQM
+nothing. The mesh does not change this: from $h = 0.1$ to $0.07$ the H atom's kinetic energy moves
+from $0.453$ to $0.476$ (exact $0.5$) while the bond's stays near zero.
+
+\emph{No shape is preferred.} The tetrahedron is preferred by $0.248\,E_h$ in HF and $0.225$ in CCSD(T),
+already in HF and so not a correlation effect. In RealQM, where the bonds do not interact, it is not
+preferred.
+
+\emph{The promotion energy has the wrong sign.} At the same $r_c$, pseudo-C with its four electrons in
+tetrahedral sectors lies $0.223\,E_h$ \emph{below} the ground-state layout of $2s^22p^2$, one 2hom pair and
+two singles ($0.222$ at $h = 0.07$). In carbon the four-unpaired state $^5S$ lies $0.152\,E_h$ \emph{above}
+$^3P$ (CCSD(T); HF $0.095$). Splitting the pair removes its repulsion ($-0.14$) and lets it closer to the
+core ($-0.16$) for a kinetic cost of $0.08$. In carbon the same step puts an electron in a $2p$ orbital,
+whose angular node costs kinetic energy. The radius $r_c$, fitted with the tetrahedral layout to the
+ground-state energy, is therefore fitted to the wrong state, and no choice of layout repairs it.
+
+\emph{The common cause.} In HF, Pauli exclusion acts through the orthogonality of same-spin orbitals:
+where two would overlap, one must change sign, and the node costs kinetic energy. This is the repulsion
+between pairs that spreads them to a tetrahedron and resists contraction, and near the core it is the
+oscillation that pseudopotentials replace by a repulsion~\cite{pk}. In RealQM the domains do not overlap,
+so orthogonality holds without a node: each density ends at a free wall, and the wall is not charged. The
+measured consequences are a missing kinetic cost of $0.14\,E_h$ per bond, no shape preference, a
+promotion energy of the wrong sign, and short bonds. The opposite limit, a density forced to zero at the
+wall, overcharges. Whether a wall cost between the two exists without a fitted parameter is the main open
+question of the model. Its test is the CH$_4$ fourth-bond kinetic cost, the tetrahedron and the promotion
+energy of carbon recovered, F$_2$ weakly bound near $2.67\,a_0$, the H$_2$O angle, and LiH, Li$_2$,
+C$_2$, N$_2$ left where they are.
+% Supporting runs 2026-11-15/16 (h2_beta.html ?nH=1..4 and ?clp=1, tools/check_energy.py; PySCF scratchpad
+% hf_chn.py, hf_terms.py, hf_planar.py, promo.py). RealQM h0.1 E indep CH/CH2/CH3/CH4 -6.30833/-7.14244/
+% -7.97677/-8.80568, D 0.3525/0.7045/1.0568/1.4036; h0.07 CH3 -7.98939, CH4 -8.82885, C -5.45175, H -0.49041,
+% D(CH4) 1.4155. CCSD(T)/QZ D 0.1317/0.2916/0.4751/0.6646; HF 0.0904/0.2379/0.3764/0.5231. D4h-Td at 2.054
+% (TZ): HF 0.24837, CCSD(T) 0.22454. C clp -5.25038 (h0.1), -5.22962 (h0.07); 3P->5S UHF 0.0946, UCCSD(T) 0.1521.
+% Lone pair in a rigid 120 deg wedge: a relaxed lone-pair domain would lower clp somewhat (untested).
 % Supporting runs 2026-11-14 (per-electron path, tools/check_energy.py): CH4 2hom R 1.90/2.054/2.25/2.45 =
 % -8.80902/-8.80568/-8.73094/-8.61156 (R_e 1.966, force zero 1.984), square -8.80793; 4-split -9.30129; ethane
 % -17.55739; NH3 -5.76857; H2O O+6 c2v 104.5 -18.05213 (radial -0.068, opening 0.021 per H); atoms C -5.47378,
@@ -867,6 +920,10 @@ Reference Database 101.
 
 \bibitem{osti} D.\ Vasiliu, K.\ A.\ Peterson and D.\ A.\ Dixon, Benchmark-quality atomization energies
 for BeH and BeH$_2$, \emph{J.\ Chem.\ Theory Comput.}\ \textbf{13}, 649 (2017).
+\bibitem{pyscf} Q.\ Sun \emph{et al.}, Recent developments in the PySCF program package, \emph{J.\ Chem.\
+  Phys.}\ \textbf{153}, 024109 (2020).
+\bibitem{pk} J.\ C.\ Phillips and L.\ Kleinman, New method for calculating wave functions in crystals and
+  molecules, \emph{Phys.\ Rev.}\ \textbf{116}, 287 (1959).
 \bibitem{slater} J.\ C.\ Slater, The virial and molecular structure, \emph{J.\ Chem.\ Phys.}\
 \textbf{1}, 687 (1933).
 \bibitem{feynman} R.\ P.\ Feynman, Forces in molecules, \emph{Phys.\ Rev.}\ \textbf{56}, 340 (1939).
