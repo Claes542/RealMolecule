@@ -812,7 +812,8 @@ const RESULTS = [
 // This is the comparison the file has machinery for but no recorded numbers: total energies are
 // tabulated in RESULTS, ionisation energies are computed live and were never stored.
 (function(){
-  var MODE = /[?&]auto=rad(?:&|$)/.test(location.search) ? 'R'
+  var MODE = /[?&]auto=one(?:&|$)/.test(location.search) ? '1'
+           : /[?&]auto=rad(?:&|$)/.test(location.search) ? 'R'
            : /[?&]auto=he(?:&|$)/.test(location.search) ? 'h'
            : /[?&]auto=sr(?:&|$)/.test(location.search) ? 'z'
            : /[?&]auto=seq(?:&|$)/.test(location.search) ? 'q'
@@ -1488,6 +1489,37 @@ const RESULTS = [
       document.title='FINE DONE';
     })();
   };
+  // ONE ATOM, ANY Z (2026-11-18): ?auto=one&Z=83&cfg=2,4,4,...&N=2400[&steps=][&D=]. All-electron on the uniform mesh,
+  // the same solveAtomPure as everything else; the convergence window scales as (N/400)^2 (same imaginary time at
+  // every rung, see solveAtomPure). Prints a CONVERGED line (E, iterations, shell radii, outer IE) for run.sh.
+  // Written for Bi (Z=83): cfg by principal shell, closed sp octets as 4+4, d10 as 4+3+3, f14 as 4+4+3+3, ns and np
+  // of the open shell separate, as genConfigObserved does for period 4.
+  window.__autoOne = function(){
+    var q = new URLSearchParams(location.search);
+    var Zq = parseInt(q.get('Z')), cfg = q.get('cfg') ? q.get('cfg').split(',').map(Number) : genConfigObserved(Zq);
+    // ?beta= (2026-11-19): Robin surface energy (beta/2) INT rho dS on every INTERNAL shell wall, both sides
+    window.USER_SHELL_BETA = q.get('beta') ? parseFloat(q.get('beta')) : 0;
+    if (q.get('walls')) window.USER_FIX_WALLS = q.get('walls').split(',').map(Number);   // e.g. walls=0.788,2.686
+    var ne = cfg.reduce(function(a,b){return a+b;},0);
+    N = parseInt(q.get('N') || '800'); PK_MODE = false;
+    if (q.get('D')) window.USER_D_BOX = parseFloat(q.get('D'));
+    if (q.get('floor')) window.USER_U_FLOOR = parseFloat(q.get('floor'));          // e.g. floor=1e-3
+    var tolq = q.get('tol') !== null ? parseFloat(q.get('tol')) : 1e-4;               // tol=0: run to the step cap
+    var steps = parseInt(q.get('steps') || String(Math.round(12000 * (N/800) * (N/800))));
+    var chk = Math.max(20, Math.round(20 * (N/400) * (N/400)));
+    console.log('ONE start Z=' + Zq + ' ne=' + ne + ' shells=' + cfg.length + ' cfg=' + cfg.join('+') + ' N=' + N + ' steps<=' + steps + ' chk=' + chk);
+    if (ne !== Zq) console.log('ONE WARNING neutral expected: ne=' + ne + ' Z=' + Zq);
+    var t0 = Date.now(), r = solveAtomPure(Zq, cfg, steps, { chkEvery: chk, tol: tolq });
+    var radii = []; for (var sI = 1; sI <= NSHELLS; sI++) radii.push((M[sI] * h).toFixed(3));
+    var nrm = []; for (var sJ = 0; sJ < NSHELLS; sJ++) nrm.push((normu[sJ] || 0).toFixed(2));
+    console.log('ONE norms ' + nrm.join(',') + ' shell energies ' + energy.slice(0, NSHELLS).map(function (e) { return e.toFixed(1); }).join(','));
+    var ref = (typeof REF_ETOT !== 'undefined' && REF_ETOT[Zq] != null) ? REF_ETOT[Zq] : null;
+    console.log('CONVERGED one Z=' + Zq + ' E=' + (isFinite(r.etot) ? r.etot.toFixed(4) : 'NONFIN') + ' iters=' + r.iters + '/' + steps
+      + ' N=' + N + ' D=' + D + ' h=' + h.toFixed(5) + ' IE_outer_eV=' + (isFinite(r.IE_eV) ? r.IE_eV.toFixed(3) : 'NaN')
+      + ' ref=' + ref + ' radii=' + radii.join(',') + ' sec=' + ((Date.now() - t0) / 1000).toFixed(0));
+    document.title = 'ONE DONE';
+  };
+
   window.__autoKr = function(){
     var KEY='atomsim_kr';
     try{ localStorage.removeItem(KEY); }catch(e){}
@@ -1908,7 +1940,8 @@ const RESULTS = [
     if (++tries > 400) { clearInterval(iv); return; }
     if (typeof solveAtomPure === 'function' && typeof genConfigBalanced === 'function') {
       clearInterval(iv);
-      setTimeout(MODE === 'K' ? window.__autoKr
+      setTimeout(MODE === '1' ? window.__autoOne
+                       : MODE === 'K' ? window.__autoKr
                        : MODE === 'N' ? window.__autoFine
                        : MODE === 'T' ? window.__autoTrunc
                        : MODE === 'F' ? window.__autoFull
@@ -2137,6 +2170,11 @@ function initArrays() {
     M[s] = Math.round(m0 + s * (N - m0) / NSHELLS);
   }
   M[NSHELLS] = N;
+  // window.USER_FIX_WALLS = [r1, r2, ...] (2026-11-19, beta check): put the internal walls there and KEEP them there
+  // (the free-boundary tracking in macroStep is skipped), so energies at different beta compare at one partition.
+  if (window.USER_FIX_WALLS && !PK_MODE) {
+    for (let s = 1; s < NSHELLS && s - 1 < window.USER_FIX_WALLS.length; s++) M[s] = Math.round(window.USER_FIX_WALLS[s - 1] / h);
+  }
   // Unused shells get boundary at N
   for (let s = NSHELLS + 1; s <= MAXSHELLS; s++) {
     M[s] = N;
@@ -2146,6 +2184,9 @@ function initArrays() {
   for (let i = 0; i <= N; i++) {
     if (PK_MODE) u[i] = (i < m0) ? 0 : exp(-0.5 * (i * h - PK_rc));   // valence lives outside r_c only
     else u[i] = exp(-Z * i * h);
+    // window.USER_U_FLOOR (heavy atoms): add floor*exp(-r) so no shell starts empty -- exp(-Z r) underflows to exactly
+    // 0 beyond r ~ 745/Z (r ~ 9 au at Z=83), and an empty shell gives the boundary rule nothing to act on.
+    if (!PK_MODE && window.USER_U_FLOOR) u[i] += window.USER_U_FLOOR * exp(-i * h);
     P[i] = 0;
   }
   u[N] = 0;
@@ -2314,7 +2355,7 @@ function relaxGraded(s, lo, hi, dtUse) {
 // Single source of truth shared by interactive draw() and the batch sweep.
 function macroStep() {
   // Free boundary tracking: continuity of u at each M[s]
-  for (let s = 1; s < NSHELLS; s++) {
+  for (let s = 1; s < NSHELLS && !window.USER_FIX_WALLS; s++) {
     if (M[s] < M[s + 1] - 2 && M[s] > M[s - 1] + 2) {
       if (u[M[s]] > u[M[s] + 1] + diff) M[s]++;
       if (u[M[s]] < u[M[s] + 1] - diff) M[s]--;
@@ -2328,10 +2369,21 @@ function macroStep() {
       let hi = M[s + 1];
       energy[s] = 0;
       eps[s] = 0;
-      if (s === 0 && !PK_MODE) { u[hi] = u[hi - 1]; }   // origin-cusp shell (explicit nucleus)
+      // ?beta (window.USER_SHELL_BETA, 2026-11-19): Robin wall du/dn = -beta*u on the INTERNAL shell walls (not the
+      // box edge, not the nucleus), the natural condition of the surface energy (beta/2) INT rho dS. beta=0 -> Neumann.
+      const bW = window.USER_SHELL_BETA || 0;
+      const rOut = (bW && s < NSHELLS - 1) ? 1 / (1 + bW * h) : 1;
+      const rIn  = (bW && s > 0) ? 1 / (1 + bW * h) : 1;
+      if (s === 0 && !PK_MODE) { u[hi] = u[hi - 1] * rOut; }   // origin-cusp shell (explicit nucleus)
       else {
-        u[lo + 1] = u[lo + 2]; u[hi] = u[hi - 1];
+        u[lo + 1] = u[lo + 2] * rIn; u[hi] = u[hi - 1] * rOut;
         if (s === 0) u[lo] = u[lo + 1];                 // PK_MODE: Neumann valence edge at r_c
+      }
+      // surface energy of this shell's own density on its internal walls: (beta/2) u(R)^2 R^2 per wall side
+      // (rho = u^2/4pi, dS = 4pi R^2; same normalisation as the r^2 dr integrand below)
+      if (bW) {
+        if (s < NSHELLS - 1) { const R = hi * h; energy[s] += 0.5 * bW * u[hi] * u[hi] * R * R; eps[s] += 0.5 * bW * u[hi] * u[hi] * R * R; }
+        if (s > 0) { const R = (lo + 1) * h; energy[s] += 0.5 * bW * u[lo + 1] * u[lo + 1] * R * R; eps[s] += 0.5 * bW * u[lo + 1] * u[lo + 1] * R * R; }
       }
       let iStart = (s === 0 && !PK_MODE) ? 1 : lo + 2;
       let iEnd = hi;

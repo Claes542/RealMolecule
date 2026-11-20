@@ -504,7 +504,7 @@ struct P {
   N2: u32, dt_w: f32, curvReg: f32, TWO_PI: f32,
   h: f32, h2: f32, inv_h: f32, inv_h2: f32,
   dt: f32, half_d: f32, h3: f32, sliceK: u32,
-  beta: f32, fieldX: f32, _pad1: f32, _pad2: f32,
+  beta: f32, fieldX: f32, betaInter: f32, betaIso: f32,
 }`;
 
 const ATOM_STRIDE = 20; // 8 base + 6 split + 3 cylinder origin + 2 shell (q,R) + 1 homog flag
@@ -517,6 +517,29 @@ struct Atom {
   splitAxZ: f32, splitRot: f32,
   cylOX: f32, cylOY: f32, cylOZ: f32,
   shellQ: f32, shellR: f32, homog: f32,
+}
+// Surface-energy weight of the wall between domains a and b (2026-11-18). 0 inside one domain. With
+// inter = 0 every other domain counts (the original rule). With ?betainter (USER_BETA_INTER) only walls
+// between DIFFERENT atoms count: entries whose kernels sit at the same point (one atom's sectors/pairs)
+// share free walls at beta = 0.
+fn betaW(a: u32, b: u32, A: Atom, B: Atom, inter: f32) -> f32 {
+  if (a == b) { return 0.0; }
+  if (inter == 0.0) { return 1.0; }
+  if (abs(A.posI - B.posI) + abs(A.posJ - B.posJ) + abs(A.posK - B.posK) > 0.01) { return 1.0; }
+  return 0.0;
+}
+// Wall area carried by one cell, in units of h^2 (2026-11-18). Counting faces measures a wall's area in the L1
+// norm: exact for a wall in a grid plane, sqrt2 too large at 45 deg, sqrt3 on the cube diagonal. With iso != 0 the
+// face count is scaled by |g|_2/|g|_1, g = (f_ip - f_im, f_jp - f_jm, f_kp - f_km) the six-neighbour wall normal,
+// which is exact for any flat wall (a staircase cell on x+y+z=c has three faces and area sqrt3 per sqrt3 h^2 of wall).
+// Where g cancels (a sheet one cell thick) the plain count is kept.
+fn betaArea(fip: f32, fim: f32, fjp: f32, fjm: f32, fkp: f32, fkm: f32, iso: f32) -> f32 {
+  let n = fip + fim + fjp + fjm + fkp + fkm;
+  if (iso == 0.0 || n == 0.0) { return n; }
+  let gx = fip - fim; let gy = fjp - fjm; let gz = fkp - fkm;
+  let g1 = abs(gx) + abs(gy) + abs(gz);
+  if (g1 < 0.5) { return n; }
+  return n * sqrt(gx*gx + gy*gy + gz*gz) / g1;
 }`;
 
 // Angular shell-split test (ported from mol_fast.js). A split sibling only owns
@@ -609,8 +632,13 @@ fn inSplitAtom(dx: f32, dy: f32, dz: f32, r: f32, n: u32) -> bool {
     let g1L = max(sqrt(g1x*g1x+g1y*g1y+g1z*g1z), 1e-12);
     g1x = g1x/g1L; g1y = g1y/g1L; g1z = g1z/g1L;
     let g2x = a1*g1z - a2*g1y; let g2y = a2*g1x - a0*g1z; let g2z = a0*g1y - a1*g1x;
-    let u1 = (dx*g1x + dy*g1y + dz*g1z) / r;
-    let u2 = (dx*g2x + dy*g2y + dz*g2z) / r;
+    // twist (2026-11-19, ethene torsion): rotate the frame about the axis by cylOY (radians; every splitType-13 driver
+    // passes USER_SPLIT_CYL_ORG = [hl, 0, 0], so the default is 0 = no twist)
+    let tw13 = atoms[n].cylOY; let ct13 = cos(tw13); let st13 = sin(tw13);
+    let v1 = (dx*g1x + dy*g1y + dz*g1z) / r;
+    let v2 = (dx*g2x + dy*g2y + dz*g2z) / r;
+    let u1 = ct13 * v1 + st13 * v2;
+    let u2 = -st13 * v1 + ct13 * v2;
     let ua = dotp / r;
     let hb = atoms[n].splitRot; let hl = atoms[n].cylOX;
     var d13: array<f32, 4>;
@@ -868,12 +896,20 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   // surface energy (beta/2) INT psi^2 dS generates naturally. Zero when beta is zero.
   var nface: f32 = 0.0;
   if (p.beta != 0.0) {
-    if (l_ip != myL) { nface += 1.0; }
-    if (l_im != myL) { nface += 1.0; }
-    if (l_jp != myL) { nface += 1.0; }
-    if (l_jm != myL) { nface += 1.0; }
-    if (l_kp != myL) { nface += 1.0; }
-    if (l_km != myL) { nface += 1.0; }
+    let f_ip = betaW(l_ip, myL, atoms[l_ip], atoms[myL], p.betaInter);
+    let f_im = betaW(l_im, myL, atoms[l_im], atoms[myL], p.betaInter);
+    let f_jp = betaW(l_jp, myL, atoms[l_jp], atoms[myL], p.betaInter);
+    let f_jm = betaW(l_jm, myL, atoms[l_jm], atoms[myL], p.betaInter);
+    let f_kp = betaW(l_kp, myL, atoms[l_kp], atoms[myL], p.betaInter);
+    let f_km = betaW(l_km, myL, atoms[l_km], atoms[myL], p.betaInter);
+    // betaInter = 2 (USER_BETA_CORE, 2026-11-18): the surface term ONLY on the core sphere -- faces onto a cell inside
+    // an r_c exclusion -- with every domain wall free. Charges the valence density piled onto the core surface, where a
+    // double-Neumann domain can sit as a flat layer at no kinetic cost (the methyl C-C electron in ethane).
+    if (p.betaInter > 1.5) {
+      nface = betaArea(select(0.0, 1.0, excl_ip), select(0.0, 1.0, excl_im), select(0.0, 1.0, excl_jp), select(0.0, 1.0, excl_jm), select(0.0, 1.0, excl_kp), select(0.0, 1.0, excl_km), p.betaIso);
+    } else {
+      nface = betaArea(f_ip, f_im, f_jp, f_jm, f_kp, f_km, p.betaIso);
+    }
   }
   let vBeta = p.beta * nface * p.inv_h;
   let vExt = p.fieldX * (f32(i) - f32(p.NN) * 0.5) * p.h;
@@ -960,12 +996,20 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   // surface energy (beta/2) INT psi^2 dS generates naturally. Zero when beta is zero.
   var nface: f32 = 0.0;
   if (p.beta != 0.0) {
-    if (l_ip != myL) { nface += 1.0; }
-    if (l_im != myL) { nface += 1.0; }
-    if (l_jp != myL) { nface += 1.0; }
-    if (l_jm != myL) { nface += 1.0; }
-    if (l_kp != myL) { nface += 1.0; }
-    if (l_km != myL) { nface += 1.0; }
+    let f_ip = betaW(l_ip, myL, atoms[l_ip], atoms[myL], p.betaInter);
+    let f_im = betaW(l_im, myL, atoms[l_im], atoms[myL], p.betaInter);
+    let f_jp = betaW(l_jp, myL, atoms[l_jp], atoms[myL], p.betaInter);
+    let f_jm = betaW(l_jm, myL, atoms[l_jm], atoms[myL], p.betaInter);
+    let f_kp = betaW(l_kp, myL, atoms[l_kp], atoms[myL], p.betaInter);
+    let f_km = betaW(l_km, myL, atoms[l_km], atoms[myL], p.betaInter);
+    // betaInter = 2 (USER_BETA_CORE, 2026-11-18): the surface term ONLY on the core sphere -- faces onto a cell inside
+    // an r_c exclusion -- with every domain wall free. Charges the valence density piled onto the core surface, where a
+    // double-Neumann domain can sit as a flat layer at no kinetic cost (the methyl C-C electron in ethane).
+    if (p.betaInter > 1.5) {
+      nface = betaArea(select(0.0, 1.0, excl_ip), select(0.0, 1.0, excl_im), select(0.0, 1.0, excl_jp), select(0.0, 1.0, excl_jm), select(0.0, 1.0, excl_kp), select(0.0, 1.0, excl_km), p.betaIso);
+    } else {
+      nface = betaArea(f_ip, f_im, f_jp, f_jm, f_kp, f_km, p.betaIso);
+    }
   }
   let vBeta = p.beta * nface * p.inv_h;
   let vExt = p.fieldX * (f32(i) - f32(p.NN) * 0.5) * p.h;
@@ -1104,16 +1148,25 @@ ${(function() {
   // This is what was missing when beta entered only the psi equation: the partition stayed
   // optimal for beta=0 and was merely evaluated at beta>0, which showed up as E(beta) coming
   // out convex where a minimum over psi of quantities linear in beta must be concave.
-  if (p.beta != 0.0 && bestOtherL != myL) {
-    var cntJ: f32 = 0.0; var sumI: f32 = 0.0; var sumJ: f32 = 0.0;
-    if (l_ip == myL) { sumI += U[id_ip]*U[id_ip]; } else if (l_ip == bestOtherL) { cntJ += 1.0; sumJ += U[id_ip]*U[id_ip]; }
-    if (l_im == myL) { sumI += U[id_im]*U[id_im]; } else if (l_im == bestOtherL) { cntJ += 1.0; sumJ += U[id_im]*U[id_im]; }
-    if (l_jp == myL) { sumI += U[id_jp]*U[id_jp]; } else if (l_jp == bestOtherL) { cntJ += 1.0; sumJ += U[id_jp]*U[id_jp]; }
-    if (l_jm == myL) { sumI += U[id_jm]*U[id_jm]; } else if (l_jm == bestOtherL) { cntJ += 1.0; sumJ += U[id_jm]*U[id_jm]; }
-    if (l_kp == myL) { sumI += U[id_kp]*U[id_kp]; } else if (l_kp == bestOtherL) { cntJ += 1.0; sumJ += U[id_kp]*U[id_kp]; }
-    if (l_km == myL) { sumI += U[id_km]*U[id_km]; } else if (l_km == bestOtherL) { cntJ += 1.0; sumJ += U[id_km]*U[id_km]; }
-    let dEsurf = myRho * (myCnt - cntJ) + sumI - sumJ;
-    w += p.beta * p.h * dEsurf / max(myRho + bestOtherRho, 1e-12);
+  if (p.beta != 0.0 && bestOtherL != myL && p.betaInter < 1.5) {   // core-only beta: a flip leaves the core faces unchanged
+    // General form: dE = sum over the six neighbours n of (U_c^2 + U_n^2) [w(j, l_n) - w(i, l_n)], w = betaW.
+    // With every wall weighted 1 this is exactly U_c^2 (cnt_i - cnt_j) + S_i - S_j.
+    let Ai = atoms[myL]; let Aj = atoms[bestOtherL]; let bI = p.betaInter;
+    var dEsurf: f32 = 0.0;
+    dEsurf += (myRho + U[id_ip]*U[id_ip]) * (betaW(bestOtherL, l_ip, Aj, atoms[l_ip], bI) - betaW(myL, l_ip, Ai, atoms[l_ip], bI));
+    dEsurf += (myRho + U[id_im]*U[id_im]) * (betaW(bestOtherL, l_im, Aj, atoms[l_im], bI) - betaW(myL, l_im, Ai, atoms[l_im], bI));
+    dEsurf += (myRho + U[id_jp]*U[id_jp]) * (betaW(bestOtherL, l_jp, Aj, atoms[l_jp], bI) - betaW(myL, l_jp, Ai, atoms[l_jp], bI));
+    dEsurf += (myRho + U[id_jm]*U[id_jm]) * (betaW(bestOtherL, l_jm, Aj, atoms[l_jm], bI) - betaW(myL, l_jm, Ai, atoms[l_jm], bI));
+    dEsurf += (myRho + U[id_kp]*U[id_kp]) * (betaW(bestOtherL, l_kp, Aj, atoms[l_kp], bI) - betaW(myL, l_kp, Ai, atoms[l_kp], bI));
+    dEsurf += (myRho + U[id_km]*U[id_km]) * (betaW(bestOtherL, l_km, Aj, atoms[l_km], bI) - betaW(myL, l_km, Ai, atoms[l_km], bI));
+    // iso: scale the face-count change by this cell's area weight |g|_2/|g|_1 (an approximation: the weight of the
+    // cell after the flip is taken equal to before).
+    let fb_ip = betaW(l_ip, myL, atoms[l_ip], Ai, bI); let fb_im = betaW(l_im, myL, atoms[l_im], Ai, bI);
+    let fb_jp = betaW(l_jp, myL, atoms[l_jp], Ai, bI); let fb_jm = betaW(l_jm, myL, atoms[l_jm], Ai, bI);
+    let fb_kp = betaW(l_kp, myL, atoms[l_kp], Ai, bI); let fb_km = betaW(l_km, myL, atoms[l_km], Ai, bI);
+    let nb0 = fb_ip + fb_im + fb_jp + fb_jm + fb_kp + fb_km;
+    let wIso = select(1.0, betaArea(fb_ip, fb_im, fb_jp, fb_jm, fb_kp, fb_km, p.betaIso) / max(nb0, 1.0), p.betaIso != 0.0 && nb0 > 0.0);
+    w += p.beta * p.h * wIso * dEsurf / max(myRho + bestOtherRho, 1e-12);
   }
 
   // curvReg is the same force with an arbitrary coefficient, no U^2 weighting and the wrong
@@ -2058,12 +2111,19 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
     // localisation slot because it arises from the same integration by parts.
     if (p.beta != 0.0) {
       var nfaceE: f32 = 0.0;
-      if (label[id + p.S2] != myL) { nfaceE += 1.0; }
-      if (label[id - p.S2] != myL) { nfaceE += 1.0; }
-      if (label[id + p.S]  != myL) { nfaceE += 1.0; }
-      if (label[id - p.S]  != myL) { nfaceE += 1.0; }
-      if (label[id + 1u]   != myL) { nfaceE += 1.0; }
-      if (label[id - 1u]   != myL) { nfaceE += 1.0; }
+      let lE_ip = label[id + p.S2]; let fE_ip = betaW(lE_ip, myL, atoms[lE_ip], atoms[myL], p.betaInter);
+      let lE_im = label[id - p.S2]; let fE_im = betaW(lE_im, myL, atoms[lE_im], atoms[myL], p.betaInter);
+      let lE_jp = label[id + p.S]; let fE_jp = betaW(lE_jp, myL, atoms[lE_jp], atoms[myL], p.betaInter);
+      let lE_jm = label[id - p.S]; let fE_jm = betaW(lE_jm, myL, atoms[lE_jm], atoms[myL], p.betaInter);
+      let lE_kp = label[id + 1u]; let fE_kp = betaW(lE_kp, myL, atoms[lE_kp], atoms[myL], p.betaInter);
+      let lE_km = label[id - 1u]; let fE_km = betaW(lE_km, myL, atoms[lE_km], atoms[myL], p.betaInter);
+      if (p.betaInter > 1.5) {
+        nfaceE = betaArea(select(0.0, 1.0, isInsideExcl(i+1u, j, k, myL)), select(0.0, 1.0, isInsideExcl(i-1u, j, k, myL)),
+                          select(0.0, 1.0, isInsideExcl(i, j+1u, k, myL)), select(0.0, 1.0, isInsideExcl(i, j-1u, k, myL)),
+                          select(0.0, 1.0, isInsideExcl(i, j, k+1u, myL)), select(0.0, 1.0, isInsideExcl(i, j, k-1u, myL)), p.betaIso);
+      } else {
+        nfaceE = betaArea(fE_ip, fE_im, fE_jp, fE_jm, fE_kp, fE_km, p.betaIso);
+      }
       sn[lid * NR]      += 0.5 * p.beta * rho * nfaceE * p.h2;
     }
     sn[lid * NR + 1u]   += -K[id] * rho * p.h3;
@@ -3077,6 +3137,8 @@ function fillParamsBuf(pb) {
   pf[8] = hGrid; pf[9] = h2v; pf[10] = 1 / hGrid; pf[11] = 1 / h2v;
   pf[12] = dtv; pf[13] = half_dv; pf[14] = h3v; pu[15] = sliceK;
   pf[16] = betaSurf;
+  pf[18] = window.USER_BETA_CORE ? 2.0 : (window.USER_BETA_INTER ? 1.0 : 0.0);   // 2 = core sphere only
+  pf[19] = window.USER_BETA_ISO ? 1.0 : 0.0;     // was _pad2: wall area from the local normal, not the face count   // was _pad1: beta only on walls between different atoms
   // External uniform E-field along +x: V_ext(x) = E*x, ported from mol_fast.js. Uses a
   // spare pad slot, so PARAM_BYTES stays at 80 -- resizing the params struct is what
   // shifted the ring energies at beta=0, and that is not worth repeating for a field.

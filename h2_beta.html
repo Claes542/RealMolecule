@@ -149,6 +149,12 @@
     // hom pair over X's front and the bare proton, while its kernel share stays BB[1] (B 2+3 -> lone pair 2hom
     // behind + bond pair 2hom over B|H+). Without it the bond sibling is BB[1] electrons and H keeps its own.
     if (BB.length === 2) {
+      // ?core2hom=a with ?bb=: ALL-ELECTRON X as a 2hom 1s^2 CORE domain (kernel share 2, no r_c) seeded inside the
+      // sphere r < a, plus the two valence hemispheres (use rcX=0). Generalises the Li core2hom to several atoms (C2).
+      if (C2H !== null) {
+        atoms.push({ i: N2 + x / h, j: N2, k: N2, Z: 2, el: ELX + 'c' });
+        Z.push(2); Znuc.push(2); RC.push(0);
+      }
       for (var s2 = 0; s2 < 2; s2++) {
         // mode=xh2 (H-X-H): BOTH siblings face an H, so with bpair each takes one H electron (BeH2: two 2hom bonds)
         var ne2 = BB[s2] + (((s2 === 1 || MODE === 'xh2') && q.get('bpair') === '1') ? 1 : 0);
@@ -254,12 +260,157 @@
     });
     if (MODE === 'o2t') { window.USER_BOND_PAIRS = [[0, 4]]; window.USER_BONDS_ONLY = true; }
   }
+  // mode=c2h4 / mode=c2h2 (2026-11-19): multiple C-C bonds as BENT bonds of tetrahedral pseudo-C +4 (r_c rcX, kernel
+  // share 1 per sector), C-C along z, LOCKED at ?CC= (exp defaults 2.530 / 2.273). Bent-bond sectors are single
+  // electrons (two singles meeting at a free wall, as the ethane C-C); the C-H sectors 2hom pairs over a bare proton
+  // with ?bpair=1&Hbare=1, H on the sector axis at ?R= (defaults 2.054 / 2.004 = 1.087 / 1.061 A).
+  // c2h4: the o2t frame (splitType 13, edge-sharing tetrahedra): two bent bonds in the yz-plane facing the partner,
+  // two C-H in the xz-plane (molecular plane); ?hch= sets the H-C-H angle of the imposed frame (default 109.4712).
+  // c2h2: splitType 4, axis toward the partner, three bent bonds (face-sharing, eclipsed: rot 0 / pi), C-H along -axis.
+  else if (MODE === 'c2h4' || MODE === 'c2h2') {
+    var is4 = MODE === 'c2h4', CCm = parseFloat(q.get('CC') || (is4 ? '2.530' : '2.273'));
+    var RHm = q.get('R') ? R : (is4 ? 2.054 : 2.004), bpM = q.get('bpair') === '1', hbM = q.get('Hbare') === '1';
+    var HTm = Math.acos(1 / Math.sqrt(3)), HLm = (parseFloat(q.get('hch') || '109.4712') / 2) * Math.PI / 180;
+    var HM = [];
+    if (is4) window.USER_SPLIT_CYL_ORG = window.USER_SPLIT_CYL_ORG || [];
+    [[-CCm / 2, 1], [CCm / 2, -1]].forEach(function (cz, ci) {
+      var a = [0, 0, cz[1]], cpos = [0, 0, cz[0]];
+      var g1 = [0, a[2], -a[1]], g2 = [a[1] * g1[2] - a[2] * g1[1], a[2] * g1[0] - a[0] * g1[2], a[0] * g1[1] - a[1] * g1[0]];
+      // ?twist=<deg> (c2h4): torsion of the UPPER CH2 -- its frame (molecule.js splitType 13 twist in cylOY) and its H's
+      // rotate about the C=C axis together; the bent bonds of the two carbons then no longer face each other.
+      var twM = (is4 && ci === 1 && q.get('twist')) ? parseFloat(q.get('twist')) * Math.PI / 180 : 0;
+      if (twM) { var g1o = g1, g2o = g2;
+        g1 = [0, 1, 2].map(function (c) { return Math.cos(twM) * g1o[c] + Math.sin(twM) * g2o[c]; });
+        g2 = [0, 1, 2].map(function (c) { return -Math.sin(twM) * g1o[c] + Math.cos(twM) * g2o[c]; }); }
+      for (var t8 = 0; t8 < 4; t8++) {
+        // ?ccpair=1 (2026-11-19): every bent C-C bond as ONE 2hom pair (the c2h6 ccpair rule): C0's bent sector takes both
+        // electrons, C1's matching sector keeps kernel share 1 but no electrons, so the pair's domain may span both carbons.
+        var isCH = is4 ? (t8 >= 2) : (t8 === 3), neM = (isCH && bpM) ? 2 : (!isCH && q.get('ccpair') === '1') ? (ci === 0 ? 2 : 0) : 1;
+        atoms.push({ i: N2 + 0.5, j: N2 + 0.5, k: N2 + 0.5 + cz[0] / h, Z: neM, el: 'C' + ci + (isCH ? 'h' : 'b') + t8 });
+        Z.push(neM); Znuc.push(1); RC.push(RCX);
+        SPI[atoms.length - 1] = t8; SPA[atoms.length - 1] = a;
+        if (is4) { SPT[atoms.length - 1] = 13; SPR[atoms.length - 1] = HTm; window.USER_SPLIT_CYL_ORG[atoms.length - 1] = [HLm, twM, 0]; }
+        else { SPT[atoms.length - 1] = 4; SPR[atoms.length - 1] = ci === 0 ? 0 : Math.PI; }
+        if (isCH) {
+          var dH = is4 ? [0, 1, 2].map(function (c) { return -Math.cos(HLm) * a[c] + (t8 === 2 ? 1 : -1) * Math.sin(HLm) * g2[c]; })
+                       : a.map(function (x) { return -x; });
+          HM.push(cpos.map(function (x, c) { return x + RHm * dH[c]; }));
+        }
+      }
+    });
+    HM.forEach(function (p) {
+      atoms.push({ i: N2 + 0.5 + p[0] / h, j: N2 + 0.5 + p[1] / h, k: N2 + 0.5 + p[2] / h, Z: hbM ? 0 : 1, el: hbM ? 'H+' : 'H' });
+      Z.push(hbM ? 0 : 1); Znuc.push(1); RC.push(0);
+    });
+    console.log(MODE + ': C-C ' + CCm + ' C-H ' + RHm + ' H at ' + HM.map(function (p) { return '(' + p.map(function (x) { return x.toFixed(3); }).join(',') + ')'; }).join(' '));
+  }
   // mode=c2h6: staggered ethane from two CH4-type pseudo-C +4 (1s2 frozen, four single electrons in tetrahedral
   // sectors, splitType 4, kernel share 1 each); C-C along z at ?CC= (default 2.901 a0 = 1.535 A), C-H at ?R=
   // (default 2.067 = 1.094 A) on the sector axes (tetrahedral angles, not the exp 111 deg). Lower C axis -z (its
   // idx 3 points +z at the other C), upper C axis +z, rot pi/3 and -pi/3: staggered (H azimuths -150/90/-30 and
   // 30/150/-90 deg, checked with jsc). H keep their own electrons (4-split, as CH4); ?bpair=1&Hbare=1 for 2hom bond pairs.
   // ?half=1: every nucleus half a cell off the grid planes. For the offset test of 2026-11-14 (per C or per C-H?).
+  else if (MODE === 'alkane') {
+    // mode=alkane&nC=<n> (2026-11-18): all-trans C_nH_{2n+2} on the diamond lattice (ideal 109.47 deg everywhere),
+    // generalising mode=c2h6. Sublattice A bonds along d_k = (+-1,+-1,+-1)/sqrt3 with an even number of minus signs,
+    // sublattice B along -d_k. The chain runs A -d0-> B -(-d1)-> A -d0-> B ... (zigzag in the plane of d0, d1); every
+    // other bond direction carries an H. Each carbon: four kernel-share-1 tetrahedral sectors (splitType 4) oriented to
+    // ITS bonds; C-H sectors are 2hom bond pairs over a bare proton with ?bpair=1, C-C sectors one electron each
+    // (two singles meeting at a free wall, the c2h6 default). C-C = ?CC (2.901), C-H = ?R (2.067). Centroid at box centre.
+    var nCA = Math.max(2, parseInt(q.get('nC') || '3')), CCA = parseFloat(q.get('CC') || '2.901'), RHA = q.get('R') ? R : 2.067;
+    var bpA = q.get('bpair') === '1', hbA2 = q.get('Hbare') === '1', s3 = 1 / Math.sqrt(3);
+    var DK = [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]].map(function (v) { return v.map(function (x) { return x * s3; }); });
+    var CP = [[0, 0, 0]], nb = [[]];
+    for (var cA = 1; cA < nCA; cA++) {
+      var kA = (cA % 2 === 1) ? 0 : 1, sgA = (cA % 2 === 1) ? 1 : -1, sgPrev = ((cA - 1) % 2 === 0) ? 1 : -1;
+      // bond from C_{cA-1} along sgPrev*d_k, with k = 0 for odd cA and 1 for even cA (A uses +d, B uses -d)
+      var dA = DK[kA].map(function (x) { return sgPrev * x; });
+      CP.push(CP[cA - 1].map(function (x, c) { return x + CCA * dA[c]; }));
+      nb[cA - 1].push(kA); nb.push([kA]);
+    }
+    var cen = [0, 1, 2].map(function (c) { return CP.reduce(function (s, p) { return s + p[c]; }, 0) / nCA; });
+    CP = CP.map(function (p) { return p.map(function (x, c) { return x - cen[c]; }); });
+    // ?ccc=<deg> (propane only, 2026-11-19): open/close the C-C-C angle by rotating each terminal methyl RIGIDLY (its
+    // carbon, its H's and its sector frame) about the normal of the C-C-C plane through the central carbon, by -+delta/2.
+    // C-C lengths are kept; the central carbon's frame stays tetrahedral, so its C-C sectors are off-axis by delta/2.
+    var ROTC = {};
+    if (q.get('ccc') && nCA === 3) {
+      var dlt = (parseFloat(q.get('ccc')) - Math.acos(-1 / 3) * 180 / Math.PI) * Math.PI / 180;
+      var u0 = CP[0].map(function (x, c) { return x - CP[1][c]; }), u2 = CP[2].map(function (x, c) { return x - CP[1][c]; });
+      var nn = [u0[1] * u2[2] - u0[2] * u2[1], u0[2] * u2[0] - u0[0] * u2[2], u0[0] * u2[1] - u0[1] * u2[0]];
+      var nL = Math.hypot(nn[0], nn[1], nn[2]); nn = nn.map(function (x) { return x / nL; });
+      var rodr = function (v, th) { var c = Math.cos(th), sn = Math.sin(th), dt = v[0] * nn[0] + v[1] * nn[1] + v[2] * nn[2];
+        var cr = [nn[1] * v[2] - nn[2] * v[1], nn[2] * v[0] - nn[0] * v[2], nn[0] * v[1] - nn[1] * v[0]];
+        return [0, 1, 2].map(function (k) { return v[k] * c + cr[k] * sn + nn[k] * dt * (1 - c); }); };
+      ROTC[0] = function (v) { return rodr(v, -dlt / 2); }; ROTC[2] = function (v) { return rodr(v, dlt / 2); };
+      CP[0] = ROTC[0](u0).map(function (x, c) { return x + CP[1][c]; });
+      CP[2] = ROTC[2](u2).map(function (x, c) { return x + CP[1][c]; });
+      var w0 = CP[0].map(function (x, c) { return x - CP[1][c]; }), w2 = CP[2].map(function (x, c) { return x - CP[1][c]; });
+      console.log('alkane ccc: C-C-C ' + (Math.acos((w0[0] * w2[0] + w0[1] * w2[1] + w0[2] * w2[2]) / Math.hypot(w0[0], w0[1], w0[2]) / Math.hypot(w2[0], w2[1], w2[2])) * 180 / Math.PI).toFixed(3) + ' deg, C-C ' + Math.hypot(w0[0], w0[1], w0[2]).toFixed(4) + ' ' + Math.hypot(w2[0], w2[1], w2[2]).toFixed(4));
+    }
+    var HA = [];
+    CP.forEach(function (p, ci) {
+      var sg = (ci % 2 === 0) ? 1 : -1, dirs = DK.map(function (v) { return v.map(function (x) { return sg * x; }); });
+      if (ROTC[ci]) dirs = dirs.map(ROTC[ci]);
+      // ?follow=1 (with ?ccc=, 2026-11-19): the CENTRAL carbon gets a frame that follows its two C-C bonds at every
+      // C-C-C angle -- molecule.js splitType 13: axis = bond bisector, idx 0/1 exactly along the bonds (half-angle =
+      // C-C-C/2), idx 2/3 = C-H at the tetrahedral half-angle in the perpendicular plane; twist (cylOY) puts the frame's
+      // e1 in the C-C-C plane. Without it the central frame stays tetrahedral and its C-C sectors miss the bonds.
+      if (ci === 1 && nCA === 3 && q.get('follow') === '1') {
+        var b0 = CP[0].map(function (x, c) { return x - p[c]; }), b2 = CP[2].map(function (x, c) { return x - p[c]; });
+        var nb0 = Math.hypot(b0[0], b0[1], b0[2]), nb2 = Math.hypot(b2[0], b2[1], b2[2]);
+        b0 = b0.map(function (x) { return x / nb0; }); b2 = b2.map(function (x) { return x / nb2; });
+        var axF = [0, 1, 2].map(function (c) { return b0[c] + b2[c]; }), axL = Math.hypot(axF[0], axF[1], axF[2]);
+        axF = axF.map(function (x) { return x / axL; });
+        var hbF = Math.acos(Math.max(-1, Math.min(1, b0[0] * b2[0] + b0[1] * b2[1] + b0[2] * b2[2]))) / 2, hlF = Math.acos(1 / Math.sqrt(3));
+        var f1 = Math.abs(axF[2]) < 0.9 ? [axF[1], -axF[0], 0] : [0, axF[2], -axF[1]], f1L = Math.hypot(f1[0], f1[1], f1[2]);
+        f1 = f1.map(function (x) { return x / f1L; });
+        var f2 = [axF[1] * f1[2] - axF[2] * f1[1], axF[2] * f1[0] - axF[0] * f1[2], axF[0] * f1[1] - axF[1] * f1[0]];
+        var w1 = [0, 1, 2].map(function (c) { return b0[c] - b2[c]; }), w1L = Math.hypot(w1[0], w1[1], w1[2]);
+        w1 = w1.map(function (x) { return x / w1L; });                         // e1' (in-plane, toward C0)
+        var twF = Math.atan2(w1[0] * f2[0] + w1[1] * f2[1] + w1[2] * f2[2], w1[0] * f1[0] + w1[1] * f1[1] + w1[2] * f1[2]);
+        var w2 = [0, 1, 2].map(function (c) { return -Math.sin(twF) * f1[c] + Math.cos(twF) * f2[c]; });   // e2'
+        window.USER_SPLIT_CYL_ORG = window.USER_SPLIT_CYL_ORG || [];
+        for (var sF = 0; sF < 4; sF++) {
+          var isCCF = sF < 2, neF = (!isCCF && bpA) ? 2 : 1;
+          atoms.push({ i: N2 + p[0] / h, j: N2 + p[1] / h, k: N2 + p[2] / h, Z: neF, el: 'C' + ci + 'f' + sF });
+          Z.push(neF); Znuc.push(1); RC.push(RCX);
+          SPT[atoms.length - 1] = 13; SPI[atoms.length - 1] = sF; SPA[atoms.length - 1] = axF; SPR[atoms.length - 1] = hbF;
+          window.USER_SPLIT_CYL_ORG[atoms.length - 1] = [hlF, twF, 0];
+          if (!isCCF) { var dHF = [0, 1, 2].map(function (c) { return -Math.cos(hlF) * axF[c] + (sF === 2 ? 1 : -1) * Math.sin(hlF) * w2[c]; });
+            HA.push(p.map(function (x, c) { return x + RHA * dHF[c]; })); }
+        }
+        var sAx0 = [0, 1, 2].map(function (c) { return Math.cos(hbF) * axF[c] + Math.sin(hbF) * w1[c]; });
+        console.log('alkane follow: central C-C sector 0 . bond0 = ' + (sAx0[0] * b0[0] + sAx0[1] * b0[1] + sAx0[2] * b0[2]).toFixed(5) + ', twist ' + (twF * 180 / Math.PI).toFixed(2) + ' deg');
+        return;
+      }
+      // sector frame exactly as molecule.js splitType 4 builds it: idx 3 along -axis, idx 0..2 at 70.53 deg, rot offsets
+      var ax = dirs[3].map(function (x) { return -x; });
+      var a0 = ax[0], a1 = ax[1], a2 = ax[2], e1 = Math.abs(a2) < 0.9 ? [a1, -a0, 0] : [0, a2, -a1];
+      var e1L = Math.hypot(e1[0], e1[1], e1[2]); e1 = e1.map(function (x) { return x / e1L; });
+      var e2 = [a1 * e1[2] - a2 * e1[1], a2 * e1[0] - a0 * e1[2], a0 * e1[1] - a1 * e1[0]];
+      var rotA = Math.atan2(dirs[0][0] * e2[0] + dirs[0][1] * e2[1] + dirs[0][2] * e2[2], dirs[0][0] * e1[0] + dirs[0][1] * e1[1] + dirs[0][2] * e1[2]);
+      var secDir = [0, 1, 2].map(function (kq) { var ph = rotA + 2 * Math.PI / 3 * kq;
+        return [0, 1, 2].map(function (c) { return ax[c] / 3 + Math.sqrt(8 / 9) * (Math.cos(ph) * e1[c] + Math.sin(ph) * e2[c]); }); });
+      secDir.push(dirs[3]);
+      for (var sA = 0; sA < 4; sA++) {
+        // which bond direction does sector sA face?
+        var bk = 0, bd = -2;
+        for (var k = 0; k < 4; k++) { var dd = secDir[sA][0] * dirs[k][0] + secDir[sA][1] * dirs[k][1] + secDir[sA][2] * dirs[k][2]; if (dd > bd) { bd = dd; bk = k; } }
+        var isCC = nb[ci].indexOf(bk) >= 0, neA = (!isCC && bpA) ? 2 : 1;
+        atoms.push({ i: N2 + p[0] / h, j: N2 + p[1] / h, k: N2 + p[2] / h, Z: neA, el: 'C' + ci + 's' + sA });
+        Z.push(neA); Znuc.push(1); RC.push(RCX);
+        SPT[atoms.length - 1] = 4; SPI[atoms.length - 1] = sA; SPA[atoms.length - 1] = ax; SPR[atoms.length - 1] = rotA;
+        if (!isCC) HA.push(p.map(function (x, c) { return x + RHA * dirs[bk][c]; }));
+        if (bd < 0.999) console.warn('alkane: sector ' + sA + ' of C' + ci + ' misaligned, dot ' + bd.toFixed(4));
+      }
+    });
+    HA.forEach(function (p) {
+      atoms.push({ i: N2 + p[0] / h, j: N2 + p[1] / h, k: N2 + p[2] / h, Z: hbA2 ? 0 : 1, el: hbA2 ? 'H+' : 'H' });
+      Z.push(hbA2 ? 0 : 1); Znuc.push(1); RC.push(0);
+    });
+    console.log('alkane C' + nCA + 'H' + HA.length + ': C at ' + CP.map(function (p) { return '(' + p.map(function (x) { return x.toFixed(3); }).join(',') + ')'; }).join(' '));
+  }
   else if (MODE === 'c2h6') {
     var CC6 = parseFloat(q.get('CC') || '2.901'), RH6 = q.get('R') ? R : 2.067, bp6 = q.get('bpair') === '1';
     var HO6 = q.get('half') === '1' ? 0.5 : 0;
@@ -268,7 +419,10 @@
       var sgn = cs[0], rot6 = cs[1], ax6 = [0, 0, sgn], zc = sgn * CC6 / 2, cFirst = atoms.length;
       var e16 = [0, ax6[2], 0], e26 = [ax6[1] * e16[2] - ax6[2] * e16[1], ax6[2] * e16[0] - ax6[0] * e16[2], ax6[0] * e16[1] - ax6[1] * e16[0]];
       for (var t6 = 0; t6 < 4; t6++) {
-        var ne6 = (t6 < 3 && bp6) ? 2 : 1;
+        // ?ccpair=1: the C-C bond as ONE 2hom pair (house rule for a shared pair) instead of two singles meeting
+        // at a free wall: C0's facing sector takes both electrons, C1's facing sector keeps its kernel share but no
+        // electrons, so the pair's domain is free to extend over C1 (as the C-H pair extends over the bare proton).
+        var ne6 = (t6 < 3 && bp6) ? 2 : (t6 === 3 && q.get('ccpair') === '1') ? (ci === 0 ? 2 : 0) : 1;
         atoms.push({ i: N2 + HO6, j: N2 + HO6, k: N2 + HO6 + zc / h, Z: ne6, el: 'C' + ci + 's' + t6 });
         Z.push(ne6); Znuc.push(1); RC.push(RCX);
         SPT[atoms.length - 1] = 4; SPI[atoms.length - 1] = t6; SPA[atoms.length - 1] = ax6; SPR[atoms.length - 1] = rot6;
@@ -332,6 +486,39 @@
         Z.push(neP); Znuc.push(neP); RC.push(RCX);
         SPT[atoms.length - 1] = 2; SPI[atoms.length - 1] = sh; SPA[atoms.length - 1] = axS;
       }
+    } else if (MODE === 'ch4' && q.get('alpha')) {
+      // ?alpha=<deg> (2026-11-18): FREE carbon walls on the D2d path Td (54.7356) -> square (90). Four C entries (2hom
+      // bond pairs with bpair, kernel share 1 each, common r_c) with NO splitType: the walls between carbon's own pairs
+      // are free from ?unlock= (default 300) on, so the partition is not imposed. H+ at C-H = R along
+      // (+-sin a, 0, cos a), (0, +-sin a, -cos a). Seed: each cell to the nearest H direction. The generalized force
+      // G_alpha = sum F_H . dr_H/dalpha says which way the dynamics goes (zero by symmetry at Td and at the square).
+      var ALF = parseFloat(q.get('alpha')) * Math.PI / 180, sA = Math.sin(ALF), cA = Math.cos(ALF);
+      var dirA = [[sA, 0, cA], [-sA, 0, cA], [0, sA, -cA], [0, -sA, -cA]], c0A = atoms.length;
+      for (var fa = 0; fa < 4; fa++) {
+        var neF = bpC ? 2 : 1;
+        atoms.push({ i: N2, j: N2, k: N2, Z: neF, el: 'Cf' + fa });
+        Z.push(neF); Znuc.push(1); RC.push(RCX);
+      }
+      var hbA = q.get('Hbare') === '1';
+      dirA.forEach(function (d) {
+        atoms.push({ i: N2 + RC4 * d[0] / h, j: N2 + RC4 * d[1] / h, k: N2 + RC4 * d[2] / h, Z: hbA ? 0 : 1, el: hbA ? 'H+' : 'H' });
+        Z.push(hbA ? 0 : 1); Znuc.push(1); RC.push(0);
+      });
+      window.FREEZE_BOUNDARY = true;
+      window.UNLOCK_AT_STEP = parseInt(q.get('unlock') || '300');
+      window.CUSTOM_INIT_FULL = function (S, hG, nucPos, NE) {
+        var u = new Float32Array(S * S * S), l = new Uint32Array(S * S * S), sum = [0, 0, 0, 0], c = nucPos[c0A];
+        for (var i = 0; i < S; i++) for (var j = 0; j < S; j++) for (var k = 0; k < S; k++) {
+          var id = i * S * S + j * S + k, x = (i - c[0]) * hG, y = (j - c[1]) * hG, z = (k - c[2]) * hG, best = 0, bd = -1e30;
+          for (var t = 0; t < 4; t++) { var dd = x * dirA[t][0] + y * dirA[t][1] + z * dirA[t][2]; if (dd > bd) { bd = dd; best = t; } }
+          var r = Math.sqrt(x * x + y * y + z * z), dH = Math.hypot(x - RC4 * dirA[best][0], y - RC4 * dirA[best][1], z - RC4 * dirA[best][2]);
+          var v = Math.exp(-0.6 * r) + Math.exp(-dH);
+          l[id] = c0A + best; u[id] = v; sum[best] += v * v * hG * hG * hG;
+        }
+        for (var n = 0; n < u.length; n++) u[n] *= Math.sqrt(Z[l[n]] / sum[l[n] - c0A]);
+        console.log('ch4 free walls: alpha ' + (ALF * 180 / Math.PI).toFixed(3) + ' norms ' + sum.map(function (s) { return s.toFixed(3); }).join(',') + ' frozen until ' + window.UNLOCK_AT_STEP);
+        return { u: u, l: l };
+      };
     } else if (q.get('planar') === '1') {
       // ?planar=1: square-planar (D4h) control for the tetrahedral sectors: the same four single electrons (bpair: 2hom
       // bond pairs), kernel share 1 each, in four 90 deg QUADRANTS about z (molecule.js splitType 12, rot 0); in ch4 one H
@@ -357,7 +544,7 @@
       Z.push(neC); Znuc.push(1); RC.push(RCX);
       SPT[atoms.length - 1] = 4; SPI[atoms.length - 1] = tc; SPA[atoms.length - 1] = axC; SPR[atoms.length - 1] = rotC;
     }
-    if (MODE === 'ch4' && q.get('planar') !== '1') {
+    if (MODE === 'ch4' && q.get('planar') !== '1' && !q.get('alpha')) {
       for (var hc = 0; hc < NHC; hc++) {
         var dC;
         if (hc === 3) dC = [0, 0, 1];
@@ -386,6 +573,13 @@
         atoms.push({ i: N2, j: N2, k: N2, Z: ne5, el: lp5 ? 'Nlp' : 'Nb' + t5 });
         Z.push(ne5); Znuc.push(lp5 ? 2 : 1); RC.push(RCX);
         SPT[atoms.length - 1] = 4; SPI[atoms.length - 1] = t5; SPA[atoms.length - 1] = [0, 0, -1]; SPR[atoms.length - 1] = Math.PI / 3;
+      }
+      // ?nh4=1 (2026-11-19, proton affinity retest): NH4+ -- the lone-pair sector (+z) becomes a bond pair over a
+      // fourth bare proton at R4 (?R4=, default 1.946 = 1.030 A) along +z. Same electron count as NH3 n5 bpair.
+      if (q.get('nh4') === '1' && MODE === 'nh3') {
+        var R4 = parseFloat(q.get('R4') || '1.946');
+        atoms.push({ i: N2, j: N2, k: N2 + R4 / h, Z: 0, el: 'H+' });
+        Z.push(0); Znuc.push(1); RC.push(0);
       }
     } else
     for (var wn = 0; wn < 3; wn++) {
@@ -478,7 +672,28 @@
   }
   else { add(-R / 2); add(+R / 2); }
   window.USER_RC = RC;
-  if (C2H !== null) {
+  if (C2H !== null && BB.length === 2) {
+    // multi-atom core2hom seed: cells within a of a core -> that core (hydrogenic 1s, exponent ?zcore=, default 5.7
+    // for C); other cells -> the nearest atom's valence hemisphere (idx 1 = bond half, facing axisSign), exp(-0.6 r).
+    window.FREEZE_BOUNDARY = true;
+    if (q.get('unlock')) window.UNLOCK_AT_STEP = parseInt(q.get('unlock'));
+    var ZC = parseFloat(q.get('zcore') || '5.7'), cores = [];
+    atoms.forEach(function (a, n) { if (a.el === ELX + 'c') cores.push(n); });
+    window.CUSTOM_INIT_FULL = function (S, hG, nucPos, NE) {
+      var u = new Float32Array(S * S * S), l = new Uint32Array(S * S * S), sum = {};
+      for (var i = 0; i < S; i++) for (var j = 0; j < S; j++) for (var k = 0; k < S; k++) {
+        var id = i * S * S + j * S + k, best = -1, rb = 1e9;
+        cores.forEach(function (c) { var p = nucPos[c]; var r = hG * Math.sqrt((i - p[0]) * (i - p[0]) + (j - p[1]) * (j - p[1]) + (k - p[2]) * (k - p[2])); if (r < rb) { rb = r; best = c; } });
+        var d, v;
+        if (rb < C2H) { d = best; v = Math.exp(-ZC * rb); }
+        else { var ax = SPA[best + 1] ? SPA[best + 1][0] : 1; d = ((i - nucPos[best][0]) * ax > 0) ? best + 2 : best + 1; v = Math.exp(-0.6 * rb); }
+        l[id] = d; u[id] = v; sum[d] = (sum[d] || 0) + v * v * hG * hG * hG;
+      }
+      for (var n = 0; n < u.length; n++) u[n] *= Math.sqrt(Z[l[n]] / sum[l[n]]);
+      console.log('core2hom multi init: cores ' + cores.join(',') + ' sphere ' + C2H + ' zcore ' + ZC + ' norms ' + JSON.stringify(sum) + ' frozen until ' + (window.UNLOCK_AT_STEP || 'never'));
+      return { u: u, l: l };
+    };
+  } else if (C2H !== null) {
     window.FREEZE_BOUNDARY = true;
     if (q.get('unlock')) window.UNLOCK_AT_STEP = parseInt(q.get('unlock'));
     var iCore = atoms.findIndex(function (a) { return a.el === ELX + 'c'; }), iVal = iCore + 1;
@@ -533,6 +748,14 @@
   window.USER_BOUNDARY_SPEED = BS;
   window.USER_CURV_REG = CURV;
   window.USER_BETA = BETA;
+  // ?betainter=1 (2026-11-18): beta only on walls between DIFFERENT atoms (domains whose kernels are not co-located);
+  // the walls between one atom's own sectors/pairs stay free. molecule.js USER_BETA_INTER.
+  if (q.get('betainter') === '1') window.USER_BETA_INTER = true;
+  // ?betaiso=1 (2026-11-18): wall area from the local normal (|g|_2/|g|_1 per cell) instead of the face count, which
+  // over-counts tilted walls up to sqrt3 and made the beta energy depend on the molecule's orientation on the grid.
+  if (q.get('betaiso') === '1') window.USER_BETA_ISO = true;
+  // ?betacore=1 (2026-11-18): beta only on the core-sphere surface (faces onto r_c-excluded cells); all domain walls free.
+  if (q.get('betacore') === '1') window.USER_BETA_CORE = true;
   window.USER_JACOBI_DIRECT = parseInt(q.get('jac') || '10');
   // ?pot=sic -- force the TOTAL-POISSON + SIC path instead of the per-electron direct one.
   // With two electrons NELEC <= 5, so molecule.js takes the direct path (line 347) and this
@@ -619,8 +842,8 @@
     // A lone atom has no R, beta or curvature, so those are left out of its key entirely.
     var FIXED = q.get('fixed') ? 1 : 0;
     var JAC = parseInt(q.get('jac') || '10');
-    var cfg = (q.get('pot') === 'sic' ? '' : q.get('pot') === 'local' ? '_pl' + (q.get('lself') === '0' ? 'n' : '') : '_pd') + '_h' + h.toFixed(3) + '_j' + JAC + '_x' + BOX.toFixed(1) + '_f' + FIXED + (q.get('weak') ? '_w' + q.get('weak') : '') + (q.get('inner') ? '_i' : '') + (q.get('Hbare') === '1' ? '_Hb0' : '') + (q.get('bpair') === '1' ? '_bp' : '') + (q.get('nH') ? '_nH' + q.get('nH') : '') + (q.get('clp') === '1' ? '_clp' : '') + (q.get('cone') ? '_cone' + q.get('cone') : '') + (C2H !== null ? '_c2h' + C2H + 'n' + (q.get('nval') || '1') + 'u' + (q.get('unlock') || 'fix') : '');
-    cfg += ((MODE === 'o4' || MODE === 'o2t') ? '_O4t_rc' + RCX : '') + (MODE === 'c2h6' ? '_C2H6_CC' + (q.get('CC') || '2.901') + '_rc' + RCX + (q.get('half') === '1' ? '_half' : '') : '') + (q.get('rsing') ? '_s' + q.get('rsing') : '') + ((MODE === 'c' || MODE === 'ch4') ? (q.get('c4hom') === '1' ? '_C4hom' : q.get('c4pair') === '1' ? '_C4pair' : q.get('planar') === '1' ? '_C4quad' : q.get('c2hom') === '1' ? '_C2hom' : q.get('c2split') === '1' ? '_C2split' : '_C4tet') + '_rc' + RCX : '') + ((MODE === 'n' || MODE === 'nh3') ? (q.get('n5') === '1' ? '_N5tet' : '_N3w') + '_rc' + RCX + '_a' + (q.get('ang') || '106.7') : '') + ((MODE === 'o' || MODE === 'h2o') ? (q.get('o3') === '1' ? '_O3w' + (q.get('relO') ? 'r' + q.get('relO') : '') : q.get('c2v') === '1' ? '_O6c2v_lp' + (q.get('lpang') || '109.47') : '_O6tet') + (q.get('half') === '1' ? '_half' : '') + '_rc' + RCX + '_a' + (q.get('ang') || '104.5') : '') + ((MODE === 'x' || MODE === 'xh' || MODE === 'xh2' || MODE === 'x2') ? '_' + ELX + ZX + 'rc' + RCX + (BB.length >= 2 ? '_bb' + BB.join('') : '') : '') + (q.get('ZnX') ? '_Zn' + q.get('ZnX') : '') + (q.get('ZH') ? '_ZH' + q.get('ZH') : '') + (q.get('val') === '1' ? '_val' : '') + (q.get('core2') === '1' ? '_c2r' + (q.get('rel') || '500') + (q.get('coreax') || '') : '') + (q.get('pairH') === '1' ? '_pH' + (q.get('relH') || 'fix') + (q.get('pairax') || '') : '') + (q.get('hback') === '1' ? '_hb' + (q.get('relHb') || 'fix') : '') + (XPL !== null ? '_xp' + XPL + (q.get('relX') ? 'r' + q.get('relX') : '') : '');
+    var cfg = (q.get('pot') === 'sic' ? '' : q.get('pot') === 'local' ? '_pl' + (q.get('lself') === '0' ? 'n' : '') : '_pd') + '_h' + h.toFixed(3) + '_j' + JAC + '_x' + BOX.toFixed(1) + '_f' + FIXED + (q.get('weak') ? '_w' + q.get('weak') : '') + (q.get('inner') ? '_i' : '') + (q.get('Hbare') === '1' ? '_Hb0' : '') + (q.get('bpair') === '1' ? '_bp' : '') + (q.get('betainter') === '1' ? '_bI' : '') + (q.get('betaiso') === '1' ? '_bIso' : '') + (q.get('betacore') === '1' ? '_bCore' : '') + (q.get('nH') ? '_nH' + q.get('nH') : '') + (q.get('clp') === '1' ? '_clp' : '') + (q.get('cone') ? '_cone' + q.get('cone') : '') + (C2H !== null ? '_c2h' + C2H + 'n' + (q.get('nval') || '1') + 'u' + (q.get('unlock') || 'fix') : '');
+    cfg += ((MODE === 'o4' || MODE === 'o2t') ? '_O4t_rc' + RCX : '') + ((MODE === 'c2h4' || MODE === 'c2h2') ? '_' + MODE.toUpperCase() + '_CC' + (q.get('CC') || (MODE === 'c2h4' ? '2.530' : '2.273')) + (q.get('hch') ? '_hch' + q.get('hch') : '') + (q.get('twist') ? '_tw' + q.get('twist') : '') + (q.get('ccpair') === '1' ? '_ccp' : '') + '_rc' + RCX : '') + (MODE === 'alkane' ? '_alk' + (q.get('nC') || '3') + '_CC' + (q.get('CC') || '2.901') + (q.get('ccc') ? '_ccc' + q.get('ccc') + (q.get('follow') === '1' ? 'f' : '') : '') + '_rc' + RCX : '') + (MODE === 'c2h6' ? '_C2H6_CC' + (q.get('CC') || '2.901') + '_rc' + RCX + (q.get('half') === '1' ? '_half' : '') + (q.get('ccpair') === '1' ? '_ccp' : '') : '') + (q.get('rsing') ? '_s' + q.get('rsing') : '') + ((MODE === 'c' || MODE === 'ch4') ? (q.get('c4hom') === '1' ? '_C4hom' : q.get('c4pair') === '1' ? '_C4pair' : q.get('alpha') ? '_C4free_a' + q.get('alpha') : q.get('planar') === '1' ? '_C4quad' : q.get('c2hom') === '1' ? '_C2hom' : q.get('c2split') === '1' ? '_C2split' : '_C4tet') + '_rc' + RCX : '') + ((MODE === 'n' || MODE === 'nh3') ? (q.get('n5') === '1' ? (q.get('nh4') === '1' ? '_NH4p' + (q.get('R4') || '1.946') : '_N5tet') : '_N3w') + '_rc' + RCX + '_a' + (q.get('ang') || '106.7') : '') + ((MODE === 'o' || MODE === 'h2o') ? (q.get('o3') === '1' ? '_O3w' + (q.get('relO') ? 'r' + q.get('relO') : '') : q.get('c2v') === '1' ? '_O6c2v_lp' + (q.get('lpang') || '109.47') : '_O6tet') + (q.get('half') === '1' ? '_half' : '') + '_rc' + RCX + '_a' + (q.get('ang') || '104.5') : '') + ((MODE === 'x' || MODE === 'xh' || MODE === 'xh2' || MODE === 'x2') ? '_' + ELX + ZX + 'rc' + RCX + (BB.length >= 2 ? '_bb' + BB.join('') : '') : '') + (q.get('ZnX') ? '_Zn' + q.get('ZnX') : '') + (q.get('ZH') ? '_ZH' + q.get('ZH') : '') + (q.get('val') === '1' ? '_val' : '') + (q.get('core2') === '1' ? '_c2r' + (q.get('rel') || '500') + (q.get('coreax') || '') : '') + (q.get('pairH') === '1' ? '_pH' + (q.get('relH') || 'fix') + (q.get('pairax') || '') : '') + (q.get('hback') === '1' ? '_hb' + (q.get('relHb') || 'fix') : '') + (XPL !== null ? '_xp' + XPL + (q.get('relX') ? 'r' + q.get('relX') : '') : '');
     var k = (MODE === 'h' || MODE === 'x' || MODE === 'o' || MODE === 'n' || MODE === 'c') ? (MODE + (ZA > 1 ? 'Z' + ZA : '') + cfg)
           : ('h2_R' + R.toFixed(2) + '_b' + BETA.toFixed(3) + '_c' + CURV.toFixed(2) + cfg);
     if (!Array.isArray(st[k])) st[k] = [];
