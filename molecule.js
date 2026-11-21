@@ -141,6 +141,15 @@ const NRED_E = 6;  // Energy reduce: T + V_eK + V_ee + dipole(x,y,z)
 // and pinning work, which is why those numbers held up across grids and settings.
 
 const r_cut = window.USER_RC || [0, 0, 0, 0, 0];
+// USER_CORE_EDGE (2026-11-20): FROZEN-CORE CONTINUITY at the r_c sphere. Unset (default) = the free Neumann wall: a
+// neighbour inside an r_c exclusion reflects the cell's own value. Set to psi_b >= 0 = the valence must meet the
+// frozen core's edge amplitude psi_b = sqrt(rho_b) (1D atom, rho per volume): the excluded neighbour becomes the
+// Dirichlet ghost 2*psi_b - u_c, so the field equals psi_b on the wall face. Kinetic energy then carries the wall
+// term h*sum_faces (u_c - psi_b)^2, which the energy readout does NOT include (add it in post-processing).
+// Used with r_c = the 1D atom's core wall (C 2+4: 0.700, psi_b 0.5548 from rho_b 0.3078). The +Z_val kernel is
+// exact outside the core (the core's charge lies inside r_c).
+const CORE_EDGE = (window.USER_CORE_EDGE !== undefined) ? window.USER_CORE_EDGE : -1.0;
+const CE_GHOST = (ex) => CORE_EDGE >= 0 ? `select(uc, ${(2 * CORE_EDGE).toFixed(8)} - uc, ${ex})` : 'uc';
 while (r_cut.length < MAX_ATOMS) r_cut.push(0);
 // Z_nuc: nuclear charge for K potential (defaults to Z if not set)
 // Allows bare protons (Z=0 no electron, Z_nuc=1 contributes to K)
@@ -874,12 +883,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   // Blend neighbors toward uc where w < 1 (smooth Neumann at cutoff)
-  let u_raw_ip = select(uc, Ui[id + p.S2], l_ip == myL && !excl_ip);
-  let u_raw_im = select(uc, Ui[id - p.S2], l_im == myL && !excl_im);
-  let u_raw_jp = select(uc, Ui[id + p.S],  l_jp == myL && !excl_jp);
-  let u_raw_jm = select(uc, Ui[id - p.S],  l_jm == myL && !excl_jm);
-  let u_raw_kp = select(uc, Ui[id + 1u],   l_kp == myL && !excl_kp);
-  let u_raw_km = select(uc, Ui[id - 1u],   l_km == myL && !excl_km);
+  let u_raw_ip = select(${CE_GHOST('excl_ip')}, Ui[id + p.S2], l_ip == myL && !excl_ip);
+  let u_raw_im = select(${CE_GHOST('excl_im')}, Ui[id - p.S2], l_im == myL && !excl_im);
+  let u_raw_jp = select(${CE_GHOST('excl_jp')}, Ui[id + p.S],  l_jp == myL && !excl_jp);
+  let u_raw_jm = select(${CE_GHOST('excl_jm')}, Ui[id - p.S],  l_jm == myL && !excl_jm);
+  let u_raw_kp = select(${CE_GHOST('excl_kp')}, Ui[id + 1u],   l_kp == myL && !excl_kp);
+  let u_raw_km = select(${CE_GHOST('excl_km')}, Ui[id - 1u],   l_km == myL && !excl_km);
 
   let u_ip = mix(uc, u_raw_ip, w_ip);
   let u_im = mix(uc, u_raw_im, w_im);
@@ -982,12 +991,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let l_kp = label[id + 1u];   let excl_kp = isInsideRc(i, j, k+1u, l_kp);
   let l_km = label[id - 1u];   let excl_km = isInsideRc(i, j, k-1u, l_km);
 
-  let u_ip = select(uc, Ui[id + p.S2], l_ip == myL && !excl_ip);
-  let u_im = select(uc, Ui[id - p.S2], l_im == myL && !excl_im);
-  let u_jp = select(uc, Ui[id + p.S],  l_jp == myL && !excl_jp);
-  let u_jm = select(uc, Ui[id - p.S],  l_jm == myL && !excl_jm);
-  let u_kp = select(uc, Ui[id + 1u],   l_kp == myL && !excl_kp);
-  let u_km = select(uc, Ui[id - 1u],   l_km == myL && !excl_km);
+  let u_ip = select(${CE_GHOST('excl_ip')}, Ui[id + p.S2], l_ip == myL && !excl_ip);
+  let u_im = select(${CE_GHOST('excl_im')}, Ui[id - p.S2], l_im == myL && !excl_im);
+  let u_jp = select(${CE_GHOST('excl_jp')}, Ui[id + p.S],  l_jp == myL && !excl_jp);
+  let u_jm = select(${CE_GHOST('excl_jm')}, Ui[id - p.S],  l_jm == myL && !excl_jm);
+  let u_kp = select(${CE_GHOST('excl_kp')}, Ui[id + 1u],   l_kp == myL && !excl_kp);
+  let u_km = select(${CE_GHOST('excl_km')}, Ui[id - 1u],   l_km == myL && !excl_km);
 
   let lap = u_ip + u_im + u_jp + u_jm + u_kp + u_km - 6.0 * uc;
 
@@ -2789,12 +2798,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let l_kp = label[id + 1u];   let excl_kp = isInsideRc(i, j, k+1u, l_kp);
   let l_km = label[id - 1u];   let excl_km = isInsideRc(i, j, k-1u, l_km);
 
-  let u_ip = select(uc, Ui[id + p.S2], l_ip == myL && !excl_ip);
-  let u_im = select(uc, Ui[id - p.S2], l_im == myL && !excl_im);
-  let u_jp = select(uc, Ui[id + p.S],  l_jp == myL && !excl_jp);
-  let u_jm = select(uc, Ui[id - p.S],  l_jm == myL && !excl_jm);
-  let u_kp = select(uc, Ui[id + 1u],   l_kp == myL && !excl_kp);
-  let u_km = select(uc, Ui[id - 1u],   l_km == myL && !excl_km);
+  let u_ip = select(${CE_GHOST('excl_ip')}, Ui[id + p.S2], l_ip == myL && !excl_ip);
+  let u_im = select(${CE_GHOST('excl_im')}, Ui[id - p.S2], l_im == myL && !excl_im);
+  let u_jp = select(${CE_GHOST('excl_jp')}, Ui[id + p.S],  l_jp == myL && !excl_jp);
+  let u_jm = select(${CE_GHOST('excl_jm')}, Ui[id - p.S],  l_jm == myL && !excl_jm);
+  let u_kp = select(${CE_GHOST('excl_kp')}, Ui[id + 1u],   l_kp == myL && !excl_kp);
+  let u_km = select(${CE_GHOST('excl_km')}, Ui[id - 1u],   l_km == myL && !excl_km);
 
   let lap = u_ip + u_im + u_jp + u_jm + u_kp + u_km - 6.0 * uc;
 

@@ -411,6 +411,45 @@
     });
     console.log('alkane C' + nCA + 'H' + HA.length + ': C at ' + CP.map(function (p) { return '(' + p.map(function (x) { return x.toFixed(3); }).join(',') + ')'; }).join(' '));
   }
+  // mode=formamide (2026-11-21): planar HCONH2 in the xy plane, every heavy atom as THREE 120 deg wedges about the plane
+  // normal (molecule.js splitType 3, axis +z; wedge k centred at azimuth rot+(k-1)*120 from +y, so rot = phi_bond - 90
+  // deg puts wedge 1 on the bond at angle phi from +x). Every domain 1 e or a 2hom pair; bare protons inside X-H pairs.
+  //   C +4 (rcC, 1.0):  C=O one 2hom pair (C's sigma+pi) | C-H 2hom pair over H+ | C-N single
+  //   O +6 (rcO, 0.71): O=C one 2hom pair | two in-plane lone pairs, 2hom each (explicit)
+  //   N +3 (rcN, 0.81): N-C single | two N-H 2hom pairs over H+; the amide pi lone pair stays in the N core (a pi pair
+  //                     has no in-plane dipole by symmetry). 16 valence e, neutral.
+  // Geometry (microwave r_s, from memory, UNVERIFIED): C=O 1.212, C-N 1.360, C-H 1.098, N-H 1.002 A; OCN 124.7,
+  // NCH 112.2, CNH(cis to O) 120.6, CNH(trans) 118.5 deg. Exp dipole 3.73 D. C at the box centre (+0.5 cell).
+  else if (MODE === 'formamide') {
+    var AB = 1.8897259886, dg = Math.PI / 180;
+    var dCO = 1.212 * AB, dCN = 1.360 * AB, dCH = 1.098 * AB, dNH = 1.002 * AB;
+    var pN = 124.7, pH = -(360 - 124.7 - 112.2), pNC = pN + 180, pHc = pNC + 120.6, pHt = pNC - 118.5;
+    var P = { C: [0, 0], O: [dCO, 0], N: [dCN * Math.cos(pN * dg), dCN * Math.sin(pN * dg)] };
+    P.HC = [dCH * Math.cos(pH * dg), dCH * Math.sin(pH * dg)];
+    P.Hc = [P.N[0] + dNH * Math.cos(pHc * dg), P.N[1] + dNH * Math.sin(pHc * dg)];
+    P.Ht = [P.N[0] + dNH * Math.cos(pHt * dg), P.N[1] + dNH * Math.sin(pHt * dg)];
+    var rcF = { C: parseFloat(q.get('rcC') || '1.0'), O: parseFloat(q.get('rcO') || '0.71'), N: parseFloat(q.get('rcN') || '0.81') };
+    // [atom, bond azimuth for wedge 1, electrons per wedge k=0,1,2, kernel share per wedge]
+    var FW = [['C', 0, [2, 2, 1], [1, 2, 1]], ['O', 180, [2, 2, 2], [2, 2, 2]], ['N', pNC, [2, 1, 2], [1, 1, 1]]];
+    FW.forEach(function (w) {
+      for (var kw = 0; kw < 3; kw++) {
+        atoms.push({ i: N2 + 0.5 + P[w[0]][0] / h, j: N2 + 0.5 + P[w[0]][1] / h, k: N2 + 0.5, Z: w[2][kw], el: w[0] + 'w' + kw });
+        Z.push(w[2][kw]); Znuc.push(w[3][kw]); RC.push(rcF[w[0]]);
+        SPT[atoms.length - 1] = 3; SPI[atoms.length - 1] = kw; SPA[atoms.length - 1] = [0, 0, 1]; SPR[atoms.length - 1] = (w[1] - 90) * dg;
+      }
+    });
+    ['HC', 'Hc', 'Ht'].forEach(function (k) {
+      atoms.push({ i: N2 + 0.5 + P[k][0] / h, j: N2 + 0.5 + P[k][1] / h, k: N2 + 0.5, Z: 0, el: 'H+' });
+      Z.push(0); Znuc.push(1); RC.push(0);
+    });
+    var dd = function (a, b) { return Math.hypot(P[a][0] - P[b][0], P[a][1] - P[b][1]); };
+    var an = function (a, o, b) { var u = [P[a][0] - P[o][0], P[a][1] - P[o][1]], v = [P[b][0] - P[o][0], P[b][1] - P[o][1]];
+      return Math.acos((u[0] * v[0] + u[1] * v[1]) / Math.hypot(u[0], u[1]) / Math.hypot(v[0], v[1])) / dg; };
+    console.log('formamide built: CO ' + dd('C', 'O').toFixed(4) + ' CN ' + dd('C', 'N').toFixed(4) + ' CH ' + dd('C', 'HC').toFixed(4)
+      + ' NHc ' + dd('N', 'Hc').toFixed(4) + ' NHt ' + dd('N', 'Ht').toFixed(4) + ' a0; OCN ' + an('O', 'C', 'N').toFixed(2) + ' NCH '
+      + an('N', 'C', 'HC').toFixed(2) + ' CNHc ' + an('C', 'N', 'Hc').toFixed(2) + ' CNHt ' + an('C', 'N', 'Ht').toFixed(2) + ' deg; Hc-O '
+      + dd('Hc', 'O').toFixed(3) + ' Ht-O ' + dd('Ht', 'O').toFixed(3));
+  }
   else if (MODE === 'c2h6') {
     var CC6 = parseFloat(q.get('CC') || '2.901'), RH6 = q.get('R') ? R : 2.067, bp6 = q.get('bpair') === '1';
     var HO6 = q.get('half') === '1' ? 0.5 : 0;
@@ -418,7 +457,14 @@
     [[-1, Math.PI / 3], [+1, -Math.PI / 3]].forEach(function (cs, ci) {
       var sgn = cs[0], rot6 = cs[1], ax6 = [0, 0, sgn], zc = sgn * CC6 / 2, cFirst = atoms.length;
       var e16 = [0, ax6[2], 0], e26 = [ax6[1] * e16[2] - ax6[2] * e16[1], ax6[2] * e16[0] - ax6[0] * e16[2], ax6[0] * e16[1] - ax6[1] * e16[0]];
-      for (var t6 = 0; t6 < 4; t6++) {
+      // ?c4hom=1 (2026-11-20, DIAGNOSTIC, outside the pair rule): each carbon ONE +4 entry holding all four valence
+      // electrons (4hom, (N-1)/N self-repulsion via MULTI_OCC) -- the valence wraps its own kernel, as in H2/Li2; the
+      // H's keep their own electrons (as ch4 c4hom). Tests whether a kernel inside the domain stops the C-C collapse.
+      if (q.get('c4hom') === '1') {
+        atoms.push({ i: N2 + HO6, j: N2 + HO6, k: N2 + HO6 + zc / h, Z: 4, el: 'C' + ci + '4h' });
+        Z.push(4); Znuc.push(4); RC.push(RCX);
+      }
+      for (var t6 = 0; t6 < (q.get('c4hom') === '1' ? 0 : 4); t6++) {
         // ?ccpair=1: the C-C bond as ONE 2hom pair (house rule for a shared pair) instead of two singles meeting
         // at a free wall: C0's facing sector takes both electrons, C1's facing sector keeps its kernel share but no
         // electrons, so the pair's domain is free to extend over C1 (as the C-H pair extends over the bare proton).
@@ -427,16 +473,18 @@
         Z.push(ne6); Znuc.push(1); RC.push(RCX);
         SPT[atoms.length - 1] = 4; SPI[atoms.length - 1] = t6; SPA[atoms.length - 1] = ax6; SPR[atoms.length - 1] = rot6;
       }
-      for (var h6 = 0; h6 < 3; h6++) {
+      // ?noH=1 (2026-11-20, clean test): no hydrogens -- bare C2 from ethane's carbon (+4, four tetrahedral sectors, r_c);
+      // without bpair every sector holds one electron (8 valence e, neutral). Separates the carbon construction from the H's.
+      for (var h6 = 0; h6 < (q.get('noH') === '1' ? 0 : 3); h6++) {
         var ph6 = rot6 + 2 * Math.PI / 3 * h6;
         var d6 = [0, 1, 2].map(function (c) { return ax6[c] / 3 + Math.sqrt(8 / 9) * (Math.cos(ph6) * e16[c] + Math.sin(ph6) * e26[c]); });
-        var hb6 = q.get('Hbare') === '1';
+        var hb6 = q.get('Hbare') === '1' && q.get('c4hom') !== '1';
         atoms.push({ i: N2 + HO6 + RH6 * d6[0] / h, j: N2 + HO6 + RH6 * d6[1] / h, k: N2 + HO6 + (zc + RH6 * d6[2]) / h, Z: hb6 ? 0 : 1, el: hb6 ? 'H+' : 'H' });
         Z.push(hb6 ? 0 : 1); Znuc.push(1); RC.push(0);
         console.log('c2h6 H on C' + ci + ': dir ' + d6.map(function (v) { return v.toFixed(4); }).join(',') + ' azimuth ' + (Math.atan2(d6[1], d6[0]) * 180 / Math.PI).toFixed(1));
         B6.push([cFirst, atoms.length - 1]);                  // C-H, drawn from the C's first sector entry
       }
-      if (ci === 1) B6.push([cFirst - 7, cFirst]);            // C-C (first entry of C0 sits 7 entries earlier)
+      if (ci === 1) B6.push([cFirst - (q.get('c4hom') === '1' ? 1 : 4) - (q.get('noH') === '1' ? 0 : 3), cFirst]);   // C-C: C0's first entry (sectors or 4hom) + its H's earlier
     });
     window.USER_BOND_PAIRS = B6; window.USER_BONDS_ONLY = true;
   }
@@ -756,6 +804,9 @@
   if (q.get('betaiso') === '1') window.USER_BETA_ISO = true;
   // ?betacore=1 (2026-11-18): beta only on the core-sphere surface (faces onto r_c-excluded cells); all domain walls free.
   if (q.get('betacore') === '1') window.USER_BETA_CORE = true;
+  // ?coreedge=<psi_b> (2026-11-20): frozen-core continuity at r_c (molecule.js USER_CORE_EDGE) -- valence meets the core's
+  // edge amplitude instead of a free wall. With rcX = the 1D core wall (C 2+4: rcX=0.70, coreedge=0.5548).
+  if (q.get('coreedge')) window.USER_CORE_EDGE = parseFloat(q.get('coreedge'));
   window.USER_JACOBI_DIRECT = parseInt(q.get('jac') || '10');
   // ?pot=sic -- force the TOTAL-POISSON + SIC path instead of the per-electron direct one.
   // With two electrons NELEC <= 5, so molecule.js takes the direct path (line 347) and this
@@ -842,8 +893,8 @@
     // A lone atom has no R, beta or curvature, so those are left out of its key entirely.
     var FIXED = q.get('fixed') ? 1 : 0;
     var JAC = parseInt(q.get('jac') || '10');
-    var cfg = (q.get('pot') === 'sic' ? '' : q.get('pot') === 'local' ? '_pl' + (q.get('lself') === '0' ? 'n' : '') : '_pd') + '_h' + h.toFixed(3) + '_j' + JAC + '_x' + BOX.toFixed(1) + '_f' + FIXED + (q.get('weak') ? '_w' + q.get('weak') : '') + (q.get('inner') ? '_i' : '') + (q.get('Hbare') === '1' ? '_Hb0' : '') + (q.get('bpair') === '1' ? '_bp' : '') + (q.get('betainter') === '1' ? '_bI' : '') + (q.get('betaiso') === '1' ? '_bIso' : '') + (q.get('betacore') === '1' ? '_bCore' : '') + (q.get('nH') ? '_nH' + q.get('nH') : '') + (q.get('clp') === '1' ? '_clp' : '') + (q.get('cone') ? '_cone' + q.get('cone') : '') + (C2H !== null ? '_c2h' + C2H + 'n' + (q.get('nval') || '1') + 'u' + (q.get('unlock') || 'fix') : '');
-    cfg += ((MODE === 'o4' || MODE === 'o2t') ? '_O4t_rc' + RCX : '') + ((MODE === 'c2h4' || MODE === 'c2h2') ? '_' + MODE.toUpperCase() + '_CC' + (q.get('CC') || (MODE === 'c2h4' ? '2.530' : '2.273')) + (q.get('hch') ? '_hch' + q.get('hch') : '') + (q.get('twist') ? '_tw' + q.get('twist') : '') + (q.get('ccpair') === '1' ? '_ccp' : '') + '_rc' + RCX : '') + (MODE === 'alkane' ? '_alk' + (q.get('nC') || '3') + '_CC' + (q.get('CC') || '2.901') + (q.get('ccc') ? '_ccc' + q.get('ccc') + (q.get('follow') === '1' ? 'f' : '') : '') + '_rc' + RCX : '') + (MODE === 'c2h6' ? '_C2H6_CC' + (q.get('CC') || '2.901') + '_rc' + RCX + (q.get('half') === '1' ? '_half' : '') + (q.get('ccpair') === '1' ? '_ccp' : '') : '') + (q.get('rsing') ? '_s' + q.get('rsing') : '') + ((MODE === 'c' || MODE === 'ch4') ? (q.get('c4hom') === '1' ? '_C4hom' : q.get('c4pair') === '1' ? '_C4pair' : q.get('alpha') ? '_C4free_a' + q.get('alpha') : q.get('planar') === '1' ? '_C4quad' : q.get('c2hom') === '1' ? '_C2hom' : q.get('c2split') === '1' ? '_C2split' : '_C4tet') + '_rc' + RCX : '') + ((MODE === 'n' || MODE === 'nh3') ? (q.get('n5') === '1' ? (q.get('nh4') === '1' ? '_NH4p' + (q.get('R4') || '1.946') : '_N5tet') : '_N3w') + '_rc' + RCX + '_a' + (q.get('ang') || '106.7') : '') + ((MODE === 'o' || MODE === 'h2o') ? (q.get('o3') === '1' ? '_O3w' + (q.get('relO') ? 'r' + q.get('relO') : '') : q.get('c2v') === '1' ? '_O6c2v_lp' + (q.get('lpang') || '109.47') : '_O6tet') + (q.get('half') === '1' ? '_half' : '') + '_rc' + RCX + '_a' + (q.get('ang') || '104.5') : '') + ((MODE === 'x' || MODE === 'xh' || MODE === 'xh2' || MODE === 'x2') ? '_' + ELX + ZX + 'rc' + RCX + (BB.length >= 2 ? '_bb' + BB.join('') : '') : '') + (q.get('ZnX') ? '_Zn' + q.get('ZnX') : '') + (q.get('ZH') ? '_ZH' + q.get('ZH') : '') + (q.get('val') === '1' ? '_val' : '') + (q.get('core2') === '1' ? '_c2r' + (q.get('rel') || '500') + (q.get('coreax') || '') : '') + (q.get('pairH') === '1' ? '_pH' + (q.get('relH') || 'fix') + (q.get('pairax') || '') : '') + (q.get('hback') === '1' ? '_hb' + (q.get('relHb') || 'fix') : '') + (XPL !== null ? '_xp' + XPL + (q.get('relX') ? 'r' + q.get('relX') : '') : '');
+    var cfg = (q.get('pot') === 'sic' ? '' : q.get('pot') === 'local' ? '_pl' + (q.get('lself') === '0' ? 'n' : '') : '_pd') + '_h' + h.toFixed(3) + '_j' + JAC + '_x' + BOX.toFixed(1) + '_f' + FIXED + (q.get('weak') ? '_w' + q.get('weak') : '') + (q.get('inner') ? '_i' : '') + (q.get('Hbare') === '1' ? '_Hb0' : '') + (q.get('bpair') === '1' ? '_bp' : '') + (q.get('betainter') === '1' ? '_bI' : '') + (q.get('betaiso') === '1' ? '_bIso' : '') + (q.get('betacore') === '1' ? '_bCore' : '') + (q.get('coreedge') ? '_ce' + q.get('coreedge') : '') + (q.get('nH') ? '_nH' + q.get('nH') : '') + (q.get('clp') === '1' ? '_clp' : '') + (q.get('cone') ? '_cone' + q.get('cone') : '') + (C2H !== null ? '_c2h' + C2H + 'n' + (q.get('nval') || '1') + 'u' + (q.get('unlock') || 'fix') : '');
+    cfg += ((MODE === 'o4' || MODE === 'o2t') ? '_O4t_rc' + RCX : '') + ((MODE === 'c2h4' || MODE === 'c2h2') ? '_' + MODE.toUpperCase() + '_CC' + (q.get('CC') || (MODE === 'c2h4' ? '2.530' : '2.273')) + (q.get('hch') ? '_hch' + q.get('hch') : '') + (q.get('twist') ? '_tw' + q.get('twist') : '') + (q.get('ccpair') === '1' ? '_ccp' : '') + '_rc' + RCX : '') + (MODE === 'alkane' ? '_alk' + (q.get('nC') || '3') + '_CC' + (q.get('CC') || '2.901') + (q.get('ccc') ? '_ccc' + q.get('ccc') + (q.get('follow') === '1' ? 'f' : '') : '') + '_rc' + RCX : '') + (MODE === 'formamide' ? '_HCONH2_rc' + (q.get('rcC') || '1.0') + ',' + (q.get('rcO') || '0.71') + ',' + (q.get('rcN') || '0.81') : '') + (MODE === 'c2h6' ? '_C2H6_CC' + (q.get('CC') || '2.901') + '_rc' + RCX + (q.get('half') === '1' ? '_half' : '') + (q.get('ccpair') === '1' ? '_ccp' : '') + (q.get('c4hom') === '1' ? '_C4hom' : '') + (q.get('noH') === '1' ? '_noH' : '') : '') + (q.get('rsing') ? '_s' + q.get('rsing') : '') + ((MODE === 'c' || MODE === 'ch4') ? (q.get('c4hom') === '1' ? '_C4hom' : q.get('c4pair') === '1' ? '_C4pair' : q.get('alpha') ? '_C4free_a' + q.get('alpha') : q.get('planar') === '1' ? '_C4quad' : q.get('c2hom') === '1' ? '_C2hom' : q.get('c2split') === '1' ? '_C2split' : '_C4tet') + '_rc' + RCX : '') + ((MODE === 'n' || MODE === 'nh3') ? (q.get('n5') === '1' ? (q.get('nh4') === '1' ? '_NH4p' + (q.get('R4') || '1.946') : '_N5tet') : '_N3w') + '_rc' + RCX + '_a' + (q.get('ang') || '106.7') : '') + ((MODE === 'o' || MODE === 'h2o') ? (q.get('o3') === '1' ? '_O3w' + (q.get('relO') ? 'r' + q.get('relO') : '') : q.get('c2v') === '1' ? '_O6c2v_lp' + (q.get('lpang') || '109.47') : '_O6tet') + (q.get('half') === '1' ? '_half' : '') + '_rc' + RCX + '_a' + (q.get('ang') || '104.5') : '') + ((MODE === 'x' || MODE === 'xh' || MODE === 'xh2' || MODE === 'x2') ? '_' + ELX + ZX + 'rc' + RCX + (BB.length >= 2 ? '_bb' + BB.join('') : '') : '') + (q.get('ZnX') ? '_Zn' + q.get('ZnX') : '') + (q.get('ZH') ? '_ZH' + q.get('ZH') : '') + (q.get('val') === '1' ? '_val' : '') + (q.get('core2') === '1' ? '_c2r' + (q.get('rel') || '500') + (q.get('coreax') || '') : '') + (q.get('pairH') === '1' ? '_pH' + (q.get('relH') || 'fix') + (q.get('pairax') || '') : '') + (q.get('hback') === '1' ? '_hb' + (q.get('relHb') || 'fix') : '') + (XPL !== null ? '_xp' + XPL + (q.get('relX') ? 'r' + q.get('relX') : '') : '');
     var k = (MODE === 'h' || MODE === 'x' || MODE === 'o' || MODE === 'n' || MODE === 'c') ? (MODE + (ZA > 1 ? 'Z' + ZA : '') + cfg)
           : ('h2_R' + R.toFixed(2) + '_b' + BETA.toFixed(3) + '_c' + CURV.toFixed(2) + cfg);
     if (!Array.isArray(st[k])) st[k] = [];
