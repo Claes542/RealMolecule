@@ -80,6 +80,10 @@ the result should be as accurate as for hydrogen. The deviations reported below 
 surprising; they measure what the simple form leaves out. The same holds for the standard extension of
 Schr\"odinger's equation to $3N$ dimensions, which the hydrogen spectrum does not test either.
 
+In accuracy RealQM does not compete with the computable methods of standard quantum chemistry, which are well
+ahead on every quantity reported below. Its case rests elsewhere: a physical picture in three-dimensional
+space, nothing fitted, and a cost set by the grid alone (Section~\ref{sec:conclusion}).
+
 \paragraph{Boundary conditions.} Each $u_k$ satisfies a homogeneous Neumann condition on
 $\partial\Omega_k$: the kinetic energy is counted only inside the domain, and the amplitude at the
 wall is free. The boundaries are placed by \emph{density continuity}, $\rho_k = \rho_l$ across each
@@ -979,6 +983,7 @@ way toward O$^-\cdots$H$^+$. Polarity is therefore predicted in sign; its size d
 
 % =====================================================================================
 \section{Conclusion}
+\label{sec:conclusion}
 
 \begin{center}
 \small
@@ -1023,6 +1028,28 @@ the C--C bond of C$_2$ held by the model's own free-boundary rule once carbon's 
 polarity right in sign, its size bracketed by the two constructions of the bonding pair; shape (angles,
 torsions) imposed, not predicted; energies a diagnostic. The validation continues: the selection will be
 extended molecule by molecule, and the cases that do not yet work are the next steps.
+
+\paragraph{Moderate accuracy at low cost.} H$_2$ shows the profile that may carry over to large molecules:
+the geometry within a few per cent, the energy bracketed by the two constructions of the pair. In accuracy the
+computable methods of standard quantum chemistry are well ahead; where RealQM could compete is cost. With each
+domain kept on a local box and the potentials solved by multigrid, one iteration touches every grid cell once,
+so the cost is set by the number of grid points alone, (volume)$/h^3$, linear in the size of the molecule and
+independent of the number of electrons beyond the volume they fill. On one GPU at about $10^{10}$ cell updates
+per second, this estimates a peptide of about $100$ atoms in seconds, $10^3$ atoms in about a minute, and a protein
+of $10^4$ atoms ($10^8$--$10^9$ cells at $h = 0.2$--$0.1$) in minutes to an hour. Kohn--Sham DFT grows as $N^3$ and
+is routine to a few thousand atoms (a thousand atoms takes hours on hundreds of cores, or about an hour on a few
+GPUs); linear-scaling DFT reaches $10^4$--$10^5$ atoms in insulators at about $10^3$--$10^4$ core-hours for $10^4$
+atoms. Allowing for the throughput of a GPU against CPU cores, the estimate leaves RealQM one to two orders of
+magnitude cheaper at equal size, from its short stencil on a uniform grid with no basis and no matrix algebra.
+These are estimates for a solver not yet written in that form. The present \texttt{molecule.js} holds one
+amplitude field with each cell labelled by its domain, but its validated electron--electron path solves a
+Poisson problem over the whole grid for each electron and keeps each result, so that part grows about as
+(domains)$\times$(grid); a local path, with one total potential and each domain's self-potential on a small box
+around it, is in development. With explicit imaginary-time steps a small molecule takes minutes. The aim they describe is moderate accuracy at low cost: geometries within a
+few per cent for systems where DFT becomes expensive.
+% DFT figures: orders of magnitude from published benchmarks (ONETEP/CONQUEST/BigDFT linear scaling, TeraChem
+% GPU), quoted from memory 2026-11-21, not measured here. RealQM figures: estimate, local boxes + multigrid,
+% 10^3-10^4 iterations, not implemented.
 
 \begin{thebibliography}{99}
 
