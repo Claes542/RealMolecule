@@ -66,6 +66,20 @@ surprising; they measure what the basic form leaves out. The standard extension 
 equation to $3N$ dimensions is not tested by the hydrogen spectrum either; it is tested separately, for a few
 electrons, where it agrees with observation, and it is viewed as exact beyond them (see Testability below).
 
+\paragraph{A model of the electrons themselves.} RealQM stands to DFT as an $N$-body model stands to a mean-value model
+of the same bodies. In the $N$-body problem each body is an object with a position, a force law acts between the
+bodies, and the motion is computed directly; for three bodies no meaningful description in terms of a mean density
+exists, and none is needed. In RealQM each electron, or pair, is an object of the same kind: a charge density in its
+own region of space, with a law of interaction (Coulomb attraction and repulsion, the kinetic energy of each density,
+walls placed by continuity), and the arrangement is computed directly, with nothing averaged. DFT is instead a
+mean-value model: it works with the total density alone and must supply a closure, the exchange--correlation
+functional, for everything the total density does not carry. That such a closure exists is a theorem
+(Hohenberg--Kohn), but the theorem does not construct it, and an exact closure in usable form may be impossible to
+find; practical functionals approximate it, partly by calibration. The difference decides how failures are read. A
+mean-value model that disagrees with observation points to its closure; RealQM, as a model of the electrons
+themselves, points to its law of interaction, and the failures reported here say that the law as written lacks a
+repulsion between electron densities pressed together, beyond their Coulomb repulsion.
+
 In accuracy RealQM does not compete with the computable methods of standard quantum chemistry. Standard quantum mechanics is a calculus of
 observable outcomes; whether it is also a model of physical reality is an open question, since its candidate
 reality, a wave function in $3N$-dimensional configuration space, has no agreed physical interpretation. It
@@ -1057,7 +1071,13 @@ backbone (C=O, N--H) & formamide & $1.90$ & $3.94$ & $0.48$ \\
 Every sign is right, and the directions agree within $20^\circ$; the sizes run from half to twice the reference, the
 peptide group lowest, probably because its nitrogen $\pi$ lone pair was left in the core. A map of a protein's
 surface field built from such densities would show the positive and negative regions in the right places, but not
-their relative strengths, which between a backbone amide and a lysine could be off by a factor of four.
+their relative strengths, which between a backbone amide and a lysine could be off by a factor of four. Such a map
+would serve as a picture of which faces of a protein attract a charged or polar partner, the information that
+steers an approach at long range, and as a test of the model on biological scale; it would not rank binding sites
+by strength. Solvent and ions, which screen the field strongly near the surface, are not included, and fragments
+computed apart do not polarise one another; standard partial-charge maps with a Poisson--Boltzmann solvent remain the
+practical tool. The first improvement toward a quantitative map is a common size factor across groups, beginning
+with the amide nitrogen's $\pi$ lone pair.
 % Runs 2026-11-22 (h2_beta mode=frag, new: methanol, methylammonium, acetate; formamide from mode=formamide), h0.1
 % box16 (fragments) / box14 (formamide), beta 0; scripts runs_cc/queue_frag.sh, frag_ref.py (PySCF 2.12.1, same
 % geometry parsed from the log). RealQM mu (au): methanol (-0.3776,-1.1596), CH3NH3+ +1.5723, acetate (-1.9513,+1.7518)
@@ -1165,6 +1185,51 @@ understanding of another kind: a picture that is the model itself, electrons as 
 a bond as charge between nuclei, exclusion as non-overlap, shells from the continuity rule, and one that shows where
 such a picture succeeds and where it fails. A picture is understanding only as far as it is right: where RealQM
 fails, at shape and at the energies, its account is incomplete, and the failures say where.
+
+\paragraph{Combinations with existing methods.} RealQM need not start from scratch where existing methods are strong;
+what it contributes is its partition of space into domains of one electron or one pair, placed by the continuity
+rule. Two combinations follow. First, subsystem density functional theory already divides a molecule into regions
+with densities of their own and charges the non-additive kinetic and exchange--correlation energy between them, which
+is the cost between electron groups that the free walls lack; letting neighbouring RealQM domains overlap slightly
+at their walls and charging that energy across them would test directly whether the missing cost repairs shape and
+bond lengths, at the price of approximate functionals. Second, RealQM can serve as an analysis layer: an accurate
+density from Hartree--Fock or DFT, partitioned by the continuity rule into electron domains, gives the picture of
+where each electron or pair sits, with geometry and energies from the standard method and the interpretation from
+RealQM. Further, cheaper uses are RealQM densities as starting densities or environments for large calculations,
+and standard geometries in place of the imposed ones for molecules without measured structures.
+
+The second combination was tried. B3LYP densities (cc-pVTZ) of CH$_4$, LiH and H$_2$O at RealQM's geometries were
+divided by the wall rule, each point to the localised orbital (Boys) whose density is largest there, and the
+density in each region integrated:
+\begin{center}
+\small
+\begin{tabular}{lcccc}
+\toprule
+ & electrons per pair region & \multicolumn{2}{c}{pair centre} & RealQM dipole \\
+ & (B3LYP density) & RealQM & B3LYP & \\
+\midrule
+CH$_4$, C--H & $1.96$--$1.99$ & $0.77$ & $0.785$ & -- \\
+LiH, bond & $1.97$ & $0.926$ & $0.873$ & $+11\%$ \\
+H$_2$O, O--H & $1.95$--$1.99$ & $0.638$ & $0.70$ & $\times 2.2$ \\
+H$_2$O, lone pair & $1.91$--$2.00$ & $1.06\,a_0$ & $0.85\,a_0$ & \\
+\bottomrule
+\end{tabular}
+\end{center}
+(Bond-pair centres as a fraction of the way from the heavy atom to H, lone pairs as distance from O.) Every region
+of the accurate density holds close to two electrons, without that being imposed, and where RealQM works its pairs
+sit where the accurate density puts them, the C--H pair within $2\%$ of the bond. Water departs most, at the lone
+pairs, which RealQM places $0.2\,a_0$ too far out: in the accurate density a quarter to two fifths of an electron of
+each pair lies inside $0.71\,a_0$ of the oxygen, where RealQM's core sphere excludes it, and that displaced charge
+is the source of the doubled dipole. Hartree--Fock and DFT give the total density accurately, but no unique account
+of where the electrons are: their orbitals overlap and can be mixed freely, and even the localised orbitals are not
+unique (water has a second Boys solution, with one $\sigma$ and one $\pi$ lone pair). RealQM supplies such an account,
+regions of space holding a pair each, and the accurate density fits it closely where the model works. It is RealQM's
+reading of what standard quantum chemistry computes, a three-dimensional description in place of none, though not an
+observation and not the only possible partition.
+% Runs 2026-11-23: runs_cc/partition_dft.py, partition_gen.py (PySCF 2.12.1; Boys from a random start with
+% init_guess=None, since every localiser stays at the symmetric canonical point otherwise). RealQM domains from the
+% geometry-set dumps g1_ch4, g1_lih, g1_h2o. Outside r_c the B3LYP pair centres are 0.847 (CH4), 0.915 (LiH),
+% 0.756 / 0.96 a0 (H2O bonds / lone pairs); charge inside r_c per pair 0.22-0.23 (CH4), 0.17 (LiH), 0.22-0.23 bonds / 0.36-0.39 lone pairs (H2O).
 
 \paragraph{Moderate accuracy at low cost.} H$_2$ shows the profile that may carry over to large molecules:
 the geometry within a few per cent, the energy bracketed by the two constructions of the pair. In accuracy RealQM
