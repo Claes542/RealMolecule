@@ -4,11 +4,36 @@
 Chapter~\ref{ch:h2} showed that the two electrons of H$_2$ can be carried in two parameter-free
 constructions, 2split and 2hom, and that the exact energy lies between them. This chapter takes the
 same constructions to molecules with a heavier atom. The criterion is \textbf{geometry}: bond lengths,
-and the residual force on each nucleus at the observed geometry. Binding energies are reported as a
-diagnostic of the construction, not as a target.
+read from the force on each nucleus. Binding energies are reported as a diagnostic of the construction,
+not as a target.
 
 The results come from the article \emph{RealQM for Molecules: Validation in Progress}, which is kept up
-to date as the validation proceeds; this chapter is a snapshot of it.
+to date as the validation proceeds; this chapter is a snapshot of it as of November 2026.
+
+\section{What kind of model}\label{sec:hydride-model}
+
+\paragraph{A basic model.} For one electron RealQM is Schr\"odinger's equation for the hydrogen atom, and
+exact there. That exactness is not a test: the equation was formed to reproduce the hydrogen spectrum. From
+H$_2$ on, the model extends a one-electron equation to many electrons by one assumption, non-overlapping
+domains with free walls, and nothing in that assumption promises the accuracy of hydrogen. The deviations
+reported below measure what the basic form leaves out.
+
+\paragraph{A model of the electrons themselves.} RealQM stands to density functional theory as an $N$-body
+model stands to a mean-value model of the same bodies. Each electron, or pair, is an object: a charge
+density in its own region of space, with a law of interaction (Coulomb attraction and repulsion, the kinetic
+energy of each density, walls placed by continuity), and the arrangement is computed directly, nothing
+averaged. DFT works with the total density alone and must supply a closure, the exchange--correlation
+functional, for everything the total density does not carry; that a closure exists is a theorem, but the
+theorem does not construct it. The difference decides how a failure is read: a mean-value model that
+disagrees with observation points to its closure, a model of the electrons themselves to its law of
+interaction.
+
+\paragraph{Not a competitor in accuracy.} In accuracy RealQM does not compete with the computable methods of
+standard quantum chemistry: Hartree--Fock and DFT put every bond length below within $2\%$, while RealQM's
+are short by up to $6.2\%$. Its case rests elsewhere: a physical picture in three-dimensional space, nothing fitted, a cost set by
+the grid, and every deviation counted against the model, since nothing stands between the model and its
+result but the mesh. The failures are therefore as informative as the successes; each exposes a feature of
+the model.
 
 \section{An earlier version withdrawn}\label{sec:hydride-setup}
 
@@ -42,13 +67,16 @@ pair that shares one region --- a core $1s^2$, a lone pair, a bonding pair near 
 Electrons that must avoid each other --- H$^-$, a bond pulled apart --- need 2split. The two are distinct
 states with no parameter joining them, and both are reported.
 
-\paragraph{Inner shells are excluded by a fixed radius.} An inner shell cannot be carried as a domain with
-a free wall: the free wall charges nothing for crowding, the valence presses into the core and the bond
-collapses. Every all-electron LiH with free core walls does this. The core is instead excluded by a fixed
-sphere of radius $r_c$ around the nucleus, which then acts as a pseudo-nucleus of charge equal to the
+\paragraph{Inner shells.} Inner shells hold as domains with free walls when the wall is placed by the model's
+own rule, moved until the densities on both sides are equal: the one-dimensional atoms of
+Chapter~\ref{ch:atoms} are built that way, and an all-electron C$_2$ in the axisymmetric reduction keeps its
+$1s^2$ cores (below). They collapse when the wall is moved to lower the energy instead: a free wall charges
+nothing for the valence pressing against it, so the valence follows the nucleus inward. In three dimensions
+at $h = 0.1$ a $1s$ shell spans under two cells and cannot be represented, so there the core is excluded by
+a fixed sphere of radius $r_c$ around the nucleus, which then acts as a pseudo-nucleus of charge equal to the
 valence count. The radius is set once per atom, from the atom: the radius at which the pseudo-atom alone
 reproduces its ionisation energy. Nothing is adjusted to molecular data. This is a frozen-core model,
-stated as such.
+imposed by the mesh rather than by the model.
 
 \paragraph{Energies are checked independently.} Above five domains the solver's default
 electron--electron path was found to under-count the repulsion by several hartree (methane: about
@@ -56,29 +84,60 @@ $2.5\,E_h$), so every energy above five domains is recomputed from the converged
 independent program before it is quoted. The results of this chapter that involve more than five domains
 were rerun on the per-electron path and checked that way.
 
-\section{Light hydrides}\label{sec:group1}\label{sec:group2}
+\section{Bond lengths from the forces}\label{sec:group1}\label{sec:group2}\label{sec:hydride-forces}
 
-\begin{table}[h]
-\centering\small
-\setlength{\tabcolsep}{4pt}
-\caption{Bond lengths ($a_0$) and binding energies ($E_h$, diagnostic) of light hydrides, three-dimensional,
-$h = 0.1$. Bond length from the 2hom construction.}\label{tab:hydride-summary}
-\begin{tabular}{llrrrrrr}
+The force on a nucleus is read as the pull of the converged density, $\mathbf{F}_a = Z_a\int\rho\,
+(\mathbf{x}-\mathbf{R}_a)/|\mathbf{x}-\mathbf{R}_a|^3$ outside the kernel clamp, plus the nuclear
+repulsion. It equals $-\partial E/\partial\mathbf{R}_a$ only if the energy is stationary in everything
+that moves with the nucleus. A bare proton inside a 2hom bond pair carries no wall of its own, and
+there the readout agrees with the slope of $E(R)$ within $0.002$--$0.011$ (LiH, BeH$_2$, BH; also
+CH$_4$). With 2split the H domain's wall moves with H and is placed by continuity,
+not by the energy, and the readout misses that wall term (BH: $-0.040$ against $+0.086$). Forces are therefore read with bond pairs and bare protons; the spread between
+equivalent H atoms, about $\pm0.005$, is the mesh noise at $h = 0.1$.
+
+For each X--H bond the force on H was read at the observed length and at two shorter ones, $0.1$ and $0.2\,a_0$
+shorter, all with one construction: every X--H bond one 2hom pair over a bare proton, the heavy atom a pseudo-core
+with its valence in fixed sectors, $\beta = 0$, $h = 0.1$, angles at their observed values. The model's bond length
+is where the force on H vanishes, from a quadratic through the three points; $k$ is the stretch stiffness there.
+Forces in $E_h/a_0$ (positive: the bond would lengthen), lengths in $a_0$:
+\begin{center}
+\small
+\begin{tabular}{lcccrc}
 \toprule
-molecule & construction & $R_e$ & exp. & error & $D_e$ 2hom & $D_e$ 2split & exp. \\
+molecule & force at observed & model $R_e$ & observed & error & $k$ \\
 \midrule
-H$_2$   & $1{+}1$ (axisym.)            & $1.368$ & $1.401$ & $-2.3\%$ & $0.138$ & $0.281$ & $0.1745$ \\
-LiH     & Li$^+$ ($r_c$) + pair         & $2.85$  & $3.015$ & $-5\%$   & $0.095$ & $0.063$--$0.073$ & $0.092$ \\
-BH      & B $2{+}3$ ($2_{\rm hom}{+}1$) & $2.29$  & $2.329$ & $-1.6\%$ & $0.155$ & $0.276$ & $0.135$ \\
-OH      & O $+3$ ($2_{\rm hom}{+}1$)    & $1.79$  & $1.832$ & $-2\%$   & $0.241$ & $0.371$ & $0.170$ \\
-BeH$_2$ & Be $2{+}2_{\rm split}$        & $2.44$  & $2.52$  & $-3\%$   & $0.248$ & n.c.    & $0.2231$ \\
+BeH$_2$ (Be $+2$) & $-0.009$ & $2.476$ & $2.520$ & $-1.8\%$ & $0.22$ \\
+C$_2$H$_2$ (C--H) & $-0.026$ & $1.963$ & $2.004$ & $-2.1\%$ & $0.68$ \\
+BH (B $+3$) & $-0.017$ & $2.271$ & $2.329$ & $-2.5\%$ & $0.31$ \\
+OH (O $+3$) & $-0.028$ & $1.773$ & $1.832$ & $-3.2\%$ & $0.52$ \\
+C$_2$H$_6$ (C--H) & $-0.041$ & $1.993$ & $2.067$ & $-3.6\%$ & $0.64$ \\
+C$_2$H$_4$ (C--H) & $-0.031$ & $1.977$ & $2.054$ & $-3.7\%$ & $0.61$ \\
+CH$_4$ (C $+4$) & $-0.046$ & $1.974$ & $2.054$ & $-3.9\%$ & $0.65$ \\
+LiH (Li $+1$) & $-0.015$ & $2.886$ & $3.015$ & $-4.3\%$ & $0.15$ \\
+HF (F $+3$) & $-0.041$ & $1.654$ & $1.733$ & $-4.6\%$ & $0.61$ \\
+NH$_3$ (N $+5$) & $-0.071$ & $1.824$ & $1.913$ & $-4.6\%$ & $0.88$ \\
+H$_2$O (O $+6$) & $-0.068$ & $1.706$ & $1.809$ & $-5.7\%$ & $1.00$ \\
+NH$_3$ (N $+3$) & $-0.066$ & $1.795$ & $1.913$ & $-6.2\%$ & $0.62$ \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{center}
+Every X--H bond is short, by $1.8$--$6.2\%$ (mean about $3.8\%$), and the error grows across the period, smallest
+for Be and B and largest for N and O, where the cores carry most valence. Standard methods do better: Hartree--Fock and DFT under the same constraints are within $2\%$
+for every molecule, and RealQM is less accurate than either. The two use different objects. Hartree--Fock's orbitals extend over the whole molecule and overlap everywhere; they are not
+unique, since any mixing of them among themselves leaves the wave function and every prediction unchanged, so
+no single orbital has a physical meaning of its own. RealQM's electron densities are local and do not overlap,
+each a definite charge density in its own region of three-dimensional space, proposed as physical; what they
+do not yet carry is the cost of pressing such regions together that Hartree--Fock obtains from its
+orthogonality. The C--H trend among the hydrocarbons
+comes out in the right order, ethane $>$ ethene $>$ ethyne ($1.993 > 1.977 > 1.963$; observed $2.067 > 2.054 >
+2.004$), with about half the observed spread. The stiffnesses are those of bonds that bind too strongly: the
+CH$_4$ stretch at $k = 0.65$ puts its symmetric frequency about $20\%$ above the observed one. For the linear
+molecules of Section~\ref{sec:group14}, computed in the axisymmetric reduction, $-\mathrm{d}E/\mathrm{d}R$ over $\pm10\%$ of
+the bond is HCN $+0.042$ (C--N) and $-0.013$ (C--H), CO $+0.045$, CO$_2$ $-0.022$ per bond, C$_2$H$_2$ $+0.19$
+(C--C) and CH $-0.046$; a force must be read against the stiffness, the triple bond of C$_2$H$_2$ carrying $+0.19$
+for a $10\%$ error and CO$_2$ $-0.022$ for $2\%$.
 
-The bonds are $2$--$5\%$ short. The binding lies between the two constructions or near the 2hom value; the
-2hom bonding pair is the closer for LiH and BH. (BeH$_2$: atomisation of both bonds; n.c., the 2split run
-does not converge.)
+H$_2$ itself, in the axisymmetric reduction, has its bond $2.3\%$ short (Chapter~\ref{ch:h2}).
 
 \paragraph{LiH.} LiH is the simplest polar bond with an inner shell. Pseudo-Li carries charge $+1$ outside
 a fixed core of radius $r_c = 1.99\,a_0$, the radius at which the pseudo-atom reproduces the Li ionisation
@@ -89,10 +148,6 @@ $R = 3.0$ the dipole is $6.53$~D against $5.88$: of the right sign, Li$^+$H$^-$,
 was adjusted to LiH. With one electron per domain instead, the Li valence electron settles \emph{behind}
 Li and the dipole has the wrong sign, whatever the starting density.
 
-\paragraph{Forces at the observed geometry.} The residual force on each H along its bond at the observed
-geometry is small and inward: $-0.022$ (LiH), $-0.013$ (BH), $-0.018$ (BeH$_2$), $-0.028\,E_h/a_0$ (OH).
-The model's X--H bonds are slightly short, which is what the bond lengths say.
-
 \section{Linear molecules}\label{sec:group14}
 
 The same pseudo-atoms, unchanged, build linear molecules. In the axisymmetric reduction, HCN, CO and
@@ -102,40 +157,180 @@ carbon--carbon bonds come out nearly equal: each bond is carried by one pair wha
 triple and a single C--C bond are the same construction. Bond alternation is not represented, and the
 C$\equiv$C of C$_2$H$_2$ comes out $10\%$ long for the same reason.
 
-\section{Heavy atoms with their whole valence}\label{sec:group16}\label{sec:rc-meaning}
+\section{Carbon, and what the free wall does not charge}\label{sec:group16}\label{sec:rc-meaning}
 
-Carbon, nitrogen and oxygen carrying their whole valence (CH$_4$, NH$_3$, H$_2$O, ethane) do not yet work:
-\begin{itemize}
-\item The X--H bonds are a few per cent short (CH$_4$: $-4\%$), consistent with the light hydrides.
-\item The binding is two to three times too large, by an amount per heavy atom: the excess of ethane is
-  twice that of methane.
-\item Shapes are not selected: the CH$_4$ tetrahedron and the square plane have the same energy within
-  $0.002\,E_h$, and the H$_2$O angle depends on how the lone pairs are carried.
-\end{itemize}
-An earlier account blamed this over-binding on a missing Pauli kinetic energy of strong cores. That
-account rested on the faulty electron--electron path and is withdrawn; with the repulsion counted
-correctly the over-binding is smaller but remains. O$_2$ and F$_2$ are not reproduced by any core
-configuration tried.
+Carbon, nitrogen and oxygen carrying their whole valence over-bind two to three times, by an amount per heavy
+atom (ethane twice methane); the CH$_4$ square plane lies $0.002\,E_h$ below the tetrahedron, where CCSD(T)
+puts it $0.225\,E_h$ above; O$_2$ over-binds about twofold and F$_2$ has no minimum. Carbon was taken apart
+against Hartree--Fock (HF) and CCSD(T), computed with PySCF~\cite{pyscf} in the cc-pVQZ basis at the same
+geometry, RealQM being the 2hom construction on pseudo-C $+4$ ($r_c = 1.0$).
 
-Most of these failures share one feature: where pairs are pressed together the free wall between them
-charges nothing, and the model has no repulsion between pairs beyond their Coulomb energy. Whether RealQM
-needs such a repulsion, and in what form, is the main open question for molecules. Its test is F$_2$
-weakly bound near $2.67\,a_0$, the H$_2$O angle and the CH$_4$ tetrahedron recovered, and LiH, Li$_2$,
+\emph{Each C--H bond is an independent unit.} Adding the $n$-th hydrogen to CH$_{n-1}$ gains $0.352\,E_h$ in
+RealQM for $n = 1,\dots,4$, constant to $2\%$; the exact gains grow from $0.13$ to $0.19$. The atomisation
+of CH$_4$ is $1.404\,E_h$ against $0.665$. Table~\ref{tab:c-h-bond} splits the fourth bond into kinetic and
+electrostatic parts.
+\begin{table}[h]
+\centering\small
+\caption{The fourth C--H bond, CH$_3$ + H $\to$ CH$_4$: contributions to the binding ($E_h$; positive
+binds). Electrostatic: $\Delta(V_{eK}+V_{ee}+V_{KK})$.}\label{tab:c-h-bond}
+\begin{tabular}{lrrr}
+\toprule
+ & $\Delta T$ & electrostatic & $\Delta E$ \\
+\midrule
+RealQM, $h = 0.10$ & $+0.018$ & $+0.329$ & $+0.347$ \\
+RealQM, $h = 0.07$ & $+0.013$ & $+0.336$ & $+0.349$ \\
+HF                 & $-0.143$ & $+0.290$ & $+0.147$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+The electrostatic gains agree within $0.05$. The difference is the kinetic energy: forming the bond costs
+HF $0.14\,E_h$ of kinetic energy, as the virial theorem requires near equilibrium, and costs RealQM
+nothing. The mesh does not change this: from $h = 0.1$ to $0.07$ the H atom's kinetic energy moves
+from $0.453$ to $0.476$ (exact $0.5$) while the bond's stays near zero.
+
+\emph{No shape is preferred.} The tetrahedron is preferred by $0.248\,E_h$ in HF and $0.225$ in CCSD(T),
+already in HF and so not a correlation effect. In RealQM, where the bonds do not interact, it is not
+preferred.
+
+\emph{The promotion energy has the wrong sign.} At the same $r_c$, pseudo-C with its four electrons in
+tetrahedral sectors lies $0.223\,E_h$ \emph{below} the ground-state layout of $2s^22p^2$, one 2hom pair and
+two singles ($0.222$ at $h = 0.07$). In carbon the four-unpaired state $^5S$ lies $0.152\,E_h$ \emph{above}
+$^3P$ (CCSD(T); HF $0.095$). Splitting the pair removes its repulsion ($-0.14$) and lets it closer to the
+core ($-0.16$) for a kinetic cost of $0.08$. In carbon the same step puts an electron in a $2p$ orbital,
+whose angular node costs kinetic energy. The radius $r_c$, fitted with the tetrahedral layout to the
+ground-state energy, is therefore fitted to the wrong state, and no choice of layout repairs it.
+
+\emph{The common cause.} In HF, Pauli exclusion acts through the orthogonality of same-spin orbitals:
+where two would overlap, one must change sign, and the node costs kinetic energy. This is the repulsion
+between pairs that spreads them to a tetrahedron and resists contraction, and near the core it is the
+oscillation that pseudopotentials replace by a repulsion~\cite{PhillipsKleinman59}. In RealQM the domains do not overlap,
+so orthogonality holds without a node: each density ends at a free wall, and the wall is not charged. The
+measured consequences are a missing kinetic cost of $0.14\,E_h$ per bond, no shape preference, a
+promotion energy of the wrong sign, and short bonds. The opposite limit, a density forced to zero at the
+wall, overcharges. Whether a wall cost between the two exists without a fitted parameter is the main open
+question of the model. Its test is the CH$_4$ fourth-bond kinetic cost, the tetrahedron and the promotion
+energy of carbon recovered, F$_2$ weakly bound near $2.67\,a_0$, the H$_2$O angle, and LiH, Li$_2$,
 C$_2$, N$_2$ left where they are.
+
+A constant cost on every wall, the surface energy $\tfrac{\beta}{2}\int_{\partial\Omega_k}u_k^2$ at
+$\beta = 0.2$, gives C--H bond lengths with tetrahedral carbon imposed, but not the C--C bond, the size of the
+shape preference, the fourth-bond kinetic cost or the promotion energy; the same value that leaves C--C $10\%$
+short makes H$_2$ $8\%$ long. The cost a wall must carry differs between the wall inside a bonding pair and the
+walls between pairs, and no single constant supplies both.
+
+\paragraph{Carbon--carbon: fixed directions collapse, a free cone holds.} With carbon's four valence
+electrons in fixed tetrahedral sectors, the C--C bond has no minimum: the energy of ethane falls until the core
+spheres meet near $2.0\,a_0$ (experiment $2.901$), and so does bare C$_2$ built from the same carbon, without
+hydrogen. Neither a frozen core held at the atom's edge density, nor the hydrogens, nor the size of $r_c$ is the
+cause: in the axisymmetric reduction an all-electron C$_2$, with a $1s^2$ core domain around each nucleus (inside
+the 1D atom's own core wall, $0.700$) and four valence electrons in one domain, has a minimum at $1.94$, and a
+rigid core gives the same minimum as one solved with the molecule. Splitting that valence into one bond electron
+in a fixed cone of $60^\circ$ toward the partner and three behind brings the collapse back: the bond electron has
+no kernel in its domain and slides to the midplane at no cost. Letting the cone wall be a free boundary under
+the model's own rule, moved until the densities meet with equal values, removes it: the cone opens from
+$60^\circ$ to about $67^\circ$ at the minimum, and C$_2$ binds at $R_e = 2.13$ ($h = 0.1$) and $2.16$
+($h = 0.05$), $-8\%$ against $2.348$, with no wall cost and nothing fitted. The binding remains about four times
+too strong. Minimising the energy over the cone angle instead would run away to narrow cones. The 3D sector
+model imposes its walls; whether free walls under continuity give carbon its shape in 3D is the open test.
+
+\section{Dipoles and the polar groups of proteins}\label{sec:hydride-dipoles}
+
+\paragraph{Dipoles, and the bracket.} At the observed geometry ($h = 0.1$, the constructions of the
+geometry runs): LiH $6.54$\,D (experiment $5.88$); with lone pairs as domains, H$_2$O $4.09$ (O $+6$; $1.855$),
+NH$_3$ $3.71$ (N $+5$; $1.47$), HF $3.65$ ($1.83$), OH $3.63$ ($1.66$), BH $3.50$ ($1.27$), all with the right sign;
+with the lone pair frozen into the core, NH$_3$ inverts ($0.46$\,D, H negative) and H$_2$O (O $+3$) has half the
+size ($1.01$). Formamide, with every heavy atom in three wedges and the amide $\pi$ lone pair in the N core, has
+$1.90$\,D (experiment $3.73$) pointing within about $20^\circ$ of the O--NH$_2$ axis. All-electron OH and HF in the
+axisymmetric reduction (free cone, core from the 1D atom) separate the parts: with the bonding pair over the bare
+proton, the pair and the proton are nearly neutral and the whole dipole is the lone pairs' displacement behind
+the heavy atom, $3.4$--$3.6$\,D for OH and $3.1$--$3.9$\,D for HF; with H keeping its own electron (2split, both
+walls by continuity) the dipole inverts, $-0.72$ and $-0.44$\,D, the H electron sitting beyond its proton. The two
+constructions bracket the observed dipole as they bracket the H$_2$ energy. Letting charge flow across the
+split wall until the chemical potentials agree does not select a state between them: the energy falls all the
+way toward O$^-\cdots$H$^+$. Polarity is therefore predicted in sign; its size depends on the construction.
+
+\paragraph{Polar groups of protein surfaces.} The groups a protein surface exposes were taken as small fragments, built
+with the same rules (every X--H bond a pair over a bare proton, lone pairs as domains, heavy--heavy single bonds one
+electron per side, tetrahedral or planar frames along the bonds), and their dipoles compared with B3LYP in the
+aug-cc-pVTZ basis at the same geometry, about the centre of kernel charge for the ions:
+\begin{center}
+\small
+\begin{tabular}{llccc}
+\toprule
+group & fragment & RealQM (D) & B3LYP (D) & ratio \\
+\midrule
+Ser, Thr (O--H) & methanol & $3.10$ & $1.68$ & $1.85$ \\
+Lys (NH$_3^+$) & methylammonium & $4.00$ & $2.06$ & $1.94$ \\
+Asp, Glu (COO$^-$), along C--C & acetate & $-4.96$ & $-3.99$ & $1.24$ \\
+backbone (C=O, N--H) & formamide & $1.90$ & $3.94$ & $0.48$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+Every sign is right, and the directions agree within $20^\circ$; the sizes run from half to twice the reference, the
+peptide group lowest, probably because its nitrogen $\pi$ lone pair was left in the core. A map of a protein's
+surface field built from such densities would show the positive and negative regions in the right places, but not
+their relative strengths, which between a backbone amide and a lysine could be off by a factor of four. Such a map
+would serve as a picture of which faces of a protein attract a charged or polar partner, the information that
+steers an approach at long range, and as a test of the model on biological scale; it would not rank binding sites
+by strength. Solvent and ions, which screen the field strongly near the surface, are not included, and fragments
+computed apart do not polarise one another; standard partial-charge maps with a Poisson--Boltzmann solvent remain the
+practical tool. The first improvement toward a quantitative map is a common size factor across groups, beginning
+with the amide nitrogen's $\pi$ lone pair.
+
+\section{A reading of standard densities}\label{sec:hydride-analysis}
+
+RealQM need not start from scratch where existing methods are strong. Its own contribution is the partition
+of space into domains of one electron or one pair, placed by the continuity rule, and that partition can be
+laid over a density computed by standard methods. The second combination was tried, as a comparison of a RealQM computation with a standard computation, not with
+observation. B3LYP densities (cc-pVTZ) of CH$_4$, LiH and H$_2$O at RealQM's geometries, close to the densities of
+correlated wavefunction methods, were taken as the reference; measured densities, from X-ray diffraction, are
+model-assisted and not precise enough to decide differences of this size. The B3LYP densities were divided by the wall rule, each point to the localised orbital (Boys) whose density is largest there, and the
+density in each region integrated:
+\begin{center}
+\small
+\begin{tabular}{lcccc}
+\toprule
+ & electrons per pair region & \multicolumn{2}{c}{pair centre} & RealQM dipole \\
+ & (B3LYP density) & RealQM & B3LYP & \\
+\midrule
+CH$_4$, C--H & $1.96$--$1.99$ & $0.77$ & $0.785$ & -- \\
+LiH, bond & $1.97$ & $0.926$ & $0.873$ & $+11\%$ \\
+H$_2$O, O--H & $1.95$--$1.99$ & $0.638$ & $0.70$ & $\times 2.2$ \\
+H$_2$O, lone pair & $1.91$--$2.00$ & $1.06\,a_0$ & $0.85\,a_0$ & \\
+\bottomrule
+\end{tabular}
+\end{center}
+(Bond-pair centres as a fraction of the way from the heavy atom to H, lone pairs as distance from O.) Every region
+of the B3LYP density holds close to two electrons, without that being imposed, and where RealQM works its pairs
+sit where the B3LYP density puts them, the C--H pair within $2\%$ of the bond. Water departs most, at the lone
+pairs, which RealQM places $0.2\,a_0$ too far out: in the B3LYP density a quarter to two fifths of an electron of
+each pair lies inside $0.71\,a_0$ of the oxygen, where RealQM's core sphere excludes it, and that displaced charge
+is the source of the doubled dipole. Hartree--Fock and DFT give the total density, B3LYP close to the best standard computations, but no unique account
+of where the electrons are: their orbitals overlap and can be mixed freely, and even the localised orbitals are not
+unique (water has a second Boys solution, with one $\sigma$ and one $\pi$ lone pair). RealQM supplies such an account,
+regions of space holding a pair each, and the B3LYP density fits it closely where the model works. It is RealQM's
+reading of what standard quantum chemistry computes, a three-dimensional description in place of none, though not an
+observation and not the only possible partition.
 
 \section{What is established}\label{sec:hydride-summary-text}
 
-\paragraph{A geometry model.} On light hydrides, homonuclear X$_2$ from Li$_2$ to N$_2$ and linear
-molecules built from the same pseudo-atoms, bond lengths are within a few per cent, with small inward
-forces at the observed geometry. Nothing is adjusted to molecular data; each atom contributes one core
-radius, set from its ionisation energy.
+\paragraph{A geometry model.} Every X--H bond of the selection is short, by $1.8$--$6.2\%$ (mean about $3.8\%$),
+with small inward forces at the observed geometry; X$_2$ from Li$_2$ to N$_2$ and linear molecules built from the
+same pseudo-atoms are within a few per cent; C$_2$, all-electron, holds at $-8\%$ once its cone wall is placed
+by continuity. Nothing is adjusted to molecular data; each atom contributes one core radius, set from its
+ionisation energies.
 
-\paragraph{Energies as a diagnostic.} Binding energies lie between, or near one of, the two constructions
-of a pair. They are not chemically accurate, and above five domains they are quoted only after an
-independent recomputation.
+\paragraph{Polarity in sign.} Dipoles have the right sign wherever lone pairs are domains of their own; their
+size lies between the two constructions of the bonding pair, from about half to twice the reference.
 
-\paragraph{Open.} Heavy atoms with their whole valence, shapes and angles, O$_2$ and F$_2$, bond order,
-dipoles beyond LiH, and reaction energies. These are the next steps, not results.
+\paragraph{Energies as a diagnostic.} Binding energies lie between, or near one of, the two constructions of a
+pair. They are not chemically accurate, and above five domains they are quoted only after an independent
+recomputation.
+
+\paragraph{Open.} Molecular shape (the tetrahedron, angles, torsion), heavy atoms with their whole valence,
+O$_2$ and F$_2$, bond order and reaction energies. Most point to one missing ingredient, the cost of pressing
+separate electron groups together, which Hartree--Fock obtains from the nodes its orthogonality forces and
+RealQM's free walls do not charge, and to the continuity rule for walls as the part that already works.
 
 The next chapter goes to hydrogen-bonded dimers and reactions, where the model is used beyond what this
 chapter validates.
