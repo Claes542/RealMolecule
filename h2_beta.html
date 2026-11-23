@@ -411,6 +411,68 @@
     });
     console.log('alkane C' + nCA + 'H' + HA.length + ': C at ' + CP.map(function (p) { return '(' + p.map(function (x) { return x.toFixed(3); }).join(',') + ')'; }).join(' '));
   }
+  // mode=frag&frag=methanol|methylammonium|acetate (2026-11-22): protein-surface polar groups for the dipole
+  // diagnostic. Each heavy atom is a set of sector entries at its nucleus: 'tet' = molecule.js splitType 13 built from
+  // two bond directions d0, d1 (axis = bisector, hb = half the angle, twist puts e1 along d0-d1; idx 2/3 at the
+  // tetrahedral half-angle hl in the perpendicular plane), 'wedge' = splitType 3 about +z (planar sp2, rot = phi-90 puts
+  // wedge 1 on the bond at azimuth phi). Every X-H bond one 2hom pair over a bare proton; every heavy-heavy single bond
+  // one electron per side; lone pairs 2hom. H positions are generated from the sector directions (geometry consistent
+  // with the frames). Acetate is ONE localised resonance structure (C=O1 pair, C-O2 single, O2 with 3 lone pairs): compare
+  // the dipole along the C-C axis (x), which the mirror structure shares. Geometry (A, from memory, approximate):
+  // methanol C-O 1.427 O-H 0.956 C-H 1.094 COH 108.5; CH3NH3+ C-N 1.499 N-H 1.03 C-H 1.09; acetate C-C 1.52 C-O 1.26
+  // CCO 117, C-H 1.09. All staggered. Kernel radii: C 1.0, N 0.82 (N+5), O 0.71 (O+6).
+  else if (MODE === 'frag') {
+    var FR = q.get('frag') || 'methanol', AF = 1.8897259886, dgF = Math.PI / 180, HLT = Math.acos(1 / Math.sqrt(3));
+    var vnorm = function (v) { var L = Math.hypot(v[0], v[1], v[2]); return v.map(function (x) { return x / L; }); };
+    var vdot = function (a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; };
+    var vcross = function (a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; };
+    var frame13 = function (d0, d1) {   // splitType-13 parameters and its four directions from two unit vectors
+      var ax = vnorm([0, 1, 2].map(function (c) { return d0[c] + d1[c]; })), hb = Math.acos(Math.max(-1, Math.min(1, vdot(d0, d1)))) / 2;
+      var f1 = vnorm(Math.abs(ax[2]) < 0.9 ? [ax[1], -ax[0], 0] : [0, ax[2], -ax[1]]), f2 = vcross(ax, f1);
+      var w1 = vnorm([0, 1, 2].map(function (c) { return d0[c] - d1[c]; })), tw = Math.atan2(vdot(w1, f2), vdot(w1, f1));
+      var e2 = [0, 1, 2].map(function (c) { return -Math.sin(tw) * f1[c] + Math.cos(tw) * f2[c]; });
+      var dirs = [d0, d1, [0, 1, 2].map(function (c) { return -Math.cos(HLT) * ax[c] + Math.sin(HLT) * e2[c]; }),
+                  [0, 1, 2].map(function (c) { return -Math.cos(HLT) * ax[c] - Math.sin(HLT) * e2[c]; })];
+      return { ax: ax, hb: hb, tw: tw, dirs: dirs };
+    };
+    var dirAz = function (phi) { return [Math.cos(phi * dgF), Math.sin(phi * dgF), 0]; };
+    var rcF2 = { C: 1.0, N: 0.82, O: 0.71 };
+    // heavy atoms: {el, p (bohr), type, d0, d1 (tet) or phi (wedge, azimuth of wedge 1), sec: [[e, share, 'H'|'X'|'lp'], ...] per idx}
+    var HV = [], RH = {};
+    if (FR === 'methanol') {
+      var dCO = 1.427 * AF; RH = { C: 1.094 * AF, O: 0.956 * AF };
+      HV.push({ el: 'C', p: [0, 0, 0], type: 'tet', d0: [1, 0, 0], d1: dirAz(109.4712), sec: [[1, 1, 'X'], [2, 1, 'H'], [2, 1, 'H'], [2, 1, 'H']] });
+      HV.push({ el: 'O', p: [dCO, 0, 0], type: 'tet', d0: [-1, 0, 0], d1: dirAz(-71.5), sec: [[1, 1, 'X'], [2, 1, 'H'], [2, 2, 'lp'], [2, 2, 'lp']] });
+    } else if (FR === 'methylammonium') {
+      var dCN = 1.499 * AF; RH = { C: 1.09 * AF, N: 1.03 * AF };
+      HV.push({ el: 'C', p: [0, 0, 0], type: 'tet', d0: [1, 0, 0], d1: dirAz(109.4712), sec: [[1, 1, 'X'], [2, 1, 'H'], [2, 1, 'H'], [2, 1, 'H']] });
+      HV.push({ el: 'N', p: [dCN, 0, 0], type: 'tet', d0: [-1, 0, 0], d1: dirAz(-70.5288), sec: [[1, 2, 'X'], [2, 1, 'H'], [2, 1, 'H'], [2, 1, 'H']] });
+    } else if (FR === 'acetate') {
+      var dCC = 1.52 * AF, dCOa = 1.26 * AF; RH = { C: 1.09 * AF };
+      var pO1 = [dCOa * Math.cos(63 * dgF), dCOa * Math.sin(63 * dgF), 0], pO2 = [dCOa * Math.cos(-63 * dgF), dCOa * Math.sin(-63 * dgF), 0];
+      HV.push({ el: 'C', p: [-dCC, 0, 0], type: 'tet', d0: [1, 0, 0], d1: dirAz(-109.4712), sec: [[1, 1, 'X'], [2, 1, 'H'], [2, 1, 'H'], [2, 1, 'H']] });
+      HV.push({ el: 'C', p: [0, 0, 0], type: 'wedge', phi: 180, sec: [[2, 2, 'X'], [1, 1, 'X'], [1, 1, 'X']] });   // k0 -> O1 (60), k1 -> CH3 (180), k2 -> O2 (300)
+      HV.push({ el: 'O', p: pO1, type: 'wedge', phi: 243, sec: [[2, 2, 'lp'], [2, 2, 'X'], [2, 2, 'lp']] });       // k1 -> C (243)
+      HV.push({ el: 'O', p: pO2, type: 'tet', d0: dirAz(117), d1: dirAz(7.5288), sec: [[1, 1, 'X'], [2, 2, 'lp'], [2, 2, 'lp'], [2, 1, 'lp']] });
+    }
+    var HP = [], eTot = 0, kTot = 0;
+    window.USER_SPLIT_CYL_ORG = window.USER_SPLIT_CYL_ORG || [];
+    HV.forEach(function (A, ai) {
+      var fr = A.type === 'tet' ? frame13(vnorm(A.d0), vnorm(A.d1)) : null;
+      A.sec.forEach(function (s, k) {
+        atoms.push({ i: N2 + 0.5 + A.p[0] / h, j: N2 + 0.5 + A.p[1] / h, k: N2 + 0.5 + A.p[2] / h, Z: s[0], el: A.el + ai + (A.type === 'tet' ? 't' : 'w') + k });
+        Z.push(s[0]); Znuc.push(s[1]); RC.push(rcF2[A.el]); eTot += s[0]; kTot += s[1];
+        if (A.type === 'tet') { SPT[atoms.length - 1] = 13; SPI[atoms.length - 1] = k; SPA[atoms.length - 1] = fr.ax; SPR[atoms.length - 1] = fr.hb;
+          window.USER_SPLIT_CYL_ORG[atoms.length - 1] = [HLT, fr.tw, 0]; }
+        else { SPT[atoms.length - 1] = 3; SPI[atoms.length - 1] = k; SPA[atoms.length - 1] = [0, 0, 1]; SPR[atoms.length - 1] = (A.phi - 90) * dgF; }
+        if (s[2] === 'H') { var dH = fr.dirs[k]; HP.push(A.p.map(function (x, c) { return x + RH[A.el] * dH[c]; })); }
+      });
+    });
+    HP.forEach(function (p) { atoms.push({ i: N2 + 0.5 + p[0] / h, j: N2 + 0.5 + p[1] / h, k: N2 + 0.5 + p[2] / h, Z: 0, el: 'H+' }); Z.push(0); Znuc.push(1); RC.push(0); kTot += 1; });
+    console.log('frag ' + FR + ' built: valence e ' + eTot + ', kernel charge ' + kTot + ', net charge ' + (kTot - eTot) + '; heavy ' +
+      HV.map(function (A) { return A.el + '(' + A.p.map(function (x) { return x.toFixed(3); }).join(',') + ')'; }).join(' ') + '; H ' +
+      HP.map(function (p) { return '(' + p.map(function (x) { return x.toFixed(3); }).join(',') + ')'; }).join(' '));
+  }
   // mode=formamide (2026-11-21): planar HCONH2 in the xy plane, every heavy atom as THREE 120 deg wedges about the plane
   // normal (molecule.js splitType 3, axis +z; wedge k centred at azimuth rot+(k-1)*120 from +y, so rot = phi_bond - 90
   // deg puts wedge 1 on the bond at angle phi from +x). Every domain 1 e or a 2hom pair; bare protons inside X-H pairs.
@@ -894,7 +956,7 @@
     var FIXED = q.get('fixed') ? 1 : 0;
     var JAC = parseInt(q.get('jac') || '10');
     var cfg = (q.get('pot') === 'sic' ? '' : q.get('pot') === 'local' ? '_pl' + (q.get('lself') === '0' ? 'n' : '') : '_pd') + '_h' + h.toFixed(3) + '_j' + JAC + '_x' + BOX.toFixed(1) + '_f' + FIXED + (q.get('weak') ? '_w' + q.get('weak') : '') + (q.get('inner') ? '_i' : '') + (q.get('Hbare') === '1' ? '_Hb0' : '') + (q.get('bpair') === '1' ? '_bp' : '') + (q.get('betainter') === '1' ? '_bI' : '') + (q.get('betaiso') === '1' ? '_bIso' : '') + (q.get('betacore') === '1' ? '_bCore' : '') + (q.get('coreedge') ? '_ce' + q.get('coreedge') : '') + (q.get('nH') ? '_nH' + q.get('nH') : '') + (q.get('clp') === '1' ? '_clp' : '') + (q.get('cone') ? '_cone' + q.get('cone') : '') + (C2H !== null ? '_c2h' + C2H + 'n' + (q.get('nval') || '1') + 'u' + (q.get('unlock') || 'fix') : '');
-    cfg += ((MODE === 'o4' || MODE === 'o2t') ? '_O4t_rc' + RCX : '') + ((MODE === 'c2h4' || MODE === 'c2h2') ? '_' + MODE.toUpperCase() + '_CC' + (q.get('CC') || (MODE === 'c2h4' ? '2.530' : '2.273')) + (q.get('hch') ? '_hch' + q.get('hch') : '') + (q.get('twist') ? '_tw' + q.get('twist') : '') + (q.get('ccpair') === '1' ? '_ccp' : '') + '_rc' + RCX : '') + (MODE === 'alkane' ? '_alk' + (q.get('nC') || '3') + '_CC' + (q.get('CC') || '2.901') + (q.get('ccc') ? '_ccc' + q.get('ccc') + (q.get('follow') === '1' ? 'f' : '') : '') + '_rc' + RCX : '') + (MODE === 'formamide' ? '_HCONH2_rc' + (q.get('rcC') || '1.0') + ',' + (q.get('rcO') || '0.71') + ',' + (q.get('rcN') || '0.81') : '') + (MODE === 'c2h6' ? '_C2H6_CC' + (q.get('CC') || '2.901') + '_rc' + RCX + (q.get('half') === '1' ? '_half' : '') + (q.get('ccpair') === '1' ? '_ccp' : '') + (q.get('c4hom') === '1' ? '_C4hom' : '') + (q.get('noH') === '1' ? '_noH' : '') : '') + (q.get('rsing') ? '_s' + q.get('rsing') : '') + ((MODE === 'c' || MODE === 'ch4') ? (q.get('c4hom') === '1' ? '_C4hom' : q.get('c4pair') === '1' ? '_C4pair' : q.get('alpha') ? '_C4free_a' + q.get('alpha') : q.get('planar') === '1' ? '_C4quad' : q.get('c2hom') === '1' ? '_C2hom' : q.get('c2split') === '1' ? '_C2split' : '_C4tet') + '_rc' + RCX : '') + ((MODE === 'n' || MODE === 'nh3') ? (q.get('n5') === '1' ? (q.get('nh4') === '1' ? '_NH4p' + (q.get('R4') || '1.946') : '_N5tet') : '_N3w') + '_rc' + RCX + '_a' + (q.get('ang') || '106.7') : '') + ((MODE === 'o' || MODE === 'h2o') ? (q.get('o3') === '1' ? '_O3w' + (q.get('relO') ? 'r' + q.get('relO') : '') : q.get('c2v') === '1' ? '_O6c2v_lp' + (q.get('lpang') || '109.47') : '_O6tet') + (q.get('half') === '1' ? '_half' : '') + '_rc' + RCX + '_a' + (q.get('ang') || '104.5') : '') + ((MODE === 'x' || MODE === 'xh' || MODE === 'xh2' || MODE === 'x2') ? '_' + ELX + ZX + 'rc' + RCX + (BB.length >= 2 ? '_bb' + BB.join('') : '') : '') + (q.get('ZnX') ? '_Zn' + q.get('ZnX') : '') + (q.get('ZH') ? '_ZH' + q.get('ZH') : '') + (q.get('val') === '1' ? '_val' : '') + (q.get('core2') === '1' ? '_c2r' + (q.get('rel') || '500') + (q.get('coreax') || '') : '') + (q.get('pairH') === '1' ? '_pH' + (q.get('relH') || 'fix') + (q.get('pairax') || '') : '') + (q.get('hback') === '1' ? '_hb' + (q.get('relHb') || 'fix') : '') + (XPL !== null ? '_xp' + XPL + (q.get('relX') ? 'r' + q.get('relX') : '') : '');
+    cfg += ((MODE === 'o4' || MODE === 'o2t') ? '_O4t_rc' + RCX : '') + ((MODE === 'c2h4' || MODE === 'c2h2') ? '_' + MODE.toUpperCase() + '_CC' + (q.get('CC') || (MODE === 'c2h4' ? '2.530' : '2.273')) + (q.get('hch') ? '_hch' + q.get('hch') : '') + (q.get('twist') ? '_tw' + q.get('twist') : '') + (q.get('ccpair') === '1' ? '_ccp' : '') + '_rc' + RCX : '') + (MODE === 'alkane' ? '_alk' + (q.get('nC') || '3') + '_CC' + (q.get('CC') || '2.901') + (q.get('ccc') ? '_ccc' + q.get('ccc') + (q.get('follow') === '1' ? 'f' : '') : '') + '_rc' + RCX : '') + (MODE === 'frag' ? '_frag_' + (q.get('frag') || 'methanol') : '') + (MODE === 'formamide' ? '_HCONH2_rc' + (q.get('rcC') || '1.0') + ',' + (q.get('rcO') || '0.71') + ',' + (q.get('rcN') || '0.81') : '') + (MODE === 'c2h6' ? '_C2H6_CC' + (q.get('CC') || '2.901') + '_rc' + RCX + (q.get('half') === '1' ? '_half' : '') + (q.get('ccpair') === '1' ? '_ccp' : '') + (q.get('c4hom') === '1' ? '_C4hom' : '') + (q.get('noH') === '1' ? '_noH' : '') : '') + (q.get('rsing') ? '_s' + q.get('rsing') : '') + ((MODE === 'c' || MODE === 'ch4') ? (q.get('c4hom') === '1' ? '_C4hom' : q.get('c4pair') === '1' ? '_C4pair' : q.get('alpha') ? '_C4free_a' + q.get('alpha') : q.get('planar') === '1' ? '_C4quad' : q.get('c2hom') === '1' ? '_C2hom' : q.get('c2split') === '1' ? '_C2split' : '_C4tet') + '_rc' + RCX : '') + ((MODE === 'n' || MODE === 'nh3') ? (q.get('n5') === '1' ? (q.get('nh4') === '1' ? '_NH4p' + (q.get('R4') || '1.946') : '_N5tet') : '_N3w') + '_rc' + RCX + '_a' + (q.get('ang') || '106.7') : '') + ((MODE === 'o' || MODE === 'h2o') ? (q.get('o3') === '1' ? '_O3w' + (q.get('relO') ? 'r' + q.get('relO') : '') : q.get('c2v') === '1' ? '_O6c2v_lp' + (q.get('lpang') || '109.47') : '_O6tet') + (q.get('half') === '1' ? '_half' : '') + '_rc' + RCX + '_a' + (q.get('ang') || '104.5') : '') + ((MODE === 'x' || MODE === 'xh' || MODE === 'xh2' || MODE === 'x2') ? '_' + ELX + ZX + 'rc' + RCX + (BB.length >= 2 ? '_bb' + BB.join('') : '') : '') + (q.get('ZnX') ? '_Zn' + q.get('ZnX') : '') + (q.get('ZH') ? '_ZH' + q.get('ZH') : '') + (q.get('val') === '1' ? '_val' : '') + (q.get('core2') === '1' ? '_c2r' + (q.get('rel') || '500') + (q.get('coreax') || '') : '') + (q.get('pairH') === '1' ? '_pH' + (q.get('relH') || 'fix') + (q.get('pairax') || '') : '') + (q.get('hback') === '1' ? '_hb' + (q.get('relHb') || 'fix') : '') + (XPL !== null ? '_xp' + XPL + (q.get('relX') ? 'r' + q.get('relX') : '') : '');
     var k = (MODE === 'h' || MODE === 'x' || MODE === 'o' || MODE === 'n' || MODE === 'c') ? (MODE + (ZA > 1 ? 'Z' + ZA : '') + cfg)
           : ('h2_R' + R.toFixed(2) + '_b' + BETA.toFixed(3) + '_c' + CURV.toFixed(2) + cfg);
     if (!Array.isArray(st[k])) st[k] = [];
