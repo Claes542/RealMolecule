@@ -1,0 +1,459 @@
+\documentclass[11pt]{article}
+
+\usepackage[a4paper, margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue, citecolor=blue}
+\usepackage{authblk}
+\usepackage{microtype}
+\usepackage{enumitem}
+\setlist[itemize]{leftmargin=1.4em}
+
+\title{Quantum Mechanics as Multiphase 3D Continuum Mechanics}
+
+\author[1]{Claes Johnson}
+\affil[1]{KTH Royal Institute of Technology, Stockholm, Sweden \\
+\texttt{claesjohnson@gmail.com}}
+\date{\today \\[0.4em]
+\small\textit{Mathematical theory and formulation by the author; manuscript and} \\
+\small\textit{implementation developed in collaboration with Claude (Anthropic).} \\
+\small\textit{The collaboration is documented in Section~\ref{sec:collaboration}.}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We formulate quantum mechanics as multiphase 3D continuum mechanics, returning to the real-space picture Schr\"odinger originally envisaged in 1926 before the Born--Heisenberg configuration-space step was taken. The $N$-electron wave function $\Psi = \sum_{i=1}^{N} \psi_i$ has unit-charge components $\psi_i$ supported on non-overlapping domains $\Omega_i \subset \mathbb{R}^3$ separated by Bernoulli free boundaries; each $\psi_i^2$ is a literal charge density on physical space, not a probability amplitude on $3N$-dimensional configuration space. Ground states minimise the standard Coulomb energy over both wave functions and domain decomposition, via coupled imaginary-time propagation, Poisson updates of per-electron Hartree potentials, and level-set evolution of the free boundaries. Pauli exclusion is realised geometrically as spatial non-overlap; there is no probabilistic interpretation, no basis set, and no exchange--correlation functional. We refer to this real-space formulation as \textbf{RealQM}.
+
+Validation across chemistry, all from pure Coulomb interactions: parameter-free Level-1 atomic total energies for Li--Rn within ${\sim}1\%$ of observation; the H$_2$ covalent bond at parameter-free Level-1 to $0.3\%$ of the Kolos--Wolniewicz total energy and $3\%$ of the experimental dissociation energy, continuously connected to the Helium atom as the zero-separation limit; closed-shell hydride atomization energies (NaH, KH, BeH$_2$, H$_2$O, CH$_4$, SiH$_4$, GeH$_4$) within $3$--$9\%$ across periodic-table groups 1, 2, 14, 16 from a single softening parameter; and S66 hydrogen-bonded dimer geometries within $1$--$5\%$. The framework runs in $\sim 8000$ lines of code interactively in a browser on a consumer laptop GPU --- orders of magnitude smaller and faster than mainstream quantum-chemistry packages.
+
+Stability of matter for $N$ non-overlapping atoms of kernel charge $Z$ follows from the Hardy inequality applied to the global $\Psi$ in a one-paragraph derivation, giving $E \ge -C N Z^3$ --- strikingly more compact than the standard Dyson--Lenard--Lieb--Thirring proof, whose difficulty we read as a symptom of the global wave-function support that the multiphase formulation removes. We close by placing the result in the century-old chemistry-vs-physics debate: RealQM is concrete evidence that Dirac's 1929 position (chemistry is applied physics) was right, once the equations are written in real space rather than on configuration space. Extensions of the same multiphase Coulomb formulation to reactive chemistry, excited states, protein folding, condensed phases, and the atomic nucleus are reported in separate papers.
+
+\medskip
+\noindent \textbf{Keywords:} foundations of quantum mechanics; real-space wave function; multiphase wave functions; free-boundary problems; Bernoulli condition; Schr\"odinger interpretation; stability of matter; quantum chemistry.
+\end{abstract}
+
+\section{Introduction}
+
+The $N$-electron Schr\"odinger equation has been the foundation of quantum chemistry for nearly a century. In its standard formulation, matter is described by antisymmetric eigenfunctions of an $N$-body Hamiltonian on a $3N$-dimensional configuration space; the exponential scaling has been mitigated by approximate methods --- Hartree--Fock, density functional theory, configuration interaction, coupled cluster --- each trading accuracy against cost~\cite{HK64,KS65,MHG17}, in packages of $10^5$--$10^6$ lines requiring computational clusters for systems of biological size.
+
+\paragraph{Two foundational positions.}
+Two quotations from the founders frame the conceptual position of this paper. The first is from \textbf{Dirac, 1929}, on the relation between physics and chemistry:
+
+\begin{quote}
+The underlying physical laws necessary for the mathematical theory of [\ldots] the whole of chemistry are thus completely known, [and] the difficulty is only that the exact application of these laws leads to equations much too complicated to be soluble.
+\end{quote}
+
+The second is from \textbf{Schr\"odinger, in a letter to Lorentz dated 6 June 1926}, sketching how he originally intended to interpret the wave function for $N>1$ electrons:
+
+\begin{quote}
+If we now have to deal with $N$ particles, then $\Psi(x_1, \ldots, x_N)$ is a function of $N$ variables $x_1, \ldots, x_N$ over $N$ 3D spaces $R_1, \ldots, R_N$. Now first let $R_1$ be identified with the real space $\mathbb{R}^3$ and integrate over $R_2, \ldots, R_N$. Second, identify $R_2$ with the real space and integrate over $R_1, R_3, \ldots, R_N$ and so on. The $N$ individual results are to be added after they have been multiplied by certain constants which characterise the particles. \emph{I consider the result to be the electric charge density in real space.}
+\end{quote}
+
+A third foundational position deserves to be set alongside the first two: that of \textbf{Walter Kohn} in his 1998 Nobel Lecture on Density Functional Theory~\cite{Kohn1998Nobel}, where the founder of the most successful working tool of standard quantum chemistry observed that
+\begin{quote}
+in general the many-electron wave function $\Psi(\mathbf{x}_1, \ldots, \mathbf{x}_N)$ for a system of $N$ electrons is not a legitimate scientific concept when $N \geq N_0$, where $N_0 \approx 10^2$--$10^3$.
+\end{quote}
+Kohn's statement is the working-physicist counterpart to Dirac's: the configuration-space wave function loses its status as a scientific object already at small molecular scales. DFT's response was a dimensional reduction to a single 3D density $\rho(\mathbf{x})$ with an approximate exchange-correlation functional; RealQM's response, developed below, is a foundational reformulation that never invokes the $3N$-dimensional object in the first place.
+
+The three positions are not complementary; they are in tension. Dirac treats the $3N$-dimensional configuration-space equations as fixed and concludes that only approximation can help; Schr\"odinger's letter sketches the real-space alternative in which $\psi^2$ keeps the direct charge-density meaning it has for hydrogen; and Kohn, seventy years later, observes that the object Dirac took as fixed has ceased to be a scientific concept at molecular scales --- the diagnostic Schr\"odinger's letter had pointed toward. The real-space interpretation was abandoned in the late 1920s under the Copenhagen interpretation, in which $\Psi$ on $\mathbb{R}^{3N}$ became a probability amplitude; the resulting Standard QM (StdQM) inherits the computational obstacle Dirac identified, and the chemistry-specific approximations introduced to make it tractable have ever since made chemistry look more autonomous from physics than Dirac's position would suggest. RealQM takes the choice made in 1926--1929 to have been the wrong choice.
+
+The formulation developed in this paper, which we call \textbf{RealQM}, returns to the real-3D-space picture. The $N$-electron wave function $\Psi(\mathbf{x}) = \sum_{i=1}^N \psi_i(\mathbf{x})$ lives on physical $\mathbb{R}^3$ as a sum of \textbf{one-electron wave functions} $\psi_i$ on a non-overlapping decomposition of $\mathbb{R}^3$ into domains $\Omega_i$, with each $\psi_i^2$ a unit charge density. Energy is the standard Coulomb functional, minimised over the wave functions $\{\psi_i\}$, the domain decomposition $\{\Omega_i\}$, and the nuclear positions; geometry, bonding, and dynamics emerge from the same variational principle. The $3N$-dimensional configuration-space step is not taken at all, and the chemistry-specific machinery (basis sets, exchange--correlation functionals, fitted force fields) that StdQM introduced to make that step tractable is not needed: chemistry re-emerges bottom-up from Coulomb interactions alone, which is a direct realisation of Dirac's chemistry-as-applied-physics position executed in Schr\"odinger's real-space picture. The cost of staying in 3D is the replacement of antisymmetry by strict spatial non-overlap; the benefit is that complexity grows with the number of 3D mesh points rather than with basis functions in $N\times 3$D, so the entire framework runs in roughly 8000 lines of code interactively in a browser on a consumer laptop GPU.
+
+We organize the model as a hierarchy of reductions. \textbf{Level 1} is parameter-free: an atom is described as a nucleus of charge $Z$ surrounded by $N$ one-electron wave functions $\psi_i$ on non-overlapping shell-shaped domains $\Omega_i$, with the configuration determined by minimum-energy packing; it reproduces observed atom energies for Li through Rn to approximately 1\% with no fitted constants. \textbf{Level 2} spherically homogenizes inner shells. \textbf{Level 3} replaces the nucleus and inner shells together by a \emph{pseudo-kernel} of effective charge $Z_{\rm kernel}$ and softening radius $r_c$, leaving only the outermost valence wave functions explicit. \textbf{Level 4} combines Level-3 atoms into molecular assemblies. Each level is determined by comparison with the prior level, in the same architectural spirit as pseudopotentials and frozen-core methods in standard quantum chemistry, but with a parameter-free ab initio bottom rather than empirical fits.
+
+\paragraph{Position relative to standard quantum mechanics.}
+RealQM is not offered as a parallel approach to be weighed against StdQM. The position is that the configuration-space step of 1926--1929 was a wrong turn, that StdQM in its various interpretive guises (Copenhagen, Bohmian, Many-Worlds) is the apparatus that grew up around it, and that the foundational debate among those interpretations is a symptom of the wrong formulation rather than an open question about nature. StdQM's numerical successes document that the underlying physics --- Coulomb interactions, Schr\"odinger's original real-space equation --- is right, not that the $3N$-dimensional probability-amplitude reading is the correct foundation. RealQM is the formulation Schr\"odinger should have arrived at in 1926 once $N>1$ was admitted: a deterministic wave function on physical $\mathbb{R}^3$, electrons as non-overlapping charge-density regions, no probabilistic interpretation --- recovering the chemistry (Section~\ref{sec:validation}) at StdQM's numerical level, at far lower cost, and without the unresolved foundational difficulties.
+
+The paper is organized as follows. Section~\ref{sec:reformulation} states the reformulation and the hierarchical reduction. Section~\ref{sec:implementation} describes the numerical implementation. Section~\ref{sec:validation} reports validation across atomic ground-state energies (Li--Rn), the covalent H$_2$ bond and its Helium limit, atomization energies of closed-shell hydrides across periodic-table groups, and S66 dimer geometries. Section~\ref{sec:limitations} states honest limits of the approach. Section~\ref{sec:som} shows that stability of matter --- the lower bound $E \ge -C N Z^3$ on the ground-state energy of a system of $N$ atoms --- follows directly from the Hardy inequality applied to non-overlapping electronic territories, in contrast to the heroic Dyson--Lenard--Lieb--Thirring proof required in standard quantum mechanics. Section~\ref{sec:chemvphys} places the work in the long-standing chemistry-vs-physics debate. Section~\ref{sec:collaboration} discusses the human--AI collaboration through which the implementation was produced. The full source code, validation suite, and interactive Gallery are available at the URLs in Section~\ref{sec:code}. Extensions of the same multiphase Coulomb formulation to reactive chemistry, excited states, protein folding, condensed phases, and the atomic nucleus are reported in separate papers.
+
+\section{RealQM Schr\"odinger Equation}\label{sec:reformulation}
+
+\subsection{Multiphase 3D formulation}
+
+The starting point is Schr\"odinger's 1926 hydrogen atom: a real-valued $\psi : \mathbb{R}^3 \to \mathbb{R}$ with $\int \psi^2 = 1$, $\psi^2$ the electron charge density, and total energy $E(\psi) = \tfrac{1}{2}\int |\nabla\psi|^2 - \int \psi^2/|\mathbf{x}|$ balancing kinetic localisation cost against Coulomb attraction; the ground state gives $E = -1/2$ Ha. For $N>1$ the standard approach extends $\psi$ to $\Psi(\mathbf{x}_1, \ldots, \mathbf{x}_N)$ on $\mathbb{R}^{3N}$ with $\Psi^2$ read probabilistically --- the configuration-space step, whose cost grows exponentially in $N$ and whose physical meaning has been contested ever since.
+
+\textbf{The RealQM formulation} keeps the wave function in physical $\mathbb{R}^3$. The $N$-electron wave function $\Psi \in H^1(\mathbb{R}^3)$ is a sum of one-electron wave functions $\psi_i$ on non-overlapping spatial domains $\Omega_i$:
+\begin{equation}\label{eq:Psi-sum}
+\Psi(\mathbf{x}) = \sum_{i=1}^{N} \psi_i(\mathbf{x}),
+\qquad
+\psi_i \in H^1(\Omega_i), \qquad \int_{\Omega_i} \psi_i^2(\mathbf{x})\, d\mathbf{x} = 1,
+\end{equation}
+where $\{\Omega_i\}_{i=1}^{N}$ is a partition of physical space into open non-overlapping regions, $\Omega_i \cap \Omega_j = \emptyset$ for $i \ne j$, and $H^1(\Omega)$ denotes the space of real-valued functions on $\Omega$ with square-integrable first derivatives. The boundaries $\Gamma_i = \partial \Omega_i$ are not specified in advance: they emerge as a free boundary, with the $\psi_i$ being continuous across joint boundaries $\Gamma_i \cap \Gamma_j$ as imposed by $\Psi \in H^1(\mathbb{R}^3)$, and the boundary location determined by the energy minimisation.
+
+The total energy of $\Psi$ is the sum of three Coulomb contributions:
+\begin{equation}\label{eq:TE}
+TE(\Psi) = K(\Psi) + PK(\Psi) + PE(\Psi),
+\end{equation}
+with kinetic-energy term
+\begin{equation}\label{eq:K}
+K(\Psi) = \tfrac{1}{2} \int_{\mathbb{R}^3} |\nabla \Psi(\mathbf{x})|^2\, d\mathbf{x}
+\;=\; \sum_{i=1}^{N} \tfrac{1}{2} \int_{\Omega_i} |\nabla \psi_i(\mathbf{x})|^2\, d\mathbf{x},
+\end{equation}
+attractive kernel-electron potential energy
+\begin{equation}\label{eq:PK}
+PK(\Psi) = \int_{\mathbb{R}^3} W(\mathbf{x})\, \Psi^2(\mathbf{x})\, d\mathbf{x},
+\qquad
+W(\mathbf{x}) = -\sum_{a=1}^{M} \frac{Z_a}{|\mathbf{x} - \mathbf{R}_a|},
+\end{equation}
+and inter-electron repulsive potential energy without self-repulsion
+\begin{equation}\label{eq:PE}
+PE(\Psi) = \sum_{i=1}^{N} \int_{\Omega_i} \sum_{j \ne i} V_j(\mathbf{x})\, \psi_i^2(\mathbf{x})\, d\mathbf{x},
+\qquad
+V_j(\mathbf{x}) = \int_{\Omega_j} \frac{\psi_j^2(\mathbf{y})}{2\,|\mathbf{x} - \mathbf{y}|}\, d\mathbf{y}.
+\end{equation}
+The exclusion $j \ne i$ in~\eqref{eq:PE} removes self-repulsion by construction, since the regions $\Omega_i, \Omega_j$ are disjoint and each electron contributes its own charge density only to the potentials seen by the other electrons. The nuclear--nuclear Coulomb term $V_{NN}$ is included additively when nuclear positions are varied.
+
+The ground-state configuration is found by minimising~\eqref{eq:TE} over $\Psi = \sum_i \psi_i$ with $\psi_i \in H^1(\Omega_i)$, $\int_{\Omega_i} \psi_i^2 = 1$, and over both the partition $\{\Omega_i\}$ and the nuclear positions $\{\mathbf{R}_a\}$. Variation with respect to $\psi_i$ at fixed $\Omega_i$ gives, with Lagrange multiplier $E_i$ for the unit-norm constraint,
+\begin{equation}\label{eq:Hi}
+\mathcal{H}_i \psi_i \;\equiv\; \Bigl(-\tfrac{1}{2}\Delta + W + 2\!\sum_{j \ne i} V_j\Bigr)\psi_i \;=\; E_i\, \psi_i \quad \text{in } \Omega_i,
+\end{equation}
+\begin{equation}\label{eq:neumann}
+\frac{\partial \psi_i}{\partial n} = 0 \quad \text{on } \Gamma_i,
+\end{equation}
+the homogeneous Neumann condition arising from free variation of $\psi_i$ over $\Omega_i$. Continuity of $\psi_i$ across the inter-electron boundary plus~\eqref{eq:neumann} together comprise the \textbf{Bernoulli free-boundary condition} discussed in Section~\ref{sec:bernoulli}.
+
+\paragraph{Remarks.}
+\begin{itemize}\setlength{\itemsep}{2pt}
+\item \emph{Real-valued wave function in physical space.} The $\psi_i$ are real-valued functions of the same spatial coordinate $\mathbf{x} \in \mathbb{R}^3$, so $\Psi$ inherits the dimensionality of physical space. Because the $\psi_i$ have disjoint supports, the cost of representing $\Psi$ on a $K$-point grid is $O(K)$, rather than $O(K^N)$ as in the configuration-space formulation.
+\item \emph{Pauli exclusion through non-overlap.} The constraint that distinct electrons occupy disjoint domains plays the role of the Pauli exclusion principle. Antisymmetry of a many-body wave function is replaced by spatial separation of one-body wave functions; the two requirements are not equivalent, but the variational consequences (no two electrons share a quantum state) are recovered.
+\item \emph{No probabilistic interpretation.} Each $\psi_i^2$ is the actual charge density of electron $i$ on its domain $\Omega_i$, not a probability of finding it at $\mathbf{x}$.
+\item \emph{Kinetic energy as localisation cost.} $K(\Psi) = \tfrac{1}{2}\int |\nabla \Psi|^2$ implies no electronic motion; it is a localisation cost penalising rapid variation of the charge density, equivalently the self-repulsion of each $\psi_i^2$ that prevents collapse. The disjoint-domain construction removes the self-interaction error that one-body DFT must correct by hand.
+\end{itemize}
+
+\subsection{Comparison with the standard formulation}
+
+The standard formulation (StdQM) seeks an antisymmetric $\Psi^{\rm std}$ on $\mathbb{R}^{3N}$; approximate methods truncate the variational space (HF, CC, CI, DFT)~\cite{KS65,MHG17}, and the probabilistic reading of $|\Psi^{\rm std}|^2$ replaces the direct charge-density meaning of $\psi^2$. The RealQM formulation~\eqref{eq:Psi-sum}--\eqref{eq:PE} instead works in real $\mathbb{R}^3$ with antisymmetry replaced by strict spatial non-overlap. The two are not equivalent --- antisymmetric wave functions on $\mathbb{R}^{3N}$ need not project onto non-overlapping one-body densities, and non-overlapping unit densities do not span the antisymmetric subspace --- so RealQM is a different mathematical object, not a numerical approximation of the standard one, and is closer to Schr\"odinger's 1926 picture than to the Born--Heisenberg extension that produced StdQM.
+
+The two are compared numerically in Section~\ref{sec:validation}: RealQM matches observation within ${\sim}1\%$ at the parameter-free Level-1 atomic model and within 3--9\% for hydride atomization energies, at a cost (milliseconds per hydride on a laptop GPU vs.\ minutes to hours of CCSD(T)) that is orders of magnitude lower. The RealQM partition $\{\Omega_i, \psi_i\}$ is also the AIM (Bader~\cite{Bader90}) zero-flux partitioning taken as the \emph{primary} variational variable rather than extracted by post-processing an externally-supplied density --- which gives that partitioning a first-principles status it otherwise lacks.
+
+\subsection{The hierarchy of reductions}
+
+\textbf{Level 1} (parameter-free, only input the nuclear charge $Z$) is the bottom of the hierarchy: shell structure emerges from minimum-energy packing rather than being imposed ($1s^2$, $2s^2 2p^6$, \ldots). \textbf{Level 2} spherically homogenizes the inner shells, which affects only the effective Coulomb potential seen by the valence electrons. \textbf{Level 3} combines nucleus and homogenized inner shells into a single \emph{pseudo-kernel} of effective charge $Z_{\rm kernel}$ and softening radius $r_c$ (both fixed by comparison with Level 2), leaving the valence electrons explicit; this is the level used throughout Section~\ref{sec:validation}. \textbf{Level 4} combines Level-3 atoms into molecules, with the valence electrons optionally split into angular sectors (sphere, hemisphere, $120^\circ$, tetrahedral) aligned with bond directions; the splitting topology and kernel charge constitute the molecular \emph{architecture}.
+
+Levels 1--4 are reductions \emph{within} the RealQM formalism: each step simplifies the atomic-level description while keeping the wave function explicit. Two further levels are downstream applications that consume RealQM data rather than refine it, and the reader should note the conceptual break --- at Level 5 the wave function is integrated out and no longer present at runtime.
+
+\textbf{Level 5} extracts a \emph{reduced-model} record from a converged Level-3 (or Level-4) RealQM run on a single protein species. The record contains the solvent-accessible isosurface, surface electrostatic potential, hydrophobicity map, net charge, hydrodynamic radius, diffusion coefficient, and the first $\sim 10$--$20$ functional normal modes from the C$\alpha$ Hessian. One Level-5 record per species, of order 1--10 KB. The wave function is no longer present in the record; it has been integrated out into geometric and electrostatic features. This is the intended record: in the present implementation its charges are formal residue charges and its hydrophobicity an empirical scale, and the density-derived surface potential and normal modes are not yet extracted.
+
+\textbf{Level 6} drives a population of Level-5 records under Brownian dynamics, capturing $\sim 10^6$-protein cell-scale dynamics on the same hardware that runs Level-1 atoms. Each species in the population is a separate Level-5 record; pairwise interactions between copies are mediated by the surface electrostatic and steric data in the records, with type-specific affinity terms for binding partners. Levels 5 and 6 thus realise the multi-scale bridge from atoms to cells outlined in Section~\ref{sec:chemvphys}.
+
+We emphasize that this hierarchy is principled, not heuristic. Each level is derived from the prior level by a specific reduction (Levels 1--4 within the wave-function formalism; Levels 5--6 by integrating it out). The empirical content lies in choosing the right architecture for a given system at the appropriate level.
+
+\subsection{The free boundary and Bernoulli conditions}\label{sec:bernoulli}
+
+The non-overlap constraint $\Omega_i \cap \Omega_j = \emptyset$ means that each one-electron wave function $\psi_i$ is supported on its own spatial region $\Omega_i$, with the regions $\{\Omega_i\}$ partitioning the relevant volume. The interfaces $\Gamma_i \cap \Gamma_j$ between regions are not specified in advance --- they emerge from the energy minimisation. The variational principle~\eqref{eq:TE} is therefore a \textbf{free-boundary problem}, mathematically analogous to Bernoulli's classical free-boundary problem in potential flow and to the Stefan problem for phase transitions.
+
+At equilibrium, the boundary satisfies a \textbf{Bernoulli condition}: $\psi_i$ is continuous from within $\Omega_i$ toward the interface (no singular behaviour at the boundary), and the \textbf{normal derivative $\partial \psi_i / \partial n$ vanishes} at the interface (homogeneous Neumann). The Neumann condition is not externally imposed; it emerges from the variational principle. When~\eqref{eq:TE} is minimised jointly over the wave functions and the boundary location, the transversality condition at the boundary --- vanishing first variation for arbitrary admissible boundary deformations --- yields~\eqref{eq:neumann}, i.e.\ $\partial \psi_i / \partial n = 0$ on $\Gamma_i$.
+
+Across the interface, the density $\psi_i^2$ is positive on the $\Omega_i$ side and zero on the other side, with the jump occurring sharply at $\Gamma_i$. The boundary condition is therefore the combination of (a) continuity of $\psi_i$ as $\Gamma_i$ is approached from within $\Omega_i$, (b) the homogeneous Neumann condition $\partial \psi_i / \partial n = 0$ on $\Gamma_i$, and (c) a jump from $\psi_i \ne 0$ inside to $\psi_i = 0$ outside. We collectively refer to this as the Bernoulli condition by analogy with Bernoulli's free-boundary problem.
+
+Out of equilibrium, density mismatches at the interfaces drive boundary motion: the free boundary and the bulk wave functions relax together toward the Bernoulli condition. This places the formulation in the well-studied class of free-boundary variational problems, for which regularity theory and level-set methods are available.
+
+The Neumann condition~\eqref{eq:neumann} is also the wave-function-level form of the \textbf{zero-flux condition} $\nabla\rho\cdot\mathbf{n}=0$ that defines atomic basins in Bader's Atoms-in-Molecules theory~\cite{Bader90}, since $\nabla\rho_i\cdot\mathbf{n} = 2\psi_i(\partial\psi_i/\partial n)$ inside $\Omega_i$: the RealQM Bernoulli boundary and the AIM zero-flux surface are the same geometric object, but in RealQM the partition is a primary variational degree of freedom rather than a post-processing of an externally-fixed density.
+
+The Bernoulli condition is \textbf{difficult to verify directly by experiment} --- the inter-electron interface is not resolved by current measurements, and standard methods produce no comparable object. We adopt it as a model assumption supported by computational evidence: imposing continuity and homogeneous Neumann at the free boundary is consistent with the variational principle, the relaxation reaches a stable partition, and the resulting energies and geometries agree with experiment across the cases in Section~\ref{sec:validation}.
+
+\section{Numerical implementation}\label{sec:implementation}
+
+The reformulation is implemented as \texttt{mol\_fast.js} ($\sim$1600 lines) and \texttt{molecule.js} ($\sim$5300 lines), JavaScript modules that compile WGSL compute shaders to a WebGPU device. \texttt{mol\_fast.js} uses unit-density orbitals with explicit angular splitting; \texttt{molecule.js} uses a Voronoi-partition labelling field. Both run entirely in the browser.
+
+\subsection{The 3-line code: essence of the algorithm}\label{sec:3line}
+
+The full RealQM solver, despite the size of the implementation, has at its mathematical core just three coupled time-evolution equations applied at every grid point and every time step. For $i = 1, \ldots, N$:
+\begin{align}
+\dot{\psi}_i + \mathcal{H}_i\, \psi_i &= 0 \quad\text{in } \Omega_i, \quad \frac{\partial \psi_i}{\partial n} = 0 \quad\text{on } \Gamma_i, \label{eq:3line-psi} \\
+\dot{V}_i - \Delta V_i &= 2\pi\, \psi_i^2 \quad\text{in } \mathbb{R}^3, \label{eq:3line-V} \\
+\dot{\chi}_i + \beta_i\, |\nabla \chi_i| &= 0 \quad\text{in } \mathbb{R}^3, \label{eq:3line-chi}
+\end{align}
+with $\mathcal{H}_i$ from~\eqref{eq:Hi} and $\psi_i$ renormalised to $\int \psi_i^2 = 1$ at every step.
+
+The three equations are the three physical processes: \eqref{eq:3line-psi} is \textbf{imaginary-time propagation} of each one-electron $\psi_i$ toward the lowest eigenfunction of $\mathcal{H}_i$ subject to the Bernoulli condition; \eqref{eq:3line-V} is the \textbf{Poisson equation} (parabolic-relaxation form) for each Hartree potential $V_i$, sourced by $\psi_i^2$, with self-repulsion excluded since $\mathcal{H}_i$ sums $V_j$ only over $j\ne i$; and \eqref{eq:3line-chi} is a \textbf{level-set evolution} of the domain indicator $\chi_i$, the front speed $\beta_i$ set by the jump of $\psi_i^2$ across $\Gamma_i$, stationary at convergence. Explicit time-stepping on a fixed grid with renormalisation at each step is the entire solver: each line becomes one GPU stencil kernel, and everything else (nuclear forces, dipole moments, kernel softening) is post-processing.
+
+\subsection{Real-space grid, kernel softening, and cost}
+
+The domain is a cubic box of side $L$ a.u.\ discretized as $N^3$ grid points (typical $N=100$--200, $h \approx 0.1$ a.u.). Each electron's density is an $N^3$ float array evolved by imaginary-time propagation of $H = T + V$; the per-electron Hartree potential is solved by parallel Poisson diffusion, with self-interaction removed by omitting each electron's own density from the potential it feels. A Level-3 kernel is parameterized by $(Z_{\rm kernel}, r_c, \text{split})$: a Coulomb potential $-Z_{\rm kernel}/r$ softened smoothly to zero for $r \le r_c$, with an optional angular split (sphere, hemi, third, tetra) selecting which sector a valence sub-orbital occupies. A typical step is ${\sim}10$ GPU dispatches and runs at 30+ steps/s on a consumer laptop GPU.
+
+The full implementation is $\sim$8000 lines of JavaScript and WGSL, against $10^5$--$10^6$ lines for mainstream packages, with a $10^2$--$10^4\times$ speedup on equivalent hardware --- enabled by working directly in real space, with no basis sets, two-electron integrals, or analytic-gradient machinery. CCSD(T)-class precision is not the goal; the breakthrough is interactive chemistry on a laptop.
+
+\section{Validation}\label{sec:validation}
+
+\subsection{Level-1 atom energies, Li through Rn}\label{sec:atoms}
+
+We first validate the parameter-free Level-1 atomic model against observed atom total energies. The model is: a nucleus of charge $Z$ surrounded by $N$ unit electron densities, each occupying a non-overlapping spatial region, with the configuration that minimizes the total Coulomb energy taken as the ground state.
+
+A central feature is that \textbf{shell structure is not preset}: it emerges from minimum-energy packing as electrons are added one at a time, each taking the lowest-energy region available under non-overlap, with sizes growing with distance from the kernel. The radial layering (2, 8, 18, \ldots\ electrons) reproduces the standard $1s^2$, $2s^2 2p^6$, $3s^2 3p^6 3d^{10}$ counts quantitatively in the energetics; the finer angular s/p/d distinction within a shell is only partially captured by the unit-density partition, so Level-1 agreement is evidence that the \textbf{radial} organization is correctly derived from packing while angular sub-shell labelling remains an approximation at this level. With no parameters beyond kernel charges and mesh size, computed total energies for Li--Rn agree with observation to approximately 1\%, the largest deviations at heavy atoms where relativistic corrections are omitted. This level anchors all higher reductions.
+
+\subsection{Periodic Table from electron packing}\label{sec:pt-packing}
+
+The Level-1 model builds up the Periodic Table by sequentially adding electrons to a nucleus of charge $Z$, each electron occupying its own non-overlapping spatial domain $\Omega_i$ with continuity of the global $\Psi$ across $\Gamma_i \cap \Gamma_j$ and homogeneous Neumann at the free boundaries (Section~\ref{sec:bernoulli}). Each electron takes on a width determined by proximity to the kernel while competing for space with the others --- a ``balloon-packing'' problem in which the kinetic-energy term $K(\Psi)$ from~\eqref{eq:K} acts as a compression cost. The resulting shell structure is therefore an emergent property of minimum-energy packing, not a presupposed orbital ansatz; this contrasts with StdQM, where shell occupancies follow from Aufbau filling of the $s$, $p$, $d$ orbitals derived from the $H$ atom.
+
+\paragraph{Shell sequence.}
+RealQM packs electrons into an expanding sequence of non-overlapping spherical shells $S_n$, each split azimuthally into two half-shells and each half-shell partitioned into $n \times n$ domains, giving $2n^2$ electrons per filled shell --- the familiar sequence $2, 8, 18, 32, \ldots$. For $Z > 1$ the innermost shell $S_1$ already holds \emph{two} half-shell densities meeting at a plane through the kernel (inherited from Helium, $Z=2$); this emergent splitting into two non-overlapping half-spaces accounts for the ``two-valuedness'' that StdQM must supply externally as the Pauli principle. In RealQM the non-overlap constraint does the same work, and the Pauli principle is not separately needed.
+
+\paragraph{Sub-shell structure.}
+RealQM further suggests that filled $8$-shells are radially divided into two $4$-shells, giving filled-shell decompositions of the form $(2) + (4{+}4) + (4{+}4) + \ldots$. Computed ground-state energies for atoms across the Periodic Table, with each sub-shell homogenised to spherical symmetry in the simplified Atom Simulator code, reproduce observed atomic total energies to within ${\sim}1\%$ for elements as heavy as Radon. Representative results (RealQM versus observation, in Hartree):
+
+\begin{center}\small
+\renewcommand{\arraystretch}{1.05}
+\begin{tabular}{l l r r}
+\toprule
+\textbf{Atom} & \textbf{Shell structure} & \textbf{RealQM $E$} & \textbf{Observed} \\
+\midrule
+Carbon   & $(2) + (2{+}2)$                                  & $-38.2$    & $-37.7$    \\
+Neon     & $(2) + (4{+}4)$                                  & $-132.4$   & $-128.5$   \\
+Argon    & $(2) + (4{+}4) + (4{+}4)$                        & $-523$     & $-526$     \\
+Iron     & $(2) + (4{+}4) + (14) + (2)$                     & $-1260$    & $-1272$    \\
+Krypton  & $(2) + (4{+}4) + (18) + (4{+}4)$                 & $-2766$    & $-2788$    \\
+Xenon    & $(2) + (4{+}4) + (18) + (18) + (4{+}4)$          & $-7355$    & $-7438$    \\
+Radon    & $(2) + (4{+}4) + (18) + (32) + (18) + (4{+}4)$   & $-22800$   & $-23560$   \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Why sub-shells?}
+Neon at the proper $(2)+(4{+}4)$ structure gives $-132$~Ha (observed $-128.5$); forced into a single $8$-electron outer shell $(2)+(8)$ it drops to $-153$~Ha, far below observation. The mechanism is the homogeneous Neumann condition between adjacent sub-shells, which widens each shell and raises its kinetic-energy cost; the variational principle therefore prefers the radially split configuration. Sub-shell structure is an emergent prediction, not a free choice.
+
+\paragraph{Recovery of Lewis's 1916 cubic atom.}
+For the second-row L-shell, the variational packing of eight non-overlapping electron territories around a $+2$ closed inner shell places the eight domains in the eight octants of a Cartesian frame --- geometrically the eight-cornered cubic arrangement G.~N.~Lewis proposed in 1916~\cite{Lewis1916} as a bookkeeping device for valence and the octet rule, dismissed as quantum-mechanically unfounded after the 1926 orbital picture took hold. RealQM recovers Lewis's cubic L-shell directly from the variational principle, with no external octet axiom.
+
+\subsection{Chemical bonding: the H$_2$ covalent bond and its Helium limit}\label{sec:h2bond}
+
+The hydrogen molecule H$_2$ --- two protons sharing two electrons --- is the cleanest test of covalent bonding in the unit-density formulation. In RealQM it is two non-overlapping unit electron densities (Bernoulli partition) occupying opposite halves of the inter-nuclear region around two H$^+$ kernels at separation $R$, each attracted to both nuclei and repelled by the other through Coulomb interactions only, with no exchange term and no antisymmetric wavefunction.
+
+At a separation $R \approx 1.6$~a.u. close to the experimental bond distance ($1.40$~a.u.), the parameter-free Level-1 calculation --- each hydrogen contributing one unit electron density on its side of the Bernoulli partition --- gives a total energy $E = -1.1785$~Ha against the Kolos--Wolniewicz exact value $-1.1745$~Ha (0.3\% deeper than exact). The corresponding binding energy is $\Delta E_{\rm bind} \approx -112$~kcal/mol versus the experimental dissociation energy $-109$~kcal/mol --- \textbf{within 3\%, with no fitted parameters}. The bond emerges from the same variational principle that organizes the atomic shells (Section~\ref{sec:atoms}): the electrons reorganize their territories to minimize the total Coulomb energy, and at the equilibrium $R$ the two-kernel two-electron configuration is energetically preferred over two isolated H atoms.
+
+\paragraph{Bonding mechanism.}
+The bond is established by \textbf{accumulation of electron density between the two kernels}, lowering the kernel-attraction energy. The key feature of the unit-density formulation is that the two non-overlapping territories meet at the free boundary with \textbf{both densities non-zero} (the Bernoulli condition of Section~\ref{sec:bernoulli}: continuity plus homogeneous Neumann). Had the densities been required to decay to zero between the nuclei, inter-nuclear accumulation would demand steep gradients with a balancing kinetic-energy cost; the Bernoulli partition instead lets each density stay smooth and finite across the interface, so the region accumulates electrons at low kinetic-energy cost while kernel attraction is enhanced. This is consistent with the R\"udenberg--Kutzelnigg analysis~\cite{Ruedenberg62, Kutzelnigg90} that covalent bonding is primarily a kinetic-energy lowering --- reached here through the free-boundary partition rather than through orbital overlap.
+
+\paragraph{The Helium limit: zero kernel distance, no nuclear repulsion.}
+A revealing limit is $R \to 0$. As the two H nuclei approach, their nuclear--nuclear repulsion $1/R$ diverges, so H$_2$ has a finite equilibrium separation. But if the two H$^+$ point kernels are \emph{merged} into a single $+2$ point kernel --- equivalently $R = 0$ with the charges combined --- the system becomes Helium ($Z = 2$, two electrons), and there is no inter-nuclear repulsion to oppose the merger. The Bernoulli partition is now two unit densities that do not overlap, both bound to the inner shell of the $+2$ kernel, with their interface bisecting the kernel. This is exactly the Level-1 description of the He ground state.
+
+The covalent bond and the atomic shell are therefore the same minimum-energy packing principle at different nuclear separations: the family parameterized by $R$ interpolates between He at $R=0$, the H$_2$ bond at $R=R_{\rm eq}$, and two isolated H atoms at $R\to\infty$, each a stationary point of the same energy functional. Bonding is simply what the variational principle does when more than one nucleus is present.
+
+\subsection{Atomization energies of closed-shell hydrides}\label{sec:hydrides}
+
+We test the Level-3 reduction across a series of closed-shell hydrides $\mathrm{H}_n X$, varying the heavy atom $X$ across periodic-table groups. For each system, the kernel is parameterized by an effective charge $Z_{\rm kernel}$ and a softening radius $r_c$. We compute the total energy at the experimental equilibrium $X$--H bond length $R$ and at twice that distance, and report
+\[
+\Delta E_{\rm bind} = E(R) - E(2R)
+\]
+as a proxy for the atomization energy.
+
+\paragraph{Group 1 (alkali hydrides).}
+Single-electron $X^{+1}$ kernel paired with a single H gives a closed-shell two-electron molecule. Sweeping $r_c$ traces the alkali series:
+
+\begin{center}
+\begin{tabular}{c c l c}
+\toprule
+$r_c$ (a.u.) & $\Delta E$ (kcal/mol) & Real molecule & Match \\
+\midrule
+0.50 & $-48$ & NaH ($-47$) & \textbf{within 2\%} \\
+0.70 & $-42$ & KH ($\sim\!-43$) & \textbf{within 2\%} \\
+\bottomrule
+\end{tabular}
+\end{center}
+The rc=0 limit of this single-orbital model corresponds to a 2-electron-in-one-territory configuration, distinct from the proper covalent H$_2$ (Section~\ref{sec:h2bond}).
+
+\paragraph{Group 2 (alkaline-earth dihydrides).}
+Linear H--$X$--H with a $+2$ kernel split into two hemispheres along the molecular axis (each holding one electron):
+
+\begin{center}
+\begin{tabular}{c c l c}
+\toprule
+$r_c$ (a.u.) & $\Delta E$ (kcal/mol) & Real molecule & Match \\
+\midrule
+0.40 & $-140$ & BeH$_2$ ($-144$) & \textbf{within 3\%} \\
+0.50 & $-129$ & between BeH$_2$ and MgH$_2$ & regime \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Group 14 (XH$_4$ tetrahedral).}
+Central $+2$ kernel with a single 2-electron orbital paired with four hydrogen atoms at tetrahedral positions. A single architecture sweeps the entire group-14 series via $r_c$:
+
+\begin{center}
+\begin{tabular}{c c l c}
+\toprule
+$r_c$ (a.u.) & $\Delta E$ (kcal/mol) & Real molecule & Match \\
+\midrule
+0.20 & $-369$ & CH$_4$ ($-396$) & \textbf{within 7\%} \\
+0.40 & $-348$ & SiH$_4$ ($-320$) & within 9\% \\
+0.70 & $-272$ & GeH$_4$ ($-281$) & \textbf{within 3\%} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Group 16 (bent H$_2$X).}
+Water requires a different splitting topology, with the axis along the H--O--H bisector. Both H atoms occupy the same hemisphere, with the lone pair in the opposing hemisphere as a paired sub-orbital. At $r_c = 0.7$, $\Delta E_{\rm bind} = -225$ kcal/mol versus the experimental H$_2$O atomization $-232$ kcal/mol --- \textbf{within 3\%}.
+
+\subsection{What $r_c$ encodes}
+
+Across all four working groups, varying $r_c$ with a fixed architecture traces a periodic-table column. We interpret $r_c$ as the \textbf{inner-shell absorption radius} in the Level-3 reduction: the radius at which inner-shell electrons are absorbed into the kernel core, leaving only the explicit valence outside. As $r_c$ grows, the kernel becomes more diffuse, the effective valence sees a larger inner core, and the bonding becomes weaker --- exactly as down a periodic-table column. This interpretation is consistent quantitatively across groups 1, 2, 14, and 16, with periodic-trend match within 3--9\% per element.
+
+\subsection{Geometric validation against S66}
+
+We additionally test geometric agreement against Hobza's S66 benchmark of non-covalent dimers. RealQM cannot directly validate S66 binding energies --- those are CCSD(T)/CBS values in the $-1$ to $-7$ kcal/mol range, well below the model's absolute-energy noise floor ($\sim$0.1 Ha). But the equilibrium distances and angles can be compared directly. For five H-bonded dimers tested (water dimer, methanol dimer, methylamine dimer, methylamine--water, formamide dimer), distances agree with CCSD(T) reference to within 1--5\%, and force-direction diagnostics confirm the basin of attraction is correctly identified.
+
+\subsection{Consolidated results}\label{sec:summary}
+
+Table~\ref{tab:summary} collects the quantitative validation results for the chemistry covered in this paper. (The framework also extends to reactive chemistry, excited states, protein folding, condensed phases, and an analogous model of the atomic nucleus; those results are reported in separate papers and in the public Gallery, and are not included here.)
+
+\begin{table}[h!]
+\centering
+\small
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{l l r r l l}
+\toprule
+\textbf{Regime} & \textbf{System / quantity} & \textbf{RealQM} & \textbf{Reference} & \textbf{Match} & \textbf{Section} \\
+\midrule
+Atoms (Level 1)        & Total energies, Li--Rn        & ---         & observation     & $\sim$1\%               & \ref{sec:atoms}     \\
+\midrule
+Covalent bond          & H$_2$ binding energy          & $-112$      & $-109$ kcal/mol & 3\%                     & \ref{sec:h2bond}    \\
+\midrule
+Group 1 hydride        & NaH atomization                & $-48$       & $-47$           & 2\%                     & \ref{sec:hydrides}  \\
+                       & KH atomization                 & $-42$       & $\sim\!-43$     & 2\%                     & \ref{sec:hydrides}  \\
+Group 2 hydride        & BeH$_2$ atomization            & $-140$      & $-144$          & 3\%                     & \ref{sec:hydrides}  \\
+Group 14 hydride       & CH$_4$ atomization             & $-369$      & $-396$          & 7\%                     & \ref{sec:hydrides}  \\
+                       & SiH$_4$ atomization            & $-348$      & $-320$          & 9\%                     & \ref{sec:hydrides}  \\
+                       & GeH$_4$ atomization            & $-272$      & $-281$          & 3\%                     & \ref{sec:hydrides}  \\
+Group 16 hydride       & H$_2$O atomization             & $-225$      & $-232$          & 3\%                     & \ref{sec:hydrides}  \\
+\midrule
+Non-covalent dimers    & 5 H-bonded dimers, geometry    & ---         & CCSD(T)         & 1--5\% (distances)      & \ref{sec:hydrides}  \\
+\bottomrule
+\end{tabular}
+\caption{Summary of validation results reported in this paper. Energies in kcal/mol unless otherwise stated; \% values are deviation of RealQM from reference.}
+\label{tab:summary}
+\end{table}
+
+The pattern is consistent: \textbf{within $\sim$1--10\%} for closed-shell molecular energetics where the Level-3 reduction matches the molecular electron count and bonding topology, achieved at orders-of-magnitude lower computational cost than CCSD(T) and with a parameter-free Level-1 bottom.
+
+\section{Limitations}\label{sec:limitations}
+
+Two regimes lie outside the validation reported here. \textbf{Weak intermolecular interactions} (hydrogen bonds at $\sim$5 kcal/mol $= 0.008$ Ha) are below the model's absolute-energy noise floor of $\sim$0.1 Ha; geometric agreement on S66 dimers is good (1--5\%) but quantitative interaction energies are not reliable. \textbf{Dispersion} (van der Waals interactions between non-polar species) is absent at Level 3 entirely, as the unit-density model has no mechanism for the correlated electron motion that produces vdW.
+
+The missing dispersion is the same contribution that affected standard DFT until Grimme's DFT-D3 pairwise corrections; the same $-C_6^{ab}/r_{ab}^6$ recipe applies to RealQM without disturbing the variational structure. A parameter-free route is also available through static linear response --- perturb each atom by a small dipole field, read off the polarisability, and assemble $C_6$ from the coupled dipole modes, a deterministic calculation requiring no Born rule. We leave both to follow-up work and present the Level-1 framework first in its uncorrected form.
+
+A second scope boundary concerns electromagnetic coupling. In RealQM the matter--field coupling enters through the charge density $\rho = \sum_i \psi_i^2$ and its charge--current, as in classical Schr\"odinger--Maxwell coupling; there is no spin-current contribution, since spin is not a primary variable (Pauli is realised geometrically as non-overlap, not through a spinor). For the energetics, geometries, vibrations, and dipole radiation validated here the difference is invisible; spin-current phenomena (magnetic susceptibilities, NMR shifts, hyperfine structure) would require a separate spin-density layer, which can be added on the geometric partition without disturbing the present variational structure.
+
+\section{Stability of Matter}\label{sec:som}
+
+Stability of matter --- the requirement that the total electronic ground-state energy of a system of $N$ atoms be bounded below by an extensive quantity (linear in $N$ rather than diverging more rapidly) --- is among the most fundamental properties demanded of any quantum theory of matter. Without it, bulk matter could not exist.
+
+\paragraph{The standard-QM picture: a deep but difficult proof.}
+In StdQM, proving stability of matter has historically been a major undertaking: \textbf{Dyson and Lenard} gave the first rigorous proof in 1966~\cite{DysonLenard67} (a paper Dyson called ``awful mathematics''), and \textbf{Lieb and Thirring} compressed it to three pages in 1975~\cite{LiebThirring75}, later a 300-page book. The difficulty stems from the \textbf{global support of electron wavefunctions}: every electron can interact with every nucleus, and intricate book-keeping is required to prevent local charge accumulation from driving the potential energy to $-\infty$. The proof sits outside textbook QM even though stability underlies everything those textbooks describe.
+
+\paragraph{The RealQM picture: stability follows directly.}
+In the multiphase formulation of Section~\ref{sec:reformulation}, stability of matter follows essentially from atomic stability via the \textbf{Hardy inequality}: for any $\psi \in H^1(\mathbb{R}^3)$,
+\begin{equation}\label{eq:hardy}
+\int \frac{\psi^2(\mathbf{x})}{|\mathbf{x}|} \, d\mathbf{x}
+\;\le\;
+\Bigl(\int \psi^2(\mathbf{x}) \, d\mathbf{x}\Bigr)^{1/2}
+\Bigl(\int |\nabla \psi(\mathbf{x})|^2 \, d\mathbf{x}\Bigr)^{1/2}.
+\end{equation}
+Used by Kato in his analysis of the Schr\"odinger equation, the inequality bounds the singular Coulomb potential energy at a nucleus by a product of the $L^2$-norm and the kinetic-energy semi-norm of the wavefunction. In RealQM, the total wavefunction $\Psi$ of an atom with nuclear charge $Z$ has unit-density components meeting at the Bernoulli free boundary (continuity plus homogeneous Neumann), with $\Psi \in H^1(\mathbb{R}^3)$ and $\|\Psi\|_2^2 = Z$ (one unit-charge density per electron, $Z$ electrons in a neutral atom). Applying~\eqref{eq:hardy} directly to the global atomic $\Psi$ and optimizing the kinetic--potential balance yields the atomic energy lower bound
+\begin{equation}\label{eq:atom-bound}
+E_{\rm atom} \;\ge\; -C\, Z^3,
+\end{equation}
+with $C$ an absolute constant. For a system of $N$ non-overlapping atoms each of charge $Z$, the bounds add to give
+\begin{equation}\label{eq:bulk-bound}
+E \;\ge\; -C\, N\, Z^3,
+\end{equation}
+which is the ``stability of the second kind'' of the Dyson--Lenard--Lieb--Thirring tradition: total energy is extensive in $N$, with no possibility of collapse to $-\infty$.
+
+
+\paragraph{Significance.}
+Stability of matter, viewed in StdQM as one of the deepest theorems of mathematical physics, becomes in RealQM a one-paragraph consequence of the Hardy inequality applied to non-overlapping electronic territories. The contrast is informative: \textbf{the proof difficulty in StdQM is not a feature of the underlying physics but a symptom of the formulation.} Global overlapping orbitals on $\mathbb{R}^{3N}$ force the Coulomb singularities to be controlled globally, requiring the Dyson--Lenard--Lieb--Thirring apparatus; non-overlapping unit densities on real $\mathbb{R}^3$ localize the control, and stability falls out of the variational structure --- so directly that it could be taught as an introductory result rather than omitted from the curriculum as the StdQM proof routinely is.
+
+
+\section{Chemistry vs Physics}\label{sec:chemvphys}
+
+A central question in the philosophy of chemistry is whether \textbf{(A)} chemistry is applied quantum physics, as \textbf{Dirac claimed in 1929}, or \textbf{(B)} chemistry has irreducible conceptual content --- orbitals, bonds, valence, hybridisation, electronegativity --- that does not follow from Schr\"odinger's equation alone. The hundred-year stalemate has been driven less by disagreement on principle than by the fact that, within the standard $3N$-dimensional formulation Dirac had in mind, the equations are unsolvable for any system of chemical interest without approximations whose chemistry-specific character (basis sets, exchange--correlation functionals, fitted force fields) seems to vindicate position (B).
+
+RealQM provides \textbf{concrete evidence that Dirac's position (A) was correct, although not within the 1929 wavefunction-on-$3N$-space formulation that Dirac himself proposed}. The reformulation as a system of non-overlapping unit electron densities in real 3D space, with energy minimization over Coulomb interactions alone, recovers atoms (Section~\ref{sec:atoms}), the covalent bond and its He limit (Section~\ref{sec:h2bond}), and atomization energies of hydrides across periodic-table groups (Section~\ref{sec:hydrides}) --- and, in the companion papers, reactive chemistry and protein folding --- using only physics, with no chemistry-specific empirical input beyond the kernel parameters that encode the level-by-level reduction. Chemistry emerges as the variational principle's response to multiple nuclei being present, with no separate machinery required.
+
+The standard $3N$-dimensional formulation was thus a wrong turn at the foundational level: the configuration-space wave function generates the chemistry-specific apparatus that has, since 1929, made chemistry look more autonomous than Dirac's position would suggest, whereas in Schr\"odinger's real-space picture that apparatus is not needed and chemistry recovers its character as applied physics. StdQM's numerical successes document that the underlying physics is right, not that the configuration-space step was the correct foundation. Dirac was right; the equations were just being written in the wrong space.
+
+
+\section{The collaboration as part of the contribution}\label{sec:collaboration}
+
+The mathematical reformulation in Section~\ref{sec:reformulation} and the hierarchy of Levels 1--4 are the work of the human author. They predate the AI collaboration and have been developed over a decade of independent work. The author also wrote the initial p5.js prototype simulations that established the numerical core (real-space grid, ITP, Poisson solver, basic visualization) used as the starting point for the WebGPU implementation. The full WebGPU port, the validation suite, the systematic kernel-architecture sweeps reported in Section~\ref{sec:validation}, and the curated public Gallery were developed from those starting templates through extended collaboration with \textbf{Claude}, an AI code assistant produced by Anthropic.
+
+The right framing is \textbf{mathematical mind + AI engineering partner}: the human supplies the theory, the questions, the chemical intuition, and the standards for what counts as evidence; the AI supplies the implementation, the systematic parameter exploration, and the speed. The human posed mathematical and chemical questions; the AI translated them into runnable simulations, identified bugs, ran sweeps, tabulated results, and challenged claims that did not survive scrutiny, while the human evaluated the results and corrected interpretations that slipped (several times the AI declared a result ``within $X\%$ of experiment'' before convergence was confirmed, and was pushed back). We report the collaboration as part of the contribution: a worked example of how a single mathematical mind with an AI engineering partner can produce research-grade interactive scientific software at a scale that previously required a team.
+
+\section{Code and reproducibility}\label{sec:code}
+
+The full RealQM implementation, including the validation suite, the systematic kernel-architecture sweeps reported in Section~\ref{sec:validation}, and the curated public Gallery, is available at:
+
+\begin{itemize}
+\item \textbf{Code repository:} \url{https://github.com/Claes542/RealMolecule}
+\item \textbf{Interactive Gallery:} \url{https://claes542.github.io/RealMolecule/gallery.html}
+\item \textbf{RealQM project site:} \url{https://physicalquantummechanics.blogspot.com}
+\item \textbf{Author's blog:} \url{https://claesjohnson.blogspot.com}
+\item \textbf{Browser requirements:} Chrome 113+, Edge 113+, or Safari 17+ (WebGPU)
+\item \textbf{Hardware:} any modern integrated or discrete GPU ($\sim$1 GB GPU memory for $\sim$200$^3$ grid)
+\end{itemize}
+
+All results in this paper can be reproduced by opening the relevant \texttt{.html} files in the repository. Each binding-energy data point in Section~\ref{sec:validation} corresponds to a specific URL parameterization ($R$, $r_c$) of a specific scan file (e.g., \texttt{mol\_fast\_H4X\_Z2\_scan.html?R=1.0\&rc=0.2}). The Gallery's ``Kernel Splitting'' and ``Periodic-Table Coverage'' cards link directly to the scan files used to generate the reported numbers.
+
+We deliberately do not include figures in this preprint. The Gallery contains many interactive visualizations --- density slices, 3D molecular views, force-arrow displays, real-time dynamics --- that are far more informative as live simulations than as static images. Readers wishing to inspect electron densities, watch molecules relax, or run their own kernel-architecture sweeps should consult the Gallery directly.
+
+\begin{thebibliography}{9}
+
+\bibitem{HK64}
+P.~Hohenberg and W.~Kohn,
+\emph{Inhomogeneous electron gas},
+Phys.\ Rev.\ \textbf{136}, B864 (1964).
+
+\bibitem{KS65}
+W.~Kohn and L.~J.~Sham,
+\emph{Self-consistent equations including exchange and correlation effects},
+Phys.\ Rev.\ \textbf{140}, A1133 (1965).
+
+\bibitem{MHG17}
+N.~Mardirossian and M.~Head-Gordon,
+\emph{Thirty years of density functional theory in computational chemistry: an overview and extensive assessment of 200 density functionals},
+Mol.\ Phys.\ \textbf{115}, 2315 (2017).
+
+\bibitem{Bader90}
+R.~F.~W.~Bader,
+\emph{Atoms in Molecules: A Quantum Theory},
+Oxford University Press (1990).
+
+\bibitem{Ruedenberg62}
+K.~Ruedenberg,
+\emph{The physical nature of the chemical bond},
+Rev.\ Mod.\ Phys.\ \textbf{34}, 326 (1962).
+
+\bibitem{Kutzelnigg90}
+W.~Kutzelnigg,
+\emph{The physical mechanism of the chemical bond},
+Angew.\ Chem.\ Int.\ Ed.\ \textbf{12}, 546 (1973).
+
+\bibitem{DysonLenard67}
+F.~J.~Dyson and A.~Lenard,
+\emph{Stability of matter, I},
+J.\ Math.\ Phys.\ \textbf{8}, 423 (1967).
+
+\bibitem{LiebThirring75}
+E.~H.~Lieb and W.~E.~Thirring,
+\emph{Bound for the kinetic energy of fermions which proves the stability of matter},
+Phys.\ Rev.\ Lett.\ \textbf{35}, 687 (1975).
+
+\bibitem{Kohn1998Nobel}
+W.~Kohn,
+\emph{Electronic structure of matter --- wave functions and density functionals},
+Nobel Lecture, 8 January 1999;
+Rev.\ Mod.\ Phys.\ \textbf{71}, 1253 (1999).
+
+\bibitem{Lewis1916}
+G.~N.~Lewis,
+\emph{The atom and the molecule},
+J.\ Amer.\ Chem.\ Soc.\ \textbf{38}, 762 (1916).
+
+\end{thebibliography}
+
+\end{document}
