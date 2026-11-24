@@ -1,4 +1,5 @@
 #!/bin/bash
+killprof() { for s in TERM KILL; do ps -axo pid,command | grep -F -- "user-data-dir=$1" | grep -v grep | awk '{print $1}' | xargs kill -$s 2>/dev/null; sleep 2; done; }
 # usage: run.sh "<query>" <logfile> <max_seconds> [page]   -- stops at DUMPED; a finished run is not redone.
 # Waits while the screen is LOCKED (WebGPU stalls behind a lock); relaunches if the step counter is still for 600 s.
 grep -q -E "DUMPED|DUMP failed" "$2" 2>/dev/null && exit 0
@@ -19,7 +20,7 @@ while [ $T -lt $3 ]; do
     if [ "$s" = "$last" ]; then still=$((still+5)); else still=0; last=$s; fi
     if [ $still -ge 600 ]; then stalled=1; break; fi
   done
-  pkill -f "user-data-dir=$PROF"; sleep 2; pkill -9 -f "user-data-dir=$PROF"; rm -rf $PROF
+  killprof "$PROF"; rm -rf $PROF
   [ $done = 1 ] && break
   [ $stalled = 1 ] && { echo "STALL at $s, relaunching" >> $2.stalls; continue; }
 done

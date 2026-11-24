@@ -1,0 +1,152 @@
+% =====================================================================================
+% Section draft (2026-11-24): RealQM against Hartree--Fock / Heitler--London and against DFT.
+% Standalone; intended for realqm_molecular_forces.tex before sec:limits (or the book). Numbers:
+% runs_cc/dft_compare.out (cc-pVTZ, PySCF), runs_cc/{lih,beh2,bh,chp}_snode*, runs_cc/be2_snode_*_h005.out.
+% NOTE: the RealQM row below uses the HF node radius; replace by the self-contained protocol
+% (RealQM core + node from measured IE, runs_cc/sc_*.out) when that queue finishes.
+% =====================================================================================
+\section{RealQM, Hartree--Fock, Heitler--London and density functional theory}
+\label{sec:compare}
+
+\subsection{Two pair constructions, two classical methods}
+
+RealQM represents an electron pair in one of two ways. In the \emph{2hom} construction both electrons
+share one domain and one density; in the \emph{2split} construction each electron has its own domain,
+and the two meet at a free wall. For H$_2$ the 2hom pair reproduces restricted Hartree--Fock (RHF)
+to $5\times10^{-5}$\,E$_h$, and the 2split pair reproduces the Heitler--London (HL) valence-bond
+description~\cite{hl,hartree,fock}. RealQM thus contains, as its two pair constructions, the two methods
+with which quantum chemistry began in 1927--1930.
+
+These methods are therefore the natural references for diagnosis: when RealQM differs from RHF on a
+2hom construction, the difference is in what RealQM adds or leaves out, not in the pair itself. This is
+how the missing repulsion between electron groups was found. Two closed-shell He atoms bind falsely in
+basic RealQM ($-0.55$\,E$_h$ at $R=2$) where RHF repels ($+0.12$), and Be$_2$ with free walls binds
+by $0.18$\,E$_h$ where RHF gives no bond. The difference is Pauli exclusion: HF enforces it by
+antisymmetry of one wave function, while basic RealQM's free walls charge nothing where same-spin
+electrons meet. Restoring it as a wall condition---an evanescent Robin cost
+$\partial_n u+\beta u=0$, $\beta=\sqrt{-2\varepsilon}$ from the domain's own eigenvalue, between closed
+shells on different atoms, and a node condition on the spherical part of the valence at the core---removes
+the false bonds (He$_2$: $+0.056$, $+0.011$, $+0.0025$ at $R=2,3,4$, against RHF $+0.121$, $+0.014$, $+0.001$; Be$_2$ repulsive at every $R$) and
+leaves no fitted constant.
+
+Two points follow. First, comparing with methods a hundred years old is not a measure of progress
+beyond them; it measures whether RealQM's own construction contains their physics. Second, RealQM is
+not HF in disguise: HF under-binds every molecule (missing correlation), while RealQM's errors differ in
+sign from molecule to molecule. Its missing pieces are different, and they are located in identifiable
+parts of the model---walls and cores---rather than in a global term.
+
+\subsection{RealQM and density functional theory}
+
+Standard quantum chemistry advanced beyond HF in two directions: correlated wave-function methods
+(configuration interaction, coupled cluster, of steeply rising cost) and density functional theory
+(DFT)~\cite{hk,ks}, which replaced the $3N$-dimensional wave function by the three-dimensional density
+and is today by far the most used method. Since RealQM also works in three dimensions, DFT is its
+real competitor. Table~\ref{tab:dft} sets RealQM beside HF, three density functionals and a near-exact
+reference.
+
+\begin{table}[h]
+\centering\small
+\caption{Bond length $R_e$ (bohr) and binding energy $D_e$ (E$_h$; BeH$_2$: atomisation; CH$^+\to$C$^+$+H).
+HF, LDA, PBE, B3LYP and CCSD(T) in cc-pVTZ (PySCF~\cite{pyscf}), five-point scans. RealQM: Pauli walls with
+RealQM's own 2hom 1s$^2$ core and the node radius set once per element by the atom's measured ionisation
+energies; axisymmetric, fixed mesh $h=0.05$. Last two rows: mean absolute error against CCSD(T).}
+\label{tab:dft}
+\begin{tabular}{lcccccc}
+\hline
+ & CCSD(T) & RealQM & HF & LDA & PBE & B3LYP\\
+\hline
+LiH $R_e$ & 3.025 & 2.973 & 3.046 & 3.041 & 3.041 & 3.014\\
+BeH$_2$ $R_e$ & 2.511 & 2.433 & 2.525 & 2.543 & 2.536 & 2.512\\
+BH $R_e$ & 2.325 & 2.334 & 2.316 & 2.381 & 2.372 & 2.338\\
+CH$^+$ $R_e$ & 2.129 & 2.251 & 2.109 & 2.199 & 2.184 & 2.155\\
+LiH $D_e$ & 0.0908 & 0.059 & 0.054 & 0.097 & 0.085 & 0.093\\
+BeH$_2$ $D_e$ & 0.2334 & 0.286 & 0.199 & 0.256 & 0.236 & 0.247\\
+BH $D_e$ & 0.1348 & 0.136 & 0.098 & 0.143 & 0.129 & 0.133\\
+CH$^+$ $D_e$ & 0.1559 & 0.237 & 0.113 & 0.171 & 0.154 & 0.155\\
+\hline
+$|\Delta R_e|$ & -- & 2.7\% & 0.6\% & 1.9\% & 1.5\% & 0.5\%\\
+$|\Delta D_e|$ & -- & 28\% & 27\% & 8\% & 3\% & 2\%\\
+\hline
+\end{tabular}
+\end{table}
+
+On geometry RealQM is close to the local density approximation (2.7\% against 1.9\%), with BH within
+0.4\% and CH$^+$ 6\% long; on energies it is at the level of HF in size (28\% against 27\%) but not in
+sign---LiH under-bound, BeH$_2$ and CH$^+$ over-bound, BH right---and well behind the functionals. This is the honest present standing.
+Numbers alone, however, do not settle what kind of thing is being compared.
+
+\paragraph{What DFT is a model of.}
+The Hohenberg--Kohn theorem~\cite{hk} states that the ground-state energy is a functional of the
+density; it proves existence, not form. Kohn and Sham~\cite{ks} compute the kinetic energy of fictitious
+non-interacting electrons with the same density and collect everything else into the
+exchange--correlation functional $E_{xc}[\rho]$. The exact $E_{xc}$ is defined through the many-electron
+wave function~\cite{levy}: evaluating it requires solving the $3N$-dimensional Schr\"odinger equation,
+which is the problem DFT was meant to avoid. Every functional in use is therefore a chosen formula, its
+constants set by a model system (the uniform electron gas, LDA), by exact constraints (PBE~\cite{pbe}),
+or by fitting to molecular data (B3LYP~\cite{b3lyp} and successors with dozens of parameters). An exact
+theory that cannot be computed makes no prediction and cannot be tested; what is tested is always one
+of these formulas.
+
+The criticism is made inside the field. Medvedev, Perdew and co-workers~\cite{medvedev} found that
+functionals developed since about 2000 improved energies while their densities became worse---good
+answers, in Hammes-Schiffer's phrase, possibly for the wrong reasons~\cite{hammes}. Cohen, Mori-S\'anchez
+and Yang~\cite{cohen} trace the systematic failures (stretched bonds, band gaps, charge transfer) to
+delocalisation and static-correlation errors of the approximations, and Burke~\cite{burke} notes that
+no fix has become a universal tool of known performance. The Hartree term moreover lets each electron
+repel its own density; the approximate $E_{xc}$ cancels this only in part.
+
+What DFT computes in three dimensions is therefore not offered as three-dimensional physics. Its one
+physical 3D object is the total density. The Kohn--Sham electrons are declared fictitious, and $E_{xc}$
+encodes correlations in $3N$-dimensional configuration space. DFT is a three-dimensional
+\emph{computational method} for a theory posed in $3N$ dimensions.
+
+\paragraph{What RealQM is a model of.}
+RealQM is a model of three-dimensional physics by construction: each electron, or pair, is a real
+charge density occupying its own region of space; it obeys a Schr\"odinger equation in that region;
+electrons interact by Coulomb's law between distinct densities only, so that no electron repels
+itself; and Pauli exclusion is spatial---no two same-spin electrons share space. Every object in the
+model is offered as physical, and every approximation is a statement about how electrons behave, which
+can be tested on its own. The false bonds of He$_2$ and Be$_2$ located one such statement (``a free wall
+charges nothing where same-spin electrons meet'') and showed it to be wrong.
+
+The comparison with DFT is thus not between two approximations to the same thing. DFT approximates an
+unknown functional of an uncomputable theory; RealQM is a computable model whose rules are physical
+claims. Measured by the same standard---a fixed model, its parameters set once from observation, its
+predictions compared with experiment on molecules not used to set them---RealQM in its basic form has
+no parameters, and its extension with Pauli walls adds one per element (the node radius, set by the
+atom's measured ionisation energy). Its present accuracy on energies is below that of non-empirical
+DFT. Its case rests on two things DFT does not offer: a physical picture in which a failure points to
+the missing physics, and a model whose objects can be computed and interpreted in three dimensions as
+they stand.
+
+\paragraph{What remains to be shown.}
+RealQM keeps this standing only if each added rule is itself three-dimensional physics. The
+evanescent wall cost is: it is the energy of the tail a wall cuts off, set by the domain's own
+eigenvalue. The core node is not yet: it is justified by orthogonality to the 1s orbital, a statement
+of standard quantum mechanics about overlapping orbitals, which RealQM's disjoint domains do not have.
+A three-dimensional account of how far, and at what cost, valence charge penetrates a core is the open
+problem that decides whether the extended model is RealQM's own or partly borrowed.
+
+% ---- bibitems to add -----------------------------------------------------------------
+% \bibitem{hl} W.\ Heitler and F.\ London, Wechselwirkung neutraler Atome und hom\"oopolare Bindung nach der
+%   Quantenmechanik, \emph{Z.\ Phys.}\ \textbf{44}, 455 (1927).
+% \bibitem{hartree} D.\ R.\ Hartree, The wave mechanics of an atom with a non-Coulomb central field,
+%   \emph{Proc.\ Camb.\ Phil.\ Soc.}\ \textbf{24}, 89 (1928).
+% \bibitem{fock} V.\ Fock, N\"aherungsmethode zur L\"osung des quantenmechanischen Mehrk\"orperproblems,
+%   \emph{Z.\ Phys.}\ \textbf{61}, 126 (1930).
+% \bibitem{hk} P.\ Hohenberg and W.\ Kohn, Inhomogeneous electron gas, \emph{Phys.\ Rev.}\ \textbf{136}, B864 (1964).
+% \bibitem{ks} W.\ Kohn and L.\ J.\ Sham, Self-consistent equations including exchange and correlation effects,
+%   \emph{Phys.\ Rev.}\ \textbf{140}, A1133 (1965).
+% \bibitem{levy} M.\ Levy, Universal variational functionals of electron densities, \emph{Proc.\ Natl.\ Acad.\ Sci.\ USA}
+%   \textbf{76}, 6062 (1979).
+% \bibitem{pbe} J.\ P.\ Perdew, K.\ Burke and M.\ Ernzerhof, Generalized gradient approximation made simple,
+%   \emph{Phys.\ Rev.\ Lett.}\ \textbf{77}, 3865 (1996).
+% \bibitem{b3lyp} A.\ D.\ Becke, Density-functional thermochemistry. III. The role of exact exchange,
+%   \emph{J.\ Chem.\ Phys.}\ \textbf{98}, 5648 (1993).
+% \bibitem{medvedev} M.\ G.\ Medvedev, I.\ S.\ Bushmarinov, J.\ Sun, J.\ P.\ Perdew and K.\ A.\ Lyssenko, Density
+%   functional theory is straying from the path toward the exact functional, \emph{Science} \textbf{355}, 49 (2017).
+% \bibitem{hammes} S.\ Hammes-Schiffer, A conundrum for density functional theory, \emph{Science} \textbf{355}, 28 (2017).
+% \bibitem{cohen} A.\ J.\ Cohen, P.\ Mori-S\'anchez and W.\ Yang, Insights into current limitations of density
+%   functional theory, \emph{Science} \textbf{321}, 792 (2008).
+% \bibitem{burke} K.\ Burke, Perspective on density functional theory, \emph{J.\ Chem.\ Phys.}\ \textbf{136}, 150901 (2012).
+% (pyscf already in the article.)  Check page numbers of hl/hartree/fock/levy/b3lyp against the originals.

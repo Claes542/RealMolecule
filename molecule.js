@@ -348,6 +348,21 @@ const W_CUTOFF = window.USER_W_CUTOFF || 0;  // smooth ψ cutoff near other nucl
 //
 // Off by default so the change can be MEASURED against the old behaviour rather than assumed.
 const FULL_RC = !!window.USER_FULL_RC;
+// s-NODE (2026-11-24, USER_SNODE): the 2s node cost of orthogonality to a frozen 1s^2. On the r_c sphere (r_c = the 2s
+// node radius) each domain's u must have ZERO area-mean over its own shell cells (faces onto core-excluded cells): the
+// l=0 part vanishes, p-like parts stay free. Enforced by projection at every normalisation. Off by default.
+// USER_FCORE_ZETA / USER_FCORE_ZVAL: frozen-core screening -- every entry with r_c > 0 adds (Z_nuc/ZVAL)*2e^{-2 zeta r}
+// (zeta + 1/r) to K, the potential of a hydrogenic 1s^2 with exponent zeta (ZVAL = the atom's valence charge, so its
+// co-located entries sum to one 1s^2). Off (0) by default. Axisym prototypes: scratchpad lih_s.py, beh2_s.py, xh_s.py.
+const SNODE = !!window.USER_SNODE;
+const FCORE_ZETA = window.USER_FCORE_ZETA || 0.0;
+const FCORE_ZVAL = window.USER_FCORE_ZVAL || 4.0;
+const SN_SCALE = 262144.0;
+const fcoreTermWGSL = (rexpr) => FCORE_ZETA > 0 ? `
+    if (atoms[n].rc > 0.0) {
+      let rf = ${rexpr};
+      Kval += (Zn / ${FCORE_ZVAL.toFixed(4)}) * 2.0 * exp(-2.0 * ${FCORE_ZETA.toFixed(6)} * rf) * (${FCORE_ZETA.toFixed(6)} + 1.0 / rf);
+    }` : '';
 // USER_MULTI_OCC: keep (Z_eff-1)/Z_eff of a multi-occupancy domain's own potential, which is the
 // intra-atomic pair repulsion the i!=j exclusion otherwise throws away with the self-interaction.
 // MULTI_OCC: a domain of N electrons feels (N-1)/N of its own Hartree field, so a pair counts its one pair
@@ -2049,6 +2064,96 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
+// s-NODE projection (USER_SNODE). Shell cell = a domain cell with faces onto core-excluded cells; weight A = that
+// face count. Per label: sums of A*u (split +/- for the unsigned atomics) and of A^2; then u -= A * sum(A u)/sum(A^2)
+// on the shell cells, which makes the area-weighted mean of u over the label's shell exactly zero.
+const snodeCoreWGSL = `
+fn snInCore(ci: u32, cj: u32, ck: u32) -> bool {
+  for (var n: u32 = 0u; n < ${NELEC}u; n++) {
+    if (atoms[n].rc > 0.0 && atoms[n].Z_nuc > 0.0) {
+      let dx = (f32(ci) - atoms[n].posI) * p.h;
+      let dy = (f32(cj) - atoms[n].posJ) * p.h;
+      let dz = (f32(ck) - atoms[n].posK) * p.h;
+      if (sqrt(dx*dx + dy*dy + dz*dz) < atoms[n].rc) { return true; }
+    }
+  }
+  return false;
+}
+fn snShellA(i: u32, j: u32, k: u32) -> f32 {
+  if (snInCore(i, j, k)) { return 0.0; }
+  var a: f32 = 0.0;
+  if (snInCore(i + 1u, j, k)) { a += 1.0; }
+  if (snInCore(i - 1u, j, k)) { a += 1.0; }
+  if (snInCore(i, j + 1u, k)) { a += 1.0; }
+  if (snInCore(i, j - 1u, k)) { a += 1.0; }
+  if (snInCore(i, j, k + 1u)) { a += 1.0; }
+  if (snInCore(i, j, k - 1u)) { a += 1.0; }
+  return a;
+}`;
+const snodeAccumWGSL = `
+${paramStructWGSL}
+${atomStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> U: array<f32>;
+@group(0) @binding(2) var<storage, read> label: array<u32>;
+@group(0) @binding(3) var<storage, read> atoms: array<Atom>;
+@group(0) @binding(4) var<storage, read_write> snA: array<atomic<u32>>;
+${cellIdxWGSL}
+${snodeCoreWGSL}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let NM = p.NN - 1u;
+  let cell = cellIdx(gid);
+  if (cell >= NM * NM * NM) { return; }
+  let k = (cell % NM) + 1u;
+  let j = ((cell / NM) % NM) + 1u;
+  let i = (cell / (NM * NM)) + 1u;
+  let a = snShellA(i, j, k);
+  if (a == 0.0) { return; }
+  let id = i * p.S2 + j * p.S + k;
+  let lbl = label[id];
+  let v = a * U[id];
+  if (v > 0.0) { atomicAdd(&snA[lbl], u32(v * ${SN_SCALE.toFixed(1)} + 0.5)); }
+  else { atomicAdd(&snA[${MAX_ATOMS}u + lbl], u32(-v * ${SN_SCALE.toFixed(1)} + 0.5)); }
+  atomicAdd(&snA[${2 * MAX_ATOMS}u + lbl], u32(a * a * ${SN_SCALE.toFixed(1)} + 0.5));
+}
+`;
+const snodeDecodeWGSL = `
+@group(0) @binding(0) var<storage, read> snA: array<u32>;
+@group(0) @binding(1) var<storage, read_write> snF: array<f32>;
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  if (gid.x >= ${3 * MAX_ATOMS}u) { return; }
+  snF[gid.x] = f32(snA[gid.x]) / ${SN_SCALE.toFixed(1)};
+}
+`;
+const snodeApplyWGSL = `
+${paramStructWGSL}
+${atomStructWGSL}
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read_write> U: array<f32>;
+@group(0) @binding(2) var<storage, read> label: array<u32>;
+@group(0) @binding(3) var<storage, read> atoms: array<Atom>;
+@group(0) @binding(4) var<storage, read> snF: array<f32>;
+${cellIdxWGSL}
+${snodeCoreWGSL}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let NM = p.NN - 1u;
+  let cell = cellIdx(gid);
+  if (cell >= NM * NM * NM) { return; }
+  let k = (cell % NM) + 1u;
+  let j = ((cell / NM) % NM) + 1u;
+  let i = (cell / (NM * NM)) + 1u;
+  let a = snShellA(i, j, k);
+  if (a == 0.0) { return; }
+  let id = i * p.S2 + j * p.S + k;
+  let lbl = label[id];
+  let a2 = snF[${2 * MAX_ATOMS}u + lbl];
+  if (a2 > 0.0) { U[id] = U[id] - a * (snF[lbl] - snF[${MAX_ATOMS}u + lbl]) / a2; }
+}
+`;
+
 // Energy-only reduce: just T, V_eK, V_ee (3 values, REDUCE_WG=128)
 const MAX_REDUCE_WG = 256;
 const reduceEnergyWGSL = `
@@ -2628,6 +2733,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // Bare atoms (rc=0): clamp at R_SING. Pseudopotential (rc>0): hard cutoff at rc.
     let r_eff = select(max(sqrt(r2), ${R_SING}), max(sqrt(r2), atoms[n].rc), atoms[n].rc > 0.0);
     Kval += Zn / r_eff;
+${fcoreTermWGSL('max(sqrt(r2), ' + R_SING + ')')}
     // HOMOGENISED SHELL (USER_SHELL_Q / USER_SHELL_R). A charge shellQ spread uniformly over a
     // sphere of radius shellR screens the kernel OUTSIDE shellR and contributes only a CONSTANT
     // inside it -- Newton's theorem. With shellQ == Z_nuc the atom is exactly neutral outside
@@ -2643,6 +2749,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 const WG_RECOMPUTE_K = Math.ceil(S3 / 256);
+// s-node projection, recorded into an encoder before a normalisation (USER_SNODE)
+function encodeSnode(enc, c) {
+  if (!SNODE) return;
+  enc.clearBuffer(snAtomicBuf);
+  let q = enc.beginComputePass(); q.setPipeline(snAccumPL); q.setBindGroup(0, snAccumBG[c]); dispatchLinear(q, INTERIOR); q.end();
+  q = enc.beginComputePass(); q.setPipeline(snDecodePL); q.setBindGroup(0, snDecodeBG); q.dispatchWorkgroups(Math.ceil(3 * MAX_ATOMS / 256)); q.end();
+  q = enc.beginComputePass(); q.setPipeline(snApplyPL); q.setBindGroup(0, snApplyBG[c]); dispatchLinear(q, INTERIOR); q.end();
+}
 
 // GPU init: split into two shaders to handle large atom counts
 // Phase 1: accumulate K, find dominating atom by highest exp(-Z*r)
@@ -2690,6 +2804,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // Bare atoms (rc=0): clamp at R_SING. Pseudopotential (rc>0): hard cutoff at rc.
     let r = select(max(sqrt(r2), ${R_SING}), max(sqrt(r2 + 0.04 * p.h2), atoms[n].rc), atoms[n].rc > 0.0);
     Kval += Zn / r;
+${fcoreTermWGSL('max(sqrt(r2), ' + R_SING + ')')}
     // HOMOGENISED SHELL (USER_SHELL_Q / USER_SHELL_R). A charge shellQ spread uniformly over a
     // sphere of radius shellR screens the kernel OUTSIDE shellR and contributes only a CONSTANT
     // inside it -- Newton's theorem. With shellQ == Z_nuc the atom is exactly neutral outside
@@ -3015,6 +3130,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 // ===== GPU STATE =====
 let device, paramsBuf, atomBuf, K_buf, sumsBuf, sumsReadBuf, sliceBuf, sliceReadBuf, partialsBuf, numWGBuf;
 let normAtomicBuf, normFloatBuf, initOffsetBuf, bestR2Buf, initRangeBuf;
+let snAtomicBuf, snFloatBuf, snAccumPL, snDecodePL, snApplyPL, snDecodeBG, snAccumBG = [], snApplyBG = [];   // USER_SNODE
 let U_buf = [], P_buf = [], labelBuf, label2Buf, W_buf;
 let rhoTotalBuf, residualBuf, Pc_buf = [], coarseRhsBuf;
 let PotherBuf, PselfScratchBuf, sicBuf, sicResidualBuf, domainBufs = [], domGroupBuf = null;
@@ -4135,6 +4251,10 @@ async function initGPU() {
     partialsBuf = device.createBuffer({ size: partialSize, usage: GPUBufferUsage.STORAGE });
     normAtomicBuf = device.createBuffer({ size: MAX_ATOMS * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     normFloatBuf = device.createBuffer({ size: MAX_ATOMS * 4, usage: GPUBufferUsage.STORAGE });
+    if (SNODE) {
+      snAtomicBuf = device.createBuffer({ size: 3 * MAX_ATOMS * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+      snFloatBuf = device.createBuffer({ size: 3 * MAX_ATOMS * 4, usage: GPUBufferUsage.STORAGE });
+    }
     sumsBuf = device.createBuffer({ size: SUMS_BYTES, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
     sumsReadBuf = device.createBuffer({ size: SUMS_BYTES, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     sliceBuf = device.createBuffer({ size: SLICE_SIZE, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
@@ -4205,6 +4325,12 @@ async function initGPU() {
     const finalizeEnergyMod = await compileShader('finalizeEnergy', finalizeEnergyWGSL);
     const accumNormsMod = await compileShader('accumNorms', accumNormsWGSL);
     const decodeNormsMod = await compileShader('decodeNorms', decodeNormsWGSL);
+    if (SNODE) {
+      snAccumPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: await compileShader('snodeAccum', snodeAccumWGSL), entryPoint: 'main' } });
+      snDecodePL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: await compileShader('snodeDecode', snodeDecodeWGSL), entryPoint: 'main' } });
+      snApplyPL = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: await compileShader('snodeApply', snodeApplyWGSL), entryPoint: 'main' } });
+      console.log('s-node ON (USER_SNODE): projection of the l=0 shell mean at every normalisation; frozen-core zeta ' + FCORE_ZETA + ' zval ' + FCORE_ZVAL);
+    }
     const normalizeMod = await compileShader('normalize', normalizeWGSL);
     const extractMod = await compileShader('extract', extractWGSL);
     const computeRhoSelfMod = await compileShader('computeRhoSelf', computeRhoSelfWGSL);
@@ -4319,6 +4445,16 @@ async function initGPU() {
         { binding: 5, resource: { buffer: labelBuf } },
         { binding: 6, resource: { buffer: atomBuf } },
       ]});
+      if (SNODE) {
+        snAccumBG[c] = device.createBindGroup({ layout: snAccumPL.getBindGroupLayout(0), entries: [
+          { binding: 0, resource: { buffer: paramsBuf } }, { binding: 1, resource: { buffer: U_buf[c] } },
+          { binding: 2, resource: { buffer: labelBuf } }, { binding: 3, resource: { buffer: atomBuf } },
+          { binding: 4, resource: { buffer: snAtomicBuf } } ]});
+        snApplyBG[c] = device.createBindGroup({ layout: snApplyPL.getBindGroupLayout(0), entries: [
+          { binding: 0, resource: { buffer: paramsBuf } }, { binding: 1, resource: { buffer: U_buf[c] } },
+          { binding: 2, resource: { buffer: labelBuf } }, { binding: 3, resource: { buffer: atomBuf } },
+          { binding: 4, resource: { buffer: snFloatBuf } } ]});
+      }
       accumNormsBG[c] = device.createBindGroup({ layout: accumNormsPL.getBindGroupLayout(0), entries: [
         { binding: 0, resource: { buffer: paramsBuf } },
         { binding: 1, resource: { buffer: U_buf[c] } },
@@ -4418,6 +4554,8 @@ async function initGPU() {
       { binding: 1, resource: { buffer: sumsBuf } },
       { binding: 2, resource: { buffer: numWGBuf } },
     ]});
+    if (SNODE) snDecodeBG = device.createBindGroup({ layout: snDecodePL.getBindGroupLayout(0), entries: [
+      { binding: 0, resource: { buffer: snAtomicBuf } }, { binding: 1, resource: { buffer: snFloatBuf } } ]});
     decodeNormsBG = device.createBindGroup({ layout: decodeNormsPL.getBindGroupLayout(0), entries: [
       { binding: 0, resource: { buffer: normAtomicBuf } },
       { binding: 1, resource: { buffer: normFloatBuf } },
@@ -5152,6 +5290,7 @@ async function doSteps(n) {
       cp = enc.beginComputePass(); cp.setPipeline(weak.P.asm); cp.setBindGroup(0, weak.G.asm[next]); dispatchLinear(cp, INTERIOR); cp.end();
     } else if ((s + 1) % NORM_INTERVAL === 0 || s === n - 1) {
       // Atomic norm accumulation: clear → accumulate → decode → normalize
+      encodeSnode(enc, next);
       enc.clearBuffer(normAtomicBuf);
       cp = enc.beginComputePass();
       cp.setPipeline(accumNormsPL);
@@ -6049,6 +6188,7 @@ async function doLOBPCGStep() {
     const enc = device.createCommandEncoder();
 
     // Normalize all domains
+    encodeSnode(enc, cur);
     enc.clearBuffer(normAtomicBuf);
     let cp = enc.beginComputePass();
     cp.setPipeline(accumNormsPL);
