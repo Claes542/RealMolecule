@@ -5793,6 +5793,20 @@ async function doSteps(n) {
   }
 
   console.log("Step " + tStep + ": E=" + E.toFixed(6) + " T=" + E_T.toFixed(4) + " V_eK=" + E_eK.toFixed(4) + " V_ee=" + E_ee.toFixed(4) + " V_KK=" + E_KK.toFixed(4) + " (" + lastMs.toFixed(0) + "ms/" + n + "steps)");
+  // SELF-CONSISTENT PAULI-WALL BETA (2026-11-25, window.USER_BETA_SC = every-N-steps): each domain's Robin beta is set to
+  // sqrt(-2 eps_n), eps_n its own eigenvalue read from the interior Rayleigh quotient of readELResidual (cells away from
+  // walls and cores), and the atom buffer is re-uploaded. Which walls carry beta is unchanged (betaW: ?betainter etc.);
+  // the global ?beta must be != 0 to switch the surface terms on. eps_n >= 0 (unbound) gives beta 0.
+  if (window.USER_BETA_SC > 0 && window.readELResidual && tStep - (window._betaScStep || 0) >= window.USER_BETA_SC) {
+    window._betaScStep = tStep;
+    const rr = await window.readELResidual();
+    const bD = (window.USER_BETA_D || []).slice();
+    for (const o of rr.perDomain) bD[o.dom] = (isFinite(o.eps) && o.eps < 0) ? Math.sqrt(-2 * o.eps) : 0;
+    window.USER_BETA_D = bD; window._betaSC = rr.perDomain.map(o => [o.dom, o.eps]);
+    fillAtomBuf();
+    console.log('BETASC step ' + tStep + ' eps ' + rr.perDomain.map(o => o.dom + ':' + o.eps.toFixed(4)).join(' ') +
+                ' beta ' + rr.perDomain.map(o => bD[o.dom].toFixed(3)).join(','));
+  }
   {
     const _dq = new URLSearchParams(location.search), _da = +_dq.get('dumpat');
     if (_da > 0 && _dq.get('dump') && tStep >= _da && !window._dumpAtDone && window.dumpState) {
