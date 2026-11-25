@@ -531,7 +531,7 @@ struct P {
   beta: f32, fieldX: f32, betaInter: f32, betaIso: f32,
 }`;
 
-const ATOM_STRIDE = 20; // 8 base + 6 split + 3 cylinder origin + 2 shell (q,R) + 1 homog flag
+const ATOM_STRIDE = 22; // 8 base + 6 split + 3 cylinder origin + 2 shell (q,R) + 1 homog flag + betaD + betaFl
 const ATOM_BUF_BYTES = MAX_ATOMS * ATOM_STRIDE * 4;
 const atomStructWGSL = `
 struct Atom {
@@ -541,6 +541,7 @@ struct Atom {
   splitAxZ: f32, splitRot: f32,
   cylOX: f32, cylOY: f32, cylOZ: f32,
   shellQ: f32, shellR: f32, homog: f32,
+  betaD: f32, betaFl: f32,   // 2026-11-25: this domain's Robin beta (USER_BETA_D, default ?beta); betaFl 1 = no beta wall force
 }
 // Surface-energy weight of the wall between domains a and b (2026-11-18). 0 inside one domain. With
 // inter = 0 every other domain counts (the original rule). With ?betainter (USER_BETA_INTER) only walls
@@ -939,7 +940,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   // operator -0.5*Lap is the diagonal (beta/2)*nface/h -- the Robin ghost cell gives 0.5*(-beta*h*u)/h^2 per face.
   // It was beta*nface/h: the state relaxed under TWICE the beta the energy is evaluated at (the convex E(beta) noted
   // above). Every molecule.js run with beta > 0 before this date used an effective 2*beta in the psi update.
-  let vBeta = 0.5 * p.beta * nface * p.inv_h;
+  let vBeta = 0.5 * atoms[myL].betaD * nface * p.inv_h;   // per-domain beta (2026-11-25); = p.beta unless USER_BETA_D
   let vExt = p.fieldX * (f32(i) - f32(p.NN) * 0.5) * p.h;
   Uo[id] = uc + select(${HD_C.toFixed(8)}, ${HD_S.toFixed(8)}, myL >= ${FIRST_SHELL}u) * lap + p.dt * (K[id] - 2.0 * Pi[id] - vBeta - vExt) * uc;
 }
@@ -1043,7 +1044,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   // operator -0.5*Lap is the diagonal (beta/2)*nface/h -- the Robin ghost cell gives 0.5*(-beta*h*u)/h^2 per face.
   // It was beta*nface/h: the state relaxed under TWICE the beta the energy is evaluated at (the convex E(beta) noted
   // above). Every molecule.js run with beta > 0 before this date used an effective 2*beta in the psi update.
-  let vBeta = 0.5 * p.beta * nface * p.inv_h;
+  let vBeta = 0.5 * atoms[myL].betaD * nface * p.inv_h;   // per-domain beta (2026-11-25); = p.beta unless USER_BETA_D
   let vExt = p.fieldX * (f32(i) - f32(p.NN) * 0.5) * p.h;
   let itpStep = uc + select(${HD_C.toFixed(8)}, ${HD_S.toFixed(8)}, myL >= ${FIRST_SHELL}u) * lap + p.dt * (K[id] - 2.0 * Pi[id] - vBeta - vExt) * uc;
 
@@ -1180,7 +1181,9 @@ ${(function() {
   // This is what was missing when beta entered only the psi equation: the partition stayed
   // optimal for beta=0 and was merely evaluated at beta>0, which showed up as E(beta) coming
   // out convex where a minimum over psi of quantities linear in beta must be concave.
-  if (p.beta != 0.0 && bestOtherL != myL && p.betaInter < 1.5) {   // core-only beta: a flip leaves the core faces unchanged
+  // 2026-11-25: betaFl = 1 (USER_BETA_NOWALL) switches this force off -- walls then move by the density-continuity
+  // rule alone, the agreed interface rule; beta enters the psi equation and the energy only.
+  if (p.beta != 0.0 && bestOtherL != myL && p.betaInter < 1.5 && atoms[myL].betaFl < 0.5) {   // core-only beta: a flip leaves the core faces unchanged
     // General form: dE = sum over the six neighbours n of (U_c^2 + U_n^2) [w(j, l_n) - w(i, l_n)], w = betaW.
     // With every wall weighted 1 this is exactly U_c^2 (cnt_i - cnt_j) + S_i - S_j.
     let Ai = atoms[myL]; let Aj = atoms[bestOtherL]; let bI = p.betaInter;
@@ -1198,7 +1201,7 @@ ${(function() {
     let fb_kp = betaW(l_kp, myL, atoms[l_kp], Ai, bI); let fb_km = betaW(l_km, myL, atoms[l_km], Ai, bI);
     let nb0 = fb_ip + fb_im + fb_jp + fb_jm + fb_kp + fb_km;
     let wIso = select(1.0, betaArea(fb_ip, fb_im, fb_jp, fb_jm, fb_kp, fb_km, p.betaIso) / max(nb0, 1.0), p.betaIso != 0.0 && nb0 > 0.0);
-    w += p.beta * p.h * wIso * dEsurf / max(myRho + bestOtherRho, 1e-12);
+    w += 0.5 * (Ai.betaD + Aj.betaD) * p.h * wIso * dEsurf / max(myRho + bestOtherRho, 1e-12);   // per-domain: mean of the two
   }
 
   // curvReg is the same force with an arbitrary coefficient, no U^2 weighting and the wrong
@@ -2246,7 +2249,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>,
       } else {
         nfaceE = betaArea(fE_ip, fE_im, fE_jp, fE_jm, fE_kp, fE_km, p.betaIso);
       }
-      sn[lid * NR]      += 0.5 * p.beta * rho * nfaceE * p.h2;
+      sn[lid * NR]      += 0.5 * atoms[myL].betaD * rho * nfaceE * p.h2;   // per-domain beta (2026-11-25)
     }
     sn[lid * NR + 1u]   += -K[id] * rho * p.h3;
     sn[lid * NR + 2u]   += Pv[id] * rho * p.h3;
@@ -3365,6 +3368,11 @@ function fillAtomBuf() {
     // point. Pair it with USER_MULTI_OCC: a uniform domain of charge Z has Z(Z-1)/2 real pairs,
     // not Z^2/2, and the i!=j rule throws away all of it.
     af[off + 19] = (window.USER_HOMOG && window.USER_HOMOG[n]) ? 1 : 0;
+    // Per-domain Robin beta (2026-11-25): USER_BETA_D[n] = sqrt(-2 eps_n) from the domain's own eigenvalue; entries
+    // left undefined take the global ?beta. The global p.beta still switches the surface terms on (must be != 0).
+    const bD = window.USER_BETA_D;
+    af[off + 20] = (bD && bD[n] !== undefined && bD[n] !== null) ? bD[n] : betaSurf;
+    af[off + 21] = window.USER_BETA_NOWALL ? 1 : 0;
   }
   device.queue.writeBuffer(atomBuf, 0, ab);
 }
