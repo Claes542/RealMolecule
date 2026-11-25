@@ -16,7 +16,7 @@ while [ $T -lt $3 ]; do
   while [ $T -lt $3 ]; do
     sleep 5; T=$((T+5))
     if grep -q -E "DUMPED|DUMP failed" $2; then done=1; break; fi
-    s=$(grep -o 'step=[0-9]*' $2 | tail -1)
+    s=$(grep -oE 'step=[0-9]+|Step [0-9]+' $2 | tail -1)   # 2026-11-25: also the per-50-step 'Step N:' lines (BLOG alone is too sparse at h0.05: false stalls)
     if [ "$s" = "$last" ]; then still=$((still+5)); else still=0; last=$s; fi
     if [ $still -ge 600 ]; then stalled=1; break; fi
   done
