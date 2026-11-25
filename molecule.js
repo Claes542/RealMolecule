@@ -531,7 +531,7 @@ struct P {
   beta: f32, fieldX: f32, betaInter: f32, betaIso: f32,
 }`;
 
-const ATOM_STRIDE = 22; // 8 base + 6 split + 3 cylinder origin + 2 shell (q,R) + 1 homog flag + betaD + betaFl
+const ATOM_STRIDE = 23; // 8 base + 6 split + 3 cylinder origin + 2 shell (q,R) + 1 homog flag + betaD + betaFl + pairId
 const ATOM_BUF_BYTES = MAX_ATOMS * ATOM_STRIDE * 4;
 const atomStructWGSL = `
 struct Atom {
@@ -542,6 +542,7 @@ struct Atom {
   cylOX: f32, cylOY: f32, cylOZ: f32,
   shellQ: f32, shellR: f32, homog: f32,
   betaD: f32, betaFl: f32,   // 2026-11-25: this domain's Robin beta (USER_BETA_D, default ?beta); betaFl 1 = no beta wall force
+  pairId: f32,               // 2026-11-25: USER_PAIR_ID; two domains with the same id > 0 are one singlet pair split in two: their wall is free
 }
 // Surface-energy weight of the wall between domains a and b (2026-11-18). 0 inside one domain. With
 // inter = 0 every other domain counts (the original rule). With ?betainter (USER_BETA_INTER) only walls
@@ -549,6 +550,7 @@ struct Atom {
 // share free walls at beta = 0.
 fn betaW(a: u32, b: u32, A: Atom, B: Atom, inter: f32) -> f32 {
   if (a == b) { return 0.0; }
+  if (A.pairId > 0.5 && abs(A.pairId - B.pairId) < 0.5) { return 0.0; }   // inside one singlet pair (2split): free
   if (inter == 0.0) { return 1.0; }
   if (abs(A.posI - B.posI) + abs(A.posJ - B.posJ) + abs(A.posK - B.posK) > 0.01) { return 1.0; }
   return 0.0;
@@ -3373,6 +3375,9 @@ function fillAtomBuf() {
     const bD = window.USER_BETA_D;
     af[off + 20] = (bD && bD[n] !== undefined && bD[n] !== null) ? bD[n] : betaSurf;
     af[off + 21] = window.USER_BETA_NOWALL ? 1 : 0;
+    // Pair id (2026-11-25): a 2split singlet pair across two domains (e.g. an X-X bond, one electron on each atom) keeps a
+    // FREE wall between its halves while ?betainter puts the Pauli wall on every other wall between the atoms.
+    af[off + 22] = (window.USER_PAIR_ID && window.USER_PAIR_ID[n]) ? window.USER_PAIR_ID[n] : 0;
   }
   device.queue.writeBuffer(atomBuf, 0, ab);
 }
@@ -3964,6 +3969,11 @@ async function initGPU() {
           const id = base + k, L = lab[id];
           if (lab[id + S2] !== L || lab[id - S2] !== L || lab[id + S] !== L ||
               lab[id - S] !== L || lab[id + 1] !== L || lab[id - 1] !== L) continue;
+          // 2026-11-25: cells the solver excludes hold psi exactly 0 even where this core test does not see them (sector
+          // atoms with ?inner, kernels off-grid); a zero neighbour is an exclusion, not interior. Without this the F2
+          // Rayleigh quotient came out +3..+4 (the kinetic jumps to zero cells, ~4x T) where the state is bound.
+          if (psi[id] === 0 || psi[id + S2] === 0 || psi[id - S2] === 0 || psi[id + S] === 0 ||
+              psi[id - S] === 0 || psi[id + 1] === 0 || psi[id - 1] === 0) continue;
           if (inCore(i, j, k, L) ||
               inCore(i + 1, j, k, L) || inCore(i - 1, j, k, L) ||
               inCore(i, j + 1, k, L) || inCore(i, j - 1, k, L) ||
@@ -4039,7 +4049,7 @@ async function initGPU() {
         if (lab[idn] !== L) {
           return BC_WALL === 'd' ? 0 : BC_WALL === 'x' ? psi[idn] : psi[id];
         }
-        if (inCore(ci, cj, ck, L)) {
+        if (inCore(ci, cj, ck, L) || (psi[idn] === 0 && psi[id] !== 0)) {
           return BC_CORE === 'd' ? 0 : BC_CORE === 'x' ? psi[idn] : psi[id];
         }
         return psi[idn];
@@ -5805,7 +5815,8 @@ async function doSteps(n) {
     window.USER_BETA_D = bD; window._betaSC = rr.perDomain.map(o => [o.dom, o.eps]);
     fillAtomBuf();
     console.log('BETASC step ' + tStep + ' eps ' + rr.perDomain.map(o => o.dom + ':' + o.eps.toFixed(4)).join(' ') +
-                ' beta ' + rr.perDomain.map(o => bD[o.dom].toFixed(3)).join(','));
+                ' beta ' + rr.perDomain.map(o => bD[o.dom].toFixed(3)).join(',') +
+                (rr.terms ? ' | readout norm ' + rr.terms.norm.toFixed(3) + ' T ' + rr.terms.Tgrad.toFixed(4) + ' VeK ' + rr.terms.Ven.toFixed(4) + ' Vee ' + rr.terms.Vee.toFixed(4) : ''));
   }
   {
     const _dq = new URLSearchParams(location.search), _da = +_dq.get('dumpat');
