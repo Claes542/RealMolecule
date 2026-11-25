@@ -935,7 +935,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       nface = betaArea(f_ip, f_im, f_jp, f_jm, f_kp, f_km, p.betaIso);
     }
   }
-  let vBeta = p.beta * nface * p.inv_h;
+  // 2026-11-24 FIX: the energy carries (beta/2) INT psi^2 dS (energy shader below), whose variation with the kinetic
+  // operator -0.5*Lap is the diagonal (beta/2)*nface/h -- the Robin ghost cell gives 0.5*(-beta*h*u)/h^2 per face.
+  // It was beta*nface/h: the state relaxed under TWICE the beta the energy is evaluated at (the convex E(beta) noted
+  // above). Every molecule.js run with beta > 0 before this date used an effective 2*beta in the psi update.
+  let vBeta = 0.5 * p.beta * nface * p.inv_h;
   let vExt = p.fieldX * (f32(i) - f32(p.NN) * 0.5) * p.h;
   Uo[id] = uc + select(${HD_C.toFixed(8)}, ${HD_S.toFixed(8)}, myL >= ${FIRST_SHELL}u) * lap + p.dt * (K[id] - 2.0 * Pi[id] - vBeta - vExt) * uc;
 }
@@ -1035,7 +1039,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       nface = betaArea(f_ip, f_im, f_jp, f_jm, f_kp, f_km, p.betaIso);
     }
   }
-  let vBeta = p.beta * nface * p.inv_h;
+  // 2026-11-24 FIX: the energy carries (beta/2) INT psi^2 dS (energy shader below), whose variation with the kinetic
+  // operator -0.5*Lap is the diagonal (beta/2)*nface/h -- the Robin ghost cell gives 0.5*(-beta*h*u)/h^2 per face.
+  // It was beta*nface/h: the state relaxed under TWICE the beta the energy is evaluated at (the convex E(beta) noted
+  // above). Every molecule.js run with beta > 0 before this date used an effective 2*beta in the psi update.
+  let vBeta = 0.5 * p.beta * nface * p.inv_h;
   let vExt = p.fieldX * (f32(i) - f32(p.NN) * 0.5) * p.h;
   let itpStep = uc + select(${HD_C.toFixed(8)}, ${HD_S.toFixed(8)}, myL >= ${FIRST_SHELL}u) * lap + p.dt * (K[id] - 2.0 * Pi[id] - vBeta - vExt) * uc;
 
