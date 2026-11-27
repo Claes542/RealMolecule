@@ -57,6 +57,9 @@ const observed = {
   '36:2+4+4+4+4+4+4+4+4+4': { E: -2752, name: 'Kr', fix: 0, D: 12 },
 };
 
+let btnModel;
+// Slider defaults (shells 2..6 after the fixed 2), both giving boron, Z=5: walls 2+3, basic 2+2+1.
+const DEF_BASIC = [2, 1, 0, 0, 0], DEF_WALLS = [3, 0, 0, 0, 0];
 let sliderZ, sliders = [], btnStart, btnReset, btnLog, btnSweep, btnFull, btnFull2, inpZmax;
 let batchRunning = false, sweepStatus = '';
 // Full-table run: show the radial densities for each element in turn instead of a status line.
@@ -110,8 +113,8 @@ function setup() {
 
   // Manual mode keeps 5 shell sliders (light atoms, spot checks); heavy atoms use the sweep.
   for (let s = 0; s < 5; s++) {
-    const DEF = [2, 1, 0, 0, 0];               // 2 (hardwired) + 2+1 = 5 = Z above
-    let sl = createSlider(0, 4, DEF[s], 1);
+    const DEF = CELLS ? DEF_WALLS : DEF_BASIC;  // 2 (hardwired) + sliders = 5 = Z above
+    let sl = createSlider(0, CELLS ? 8 : 4, DEF[s], 1);
     sl.position(160 + s * 90, 520);
     sl.style('width', '70px');
     sliders[s] = sl;
@@ -136,9 +139,13 @@ function setup() {
   // The convergence sweep had no role here -- the mesh is chosen by Z, not explored -- so it
   // is no longer offered; ?auto=conv still reaches it.
   btnFull = createButton('Periodic table  2..18');  BY(btnFull, 20, 640);
-  btnFull.mousePressed(function () { runFullTable(2, 18); });
+  btnFull.mousePressed(function () { runFullTable(2, CELLS ? 20 : 18); });
   btnFull2 = createButton('Periodic table  19..36'); BY(btnFull2, 210, 640);
   btnFull2.mousePressed(function () { runFullTable(19, 36); });
+  // MODEL SWITCH. Walls model (default) <-> the paper's basic model, each on its own solver.
+  btnModel = createButton('');  BY(btnModel, 180, 595);
+  btnModel.mousePressed(function () { if (!batchRunning) setModel(!CELLS); });
+  setModel(CELLS);
 
 }
 
@@ -150,6 +157,30 @@ function setup() {
 // the build-up with nothing supplied; from Z=21 it is taken from observation, because the d
 // charges belong inside the s pair that fills before them and an outward build-up cannot reach
 // that. The arrangement is still radial -- the solver handles it perfectly well once told.
+// Switch between the two models. WALLS: octet as one shell of one-electron cells, partner / Pauli wall costs, solved by
+// the direct solver at N=DIRECT_N, D=12. BASIC: the paper's model (free walls, 4+4 packing), time stepping at N=400.
+function setModel(walls) {
+  running = false; fullRows = [];
+  CELLS = walls;
+  DIRECT = walls || /[?&]solver=direct(?:&|$)/.test(QS);
+  N = DIRECT ? DIRECT_N : ITP_N;
+  DS = null;
+  const DEF = walls ? DEF_WALLS : DEF_BASIC;
+  for (let s = 0; s < sliders.length; s++) { sliders[s].elt.max = walls ? 8 : 4; sliders[s].value(DEF[s]); }
+  if (btnModel) btnModel.html(walls ? 'Model: walls  (switch to basic)' : 'Model: basic  (switch to walls)');
+  if (btnFull) btnFull.html(walls ? 'Periodic table  2..20' : 'Periodic table  2..18');
+  if (btnFull2) { if (walls) btnFull2.hide(); else btnFull2.show(); }
+}
+// Walls-model configurations: the octet is ONE shell of 8 cells (cube), so 2, 2+n, 2+8+n, 2+8+8+n. Cells are tabulated
+// for n <= 8, so the model stops at calcium; the d block would need a shell of 10.
+function genConfigOctet(Z) {
+  if (Z <= 2) return [Z];
+  if (Z <= 10) return [2, Z - 2];
+  if (Z <= 18) return [2, 8, Z - 10];
+  if (Z <= 20) return [2, 8, 8, Z - 18];
+  throw new Error('walls model is tabulated through calcium (Z=20)');
+}
+
 async function runFullTable(zlo, zhi) {
   if (batchRunning) return;
   batchRunning = true; running = false; batchPlot = true;
@@ -177,14 +208,14 @@ async function runFullTable(zlo, zhi) {
     // CUSP-LIMITED and first order in h, so halving the mesh doubled it: Li went -0.6% to -2.9%
     // and B -2.6% to -5.6%, a factor of two in each case. Resolution at the nucleus is what the
     // light atoms need; resolution of the 1s is what the heavy ones need.
-    N = (Z <= 18) ? 400 : 800;
+    N = DIRECT ? DIRECT_N : ((Z <= 18) ? 400 : 800);
     const steps = Math.round(3000 * (N/400) * (N/400));
-    batchNote = (Z >= 19)
+    batchNote = DIRECT ? 'direct solver, mesh N=' + N + ', box D=12' : (Z >= 19)
       ? 'mesh N=800 from Z=19: about 8x the work per atom, so the scan slows here'
       : 'mesh N=400';
     try {
       PK_MODE = false;
-      cfg = genConfigObserved(Z);
+      cfg = CELLS ? genConfigOctet(Z) : genConfigObserved(Z);
       res = solveAtomPure(Z, cfg, steps);
       ref = REF_ETOT[Z];
       err = (ref != null && isFinite(res.etot)) ? (res.etot - ref) / ref * 100 : NaN;
@@ -201,7 +232,8 @@ async function runFullTable(zlo, zhi) {
         ref != null ? ref.toFixed(4) : '', isNaN(err) ? '' : err.toFixed(2), N].join(','));
       fullRows.push({ el: EL[Z] || ('Z' + Z), Z: Z, cfg: cfg.join('+'),
                       E: isFinite(res.etot) ? res.etot : null, ref: ref,
-                      err: isNaN(err) ? null : err, N: N, src: configSource(Z) });
+                      err: isNaN(err) ? null : err, N: N, src: configSource(Z),
+                      IE: res.IE_eV, IEx: NIST_IE1[Z] });
     } catch (e) {
       batchCaption = (EL[Z] || 'Z=' + Z) + '   failed: ' + (e && e.message);
       rows.push([Z, EL[Z] || '', (cfg||[]).join('+'), derived ? 'yes' : 'no', 'ERROR'].join(','));
@@ -537,6 +569,7 @@ function genConfigObserved(Z) {
 // move that puts it there. The capacities (2, and 8 = 4+4) are derived in every case; what
 // varies is the filling.
 function configSource(Z) {
+  if (CELLS) return 'octet shell';
   if (Z <= 6)  return 'build-up';
   if (Z <= 20) return 'balanced rule';
   return 'ionisation order';
@@ -732,6 +765,7 @@ async function runValenceTest() {
 }
 
 // NIST first ionization energies (eV), keyed by Z, for in-sweep error reporting.
+const ELNAME = ['', 'H', 'He', 'Li', 'Be', 'B', 'C', 'N', 'O', 'F', 'Ne', 'Na', 'Mg', 'Al', 'Si', 'P', 'S', 'Cl', 'Ar', 'K', 'Ca'];
 const NIST_IE1 = {
   1:13.598, 2:24.587, 3:5.392, 4:9.323, 5:8.298, 6:11.260, 7:14.534, 8:13.618,
   9:17.423, 10:21.565, 11:5.139, 12:7.646, 13:5.986, 14:8.152, 15:10.487, 16:10.360,
@@ -761,6 +795,29 @@ const REF_ETOT = {
 
 // Computed total energies (balanced cap-4 packing) vs reference, Z=2..18.
 // [element, Z, config, E_RealQM (Ha), E_ref (Ha)]
+// Walls model, as this page computes it by default (direct solver, N=4000, D=12): [el, Z, config, E (Ha), exact (Ha),
+// valence-eigenvalue IE (eV)]. GENERATED from the page itself, 2026-11-28; cf. runs_cc/oct_shell_1d_*_damped.out.
+const RESULTS_WALLS = [
+  ['He', 2, '2', -2.7663, -2.9037, 25.93],
+  ['Li', 3, '2+1', -7.2682, -7.4781, 4.91],
+  ['Be', 4, '2+2', -14.3992, -14.6674, 9.28],
+  ['B', 5, '2+3', -24.2159, -24.6539, 11.65],
+  ['C', 6, '2+4', -37.4633, -37.8450, 15.48],
+  ['N', 7, '2+5', -54.0566, -54.5892, 17.96],
+  ['O', 8, '2+6', -75.0496, -75.0673, 21.72],
+  ['F', 9, '2+7', -100.1429, -99.7339, 23.98],
+  ['Ne', 10, '2+8', -131.7641, -128.9376, 28.43],
+  ['Na', 11, '2+8+1', -162.2872, -162.2546, 3.92],
+  ['Mg', 12, '2+8+2', -198.8384, -200.0530, 6.47],
+  ['Al', 13, '2+8+3', -238.7182, -242.3460, 8.10],
+  ['Si', 14, '2+8+4', -283.2148, -289.3590, 10.45],
+  ['P', 15, '2+8+5', -331.7313, -341.2590, 12.15],
+  ['S', 16, '2+8+6', -387.4847, -398.1100, 14.51],
+  ['Cl', 17, '2+8+7', -445.9262, -460.1480, 16.09],
+  ['Ar', 18, '2+8+8', -512.8678, -527.5400, 18.48],
+  ['K', 19, '2+8+8+1', -577.1867, -599.2300, 3.07],
+  ['Ca', 20, '2+8+8+2', -646.5073, -676.7580, 4.69],
+];
 const RESULTS = [
   // The whole table as this model computes it: Z = 2..36, periods of length 2, 8, 8, 18,
   // closing at He, Ne, Ar, Kr. All-electron, bare kernel, NO constant adjusted anywhere.
@@ -2038,6 +2095,12 @@ function solveAtomPure(Znuc, arr, maxSteps, opts) {
   // and `(opts.tol) || 1e-4` would silently restore the default.
   const chk = (opts && opts.chkEvery !== undefined) ? opts.chkEvery : 20;
   const tol = (opts && opts.tol !== undefined) ? opts.tol : 1e-4;
+  if (DIRECT) {
+    // SCF iterations, not time steps: maxSteps (sized for dt = h^2/2) does not apply
+    const cap = (opts && opts.directMaxIt) || 5000;
+    while (!DS.conv && DS.it < cap) macroStep();
+    iters = DS.it;
+  } else
   for (let it = 0; it < ms; it++) {
     macroStep();
     iters = it + 1;
@@ -2056,7 +2119,8 @@ function solveAtomPure(Znuc, arr, maxSteps, opts) {
   return { etot: etot, iters: iters, epsVal: epsVal, IE_eV: -epsVal * 27.2114,
            IE_energy_eV: -enVal * 27.2114,
            Zker: Znuc - nCore, rc: M[val] * h,
-           ne: arr.reduce((a, b) => a + b, 0), cfg: arr.join('+') };
+           ne: arr.reduce((a, b) => a + b, 0), cfg: arr.join('+'),
+           converged: DIRECT ? DS.conv : undefined };
 }
 
 // One-click periodic-table sweep: for each Z, solve neutral + cation, write two CSVs.
@@ -2166,6 +2230,7 @@ function initArrays() {
   // window.USER_D_BOX, if set, overrides every branch above -- including the observed[] table,
   // which supplies D=5 for Li and clamped the ionization ladder before any plateau. Placed LAST
   // deliberately: an explicit override must win over the config lookup, not sit in its else.
+  if (CELLS) D = 12;                          // walls model: one box for every atom (runs_cc/oct_shell_1d.py, D 12)
   if (window.USER_D_BOX !== undefined) D = window.USER_D_BOX;
   cuspZ = PK_MODE ? 0 : Z;                     // no nuclear cusp in soft pseudo-kernel
 
@@ -2236,6 +2301,7 @@ function initArrays() {
   computePoisson();
   step = 0;
   for (let s = 0; s < MAXSHELLS; s++) { energy[s] = 0; normu[s] = 0; eps[s] = 0; }
+  if (DIRECT) directInit();
 }
 
 function computePoisson() {
@@ -2361,9 +2427,271 @@ function relaxGraded(s, lo, hi, dtUse) {
   }
 }
 
+// ===========================================================================================
+//  DIRECT SOLVER (?solver=direct, 2026-11-27).  SAME MODEL, DIFFERENT ALGORITHM.
+//
+//  The three updates above relax u in imaginary time with an explicit step dt = h^2/2, so the
+//  step count grows as N^2 and a converged mesh (N ~ 4000-16000) is out of reach. Here each
+//  shell's lowest state is computed DIRECTLY: with f = r*u and piecewise-linear elements,
+//      1/2 INT (u')^2 r^2 dr over [a,b] = 1/2 INT f'^2 dr - f(b)^2/(2b) + f(a)^2/(2a)   (a > 0)
+//  and f(0) = 0 at the nucleus, so a free (Neumann) wall costs nothing and each shell is a
+//  symmetric TRIDIAGONAL eigenproblem (lumped mass), solved by Sturm bisection + inverse
+//  iteration. Around it: the same Hartree sums (1/2 across shells, 1/2 (N_s-1)/N_s within),
+//  the same free walls moved to CONTINUITY of u (step proportional to log(u_in/u_out)), the
+//  same ?beta surface energy (beta/2) u(R)^2 R^2 per wall side (window.USER_SHELL_BETA), and
+//  window.USER_FIX_WALLS / PK_MODE honoured. One call of macroStep = one SCF iteration (density
+//  mixing 1/2). Mirrors runs_cc/hardwall_1d.py line for line (Be 2+2, D 7: -15.0210 at N 4000).
+//  Not ported: the innerSphere cusp correction and the GRADED mesh (both off by default).
+//  Mesh: ?dN=<N> (default 4000) when ?solver=direct is given.
+// ===========================================================================================
+// DEFAULTS (2026-11-28). The page opens on the WALLS MODEL (CELLS below) solved by this direct solver. The paper's basic
+// model -- free walls, 4+4 packing, time stepping at N=400 -- is one button away ("Model" in setup), or ?model=basic.
+//   ?model=basic (or ?cells=0)  basic model, time stepping, exactly as before
+//   ?solver=direct&cells=0      basic model on the direct solver (converged mesh)
+//   ?solver=itp                 time stepping (basic model)
+const QS = (typeof location !== 'undefined') ? (location.search || '') : '';
+const ITP_N = N;                                                     // time-stepping mesh (runFullTable sets its own)
+const DIRECT_N = parseInt((QS.match(/[?&]dN=(\d+)/) || [])[1] || '4000', 10);
+const WANT_BASIC = /[?&](?:model=basic|cells=0)(?:&|$)/.test(QS) || /[?&]solver=itp(?:&|$)/.test(QS);
+let DIRECT = !WANT_BASIC || /[?&]solver=direct(?:&|$)/.test(QS);
+if (DIRECT) N = DIRECT_N;
+let DS = null;
+const DIRECT_TOL = 1e-10;
+// ?pauli=1 (window.USER_PAULI_RADIAL, 2026-11-27, direct solver only): the radial walls between shells are walls between
+// DIFFERENT PAIRS (pair rule), so each side costs the Pauli value beta = sqrt(-2 eps_s), eps_s that shell's own eigenvalue
+// (previous iteration). Nothing fitted. runs_cc/angular_walls_1d.py variant 'rad': Li-Ne within -1.4..+2.1% at N 16000
+// (free walls -8.0..-0.7%); row 3 drifts to +6% at Ar (pauli_radial_row3_*.out). Overrides ?beta on those walls.
+let PAULI_RADIAL = (typeof location !== 'undefined') && /[?&]pauli=1(?:&|$)/.test(location.search || '');
+// ?cells=1 (window.USER_CELLS, 2026-11-27, direct solver only): each shell of n is n ONE-ELECTRON CELLS at one radius
+// (2 hemispheres, 3 lunes, 4 tetrahedron, 5 trigonal bipyramid, 6 octahedron, 7 pentagonal bipyramid, 8 CUBE = two dual
+// tetrahedra), spherically averaged with what the averaging loses put back, nothing fitted:
+//   (a) SEPARATED CELLS: intra-shell repulsion = the (N-1)/N monopole MINUS 1/2 sum_{l=1..20} S_l F_l (multipoles of the
+//       cells; F_l the shell's radial Slater integral). He: 1D -3.020 vs 2D axisym 2split -3.026.
+//   (b) ANGULAR WALLS: Robin cell walls give the radial term lambda_n(beta r)/(2 r^2) (cap eigenvalue of the cell);
+//       pair rule: floor(n/2) partner walls at beta_H2 (H2 calibration), the rest Pauli sqrt(-2 eps_shell).
+//   (c) RADIAL PAULI WALLS as ?pauli=1.  The Pauli eigenvalues are damped (0.3): undamped, beta(eps) oscillates.
+// Use with shells up to 8 (octet as ONE shell): runs_cc/oct_shell_1d.py, Li-Ar -2.2..+3.1% at N 4000, valence IE of the
+// right size and pattern (oct_shell_1d_4000_damped.out); He +4.7% fails. Sliders go to 8 when set.
+let CELLS = DIRECT && !WANT_BASIC;   // default ON (see DEFAULTS above); ?cells=1 still accepted
+// CELL DATA for ?cells=1 -- GENERATED by runs_cc/angular_walls_1d.py (cell_S.npy, cell_S8.npy), 2026-11-27. Do not edit by hand.
+const CELLDATA = {"beta_h2":0.1548,"kgrid":[0.0,0.0001,0.00011220185,0.00012589254,0.00014125375,0.00015848932,0.00017782794,0.00019952623,0.00022387211,0.00025118864,0.00028183829,0.00031622777,0.00035481339,0.00039810717,0.00044668359,0.00050118723,0.00056234133,0.00063095734,0.00070794578,0.00079432823,0.00089125094,0.001,0.0011220185,0.0012589254,0.0014125375,0.0015848932,0.0017782794,0.0019952623,0.0022387211,0.0025118864,0.0028183829,0.0031622777,0.0035481339,0.0039810717,0.0044668359,0.0050118723,0.0056234133,0.0063095734,0.0070794578,0.0079432823,0.0089125094,0.01,0.011220185,0.012589254,0.014125375,0.015848932,0.017782794,0.019952623,0.022387211,0.025118864,0.028183829,0.031622777,0.035481339,0.039810717,0.044668359,0.050118723,0.056234133,0.063095734,0.070794578,0.079432823,0.089125094,0.1,0.11220185,0.12589254,0.14125375,0.15848932,0.17782794,0.19952623,0.22387211,0.25118864,0.28183829,0.31622777,0.35481339,0.39810717,0.44668359,0.50118723,0.56234133,0.63095734,0.70794578,0.79432823,0.89125094,1.0,1.1220185,1.2589254,1.4125375,1.5848932,1.7782794,1.9952623,2.2387211,2.5118864,2.8183829,3.1622777,3.5481339,3.9810717,4.4668359,5.0118723,5.6234133,6.3095734,7.0794578,7.9432823,8.9125094,10.0,11.220185,12.589254,14.125375,15.848932,17.782794,19.952623,22.387211,25.118864,28.183829,31.622777,35.481339,39.810717,44.668359,50.118723,56.234133,63.095734,70.794578,79.432823,89.125094,100.0,112.20185,125.89254,141.25375,158.48932,177.82794,199.52623,223.87211,251.18864,281.83829,316.22777,354.81339,398.10717,446.68359,501.18723,562.34133,630.95734,707.94578,794.32823,891.25094,1000.0,1122.0185,1258.9254,1412.5375,1584.8932,1778.2794,1995.2623,2238.7211,2511.8864,2818.3829,3162.2777,3548.1339,3981.0717,4466.8359,5011.8723,5623.4133,6309.5734,7079.4578,7943.2823,8912.5094,10000.0],"cells":{"2":{"sc":1.0,"walls":1,"partners":1,"lam":[-2.1603475e-10,9.9996697e-05,0.00011219691,0.00012588697,0.00014124578,0.00015847972,0.00017781541,0.00019951052,0.0002238525,0.00025116461,0.0002818071,0.00031618909,0.00035476505,0.00039804552,0.00044660662,0.0005010901,0.0005622188,0.00063080386,0.00070775181,0.00079408492,0.00089094351,0.00099961345,0.0011215321,0.0012583134,0.0014117667,0.0015839236,0.0017770587,0.0019937246,0.0022367866,0.0025094509,0.0028153163,0.0031584181,0.003543276,0.0039749558,0.0044591378,0.0050021834,0.0056112172,0.0062942217,0.0070601358,0.0079189639,0.008881903,0.0099614801,0.011171708,0.01252825,0.014048609,0.015752336,0.017661254,0.019799708,0.022194837,0.024876867,0.027879438,0.031239946,0.034999913,0.039205383,0.043907341,0.049162143,0.055031961,0.061585239,0.068897132,0.077049932,0.08613345,0.09624534,0.10749132,0.11998529,0.1338492,0.14921281,0.16621304,0.18499301,0.20570065,0.22848671,0.25350221,0.28089518,0.31080656,0.34336536,0.3786829,0.41684634,0.45791157,0.50189565,0.54876927,0.59844968,0.65079466,0.70559826,0.76258911,0.82143188,0.88173232,0.9430463,1.0048924,1.0667674,1.1281642,1.1885896,1.2475819,1.3047255,1.3596629,1.4121023,1.4618209,1.5086643,1.5525432,1.5934268,1.6313355,1.6663318,1.6985122,1.7279989,1.7549322,1.7794641,1.8017532,1.8219598,1.8402425,1.856756,1.8716487,1.8850615,1.897127,1.9079692,1.917703,1.9264345,1.9342612,1.9412724,1.9475494,1.9531663,1.9581902,1.962682,1.9666966,1.9702836,1.9734876,1.9763489,1.9789035,1.9811838,1.9832191,1.9850352,1.9866556,1.9881013,1.9893908,1.990541,1.9915669,1.9924817,1.9932975,1.994025,1.9946736,1.9952519,1.9957675,1.9962272,1.996637,1.9970023,1.9973279,1.9976182,1.997877,1.9981077,1.9983133,1.9984966,1.99866,1.9988056,1.9989354,1.999051,1.9991541,1.999246,1.999328,1.999401,1.999466,1.999524,1.9995757,1.9996218,1.9996629,1.9996995],"S":[0.5,0.125,1.4271579e-09,0.0078125034,1.0726085e-09,0.0019531317,1.228977e-09,0.00076294376,1.1966429e-08,0.0003738431,6.9246176e-09,0.00021028871,5.0374101e-09,0.00012984391,4.2337535e-09,8.5714679e-05,5.473967e-09,5.9524153e-05,5.5096449e-09,4.3008321e-05,4.335705e-09]},"3":{"sc":1.060660172,"walls":3,"partners":1,"lam":[9.4318249e-10,0.00014141744,0.00015867269,0.0001780319,0.00019975541,0.00022412685,0.00025147259,0.00028215592,0.00031658094,0.00035520806,0.00039854434,0.00044717065,0.00050172809,0.00056293934,0.00063162036,0.00070867645,0.00079513337,0.00089213537,0.0010009686,0.0011230763,0.0012600751,0.0014137812,0.0015862288,0.0017797044,0.0019967666,0.0022402905,0.0025134993,0.0028200043,0.0031638621,0.0035496146,0.0039823596,0.0044678106,0.0050123748,0.0056232324,0.006308432,0.0070769977,0.0079390375,0.0089058773,0.0099902071,0.011206238,0.01256988,0.014098949,0.015813385,0.017735488,0.019890209,0.022305437,0.025012335,0.028045719,0.031444439,0.035251852,0.039516273,0.04429153,0.049637521,0.055620834,0.062315404,0.069803226,0.078175082,0.087531321,0.097982654,0.10965095,0.12267003,0.13718641,0.15335998,0.17136459,0.19138842,0.21363412,0.23831869,0.26567288,0.29594008,0.3293745,0.36623865,0.40679968,0.45132476,0.50007497,0.55329798,0.611219,0.67403034,0.74187952,0.81485621,0.89297849,0.9761791,1.0642926,1.1570449,1.2540454,1.3547856,1.4586417,1.564886,1.6727041,1.7812201,1.8895261,1.996715,2.1019147,2.2043187,2.3032128,2.3979939,2.4881822,2.5734244,2.6534909,2.7282665,2.7977374,2.8619764,2.9211261,2.9753837,3.0249863,3.0701978,3.111298,3.1485735,3.1823107,3.2127901,3.2402825,3.2650459,3.2873235,3.3073432,3.3253166,3.3414393,3.3558912,3.3688369,3.3804268,3.3907974,3.400073,3.4083659,3.4157775,3.4223994,3.4283142,3.4335961,3.4383118,3.4425211,3.4462778,3.44963,3.452621,3.4552893,3.4576694,3.4597923,3.4616857,3.4633742,3.4648798,3.4662224,3.4674195,3.4684868,3.4694384,3.4702867,3.471043,3.4717172,3.4723182,3.472854,3.4733316,3.4737573,3.4741367,3.474475,3.4747764,3.4750452,3.4752847,3.4754982,3.4756885,3.4758581,3.4760092,3.476144,3.476264,3.4763711,3.4764665,3.4765515,3.4766273],"S":[0.33333333,0.14062532,0.018996193,0.0032926449,0.0034851997,0.0015953024,0.00059771524,0.00070071396,0.00042014813,0.00020592123,0.00024613699,0.00016766469,9.4533823e-05,0.00011338544,8.2868718e-05,5.1008268e-05,6.1091697e-05,4.7075068e-05,3.0769688e-05,3.6567622e-05,2.922354e-05]},"4":{"sc":1.053387312,"walls":6,"partners":2,"lam":[-1.916068e-11,0.00017320126,0.00019433397,0.00021804653,0.00024465035,0.00027449977,0.00030799211,0.00034557033,0.00038773643,0.00043504343,0.0004881222,0.00054767876,0.00061449701,0.0006894709,0.00077358834,0.00086796878,0.00097386054,0.0010926703,0.0012259712,0.0013755324,0.0015433324,0.0017315994,0.0019428245,0.0021798051,0.0024456848,0.0027439804,0.0030786408,0.0034540955,0.0038753135,0.0043478627,0.0048779926,0.0054727073,0.0061398589,0.0068882582,0.0077277709,0.0086694706,0.009725752,0.010910521,0.012239348,0.013729679,0.015401059,0.017275371,0.019377118,0.021733724,0.024375877,0.027337899,0.030658173,0.034379592,0.038550079,0.043223142,0.048458479,0.054322668,0.060889882,0.068242697,0.07647295,0.085682661,0.095985015,0.10750541,0.12038256,0.13476958,0.15083521,0.16876487,0.18876182,0.21104814,0.23586564,0.26347648,0.29416355,0.3282304,0.36600063,0.40781659,0.45403713,0.50503434,0.56118889,0.62288383,0.6904966,0.76438901,0.84489508,0.93230663,1.0268567,1.1287013,1.2378996,1.3543938,1.4779903,1.6083426,1.7449393,1.8870978,2.0339672,2.1845405,2.3376772,2.4921368,2.6466202,2.799817,2.9504549,3.0973463,3.2394288,3.3757961,3.5057176,3.6286464,3.7442164,3.852231,3.9526446,4.0455413,4.1311109,4.2096257,4.2814192,4.3468664,4.4063675,4.4603342,4.5091791,4.553307,4.5931093,4.6289591,4.6612089,4.6901885,4.7162045,4.7395403,4.7604566,4.779192,4.7959642,4.8109714,4.8243933,4.8363926,4.8471164,4.8566972,4.8652547,4.8728961,4.8797183,4.8858077,4.8912422,4.8960916,4.9004182,4.904278,4.9077209,4.9107917,4.9135304,4.9159727,4.9181506,4.9200925,4.921824,4.9233678,4.9247441,4.9259711,4.927065,4.9280402,4.9289095,4.9296844,4.9303751,4.9309908,4.9315397,4.9320289,4.9324649,4.9328536,4.9332,4.9335088,4.933784,4.9340293,4.934248,4.9344428,4.9346165,4.9347713,4.9349093,4.9350323],"S":[0.25041684,0.13883482,0.033737623,0.0011695825,0.004028864,0.0028673943,0.00014803482,0.00090148928,0.00074679565,3.9634096e-05,0.00034239961,0.00028993148,1.6786412e-05,0.00016702307,0.00013821315,9.8072579e-06,9.4488222e-05,7.5027666e-05,7.0892068e-06,5.8698465e-05,4.4492964e-05]},"5":{"sc":1.073125,"walls":9,"partners":2,"lam":[-1.5643848e-10,0.00019999445,0.00022439931,0.00025177946,0.00028249783,0.00031696525,0.00035564053,0.00039903381,0.00044772028,0.00050234706,0.00056363998,0.00063241049,0.00070956931,0.00079614017,0.00089327346,0.0010022565,0.0011245377,0.0012617294,0.0014156602,0.0015883637,0.0017821338,0.0019995384,0.0022434536,0.0025171181,0.0028241511,0.0031686233,0.0035550954,0.0039886823,0.0044751226,0.0050208528,0.0056330904,0.0063199292,0.0070904458,0.0079548123,0.0089244435,0.010012128,0.011232203,0.012600738,0.014135742,0.015857395,0.017788303,0.019953786,0.022382201,0.025105295,0.028158605,0.031581891,0.035419632,0.039721561,0.044543265,0.049946848,0.056001642,0.062785017,0.070383254,0.07889249,0.088419742,0.099084049,0.11101765,0.12436725,0.13929543,0.155982,0.17462552,0.19544475,0.21868017,0.24459537,0.27347843,0.30564302,0.3414293,0.38120436,0.42536221,0.47432293,0.52853106,0.58845271,0.65457128,0.7273815,0.80738136,0.89506176,0.99089348,1.0953113,1.2086954,1.3313496,1.4634774,1.6051564,1.7563117,1.9166912,2.0858433,2.2631009,2.4475734,2.6381498,2.8335152,3.0321805,3.2325261,3.4328566,3.6314632,3.8266883,4.0169869,4.2009794,4.3774917,4.5455812,4.7045455,4.8539193,4.9934577,5.1231126,5.2430036,5.3533867,5.4546242,5.5471562,5.6314751,5.708105,5.7775834,5.8404479,5.897225,5.9484227,5.9945253,6.0359889,6.0732405,6.1066766,6.1366631,6.1635366,6.1876047,6.2091483,6.2284226,6.2456592,6.2610676,6.2748369,6.2871379,6.2981243,6.3079341,6.3166916,6.3245083,6.331484,6.3377083,6.3432615,6.3482154,6.3526341,6.3565752,6.36009,6.3632243,6.3660193,6.3685114,6.3707334,6.3727145,6.3744807,6.3760553,6.377459,6.3787104,6.3798259,6.3808203,6.3817066,6.3824967,6.383201,6.3838287,6.3843883,6.384887,6.3853315,6.3857278,6.3860809,6.3863957,6.3866762,6.3869263,6.3871492,6.3873478,6.3875248],"S":[-0.8,0.12512179,0.043545433,0.0064106008,0.0017958831,0.0028430371,0.0015064911,0.00060783875,0.0005423341,0.00045347741,0.00030755061,0.00020096956,0.00017076829,0.00015787873,0.00010265941,8.7835583e-05,9.2892047e-05,5.2167408e-05,4.5907634e-05,6.5470536e-05,3.559966e-05]},"6":{"sc":1.052349492,"walls":12,"partners":3,"lam":[1.9965879e-09,0.00022360095,0.00025088648,0.00028149737,0.00031584567,0.00035438085,0.000397619,0.00044613446,0.00050056816,0.00056164428,0.0006301744,0.00070706164,0.00079332984,0.00089011937,0.00099872042,0.0011205688,0.0012572836,0.0014106752,0.0015827788,0.0017758751,0.0019925236,0.0022356003,0.0025083182,0.0028142982,0.0031575938,0.0035427501,0.0039748693,0.0044596743,0.0050035785,0.0056137862,0.0062983674,0.0070663741,0.0079279574,0.0088945083,0.0099787833,0.011195099,0.012559496,0.014089958,0.015806636,0.017732121,0.019891719,0.022313784,0.025030067,0.028076127,0.031491783,0.035321587,0.039615403,0.044428988,0.049824704,0.055872231,0.062649416,0.07024317,0.078750451,0.088279392,0.098950437,0.11089767,0.12427019,0.1392336,0.1559716,0.17468769,0.1956069,0.21897762,0.24507342,0.2741949,0.30667143,0.34286272,0.38316024,0.42798816,0.47780386,0.53309773,0.59439205,0.66223865,0.73721517,0.81991942,0.91096161,1.010954,1.1204974,1.2401649,1.3704811,1.5118991,1.6647725,1.8293259,2.0056225,2.1935321,2.3926999,2.602521,2.8221215,3.0503514,3.285791,3.5267743,3.7714292,4.0177346,4.2635904,4.5068959,4.7456292,4.9779223,5.2021233,5.4168432,5.6209823,5.8137395,5.9946027,6.1633273,6.319904,6.4645221,6.5975313,6.7194038,6.8307001,6.9320392,7.024073,7.1074658,7.182878,7.2509541,7.3123133,7.3675443,7.4172005,7.4617986,7.5018175,7.537699,7.5698483,7.598636,7.6243997,7.647446,7.668053,7.6864721,7.7029301,7.7176317,7.7307609,7.7424832,7.7529474,7.7622867,7.7706209,7.778057,7.7846911,7.7906089,7.7958873,7.800595,7.8047933,7.8085371,7.8118754,7.8148521,7.817506,7.8198721,7.8219816,7.8238622,7.8255387,7.8270332,7.8283655,7.829553,7.8306116,7.8315552,7.8323963,7.833146,7.8338142,7.8344099,7.8349407,7.8354139,7.8358357,7.8362116,7.8365466,7.8368453,7.8371114,7.8373486],"S":[-0.83333333,0.11514625,0.050660982,0.0104915,9.4040045e-05,0.0021340633,0.0027182561,0.00090979163,7.3566145e-05,0.00044913379,0.00057013234,0.00023854348,7.3603525e-05,0.00015792289,0.00018581955,9.91158e-05,4.7457622e-05,7.0387332e-05,8.3430982e-05,5.1382614e-05,2.6127435e-05]},"7":{"sc":1.057363072,"walls":15,"partners":3,"lam":[-2.8454419e-10,0.00024494484,0.00027483113,0.00030836747,0.0003459899,0.00038820797,0.00043557039,0.000488719,0.0005483495,0.00061525561,0.0006903241,0.00077454955,0.00086905393,0.00097508168,0.0010940536,0.0012275327,0.0013772973,0.0015453366,0.0017338702,0.0019454014,0.0021827329,0.0024490149,0.0027477749,0.0030829717,0.0034590491,0.0038809897,0.0043543787,0.0048854876,0.0054813468,0.0061498493,0.0068998335,0.0077412258,0.0086851476,0.0097440827,0.010932009,0.012264624,0.013759502,0.015436368,0.017317309,0.01942709,0.021793467,0.024447527,0.027424103,0.030762197,0.034505499,0.038702901,0.04340913,0.048685408,0.054600219,0.061230111,0.068660633,0.076987321,0.086316828,0.096768133,0.10847386,0.12158172,0.1362561,0.15267973,0.1710555,0.19160839,0.21458749,0.24026811,0.26895393,0.30097923,0.33671101,0.37655099,0.4209375,0.47034695,0.52529484,0.58633614,0.65406474,0.7291117,0.81214204,0.90384962,1.0049498,1.116169,1.238232,1.371844,1.5176703,1.6763108,1.8482702,2.0339247,2.2334852,2.4469587,2.6741104,2.9144283,3.1670943,3.4309662,3.7045736,3.9861316,4.2735753,4.5646139,4.8568047,5.14764,5.4346424,5.7154587,5.9879452,6.2502362,6.5007921,6.7384245,6.9622986,7.1719172,7.3670893,7.5478902,7.714616,7.8677378,8.0078581,8.1356716,8.251931,8.3574193,8.4529263,8.5392319,8.6170926,8.6872322,8.7503354,8.8070447,8.857958,8.9036282,8.9445644,8.9812331,9.0140599,9.0434323,9.069702,9.0931873,9.114176,9.1329278,9.1496764,9.1646321,9.1779842,9.1899021,9.2005383,9.2100291,9.2184968,9.2260507,9.2327888,9.2387986,9.2441585,9.2489382,9.2532004,9.2570009,9.2603895,9.2634107,9.2661043,9.2685056,9.2706464,9.2725548,9.274256,9.2757725,9.2771243,9.2783292,9.2794033,9.2803607,9.281214,9.2819746,9.2826526,9.2832569,9.2837955,9.2842755,9.2847034,9.2850848,9.2854246,9.2857276],"S":[-0.85714286,0.10391125,0.051507932,0.015602453,0.0018787432,0.0011756107,0.0020814714,0.0013726308,0.0005404047,0.00044500441,0.00042984036,0.00023254612,0.00014842685,0.00021970047,0.00019466391,7.842237e-05,4.6437594e-05,9.7713198e-05,9.8826612e-05,4.6891093e-05,2.6793715e-05]},"8":{"sc":1.133184736,"walls":12,"partners":4,"lam":[2.283569e-10,0.00026457267,0.000296853,0.00033307326,0.00037371254,0.00041931196,0.00047047462,0.0005278769,0.00059228538,0.00066455115,0.00074563808,0.00083661145,0.00093868877,0.0010532171,0.0011817184,0.0013258949,0.0014876629,0.0016691644,0.0018728117,0.0021012936,0.002357648,0.0026452738,0.0029679812,0.0033300485,0.0037362722,0.0041920353,0.0047033745,0.0052770647,0.0059207042,0.0066428152,0.0074529461,0.0083618231,0.0093814689,0.010525355,0.011808609,0.013248176,0.014863054,0.016674558,0.018706561,0.020985833,0.023542377,0.026409797,0.029625756,0.033232433,0.037277068,0.041812558,0.0468981,0.052599949,0.058992204,0.066157755,0.074189222,0.083190102,0.093275954,0.10457576,0.11723334,0.13140898,0.14728115,0.16504834,0.18493116,0.20717438,0.23204928,0.25985602,0.29092609,0.32562489,0.36435419,0.4075546,0.45570786,0.50933878,0.56901685,0.63535709,0.70902009,0.79071087,0.88117625,0.98120027,1.0915973,1.2132021,1.346857,1.4933944,1.6536151,1.8282627,2.0179911,2.2233294,2.4446407,2.6820784,2.935542,3.2046329,3.4886166,3.7863937,4.0964845,4.4170324,4.7458299,5.0803672,5.4179058,5.7555706,6.090457,6.4197408,6.7407854,7.051233,7.3490754,7.6326981,7.9008984,8.1528788,8.3882194,8.6068373,8.8089361,8.994953,9.1655057,9.321344,9.4633068,9.592285,9.7091926,9.8149418,9.9104261,9.9965063,10.074002,10.143685,10.206277,10.262448,10.312816,10.357948,10.398363,10.434535,10.466893,10.495827,10.521689,10.544799,10.565443,10.583879,10.60034,10.615034,10.628149,10.639853,10.650295,10.659612,10.667922,10.675335,10.681946,10.687842,10.6931,10.697788,10.701968,10.705695,10.709018,10.711981,10.714622,10.716976,10.719075,10.720946,10.722614,10.7241,10.725425,10.726607,10.72766,10.728598,10.729434,10.73018,10.730845,10.731437,10.731965,10.732435,10.732855,10.733229],"S":[-0.875,0.09375004,0.050660651,0.017733016,0.0033774556,0.0014649026,0.002315978,0.0016978148,0.00056990212,0.00029862477,0.00051696638,0.00045847597,0.00019016374,0.00010909534,0.00019009798,0.00018377661,8.5761013e-05,5.2104352e-05,8.9713025e-05,9.102653e-05,4.5951619e-05]}}};
+function cellLam(n, kappa) {   // np.interp on the tabulated cap eigenvalue, clamped at the ends
+  const c = CELLDATA.cells[n], kg = CELLDATA.kgrid, x = kappa * c.sc;
+  if (x <= kg[0]) return c.lam[0];
+  if (x >= kg[kg.length - 1]) return c.lam[kg.length - 1];
+  let lo = 0, hi = kg.length - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (kg[mid] <= x) lo = mid; else hi = mid; }
+  return c.lam[lo] + (c.lam[hi] - c.lam[lo]) * (x - kg[lo]) / (kg[hi] - kg[lo]);
+}
+
+// lowest eigenpair of the symmetric tridiagonal (diag a[0..n-1], off b[0..n-2])
+function lowestTridiag(a, b, n, lamGuess, v0) {
+  function count(x) {
+    let c = 0, q = a[0] - x; if (q < 0) c++;
+    for (let i = 1; i < n; i++) { if (q === 0) q = 1e-300; q = a[i] - x - b[i - 1] * b[i - 1] / q; if (q < 0) c++; }
+    return c;
+  }
+  let lo, hi;
+  for (let i = 0; i < n; i++) if (!isFinite(a[i]) || (i < n - 1 && !isFinite(b[i]))) throw new Error('direct solver: non-finite operator');
+  if (lamGuess !== undefined && isFinite(lamGuess)) {
+    let d = 1e-3 * Math.max(1, Math.abs(lamGuess)); lo = lamGuess - d;
+    for (let g = 0; g < 200 && count(lo) > 0; g++) { d *= 2; lo -= d; }
+    d = 1e-3 * Math.max(1, Math.abs(lamGuess)); hi = lamGuess + d;
+    for (let g = 0; g < 200 && count(hi) < 1; g++) { d *= 2; hi += d; }
+  } else {
+    lo = Infinity; hi = -Infinity;
+    for (let i = 0; i < n; i++) {
+      const r = (i > 0 ? Math.abs(b[i - 1]) : 0) + (i < n - 1 ? Math.abs(b[i]) : 0);
+      lo = Math.min(lo, a[i] - r); hi = Math.max(hi, a[i] + r);
+    }
+  }
+  for (let k = 0; k < 200 && hi - lo > 1e-14 * Math.max(1, Math.abs(lo)); k++) {
+    const m = 0.5 * (lo + hi); if (count(m) >= 1) hi = m; else lo = m;
+  }
+  const lam = 0.5 * (lo + hi);
+  // inverse iteration, shift just below the eigenvalue: T - sig I is positive definite,
+  // so the Thomas algorithm needs no pivoting
+  // shift 1e-8 below: far enough that the pivots stay safely positive in floating point, close enough that
+  // three passes converge (factor ~1e-8/gap per pass)
+  const sig = lam - 1e-8 * Math.max(1, Math.abs(lam));
+  let x = new Float64Array(n);
+  if (v0 && v0.length === n) x.set(v0); else x.fill(1);
+  const cp = new Float64Array(n), dp = new Float64Array(n);
+  for (let pass = 0; pass < 3; pass++) {
+    let den = a[0] - sig; cp[0] = (n > 1 ? b[0] : 0) / den; dp[0] = x[0] / den;
+    for (let i = 1; i < n; i++) {
+      den = a[i] - sig - b[i - 1] * cp[i - 1];
+      cp[i] = (i < n - 1 ? b[i] : 0) / den; dp[i] = (x[i] - b[i - 1] * dp[i - 1]) / den;
+    }
+    x[n - 1] = dp[n - 1];
+    for (let i = n - 2; i >= 0; i--) x[i] = dp[i] - cp[i] * x[i + 1];
+    let nn = 0, imax = 0; for (let i = 0; i < n; i++) { nn += x[i] * x[i]; if (Math.abs(x[i]) > Math.abs(x[imax])) imax = i; }
+    nn = Math.sqrt(nn) * (x[imax] < 0 ? -1 : 1); for (let i = 0; i < n; i++) x[i] /= nn;
+  }
+  return { lam: lam, vec: x };
+}
+
+function directInit() {
+  const n = NSHELLS;
+  const W = new Array(n + 1);
+  W[0] = PK_MODE ? Math.round(PK_rc / h) : 0; W[n] = N;
+  let even = true;
+  if (window.USER_FIX_WALLS && !PK_MODE) {
+    for (let s = 1; s < n; s++) W[s] = (s - 1 < window.USER_FIX_WALLS.length) ? Math.round(window.USER_FIX_WALLS[s - 1] / h)
+                                                                              : Math.round(s * N / n);
+    even = false;
+  } else if (!PK_MODE && n > 1) {
+    // first wall at 4.5/Z (about where the 1s pair ends), then 0.8 au per shell -- a start, not a constant:
+    // the walls move to continuity from here
+    let r = 4.5 / Z; for (let s = 1; s < n; s++) { W[s] = Math.round(r / h); r += 0.8; }
+    even = !(W[n - 1] < 0.9 * N);
+  }
+  if (even) for (let s = 1; s < n; s++) W[s] = Math.round(W[0] + s * (N - W[0]) / n);
+  const rho = [];
+  for (let s = 0; s < n; s++) {
+    const a = rho[s] = new Float64Array(N + 1), w = Math.max(1, W[s + 1] - W[s]);
+    for (let i = W[s]; i <= W[s + 1]; i++) a[i] = Es[s] / w / h;
+  }
+  DS = { W: W, rho: rho, lam: [], vec: [], Eold: 0, Eold2: NaN, E: NaN, it: 0, conv: false, mis: [] };
+  for (let s = 0; s <= n; s++) M[s] = W[s];
+}
+
+function directIter() {
+  if (!DS) directInit();
+  if (DS.conv) return;
+  const n = NSHELLS, W = DS.W, rho = DS.rho, NG = N;
+  const bW = window.USER_SHELL_BETA || 0;
+  const Er = s => (Es[s] > 1 ? (Es[s] - 1) / Es[s] : 0);
+  const cells = CELLS || !!window.USER_CELLS;
+  const pauli = cells || PAULI_RADIAL || !!window.USER_PAULI_RADIAL;
+  if (!DS.epsP) { DS.epsP = []; for (let s = 0; s < n; s++) DS.epsP[s] = -0.5 * (Z / (s + 1)) * (Z / (s + 1)); }
+  const bP = [], blo = [], bhi = [];
+  for (let s = 0; s < n; s++) {
+    bP[s] = DS.epsP[s] < 0 ? Math.sqrt(-2 * DS.epsP[s]) : 0;
+    blo[s] = s > 0 ? (pauli ? bP[s] : bW) : 0;
+    bhi[s] = s < n - 1 ? (pauli ? bP[s] : bW) : 0;
+  }
+  // Hartree potential of each shell (shell theorem), unit-weight sums as in hardwall_1d.py
+  const Phi = [], Ptot = new Float64Array(NG + 1);
+  for (let s = 0; s < n; s++) {
+    const p = new Float64Array(NG + 1), rs = rho[s];
+    let q = 0; const qa = new Float64Array(NG + 1);
+    for (let i = 0; i <= NG; i++) { q += rs[i] * h; qa[i] = q; }
+    let out = 0;
+    for (let i = NG; i >= 0; i--) { if (i > 0) out += rs[i] / (i * h) * h; p[i] = (i > 0 ? qa[i] / (i * h) : 0) + out; }
+    Phi.push(p); for (let i = 0; i <= NG; i++) Ptot[i] += p[i];
+  }
+  // ?cells=1: angular-wall potential Vang and separated-cell potential Vsep (both zero for a one-electron shell)
+  const Vang = [], Vsep = [];
+  for (let s = 0; s < n; s++) {
+    const va = new Float64Array(NG + 1), vs = new Float64Array(NG + 1), ns = Es[s];
+    if (cells && ns >= 2 && CELLDATA.cells[ns]) {
+      const c = CELLDATA.cells[ns];
+      const be = (c.partners * CELLDATA.beta_h2 + (c.walls - c.partners) * bP[s]) / c.walls;
+      for (let i = 1; i <= NG; i++) { const r = i * h; va[i] = cellLam(ns, be * r) / (2 * r * r); }
+      const a_ = W[s], b_ = W[s + 1], i0_ = Math.max(a_, 1), len = b_ - i0_ + 1, q_ = rho[s];
+      const inner = new Float64Array(len), outer = new Float64Array(len);
+      for (let l = 1; l < c.S.length; l++) {
+        const Sl = c.S[l]; if (Sl < 1e-9) continue;
+        let acc = 0;
+        for (let k = 0; k < len; k++) { const r = (i0_ + k) * h; acc += q_[i0_ + k] * Math.pow(r, l) * h; inner[k] = acc; }
+        acc = 0;
+        for (let k = len - 1; k >= 0; k--) { const r = (i0_ + k) * h; acc += q_[i0_ + k] / Math.pow(r, l + 1) * h; outer[k] = acc; }
+        for (let k = 0; k < len; k++) { const r = (i0_ + k) * h; vs[i0_ + k] -= Sl * (inner[k] / Math.pow(r, l + 1) + outer[k] * Math.pow(r, l)); }
+      }
+    } else if (cells && ns > 8) throw new Error('?cells=1: a shell holds at most 8 cells');
+    Vang.push(va); Vsep.push(vs);
+  }
+  const newrho = [], us = [], newEps = [];
+  for (let s = 0; s < n; s++) {
+    const origin = (s === 0 && !PK_MODE);
+    const i0 = origin ? W[0] + 1 : W[s], i1 = W[s + 1], m = i1 - i0 + 1;
+    const d = new Float64Array(m), off = new Float64Array(Math.max(1, m - 1)), ms = new Float64Array(m);
+    const fr = 1 - Er(s);
+    for (let k = 0; k < m; k++) {
+      const i = i0 + k;
+      ms[k] = h; d[k] = 1 / h;
+      if (k === m - 1 || (k === 0 && !origin)) { ms[k] = h / 2; d[k] = 0.5 / h; }
+      d[k] += ms[k] * (-Karr[i] + Ptot[i] - fr * Phi[s][i] + Vang[s][i] + Vsep[s][i]);
+      if (k < m - 1) off[k] = -0.5 / h;
+    }
+    d[m - 1] += -0.5 / (i1 * h) + 0.5 * bhi[s];
+    if (!origin) d[0] += 0.5 / (i0 * h) + 0.5 * blo[s];
+    const a = new Float64Array(m), b = new Float64Array(Math.max(1, m - 1));
+    for (let k = 0; k < m; k++) a[k] = d[k] / ms[k];
+    for (let k = 0; k < m - 1; k++) b[k] = off[k] / Math.sqrt(ms[k] * ms[k + 1]);
+    const ev = lowestTridiag(a, b, m, DS.lam[s], DS.vec[s]);
+    DS.lam[s] = ev.lam; DS.vec[s] = ev.vec; newEps[s] = ev.lam;
+    const f = new Float64Array(m); let nrm = 0;
+    for (let k = 0; k < m; k++) { f[k] = ev.vec[k] / Math.sqrt(ms[k]); nrm += ms[k] * f[k] * f[k]; }
+    const sc = Math.sqrt(Es[s] / nrm);
+    const rr_ = new Float64Array(NG + 1), uu = new Float64Array(NG + 1);
+    for (let k = 0; k < m; k++) { const i = i0 + k; f[k] *= sc; rr_[i] = f[k] * f[k]; uu[i] = f[k] / (i * h); }
+    newrho.push(rr_); us.push(uu);
+  }
+  // the eigenvalues that set the Pauli beta: damped 0.3 under ?cells=1 (as runs_cc/oct_shell_1d.py), plain otherwise
+  for (let s = 0; s < n; s++) DS.epsP[s] = (cells && DS.it > 0) ? 0.3 * newEps[s] + 0.7 * DS.epsP[s] : newEps[s];
+  const mix = DS.it > 0 ? 0.5 : 1.0;
+  for (let s = 0; s < n; s++) for (let i = 0; i <= NG; i++) rho[s][i] = mix * newrho[s][i] + (1 - mix) * rho[s][i];
+  // energy of the new shell states, per shell (energy[s] sums to E; eps[s] = full-potential eigenvalue sum)
+  let E = 0;
+  for (let s = 0; s < n; s++) {
+    const a_ = W[s], b_ = W[s + 1], nr = newrho[s], fr = 1 - Er(s);
+    let T = 0, Wl = 0, VK = 0, Vee = 0;
+    for (let i = a_; i < b_; i++) { const df = Math.sqrt(Math.max(nr[i + 1], 0)) - Math.sqrt(Math.max(nr[i], 0)); T += 0.5 * df * df / h; }
+    T += -nr[b_] / (2 * b_ * h);
+    if (s > 0 || PK_MODE) T += (a_ > 0 ? nr[a_] / (2 * a_ * h) : 0);
+    Wl += 0.5 * blo[s] * nr[a_] + 0.5 * bhi[s] * nr[b_];
+    let Ea = 0, Esp = 0;
+    for (let i = 0; i <= NG; i++) { VK += -Karr[i] * nr[i] * h; Vee += 0.5 * nr[i] * (Ptot[i] - fr * Phi[s][i]) * h;
+                                    Ea += Vang[s][i] * nr[i] * h; Esp += 0.5 * Vsep[s][i] * nr[i] * h; }
+    Wl += Ea; Vee += Esp;
+    energy[s] = T + Wl + VK + Vee; eps[s] = T + Wl + VK + 2 * Vee; normu[s] = Es[s];
+    E += energy[s];
+  }
+  // walls toward continuity of u; inner amplitude larger -> the inner shell grows
+  let moved = false; DS.mis = [];
+  for (let k = 1; k < n; k++) {
+    const ui = us[k - 1][W[k]], uo = us[k][W[k]];
+    const L = Math.log(Math.max(ui, 1e-300) / Math.max(uo, 1e-300)); DS.mis.push(ui / Math.max(uo, 1e-300));
+    if (window.USER_FIX_WALLS || (PK_MODE && k === 0)) continue;
+    const cap = Math.max(1, Math.floor(0.03 / h));
+    let dn = Math.max(-cap, Math.min(cap, Math.round(0.03 * L / h)));
+    if (dn === 0 && Math.abs(L) > 2e-3) dn = L > 0 ? 1 : -1;
+    // a unit step that reverses the previous unit step means continuity lies between two nodes:
+    // the wall is located to one cell and stays (otherwise it cycles and the SCF never settles)
+    DS.last = DS.last || []; DS.pinned = DS.pinned || [];
+    // only once that two-node CYCLE has settled (E equal to that of two iterations ago): early in the iteration
+    // a reversal says nothing, while a settled cycle never meets the tolerance on consecutive energies
+    if (Math.abs(dn) === 1 && DS.last[k] === -dn && Math.abs(E - DS.Eold2) < 1e-8) DS.pinned[k] = true;
+    // backstop: after 500 iterations a wall still taking unit steps is located to one cell (cycles of several walls)
+    if (Math.abs(dn) === 1 && DS.it > 500) DS.pinned[k] = true;
+    if (DS.pinned[k] && Math.abs(dn) <= 1) dn = 0;
+    if (dn) DS.last[k] = dn;
+    if (dn) {
+      const nw = Math.max(W[k - 1] + 3, Math.min(W[k + 1] - 3, W[k] + dn));
+      if (nw !== W[k]) { W[k] = nw; moved = true; DS.lam[k - 1] = DS.lam[k] = undefined; DS.vec[k - 1] = DS.vec[k] = undefined; }
+    }
+  }
+  if (!moved && Math.abs(E - DS.Eold) < DIRECT_TOL && DS.it > 30) DS.conv = true;
+  DS.Eold2 = DS.Eold; DS.Eold = E; DS.E = E; DS.it++;
+  // hand the state to the page's globals (draw, readouts, logRow)
+  for (let s = 0; s <= n; s++) M[s] = W[s];
+  for (let s = n + 1; s <= MAXSHELLS; s++) M[s] = N;
+  for (let i = 0; i <= NG; i++) { u[i] = 0; P[i] = 0; }
+  for (let s = 0; s < n; s++) {
+    const lo = (s === 0) ? W[0] : W[s] + 1, fr = 1 - Er(s);
+    for (let i = lo; i <= W[s + 1]; i++) { u[i] = us[s][i]; P[i] = 0.5 * (Ptot[i] - fr * Phi[s][i]); }
+  }
+  if (!PK_MODE) u[0] = u[1];
+  step++;
+}
+
 // One macro step (free-boundary tracking + 5 Poisson sub-steps + per-shell normalization).
 // Single source of truth shared by interactive draw() and the batch sweep.
+// With ?solver=direct it is one SCF iteration of the direct solver instead.
 function macroStep() {
+  if (DIRECT) { directIter(); return; }
   // Free boundary tracking: continuity of u at each M[s]
   for (let s = 1; s < NSHELLS && !window.USER_FIX_WALLS; s++) {
     if (M[s] < M[s + 1] - 2 && M[s] > M[s - 1] + 2) {
@@ -2531,6 +2859,9 @@ function draw() {
   let key = configKey();
   let ref = observed[key];
   let title = 'Z=' + Z + ', shells: ' + shellString();
+  const nel = Es.slice(0, NSHELLS).reduce((a, b) => a + b, 0);
+  if (CELLS) { ref = (nel === Z && REF_ETOT[Z] != null) ? { E: REF_ETOT[Z], name: ELNAME[Z] || '' } : null;
+               title += '   walls model, direct solver N=' + N + (DS && DS.conv ? '   converged' : ''); }
   if (ref) title += ' (' + ref.name + ')';
   text(title, plotX, plotY - 10);
   textStyle(NORMAL);
@@ -2571,16 +2902,22 @@ function draw() {
   if (ref) {
     fill(150);
     text('(observed: ' + ref.E.toFixed(1) + ' Ha)', plotX + 220, iy);
+    if (CELLS) {
+      const pc = (etot - ref.E) / ref.E * 100;   // page convention: - = under-bound
+      errCol(Math.abs(pc));
+      text('diff: ' + (pc >= 0 ? '+' : '') + pc.toFixed(2) + '%', plotX + 440, iy);
+    } else {
     let err = abs(etot - ref.E);
     fill(err < 2 ? [100, 255, 100] : [255, 100, 100]);
     text('diff: ' + err.toFixed(2), plotX + 440, iy);
+    }
   }
 
   // Norms
   iy += 16;
   fill(120);
   textSize(11);
-  let ns = 'step ' + step;
+  let ns = (DIRECT ? 'SCF iteration ' : 'step ') + step;
   for (let s = 0; s < NSHELLS; s++) ns += '  n' + (s + 1) + '=' + normu[s].toFixed(2);
   text(ns, plotX, iy);
 
@@ -2598,6 +2935,7 @@ function draw() {
 // its configuration, energy, reference and difference, filling in as the run proceeds.
 function drawLiveTable(tx, ty) {
   if (!fullRows.length) return;
+  if (CELLS) { drawLiveTableWalls(tx, ty); return; }
   textStyle(BOLD); textSize(12); fill(100, 200, 255);
   text('all-electron, nothing fitted', tx, ty - 8);
   textStyle(NORMAL); textSize(9); fill(150);
@@ -2623,6 +2961,36 @@ function drawLiveTable(tx, ty) {
       if (a < 2) fill(120, 255, 120); else if (a < 5) fill(255, 220, 100); else fill(255, 140, 140);
       text((r.err >= 0 ? '+' : '') + r.err.toFixed(1) + '%', tx + 272, y);
     }
+  }
+  if (n) { fill(180); textSize(11);
+    text('mean |diff| = ' + (sum / n).toFixed(1) + '%   over ' + n + ' elements',
+         tx, ty + 38 + Math.min(fullRows.length, 40) * 11 + 12); }
+}
+
+// Walls-model table: total energy vs exact, and the valence-eigenvalue IE vs experiment.
+function errCol(a) { if (a < 2) fill(120, 255, 120); else if (a < 5) fill(255, 220, 100); else fill(255, 140, 140); }
+function drawLiveTableWalls(tx, ty) {
+  textStyle(BOLD); textSize(12); fill(100, 200, 255);
+  text('walls model: nothing fitted beyond H and H2', tx, ty - 8);
+  textStyle(NORMAL); textSize(10); fill(150);
+  text('el Z config', tx, ty + 10);
+  text('E (Ha)', tx + 95, ty + 10); text('exact', tx + 150, ty + 10); text('diff', tx + 200, ty + 10);
+  text('IE eV', tx + 245, ty + 10); text('exp', tx + 285, ty + 10);
+  textSize(9); fill(150);
+  text('octet = one shell of 8 cells; partner wall beta(H2), others sqrt(-2 eps); diff<0 under-bound', tx, ty + 24);
+  textSize(10);
+  let sum = 0, n = 0;
+  for (let i = 0; i < fullRows.length; i++) {
+    const r = fullRows[i], y = ty + 38 + i * 11;
+    if (y > 550) break;
+    fill(220); text(r.el + ' ' + r.Z + ' ' + r.cfg, tx, y);
+    fill(210); text(r.E === null ? '--' : r.E.toFixed(2), tx + 95, y);
+    fill(140); text(r.ref === null ? '--' : r.ref.toFixed(2), tx + 150, y);
+    if (r.err === null) { fill(120); text('--', tx + 200, y); }
+    else { const a = Math.abs(r.err); sum += a; n++; errCol(a);
+           text((r.err >= 0 ? '+' : '') + r.err.toFixed(1) + '%', tx + 200, y); }
+    if (r.IE != null && isFinite(r.IE)) { fill(210); text(r.IE.toFixed(1), tx + 245, y); }
+    if (r.IEx != null) { fill(140); text(r.IEx.toFixed(1), tx + 285, y); }
   }
   if (n) { fill(180); textSize(11);
     text('mean |diff| = ' + (sum / n).toFixed(1) + '%   over ' + n + ' elements',
@@ -2659,8 +3027,8 @@ function drawSetupScreen() {
   textStyle(NORMAL);
   textSize(13);
   fill(200);
-  text('Up to 6 shells in spherical symmetry', 50, 50);
-  text('Shell 1: 2 electrons (fixed). Shells 2-6: 0-4 electrons each.', 50, 75);
+  text(CELLS ? 'Walls model, direct solver: octet as one shell' : 'Basic model (paper): up to 6 shells, spherical symmetry', 50, 50);
+  text('Shell 1: 2 electrons (fixed). Shells 2-6: 0-' + (CELLS ? 8 : 4) + ' electrons each.', 50, 75);
   text('Choose Z and shell occupations, press Start', 50, 100);
 
   // One table, not two: once a scan has run its results replace the stored ones rather than
@@ -2675,7 +3043,10 @@ function drawSetupScreen() {
 function drawStoredTable() {
   // same renderer as the scan, so the opening screen and a completed run look alike and a
   // 36-row table still fits the canvas
-  const rows = RESULTS.map(function (r) {
+  const rows = CELLS ? RESULTS_WALLS.map(function (r) {
+    return { el: r[0], Z: r[1], cfg: r[2], E: r[3], ref: r[4], err: (r[3] - r[4]) / r[4] * 100,
+             IE: r[5], IEx: NIST_IE1[r[1]], N: DIRECT_N, src: 'octet shell' };
+  }) : RESULTS.map(function (r) {
     return { el: r[0], Z: r[1], cfg: r[2], E: r[3], ref: r[4],
              err: (r[3] - r[4]) / r[4] * 100, N: null, src: configSource(r[1]) };
   });
@@ -2707,7 +3078,27 @@ function drawSetupPanels() {
   // WHAT TO TRY. Shown until a sweep has run, in the space the results panel will occupy, so a
   // first-time visitor -- a reader arriving from the paper -- has something concrete to press
   // rather than a wall of unlabelled controls. It disappears once ptPanel is populated.
-  if (!ptPanel || !ptPanel.length) {
+  if ((!ptPanel || !ptPanel.length) && CELLS) {
+    let tx = 20, ty = 336;
+    fill(100, 200, 255); textSize(12); textStyle(BOLD);
+    text('What to try', tx, ty); textStyle(NORMAL);
+    fill(190); textSize(11);
+    text('1.  Choose Z and the shell occupations below (up to 8 per shell), then Start.', tx, ty + 20);
+    fill(140); textSize(10);
+    text('Each shell of n is n one-electron cells at one radius; the octet is a cube of 8.', tx + 14, ty + 33);
+    text('Each electron has one partner (wall cost from H2); other walls cost sqrt(-2 eps).', tx + 14, ty + 46);
+    fill(190); textSize(11);
+    text('2.  "Periodic table 2..20" solves helium to calcium in turn.', tx, ty + 66);
+    fill(140); textSize(10);
+    text('Direct solver on a converged mesh (N=' + DIRECT_N + '), seconds per atom. The table', tx + 14, ty + 79);
+    text('gives total energy vs exact and the valence-eigenvalue IE vs experiment.', tx + 14, ty + 92);
+    fill(190); textSize(11);
+    text('3.  "Model" switches to the basic model of the paper (free walls, 4+4).', tx, ty + 112);
+    fill(140); textSize(10);
+    text('On a converged mesh (?solver=direct&cells=0) it over-binds, more so as Z grows.', tx + 14, ty + 125);
+    text('He is the one miss with walls: +4.7%.', tx + 14, ty + 138);
+  }
+  else if (!ptPanel || !ptPanel.length) {
     let tx = 20, ty = 336;
     fill(100, 200, 255); textSize(12); textStyle(BOLD);
     text('What to try', tx, ty); textStyle(NORMAL);
