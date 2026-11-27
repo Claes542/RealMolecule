@@ -13,7 +13,7 @@
 \author[1]{Claes Johnson}
 \affil[1]{KTH Royal Institute of Technology, Stockholm, Sweden \\
 \texttt{claesjohnson@gmail.com}}
-\date{Version of 14 November 2026. This is a living document, updated as the validation proceeds. \\[0.4em]
+\date{Version of 27 November 2026. This is a living document, updated as the validation proceeds. \\[0.4em]
 \small\textit{Mathematical formulation by the author; implementation and numerical} \\
 \small\textit{experiments developed with AI assistance (Claude, Anthropic).}}
 
@@ -22,19 +22,26 @@
 
 \begin{abstract}
 RealQM~\cite{realqm} presents the atomic world as a computable three-dimensional continuum model: electrons as
-non-overlapping charge densities in ordinary space, solved as the model stands. The aim is not to match the
-accuracy of standard quantum chemistry but to show how far such a model reaches; this is a report on work in
-progress. Each molecule is a partition of space into domains holding one electron or a pair, with walls placed
-where the density is continuous; nothing is adjusted to molecular data, and each core radius is set once per atom
-from its ionisation energies. Every electron pair can be carried in two parameter-free constructions, 2split and
-2hom, which bracket the exact H$_2$ energy. Bond lengths come from the forces: twelve X--H bonds, from LiH to
+non-overlapping charge densities in ordinary space, solved as the model stands. The aim is to find how far such
+a model reaches in chemistry and what it needs to reach further; this is a report on work in progress. Each molecule is a partition of space into domains holding one electron each, with walls placed
+where the density is continuous. The model is calibrated in two steps, each on the simplest system in which its
+ingredient first appears: the one-electron equation on the hydrogen spectrum, and the cost of two electrons meeting
+at a free wall, a surface energy whose natural condition is a Robin wall law, on H$_2$. Each core radius is set
+once per atom from its ionisation energies. Carried to other bonds, the H$_2$ wall constant removes most of the
+free wall's over-binding, but the constant each bond needs varies by a factor of five between bond types, and
+where it makes the binding exact the bond is up to $19\%$ too long: one constant does not give energy and geometry
+together. Bond lengths come from the forces: twelve X--H bonds, from LiH to
 H$_2$O and the C$_2$ hydrocarbons, are short by $2$--$6\%$, where Hartree--Fock and DFT are within $2\%$. The C--C
 bond collapses when carbon's directions are imposed and holds, $8\%$ short, when its walls follow the continuity
-rule; inner shells hold under the same rule. Polarity has the right sign wherever lone pairs are domains of their
-own, with sizes bracketed by the two constructions. Molecular shape is not yet produced by the model, and binding
-energies are too large. The failures point to one missing ingredient, the cost of pressing separate electron groups
-together. The model's own criteria are stated and scored, and the cost of computation, set by the grid alone, is
-estimated.
+rule; inner shells hold under the same rule. In atoms the same walls, with nothing further fitted, give total
+energies from Li to Ar within $3\%$. Polarity has the right sign wherever lone pairs are domains of their
+own. Molecular shape is not yet produced by the model, and
+H$_3$ is bound where it should be a barrier, a defect no wall constant reaches: electrons of different
+pairs are kept apart only where their domains touch. The failures point to one missing ingredient, the cost of pressing
+separate electron groups together. With the wall cost RealQM becomes a calibrated model with one open slot, a
+wall law depending on the density at the wall, and three uses open: the covalent geometry of large molecules at
+low cost, energy differences within one composition, and reaction paths. The model's own criteria are stated and
+scored, the prospects for proteins assessed, and the cost of computation, set by the grid alone, estimated.
 \end{abstract}
 
 % =====================================================================================
@@ -43,17 +50,36 @@ estimated.
 
 RealQM~\cite{realqm} replaces the many-electron wave function by one-electron densities on
 non-overlapping domains of ordinary three-dimensional space. A molecule with nuclei
-$\{(\mathbf{R}_a, Z_a)\}$ is described by domains $\Omega_k$ partitioning
-space, each carrying $n_k \in \{1, 2\}$ electrons (two only of opposite spin) as a real amplitude $u_k$ with
-$\int_{\Omega_k} u_k^2 = 1$ and density $\rho_k = n_k u_k^2$. The energy is
+$\{(\mathbf{R}_a, Z_a)\}$ and $N$ electrons is described by $N$ domains $\Omega_k$ partitioning
+space, each carrying one electron as a real amplitude $u_k$ with $\int_{\Omega_k} u_k^2 = 1$ and density
+$\rho_k = u_k^2$. The energy is
 \begin{equation}
-E = \sum_k n_k \Big( \tfrac12 \int_{\Omega_k} |\nabla u_k|^2 - \int_{\Omega_k} K u_k^2 \Big)
-  + \sum_k \tfrac{n_k(n_k-1)}{2} U_{kk} + \sum_{k<l} n_k n_l U_{kl} + V_{KK},
+E = \sum_k \Big( \tfrac12 \int_{\Omega_k} |\nabla u_k|^2 - \int_{\Omega_k} K u_k^2 \Big)
+  + \sum_{k<l} U_{kl} + \sum_{k<l} \tfrac{\beta_{kl}}{2} \int_{\Gamma_{kl}} \big(u_k^2 + u_l^2\big)\,dS + V_{KK},
 \label{eq:E}
 \end{equation}
-with $K = \sum_a Z_a/|\mathbf{x} - \mathbf{R}_a|$, $U_{kl}$ the Coulomb interaction of the unit
-densities $u_k^2$ and $u_l^2$, and $V_{KK}$ the nuclear repulsion. A pair domain ($n_k = 2$) counts
-its single pair once.
+with $K = \sum_a Z_a/|\mathbf{x} - \mathbf{R}_a|$, $U_{kl}$ the Coulomb interaction of $u_k^2$ and $u_l^2$, each
+pair of electrons counted once, $V_{KK}$ the nuclear repulsion, and $\Gamma_{kl}$ the wall between $\Omega_k$ and
+$\Omega_l$ with its wall cost $\beta_{kl}$ (zero in the basic model; see Two calibrations below). The model has no
+spin. It has instead the \emph{pair rule}: each electron has at most one partner, the electron it forms a bond or a
+closed pair with, and the cost of a wall depends on whether the two electrons meeting there are partners.
+An electron meets several others, at walls of both kinds. A partner wall carries the calibrated constant; a
+non-partner wall, between electrons of different pairs, carries the cost set by the domains' own eigenvalues.
+The rule is Lewis's electron pair (1916), which chemistry had before electron spin and the Pauli principle
+(1925) explained it; spin labels on domains would not serve, since an electron meeting several others cannot
+be of opposite spin to all of them, and the repulsion between two closed pairs belongs to the pairs, not to the
+spins of the two electrons that happen to touch. A second construction, in which two partners share one domain
+(2hom), is introduced in Section~\ref{sec:h2} as a special case. What spin adds beyond pairing, magnetism and
+Hund's rule (the triplet ground state of O$_2$), is outside the model.
+
+\paragraph{No spin.} That RealQM has no spin is a relief rather than a loss. Spin has no physical picture
+in three-dimensional space. It is called an angular momentum, yet nothing rotates: the
+spinning electron of Uhlenbeck and Goudsmit fails, since a charged sphere of the electron's size would have to
+turn with its surface faster than light. What spin is, is given only by its mathematics, a two-valued
+representation of rotations attached to a point particle. For chemistry, what spin does is enforce the pairing
+of electrons, two to an orbital and closed pairs repelling, and that the pair rule states directly in ordinary
+space. RealQM thus carries the chemistry of pairing without an object that has no picture, and it says where
+that stops: magnetism, Hund's rule and the spin structure of spectra are left out, as phenomena of spin proper.
 
 \paragraph{What to expect of a basic model.} For one electron the energy~\eqref{eq:E} is Schr\"odinger's
 equation for the hydrogen atom, and it is exact there. That exactness is not a test: the equation was
@@ -65,6 +91,31 @@ the result should be as accurate as for hydrogen. The deviations reported below 
 surprising; they measure what the basic form leaves out. The standard extension of Schr\"odinger's
 equation to $3N$ dimensions is not tested by the hydrogen spectrum either; it is tested separately, for a few
 electrons, where it agrees with observation, and it is viewed as exact beyond them (see Testability below).
+
+\paragraph{Two calibrations.} The model is fixed in two steps, each on the simplest system in which its
+ingredient first appears, and then carried unchanged to other systems as a test. \emph{One electron:} the
+coefficient of the kinetic energy (Planck's constant) is fitted to the hydrogen spectrum, which the model
+then reproduces exactly. \emph{Two electrons meeting:} where two partner electrons meet at a free
+wall, the wall is charged a surface energy $\tfrac{\beta}{2}\int u_k^2\,dS$ per electron, whose natural
+condition is the Robin law $\partial_n u_k + \beta u_k = 0$; $\beta = 0$ is the free (Neumann) wall of the
+basic model. The constant $\beta$ is fitted once, to the binding energy of H$_2$, in the same sense as
+Planck's constant to the hydrogen atom: it states how electrons meet, which nothing in the one-electron
+equation fixes. Nothing requires H$_2$ to come out perfect with it, and it does not: fitted to the binding
+energy, it leaves the H$_2$ bond $9$--$12\%$ long (Section~\ref{sec:why}). Walls between non-partners
+carry no fitted constant: there $\beta = \sqrt{-2\varepsilon}$ from the domain's own eigenvalue, the decay of
+the tail the wall cuts (Section~\ref{sec:compare}). Each heavy atom further contributes a core radius, set
+from its own ionisation energies, a property of the atom and not of any molecule. The test of the
+calibration is transfer: whether the H$_2$ constant serves other bonds. Measured in
+Section~\ref{sec:why}, it does so only in part, the constant each bond needs ranging from $0.055$ (alkali
+pairs) to $0.30$ (N--H). Results below are those of the basic model ($\beta = 0$) unless a wall cost is stated.
+
+\paragraph{The status of 2hom.} The model has one electron per domain; 2hom, two partner electrons in
+one domain, enters as a special case (Section~\ref{sec:h2}). With no wall between its two electrons the wall
+cost does not act within it. It is equal to restricted Hartree--Fock for H$_2$ (Section~\ref{sec:states}), the
+closer of the two constructions to the observed bonds at $\beta = 0$, and the construction of the force table
+of Section~\ref{sec:forces} and of most polyatomic results below. Those results are therefore results of the
+special case; the model proper, one electron per domain with the calibrated wall cost, has so far been
+carried through the diatomic molecules of Section~\ref{sec:why}, and its polyatomic results are to come.
 
 \paragraph{A model of the electrons themselves.} RealQM stands to DFT as an $N$-body model stands to a mean-value model
 of the same bodies. In the $N$-body problem each body is an object with a position, a force law acts between the
@@ -91,7 +142,8 @@ contain. RealQM is a model of the system as it is, measured or not; whether it a
 carefully prepared experiments (interference, entanglement, spin) is not addressed here. RealQM takes up that open question: it seeks a model in
 which the physics happens in three-dimensional space, and it is to be judged by how much of the established
 predictions such a model reproduces. Its case therefore rests on a physical picture in three dimensions,
-nothing fitted, and a cost set by the grid alone (Section~\ref{sec:conclusion}).
+two calibrations on the simplest systems (H and H$_2$) and nothing fitted beyond them, and a cost set by the
+grid alone (Section~\ref{sec:conclusion}).
 
 The same difference concerns understanding. The understanding chemists draw from standard quantum mechanics comes
 from models laid over it (orbitals, hybridisation, frontier orbitals), not from its wave function, and these models
@@ -147,7 +199,11 @@ model with a physical picture in three dimensions.
 $\partial\Omega_k$: the kinetic energy is counted only inside the domain, and the amplitude at the
 wall is free. The boundaries are placed by \emph{density continuity}, $\rho_k = \rho_l$ across each
 interface. Energy minimisation over the boundary position is not used: in this model a ragged or
-displaced boundary can lower the energy (Section~\ref{sec:why}), and only continuity holds it.
+displaced boundary can lower the energy (Section~\ref{sec:why}), and only continuity holds it. With the wall
+cost the Neumann condition becomes the Robin condition $\partial_n u_k + \beta u_k = 0$, and the wall is still
+placed by continuity. The surface energy is part of the functional, so the densities relax under it; adding it
+afterwards to a $\beta = 0$ density overestimates its effect, since the density moves away from a wall as soon
+as the wall costs anything.
 
 % =====================================================================================
 \section{Atoms}
@@ -163,8 +219,9 @@ dimensions, split into domains of at most two electrons (boron: pseudo-B $+3$ wi
 pair and one electron). A radial shell holding three or four electrons is a shared density in one
 dimension, which no domain may be in three dimensions; it stands for the spherical average of its
 angular split into domains of at most two (boron's $3$ as $2_{\rm hom}{+}1$, a $4$ as a tetrahedron
-of single electrons). Shells hold at most four---the pair and the tetrahedron, an octet being
-$4{+}4$, never a single shell of six or eight. Energy does not select the configuration: more
+of single electrons). With free walls, shells hold at most four---the pair and the tetrahedron, an octet
+being $4{+}4$, never a single shell of six or eight. With the wall costs of Section~\ref{sec:model} the
+octet becomes one shell of eight one-electron cells (below). Energy does not select the configuration: more
 sharing always lowers the one-dimensional energy (Li as one shell of $3$ is $13.7\%$ too deep, as
 $2{+}1$ within $0.5\%$), so the configuration is set by the Pauli cap of two per domain, not by
 minimisation. The core radius is a property of the atom, not of any molecule, and it is
@@ -190,6 +247,24 @@ shorter than the fitted one. We use the fitted radius throughout, and state the 
 it; an outer core shell beyond $1s^2$ (Na and below) has no box-independent interface in one
 dimension, and there only the fitted radius exists. At $h = 0.1$ the hard core excludes whole
 cells, so the fitted radius is defined to a few hundredths of $a_0$.
+
+\paragraph{Atoms with the wall costs.} The one-dimensional atom also tests the wall costs of
+Section~\ref{sec:model}, with nothing fitted beyond H and H$_2$. A shell of $n$ electrons is read as
+$n$ one-electron cells at one radius, and the octet as a cube of eight. What the spherical average of
+the cells loses is put back in three terms:
+\begin{itemize}
+\item the multipole repulsion of separated cells;
+\item the angular walls between cells, of which $\lfloor n/2\rfloor$ are partner walls at the H$_2$
+constant and the rest cost $\sqrt{-2\varepsilon}$;
+\item the radial walls between shells, all between different pairs and so costing $\sqrt{-2\varepsilon}$.
+\end{itemize}
+Solved directly on a converged mesh ($N=16000$), the total energies from Li to Ar fall between $3.0\%$
+under-bound and $2.1\%$ over-bound, with mean $|$error$|$ $1.7\%$. Without the wall costs the
+same octet as one shell over-binds neon by $23\%$. The valence-eigenvalue ionisation energies have the
+right size and row pattern but miss the B and O dips. Helium is $4.7\%$ under-bound, the partner wall
+being too costly for a lone pair, and the drift towards under-binding continues to $4.3\%$ at Ca. This is
+the model the Atom Simulator~\cite{atoms} now opens on; the cells are tabulated up to eight electrons, so
+it stops at Ca.
 % H2O O+3 wedges rc0.65 (ref -3.80097): hom -5.41638 (mu_y +1.01 D); split sd 1e-3 rejected. O+6 tet rc0.71 (ref -15.71951): hom -19.53561, split -19.23416.
 % CH4 C+4 tet rc1.0 (ref -5.43727): hom -11.19098, split -11.18844 (sd 7e-4).
 % NH3 N+3 rc0.81 (ref -3.35652): hom -6.70925 (mu_z +0.16 D), split -6.70080 (+1.42 D, inverted). N+5 rc0.82 (ref -9.71835): hom -14.61953 (mu_z -4.18 D).
@@ -291,14 +366,14 @@ number of pairs; every energy quoted for more than two domains is the independen
 
 \subsection{Two constructions of an electron pair}
 
-RealQM carries no spin variable; spin enters only through the Pauli principle, as the rule that a
-domain holds at most two electrons, and two only if of opposite spin. Electrons in different
-domains are excluded from each other by disjointness, whatever their spin. A pair of opposite spin
-can therefore be carried in two parameter-free ways. In the \emph{2split}
-construction each electron owns its own domain and the two meet at a free wall: their avoidance is
-complete and permanent. In the \emph{2hom} construction both electrons share one domain and one
-density, the overlay that Pauli permits for opposite spins, each feeling half its Hartree field: there is no avoidance beyond the mean field, and the
-pair is a restricted Hartree--Fock pair. A one-dimensional radial check on Li$^+$ makes the last
+In the model of Section~\ref{sec:model} each electron owns its own domain, and two partners meet at
+a wall: this is the \emph{2split} construction, and with a free wall their avoidance is complete and
+permanent. One further construction is possible for partners, used here as a special case: in
+\emph{2hom} both electrons share one domain and one density, each feeling half its Hartree field, so the
+domain counts its single pair once and has no wall inside it. There is no avoidance beyond the mean field,
+and the pair is a restricted Hartree--Fock pair. 2hom is the limit of two partner domains merged; it
+carries no wall cost, does not dissociate correctly (Section~\ref{sec:states}), and is used below where it
+gives the closer bond lengths, as the construction of the force table. A one-dimensional radial check on Li$^+$ makes the last
 point exact: the 2hom $1s^2$ pair gives $-7.23630$ against the Hartree--Fock $-7.2364$. The true
 state avoids partially and dynamically.
 
@@ -403,11 +478,68 @@ nucleus and the nuclear attraction falls, with the kinetic energy almost unchang
 the wall is the model's central assumption; it sets the 2split energy, while the 2hom pair has no
 wall.
 
+% DRAFT 2026-11-27 (item 1): runs_cc/beta_stage2.py h 0.1, rows in runs_cc/beta_stage2_h01_faceE.out (H2's plane is
+% the symmetry midplane, fixed, so the face-energy readout that spoiled the heteronuclear rows does not enter).
+% Solver tools/axisym_linear.py, preset h2 (2split, bare protons); R_e and D_e from a parabola through the three
+% points around the maximum of D(R), steps 0.05 R_obs. beta* and the zero of the bond error interpolated linearly.
+% Note: this implementation's beta = 0 bond (1.331) differs from axisym_beta.py's 1.349 and axisym_hom2's 1.367 at
+% the same h -- softening and kernel placement differ; the trend in beta is what is quoted.
+\paragraph{The wall cost in the density update.} The table above holds the geometry fixed. With the
+surface energy in the functional, so that the density relaxes under it and the Robin condition
+$\partial_n u+\beta u=0$ holds on the wall, and $R$ rescanned at each $\beta$ (axisymmetric, $h = 0.1$):
+\begin{center}
+\small
+\begin{tabular}{rrrrr}
+\toprule
+$\beta$ & $0$ & $0.1$ & $0.2$ & $0.3$ \\
+\midrule
+$R_e$ ($a_0$; observed $1.401$) & $1.331$ ($-5.0\%$) & $1.482$ ($+5.8\%$) & $1.566$ ($+11.8\%$) & $1.764$ ($+25.9\%$) \\
+$D_e$ ($E_h$; exact $0.1745$) & $0.2835$ ($+62\%$) & $0.2113$ ($+21\%$) & $0.1514$ ($-13\%$) & $0.1022$ ($-41\%$) \\
+\bottomrule
+\end{tabular}
+\end{center}
+The binding is exact at $\beta^* \approx 0.16$, where the bond is $9\%$ too long ($0.155$ and $12\%$ at
+$h = 0.05$); the bond is exact at $\beta \approx 0.05$, where the binding is still $43\%$ too large. The wall
+cost removes the excess binding and in the same move pushes the nuclei apart, and one constant does not give both.
+
+% DRAFT 2026-11-27 (transfer): runs_cc/beta_stage2.py, h 0.1 (beta_stage2_h01.out) and h 0.05 for h2,oh,hf
+% (beta_stage2_h005.out). D from relax()['interp']['E'] (continuity point). Pseudo-atoms with r_c fitted to IE1 as in
+% the presets; beta on every plane of molecule AND fragments (incl. the fixed back|bond plane through O, N, F).
+% LiH, NaH excluded: at beta > 0 their bond plane is pinned at the pseudo-core sphere (which carries no cost).
+% Exact D_e / observed R_e: preset values, from memory, flagged there.
+\paragraph{Does one wall constant transfer?} The same scan for single bonds between pseudo-atoms and H, and for the alkali
+dimers (axisymmetric, each molecule and its atoms solved with the wall cost on every wall):
+\begin{center}
+\small
+\begin{tabular}{lcccc}
+\toprule
+molecule & $\beta^*$ ($D_e$ exact) & $R_e$ at $\beta^*$ & $R_e$ at $\beta = 0$ & $D_e$ at $\beta = 0$ \\
+\midrule
+H$_2$ & $0.16$ & $+9.4\%$ & $-5.0\%$ & $+62\%$ \\
+BH (B $+3$) & $0.07$ & $+2.5\%$ & $-7.8\%$ & $+31\%$ \\
+OH (O $+3$) & $0.27$ & $+12.3\%$ & $-7.7\%$ & $+126\%$ \\
+NH (N $+2$) & $0.29$ & $+11.2\%$ & $-15.9\%$ & $+169\%$ \\
+NH (N $+3$) & $0.30$ & $+18.8\%$ & $-6.6\%$ & $+164\%$ \\
+HF (F $+3$) & $0.21$ & $-2.8\%$ & $-13.4\%$ & $+80\%$ \\
+Li$_2$ & $0.055$ & $+11.7\%$ & $+2.4\%$ & $+43\%$ \\
+Na$_2$ & $0.078$ & $+5.6\%$ & $-3.8\%$ & $+81\%$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+($h = 0.1$; at $h = 0.05$, H$_2$, OH and HF give $\beta^* = 0.155$, $0.262$, $0.197$ and $R_e$ at $\beta^*$ of $+11.6$,
+$+14.5$, $-2.8\%$.) The constant that makes the binding exact ranges over a factor of five, from the diffuse alkali
+pairs to the bonds of N and O, and it differs between two cores of the same atom. Where it makes the binding exact it
+leaves the bond $9$--$19\%$ too long, except where the bond started very short (BH, HF). Taken from H$_2$ alone,
+$\beta = 0.16$ keeps the bonds to H within about $4\%$ but leaves their binding $45\%$ too large on average and
+unbinds the alkali dimers by $60\%$; a value per bond type brings the binding within $11$--$25\%$, with bonds up
+to $14\%$ long. A constant wall cost is a correction, not a law: it reduces the free wall's over-binding by a
+factor of three to ten, and it does not give energy and geometry with one value.
+
 \subsection{Two states of a pair}
 \label{sec:states}
 
 The two constructions are two different states of the pair, and standard quantum mechanics has
-both. The 2hom pair, two electrons of opposite spin carrying one density over one domain, is the
+both. The 2hom pair, two partner electrons carrying one density over one domain, is the
 restricted Hartree--Fock singlet: one doubly occupied orbital. In H$_2$ at $R = 1.4$ the
 axisymmetric 2hom energy is $-1.133585$ at $h = 0.1$, against the Hartree--Fock limit
 $-1.133630$~\cite{kolos}. The two share the known Hartree--Fock behaviour: H$^-$ is unbound, and the
@@ -561,7 +693,7 @@ Section~\ref{sec:x2}), so the bond length does not depend on the choice. \emph{2
 case and over-binds:} its $D_e$ is above experiment in most molecules computed, up to about
 twice (BH $0.276$ against $0.135$, OH $0.371$ against $0.170$). The exceptions are LiH
 ($0.063$--$0.073$ against $0.092$) and B$_2$ (at experiment). \emph{2hom is the shared pair:} two
-opposite spins in one domain. It is the closer energy for a shared pair at equilibrium (LiH $0.095$ against
+partners in one domain. It is the closer energy for a shared pair at equilibrium (LiH $0.095$ against
 $0.092$, C$_2$ $0.242$ against $0.232$, N$_2$ $0.370$ against $0.364$) and under-binds where the
 electrons should avoid each other. It also gives the LiH dipole, of the right sign and $11\%$ high,
 where one electron per domain inverts it. Dipoles in general are not settled by either case. In
@@ -856,7 +988,9 @@ NH$_3$ (N $+3$) & $-0.066$ & $1.795$ & $1.913$ & $-6.2\%$ & $0.62$ \\
 \end{tabular}
 \end{center}
 Every X--H bond is short, by $1.8$--$6.2\%$ (mean about $3.8\%$), and the error grows across the period, smallest
-for Be and B and largest for N and O, where the cores carry most valence. Standard methods do better: Hartree--Fock and DFT under the same constraints are within $2\%$
+for Be and B and largest for N and O, where the cores carry most valence. The shortfall belongs to the model,
+not to the mesh: for H$_2$O the force at $1.709$ is $-0.003$ at $h = 0.1$ and $-0.006$ at $h = 0.07$, so the force
+zero stays at $1.70$. Standard methods do better: Hartree--Fock and DFT under the same constraints are within $2\%$
 for every molecule, and RealQM is less accurate than either. The two use different objects. Hartree--Fock's orbitals extend over the whole molecule and overlap everywhere; they are not
 unique, since any mixing of them among themselves leaves the wave function and every prediction unchanged, so
 no single orbital has a physical meaning of its own. RealQM's electron densities are local and do not overlap,
@@ -870,6 +1004,21 @@ molecules of Section~\ref{sec:x2}, computed in the axisymmetric reduction, $-\ma
 the bond is HCN $+0.042$ (C--N) and $-0.013$ (C--H), CO $+0.045$, CO$_2$ $-0.022$ per bond, C$_2$H$_2$ $+0.19$
 (C--C) and CH $-0.046$; a force must be read against the stiffness, the triple bond of C$_2$H$_2$ carrying $+0.19$
 for a $10\%$ error and CO$_2$ $-0.022$ for $2\%$.
+
+% DRAFT 2026-11-27 (item 3): runs_cc/h2_rkr.py 0.1 -> runs_cc/h2_rkr_h0.1.out. RKR: first-order inversion of G(v),
+% B(v) from w_e 4401.21, w_e x_e 121.34, B_e 60.853, alpha_e 3.062 cm^-1, mu 0.50391 amu (Huber-Herzberg, from
+% memory), v <= 3; degree-6 fit of the turning points. RealQM: tools/axisym_hom2.split2 (one electron per half-space,
+% free midplane), soft 0.285 h, R in steps of 2h = 0.2, degree-8 fit. No computed reference enters.
+\paragraph{H$_2$ against measurement alone.} The potential of H$_2$ follows from its measured vibrational and
+rotational levels by the Rydberg--Klein--Rees inversion, with no computation of the molecule; up to the
+fourth vibrational level ($v \le 3$, about $0.07\,E_h$ above the minimum) the turning points are fixed by
+spectroscopy. Against that curve the 2split H$_2$ (axisymmetric, $h = 0.1$) has its minimum at $1.367$
+($-2.4\%$) and a stiffness $k = 0.411$ against $0.369$ ($+11\%$). Its force $-\mathrm{d}V/\mathrm{d}R$ is
+$6$--$13\%$ weak on the compressed side ($R = 1.0$--$1.2$: $0.307$, $0.181$, $0.093$ against $0.328$, $0.198$,
+$0.107\,E_h/a_0$) and $16$--$25\%$ strong on the stretched side ($R = 1.6$--$2.2$: $-0.066$, $-0.091$,
+$-0.102$, $-0.104$ against $-0.052$, $-0.078$, $-0.088$, $-0.088$). The curve is too steep beyond the minimum,
+as the long-range excess of the free wall predicts (Section~\ref{sec:compare}). Shape and forces are thus
+within about $10$--$25\%$ of measurement; the depth, $-1.2754\,E_h$ against $-1.1745$, is not.
 % Table runs 2026-11-21 (repo runs_cc/: queue_geom1.sh observed geometry, queue_scan.sh R-0.1/R-0.2, queue_dip.sh
 % HF/OH, queue_freq.sh CH4 1.954/2.154 and H2O 1.709; forces.py = radial force on H from the solver's FORCE line,
 % valid on the direct path with bare protons in pairs). Constructions: LiH mode=xh ZX=2 ZnX=1 rc1.99 box20; BeH2
@@ -904,8 +1053,8 @@ These methods are therefore the natural references for diagnosis: when RealQM di
 how the missing repulsion between electron groups was found. Two closed-shell He atoms bind falsely in
 basic RealQM ($-0.55$\,E$_h$ at $R=2$) where RHF repels ($+0.12$), and Be$_2$ with free walls binds
 by $0.18$\,E$_h$ where RHF gives no bond. The difference is Pauli exclusion: HF enforces it by
-antisymmetry of one wave function, while basic RealQM's free walls charge nothing where same-spin
-electrons meet. Restoring it as a wall condition---an evanescent Robin cost
+antisymmetry of one wave function, while basic RealQM's free walls charge nothing where electrons of different
+pairs meet. Restoring it as a wall condition---an evanescent Robin cost
 $\partial_n u+\beta u=0$, $\beta=\sqrt{-2\varepsilon}$ from the domain's own eigenvalue, between closed
 shells on different atoms, and a node condition on the spherical part of the valence at the core---removes
 the false bonds (He$_2$: $+0.056$, $+0.011$, $+0.0025$ at $R=2,3,4$, against RHF $+0.121$, $+0.014$, $+0.001$; Be$_2$ repulsive at every $R$) and
@@ -915,7 +1064,7 @@ leaves no fitted constant.
 Outside its own region, where the potential is small against its eigenvalue $\varepsilon<0$, a domain's
 density would continue as an evanescent tail: $-\tfrac12u''=\varepsilon u$ gives $u=u_0e^{-\kappa x}$,
 $\kappa=\sqrt{-2\varepsilon}$. Between closed shells on different atoms that tail is forbidden---the space
-beyond the wall holds a neighbour's pair with both spins---so the wall cuts it off. What the tail would have
+beyond the wall holds a neighbour's closed pair---so the wall cuts it off. What the tail would have
 contributed to the domain's energy is
 \[
 \int_0^\infty\Bigl(\tfrac12u'^2-\varepsilon u^2\Bigr)dx=\tfrac{\kappa}{2}\,u_0^2 ,
@@ -924,7 +1073,7 @@ which is exactly the surface energy $\tfrac{\beta}{2}\int u^2\,dS$ with $\beta=\
 Robin condition $\partial_nu+\beta u=0$, the logarithmic derivative of the tail. The domain is charged the
 energy of the tail it may not have, at the wall where it is cut. A free wall ($\beta=0$) charges nothing,
 which is the false He$_2$ bond; a hard wall ($\beta=\infty$, $u=0$) charges full confinement
-($+0.83$\,E$_h$ at $R=2$). Inside a pair, where opposite spins share space, and between one atom's own
+($+0.83$\,E$_h$ at $R=2$). Inside a pair, whose two electrons may share space, and between one atom's own
 sectors, which partition a single shell, no tail is cut and the wall stays free.
 
 The rule is a leading term, and it carries a test. It assumes a flat wall and a flat potential at the
@@ -937,8 +1086,8 @@ the cut tail can supply the second power is open.
 
 \paragraph{Singlet and triplet H$_2$: one defect on both sides.}
 In RealQM the singlet and the triplet differ only in the wall between the two one-electron domains:
-free for opposite spins, a Pauli wall for equal spins (Table~\ref{tab:h2st}). The triplet is a direct test
-of the Pauli wall where same-spin electrons meet in a bond, and it passes at short range: $+0.219$ against
+free when the two are partners, a Pauli wall when they are not (Table~\ref{tab:h2st}); the triplet is the state
+with no pair. It is a direct test of the Pauli wall where two non-partners meet in a bond, and it passes at short range: $+0.219$ against
 UHF $+0.222$ at $R=1.4$. At long range it is too repulsive, $3.6$ times UHF at $R=5$. The free-wall
 singlet shows the mirror image. Its force error $F_{\rm RealQM}-F_{\rm exact}$ is negative at every $R$,
 $-0.016$ at $R=1.4$ and largest, $-0.027$, near $R=4$; of its $0.109$\,E$_h$ excess binding, $0.051$ is
@@ -1101,13 +1250,38 @@ beyond it; each is stated with the result found:
   $-5\%$ at $h = 0.07$ and moving shorter with the mesh, about $-7\%$ extrapolated); binding two to three
   times too large, by an amount per heavy atom (ethane twice methane). Carbon is analysed below.
 \item \emph{Shapes and angles:} the CH$_4$ square plane lies $0.002\,E_h$ \emph{below} the tetrahedron
-  (CCSD(T) puts it $0.225\,E_h$ above); the H$_2$O angle closes below $95^\circ$ with the lone pairs
+  (CCSD(T) puts it $0.225\,E_h$ above; with a Pauli wall also inside the atom it lies $0.143$ above, see below); the H$_2$O angle closes below $95^\circ$ with the lone pairs
   frozen into the core and is pushed open with them as domains of their own.
-\item \emph{O$_2$ and F$_2$:} lone pairs face each other across the bond, and with free walls between
-  them both bonds come out too strong and too short (O$_2$ about twofold and $12\%$). A free wall between
-  closed groups on different atoms attracts (He$_2$, Section~\ref{sec:compare}), so the open question is
-  whether Pauli walls between the lone pairs give the bond; O$_2$, a triplet, needs one also between its two
-  unpaired electrons.
+\item \emph{O$_2$:} with oxygen as $+6$ (only $1s^2$ frozen; per atom a $\sigma$ electron, an unpaired electron
+  and two lone pairs) and Pauli walls between the atoms, two independent computations, one in three-dimensional
+  sectors and one in an axisymmetric construction of cones, agree within $0.1\,E_h$: $D = 2E({\rm O})-E({\rm O}_2)$
+  is $1.13\,E_h$ near the observed $2.28\,a_0$ against $0.192$, rising to $1.35$ at $2.0$, with no minimum. The
+  comparison itself is consistent ($D = 0.05$ at $R = 5$, $0.02$ at $6$). The Pauli walls between the atoms carry
+  at most $0.22\,E_h$; the binding sits in the $\sigma$ pair, whose electrons, between two $+6$ kernels, are bound
+  about twice as strongly as in the atom. The spin state also comes out reversed: the triplet, with a Pauli wall
+  between the two unpaired electrons, lies $0.19$--$0.23\,E_h$ \emph{above} the singlet (axisymmetric, $h = 0.1$),
+  where O$_2$'s triplet lies $0.036$ below. A Pauli wall can only add energy, so the walls have no counterpart
+  of Hund's rule.
+% DRAFT 2026-11-27 (item 2): runs_cc/h3_barrier.py 0.1 8 -> runs_cc/h3_barrier_h0.1.out (axisym_linear via
+% force_loop.py: linear H3, bare protons, one electron per domain, two free planes by continuity, beta = 0, box
+% L = FAR + 8 = 16). Symmetric line E(R,R) still falling at the scan edge R = 1.5 (-2.105037), so 197 kcal/mol is a
+% LOWER bound on the spurious stability. H2 + H: proton 3 at 8 a0, min -1.790442 at R1 1.351. Exact saddle 1.757 /
+% 9.6 kcal/mol (Liu-Siegbahn-Truhlar-Horowitz, from memory, not rechecked).
+\item \emph{H$_3$ and the simplest reaction:} H $+$ H$_2$ $\to$ H$_2$ $+$ H, with one electron per domain and both
+  walls free (axisymmetric, $h = 0.1$), has no barrier. Collinear H$_3$ at $R_1 = R_2 = 1.5\,a_0$ lies
+  $0.315\,E_h$ ($197$\,kcal/mol) \emph{below} H$_2$ $+$ H, and is still falling at the edge of the scan; the
+  observed system has a saddle $9.6$\,kcal/mol \emph{above} it, at $1.757\,a_0$. Both walls were
+  free in this run. Under the pair rule the middle electron is the partner of one outer electron only, so
+  its wall to the other is a non-partner wall and carries the Pauli cost; that case has not yet been
+  computed. The two outer electrons are not partners either, and they share no wall, so nothing in the model
+  keeps them apart. No wall constant reaches this part of the defect: it needs exclusion between
+  non-partner domains that do not touch.
+% O2 runs 2026-11-25/26: h2_beta frag=o2 (O +6 tet sectors, rcO 0.713 fitted to -(IE1..6) = -15.916 with E indep;
+% IEs from memory), Pauli walls betainter+betasc, E indep (check_energy): E(O) -15.72170; R 2.0/2.2/2.3/2.5/2.7
+% D 1.350/1.214/1.133/0.986/0.835; box16 R5 D 0.0536. runs_cc/o2_axisym.py h0.1 rc0.71: E(O) -16.0323; triplet
+% R 2.0/2.2/2.4/2.6/2.8/6.0 D 1.273/1.137/1.128/1.048/0.887/0.017, Esurf 0.22..0.05; singlet 2.2/2.4 -33.43215/
+% -33.38500 vs triplet -33.20214/-33.19302; nowall = singlet within 3e-4. sigma eps -2.1..-3.1 (atom -1.32).
+% Exp: D_e 0.192, R_e 2.282, b1Sigma_g+ / a1Delta_g 0.98 eV above X3Sigma_g- (from memory).
 \item \emph{Bond order:} each bond is one pair, so the triple and single C--C bonds of HC$\equiv$C--C$\equiv$N
   relax to nearly equal lengths (Section~\ref{sec:x2}).
 \item \emph{Dipoles:} right in sign wherever lone pairs are domains of their own, too large by about two
@@ -1200,6 +1374,20 @@ but not the C--C bond, the size of the shape preference, the fourth-bond kinetic
 The same value that leaves C--C $10\%$ short makes H$_2$ $8\%$ long: the cost a wall must carry differs between
 the wall inside a bonding pair and the walls between pairs, which is the Pauli cost, and no single constant
 supplies both.
+
+\paragraph{A self-consistent Pauli wall inside the atom.} The Pauli wall of Section~\ref{sec:compare}, with
+$\beta_k = \sqrt{-2\varepsilon_k}$ from each domain's own eigenvalue and nothing fitted, was placed also on the walls
+between one atom's own pairs ($h = 0.1$; solver energies, compared only between configurations of one
+composition). It gives carbon a shape: the tetrahedron lies $0.143\,E_h$ below the square plane, about two
+thirds of the CCSD(T) preference, where free walls put the square $0.002$ lower. It gives water a restoring
+bend force above $104.5^\circ$, though with its zero near $116^\circ$ (extrapolated from two angles). And it
+overcorrects the bonds: the force on the protons vanishes at $2.17$ in CH$_4$ ($+6\%$) and near $1.94$ in H$_2$O
+($+7\%$), against $-4\%$ and $-6\%$ with free walls. The cost a wall inside one atom should carry lies between
+the free wall and the full Pauli wall, roughly midway in both molecules, and no principle yet fixes it.
+% Runs 2026-11-25/26 runs_cc/queue_wallbeta.sh (h2_beta ?beta=1&betaiso=1&betasc=1000, no betainter): CH4 R 1.90/
+% 2.054/2.25 Fr +0.179/+0.065/-0.032 (F-zero 2.173 quadratic), E solver Td -6.64860, square -6.50544; H2O O+6 c2v
+% R 1.809 angle 99.5/104.5/109.5 F_open +0.0367/+0.0381/+0.0220 (free walls +0.0063/+0.0209/+0.0230), Fr
+% +0.076/+0.086/+0.065 (free -0.081/-0.068/-0.077); self-consistent eps O-H pairs -0.91, lone pairs -0.46.
 % Runs 2026-11-17/20, h2_beta.html ?beta= (molecule.js USER_BETA) with ?betaiso=1 (USER_BETA_ISO, area from the local
 % normal), ?betainter=1 (USER_BETA_INTER), mode=ch4&alpha= (free walls, D2d path), mode=c2h6, mode=alkane&nC=2
 % (diagonal), ?ccpair=1; surface term scratchpad surf.py (iso). E indep + E_surf, beta 0.2 iso: C -5.04165, B
@@ -1260,6 +1448,23 @@ walls by continuity) the dipole inverts, $-0.72$ and $-0.44$\,D, the H electron 
 constructions bracket the observed dipole as they bracket the H$_2$ energy. Letting charge flow across the
 split wall until the chemical potentials agree does not select a state between them: the energy falls all the
 way toward O$^-\cdots$H$^+$. Polarity is therefore predicted in sign; its size depends on the construction.
+
+% DRAFT 2026-11-27 (item 4): soft core = runs_cc/pauli_pp.py (V_P inverted from the GTH-PBE valence density of O,
+% two Gaussians 86.5917 exp(-(r/0.1722)^2) + 10.0057 exp(-(r/0.4401)^2), DIAGNOSTIC: imports a DFT density);
+% runs vp_h2o / vp0_h2o (h2_beta.html mode=h2o c2v=1 half=1 el=O bpair=1 Hbare=1 box=12 R=1.809, rcX=0 [+vpauli=1],
+% h 0.1), runs_cc/queue_vpauli.out; regions from runs_cc/water_density_vs_hf.py against HF/cc-pVTZ valence.
+% Quadrupole: runs_cc/water_quadrupole.py -> water_quadrupole.out (wd_mono dump, r_c 0.71, mu 4.135 D; Buckingham
+% traceless about the centre of mass; measured Verhoeven & Dymanus 1970, FROM MEMORY, not rechecked).
+\paragraph{The water dipole is not a core effect.} The doubled H$_2$O dipole might come from the inner
+region, where O $+6$ with no cutoff lets its valence fall into the vacant core ($5.40$ electrons inside
+$0.71\,a_0$ against $1.30$ in Hartree--Fock, $4.97$\,D). A soft repulsive core in place of the cutoff, a local
+potential inverted from a valence density so that it charges exactly the cost of the missing inner shell,
+holds the valence out ($1.64$ electrons inside $0.71$) and leaves the dipole at $4.10$\,D, equal to the hard
+cutoff's $4.09$. The quadrupole shows the same excess independently of any reference calculation: the
+in-plane components are $\Theta_{xx} = +3.87$, $\Theta_{yy} = -3.74$\,D\,\AA\ against the measured $+2.63$,
+$-2.50$ (Hartree--Fock $+2.41$, $-2.29$), $1.5$ times too large, with $\Theta_{zz}$ right. The excess charge
+sits on the lone-pair side ($2.91$ electrons behind O against $2.75$, $3.45$ in front against $3.95$): it is
+placed by the valence walls, not by the core.
 
 \paragraph{Polar groups of protein surfaces.} The groups a protein surface exposes were taken as small fragments, built
 with the same rules (every X--H bond a pair over a bare proton, lone pairs as domains, heavy--heavy single bonds one
@@ -1335,8 +1540,14 @@ parameter-free constructions, 2split and 2hom, the limits of complete and of no 
 H$_2$ and He the exact energy lies between them. A shared pair (core, bonding pair) is 2hom, and
 for LiH and BH the 2hom bond is the closer to experiment. Inner shells hold under the model's own
 continuity rule for walls, but in 3D at the present mesh they are excluded by a fixed core radius; with that, LiH as one 2hom bonding pair has its
-bond within $5\%$, its binding within $3\%$ and a dipole of the right sign. Nothing is adjusted to
-molecular data; each atom contributes one core radius, set from its ionisation energies.
+bond within $5\%$, its binding within $3\%$ and a dipole of the right sign. The basic model adjusts nothing
+to molecular data; each atom contributes one core radius, set from its ionisation energies. The calibrated
+model adds one constant, the cost of electrons meeting at a free wall, fitted on H$_2$. Carried to other bonds
+it removes most of the over-binding but does not transfer as one value: the constant each bond needs ranges over
+a factor of five, and where it makes the binding exact the bond is up to $19\%$ long. A value per bond type, as
+force fields and semi-empirical methods carry per-atom-type parameters, brings the binding of bonds not used in
+the fit within $11$--$25\%$; its variation follows how diffuse the densities meeting at the wall are, which
+suggests a wall law depending on the density at the wall in place of a table.
 
 On this first selection of basic examples the model is a geometry model: bond lengths of hydrides,
 of X$_2$ from Li$_2$ to N$_2$ and of linear molecules built from the same pseudo-atoms are within a few
@@ -1371,6 +1582,26 @@ groups together, and to the continuity rule for walls as the part that already w
   found the bracket is the stated uncertainty.
 \end{itemize}
 
+\paragraph{Where the model now stands.} With the wall cost RealQM moves from a basic model with a known
+defect to a calibrated model with one open slot. Its rules are complete and each is fixed at most once, on
+the simplest system where it first appears: the one-electron kinetic energy on hydrogen, the partner wall on
+H$_2$, the non-partner wall from the domains' own eigenvalues with nothing fitted, the pair rule, and each core
+from its atom's ionisation energies. It carries a picture in ordinary space, without spin or orbitals, at a
+cost set by the grid alone. The free wall's over-binding, by a factor $1.4$--$2.7$, falls with one wall
+constant per bond type to $11$--$25\%$ for bonds not used in the fit, on two meshes; X--H bonds from the
+forces are within $2$--$6\%$, and the H$_2$ forces within $10$--$25\%$ of the curve measured by spectroscopy.
+This opens three uses: the covalent geometry of large molecules at low cost; energy differences within one
+composition (conformers, isomers), where the errors cancel and the wall constant helps; and reaction paths,
+since one electron per domain dissociates correctly. Four things decide how far it goes. Energy and geometry do
+not yet come together: one constant fixes the binding and stretches the bonds by $9$--$19\%$, or keeps the
+bonds and leaves the binding about $45\%$ high; since the constant follows how diffuse the densities meeting at
+the wall are, a wall law depending on the density at the wall is the natural next form, and the open slot.
+Electrostatics is too strong (dipoles about twice, the water dimer about three times). Non-partners whose
+domains do not touch are not kept apart (H$_3$), and shape is imposed. And the calibrated model has so far been
+carried through diatomic molecules only. RealQM is thus a semi-empirical continuum model with a physical picture
+and one improvable constitutive law: not yet a predictive model of chemistry, but one in which what is missing
+is located and can be tested.
+
 \paragraph{Criteria of the model's own.} Excused from competing in accuracy, a model must state what it can fail. RealQM
 sets itself these, scored on the present results:
 \begin{center}
@@ -1384,6 +1615,9 @@ shell structure of atoms from the continuity rule & met: $Z \le 18$ within about
 sign of polarity & met where lone pairs are domains of their own \\
 molecular shape (tetrahedron, angles, torsion) from the model & not met: imposed \\
 energies within a stated bracket & met as a bracket, not closed \\
+one wall constant, fitted on H$_2$, transferring to other bonds & in part: binding $11$--$25\%$ with one value per
+  bond type, $45\%$ with H$_2$'s alone; bonds then $9$--$19\%$ long \\
+the simplest reaction, H $+$ H$_2$, with a barrier & not met: H$_3$ bound by $\ge 197$\,kcal/mol \\
 computable at the scale of proteins & estimated, not demonstrated \\
 \bottomrule
 \end{tabular}
@@ -1397,7 +1631,7 @@ such a picture succeeds and where it fails. A picture is understanding only as f
 fails, at shape and at the energies, its account is incomplete, and the failures say where.
 
 \paragraph{Combinations with existing methods.} RealQM need not start from scratch where existing methods are strong;
-what it contributes is its partition of space into domains of one electron or one pair, placed by the continuity
+what it contributes is its partition of space into domains of one electron each (or a pair, as a special case), placed by the continuity
 rule. Two combinations follow. First, subsystem density functional theory already divides a molecule into regions
 with densities of their own and charges the non-additive kinetic and exchange--correlation energy between them, which
 is the cost between electron groups that the free walls lack; letting neighbouring RealQM domains overlap slightly
@@ -1463,6 +1697,26 @@ Poisson problem over the whole grid for each electron and keeps each result, so 
 (domains)$\times$(grid); a local path, with one total potential and each domain's self-potential on a small box
 around it, is in development. With explicit imaginary-time steps a small molecule takes minutes. The aim they describe is moderate accuracy at low cost: geometries within a
 few per cent for systems where DFT becomes expensive.
+
+% DRAFT 2026-11-27 (proteins). Water dimer with Pauli walls (betasc, Robin energy included via
+% tools/check_energy.py --inter --iso): binding 16.7 kcal/mol at R 5.5, E falling to the shortest R scanned (5.2),
+% runs_cc/queue_wdimer2.sh; measured D_e ~5.0 kcal/mol FROM MEMORY. Steps of 2-9 mHa at the noise of the independent
+% energy (~0.006), no mesh ladder: shape of the dimer curve not established.
+\paragraph{Prospects for proteins.} A protein asks three things of a model: its covalent geometry, the
+energies of its conformations, and its electrostatics (hydrogen bonds, the polar groups of its surface, the
+water around it). The covalent geometry is the model's strength: bond lengths from the forces within a few per
+cent, at a cost that scales with the volume and is estimated above at minutes to an hour for $10^4$ atoms.
+Conformational energies are differences within one composition, where the per-pair errors of the model cancel
+best, and the wall cost, with one value per bond type for the handful of types a protein contains (C--H,
+N--H, O--H, C--C, C--N, C--O), brings the energy of each bond within tens of per cent. What limits the
+prospect is not cost but three defects found here. Shape is imposed, not produced: angles and torsions, which
+are what a fold is made of, come from fixed sector directions. Electrostatics is too strong: dipoles of polar
+groups are about twice the observed ones, and the water dimer with Pauli walls binds by about $17$\,kcal/mol at
+$h = 0.1$, where about $5$ is measured. Non-partner electrons whose domains do not touch are not kept apart, as
+H$_3$ shows, and a protein has many such pairs at close range. A RealQM protein computation is therefore within
+reach as a geometry model of the covalent framework with imposed shape; as a model of folding it waits on these
+three, of which the dipole and the exclusion between non-touching non-partners are the ones the present
+work has located.
 % DFT figures: orders of magnitude from published benchmarks (ONETEP/CONQUEST/BigDFT linear scaling, TeraChem
 % GPU), quoted from memory 2026-11-21, not measured here. RealQM figures: estimate, local boxes + multigrid,
 % 10^3-10^4 iterations, not implemented.

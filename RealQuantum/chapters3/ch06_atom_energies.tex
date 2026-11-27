@@ -24,7 +24,9 @@ number. The second is a \emph{construction}: two filled packings appear and no t
 antipodal pair $2$ and the octet $8=4{+}4$ --- and the row lengths of the periodic table are sums
 of these two alone. The construction is the more interesting of the two, and also the one with the
 sharper limits: capacities are derived at every $Z$, the filling only as far as carbon and
-supplied beyond.
+supplied beyond. A last section adds the wall costs of the pair rule (Chapter~\ref{ch:hydrides}). The octet
+then becomes one shell of eight one-electron cells, and lithium to argon come within $3\%$ with nothing
+fitted to atoms (Section~\ref{sec:walls-atoms}).
 
 \section{The Level-1 atomic model}\label{sec:level1-model}
 
@@ -169,6 +171,9 @@ cube cannot be represented in it at all. Argon's measured shell boundaries are u
 with successive mid-radius ratios $2.65$, $2.29$, $2.16$, and not paired as a cube reading would
 predict. The cube is therefore an argument about counts and symmetry, not a computed result. The
 capacities, the parity rule and the closures are arithmetic about counts and are unaffected.
+With wall costs (Section~\ref{sec:walls-atoms}) the octet can be computed as one shell of eight cells, and
+then it does not over-bind: the over-binding found here belongs to eight electrons sharing one density
+without walls.
 
 \section{Validation: hydrogen to krypton}\label{sec:validation}
 
@@ -257,6 +262,102 @@ construction that already contains standard quantum mechanics. So these percenta
 distance from that construction and cannot be read as a direct verdict of one theory against
 nature. The observables this model can be held to without that circularity are of a different
 kind: electronegativity ordering, shell radii, and geometry.
+
+\section{With wall costs: the octet as one shell of cells}\label{sec:walls-atoms}
+
+Everything above is the basic model, in which a wall between two domains costs nothing. The molecules
+of Chapter~\ref{ch:hydrides} need a cost, and it comes with a rule for which walls carry it: the
+\emph{pair rule}. Each electron has at most one partner. A wall between partners carries one constant,
+fitted on H$_2$. A wall between electrons of different pairs carries the cost $\beta=\sqrt{-2\varepsilon}$
+from the domain's own eigenvalue, the decay rate of the tail the wall cuts off, with nothing fitted. In
+both cases the cost is a surface energy $(\beta/2)u^2$ on each side, a Robin condition
+$\partial_n u+\beta u=0$. This section applies that model to atoms. Nothing is fitted beyond the hydrogen
+spectrum and the H$_2$ wall constant.
+
+\paragraph{A shell of $n$ is $n$ cells.} A radial shell holding $n$ electrons is read as $n$ one-electron
+cells at one radius: two hemispheres, three lunes, a tetrahedron, a trigonal bipyramid, an octahedron, a
+pentagonal bipyramid, and for $n=8$ the cube, the two dual tetrahedra of Section~\ref{sec:twoeight}. The
+radial problem stays one-dimensional. What the spherical average of the cells loses is put back in three
+terms, each computed once from the cell geometry:
+\begin{enumerate}
+\item \emph{Separated cells.} The repulsion within a shell is the $(n-1)/n$ monopole of the basic model
+minus $\tfrac12\sum_{\ell\ge1}S_\ell F_\ell$. Here $F_\ell$ is the shell's radial Slater integral and $S_\ell$
+the multipole weight of the cells; the sum is converged by $\ell=20$. For He this gives $-3.020$~Ha, against
+$-3.026$ from the two-dimensional axisymmetric solver with the pair split into two domains.
+\item \emph{Angular walls.} The walls between cells of one shell give a radial term
+$\lambda_n(\beta r)/(2r^2)$, where $\lambda_n$ is the lowest eigenvalue of the Robin problem on a spherical
+cap of the cell's solid angle. Under the pair rule $\lfloor n/2\rfloor$ of the walls are partner walls and the
+rest are Pauli walls; for the cube that is 4 of its 12 walls.
+\item \emph{Radial walls.} The walls between shells are walls between different pairs, so each side costs
+$\sqrt{-2\varepsilon}$ with that shell's eigenvalue.
+\end{enumerate}
+No one term does it on its own. In neon, the octet as a single shell with no corrections over-binds by
+$22.7\%$. With the separated cells and the angular walls the over-binding is $8.3\%$, with the separated cells
+and the radial walls $17.2\%$, and with all three $2.2\%$ (mesh $N=4000$).
+
+\paragraph{Results.} Table~\ref{tab:walls-atoms} gives the total energies with all three terms. Each shell is
+solved directly as a tridiagonal eigenproblem in self-consistent iteration, at a mesh of $N=16000$ in a box of
+$12\,a_0$. From $N=4000$ to $N=16000$ the errors move by at most $0.24$ percentage points (He--Ar), so these
+values are mesh-converged; the basic-model tables above are not. The ionisation energy is read off the
+valence eigenvalue.
+
+\begin{table}[!htbp]
+\centering
+\small
+\renewcommand{\arraystretch}{1.08}
+\caption{Walls model: octet as one shell of eight cells, partner walls at the H$_2$ constant, all other walls
+$\sqrt{-2\varepsilon}$, separated-cell repulsion. Direct solver, $N=16000$, $D=12\,a_0$, all converged. Error
+as in Table~\ref{tab:atoms}, negative meaning under-bound. IE from the valence eigenvalue (eV), against
+experiment. Li--Ar: $-3.0$ to $+2.1\%$, mean $|\text{error}|$ $1.7\%$.}\label{tab:walls-atoms}
+\begin{tabular}{llcrrrrr}
+\toprule
+$Z$ & atom & config & RealQM (Ha) & reference (Ha) & error & IE & IE exp \\
+\midrule
+2 & He & $2$ & $-2.768$ & $-2.904$ & $-4.7\%$ & $26.0$ & $24.59$ \\
+3 & Li & $2{+}1$ & $-7.273$ & $-7.478$ & $-2.7\%$ & $4.9$ & $5.39$ \\
+4 & Be & $2{+}2$ & $-14.407$ & $-14.667$ & $-1.8\%$ & $9.3$ & $9.32$ \\
+5 & B & $2{+}3$ & $-24.231$ & $-24.654$ & $-1.7\%$ & $11.7$ & $8.30$ \\
+6 & C & $2{+}4$ & $-37.481$ & $-37.845$ & $-1.0\%$ & $15.5$ & $11.26$ \\
+7 & N & $2{+}5$ & $-54.089$ & $-54.589$ & $-0.9\%$ & $18.0$ & $14.53$ \\
+8 & O & $2{+}6$ & $-75.166$ & $-75.067$ & $+0.1\%$ & $21.9$ & $13.62$ \\
+9 & F & $2{+}7$ & $-100.281$ & $-99.734$ & $+0.5\%$ & $24.1$ & $17.42$ \\
+10 & Ne & $2{+}8$ & $-131.587$ & $-128.938$ & $+2.1\%$ & $28.5$ & $21.57$ \\
+11 & Na & $2{+}8{+}1$ & $-162.669$ & $-162.255$ & $+0.3\%$ & $4.0$ & $5.14$ \\
+12 & Mg & $2{+}8{+}2$ & $-198.510$ & $-200.053$ & $-0.8\%$ & $6.5$ & $7.65$ \\
+13 & Al & $2{+}8{+}3$ & $-238.470$ & $-242.346$ & $-1.6\%$ & $8.2$ & $5.99$ \\
+14 & Si & $2{+}8{+}4$ & $-283.297$ & $-289.359$ & $-2.1\%$ & $10.6$ & $8.15$ \\
+15 & P & $2{+}8{+}5$ & $-332.441$ & $-341.259$ & $-2.6\%$ & $12.3$ & $10.49$ \\
+16 & S & $2{+}8{+}6$ & $-387.195$ & $-398.110$ & $-2.7\%$ & $14.7$ & $10.36$ \\
+17 & Cl & $2{+}8{+}7$ & $-446.562$ & $-460.148$ & $-3.0\%$ & $16.4$ & $12.97$ \\
+18 & Ar & $2{+}8{+}8$ & $-512.174$ & $-527.540$ & $-2.9\%$ & $18.9$ & $15.76$ \\
+19 & K & $2{+}8{+}8{+}1$ & $-577.089$ & $-599.230$ & $-3.7\%$ & $3.2$ & $4.34$ \\
+20 & Ca & $2{+}8{+}8{+}2$ & $-647.455$ & $-676.758$ & $-4.3\%$ & $4.8$ & $6.11$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{What the table shows.}
+\begin{itemize}
+\item \textbf{Totals.} From lithium to argon every atom is within $3\%$, with nothing fitted to atoms. The
+octet is one shell here, so the $4{+}4$ packing is no longer an input.
+\item \textbf{Ionisation energies.} They have the right size and the right pattern across the table: they rise
+across each row, drop at each alkali, and beryllium is within $0.1$~eV. They are an eigenvalue, not a
+difference of two totals, so the difficulty of Section~\ref{sec:chi} does not arise. Two features are missing:
+the dips at boron and oxygen, which come from structure inside a shell that a radial average does not see.
+The $p$-block values are too high, by up to $8$~eV: oxygen gives $21.9$ against $13.62$~eV.
+\item \textbf{Failures.} Helium is $4.7\%$ under-bound: with only two electrons, the partner-wall cost is too
+large. From row 3 the errors drift towards under-binding, reaching $-4.3\%$ at calcium.
+\item \textbf{Range.} The cells are tabulated for up to eight electrons, so the model stops at calcium. The
+$d$ block would need a shell of ten.
+\end{itemize}
+
+\paragraph{The octet over one radius or two.} Section~\ref{sec:subshells} found that eight electrons on
+one shell over-bind, and read the octet as two radial shells. That remains true when the eight share one
+density without walls; the uncorrected column gives $22.7\%$ for neon. With the cells and their walls the
+single shell is right to $2\%$. The two radii of the basic model therefore stand in for an angular separation
+that this model represents directly. The cube now enters the calculation through its cell multipoles and its
+wall counts, though still not through an angular coordinate. The Atom Simulator opens on this model, and the
+basic model of the tables above is one click away.
 
 \section{Ionization energies: why differencing cannot work}\label{sec:chi}
 
