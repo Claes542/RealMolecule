@@ -1,9 +1,9 @@
 \chapter{Hydrides and Small Molecules: Geometry First}\label{ch:hydrides}
 \index{hydrides!alkali (Group 1)}\index{hydrides!alkaline earth (Group 2)}\index{hydrides!Group 14, tetrahedral}\index{hydrides!Group 16, water}\index{water molecule}\index{methane}\index{atomization energy}\index{LiH}\index{2hom pair}\index{2split pair}
 
-Chapter~\ref{ch:h2} showed that the two electrons of H$_2$ can be carried in two parameter-free
-constructions, 2split and 2hom, and that the exact energy lies between them. This chapter takes the
-same constructions to molecules with a heavier atom. The criterion is \textbf{geometry}: bond lengths,
+Chapter~\ref{ch:h2} carried the two electrons of H$_2$ as a split pair, one electron per domain, with
+the Hartree--Fock pair in one domain (2hom) as a working construction beside it. This chapter takes both
+to molecules with a heavier atom. The criterion is \textbf{geometry}: bond lengths,
 read from the force on each nucleus. Binding energies are reported as a diagnostic of the construction,
 not as a target.
 
@@ -58,14 +58,25 @@ in it can be rerun.
 
 \section{The rules}\label{sec:hydride-rules}
 
-\paragraph{A domain holds one electron or a pair.} RealQM carries no spin variable; spin enters only
-through the Pauli principle, as the rule that a three-dimensional domain holds at most two electrons, and
-two only if of opposite spin. A pair can therefore be carried in two ways. In \emph{2split} each electron
-owns its own domain and the two meet at a free wall: complete avoidance. In \emph{2hom} both share one
-domain and one density: no avoidance beyond the mean field, which is the restricted Hartree--Fock pair. A
-pair that shares one region --- a core $1s^2$, a lone pair, a bonding pair near equilibrium --- is 2hom.
-Electrons that must avoid each other --- H$^-$, a bond pulled apart --- need 2split. The two are distinct
-states with no parameter joining them, and both are reported.
+\paragraph{One electron per domain, and the pair rule.} Each electron owns its own domain. RealQM has no
+spin; it has instead the \emph{pair rule}: each electron has at most one partner, the electron it forms a bond
+or a closed pair with, and the cost of a wall depends on whether the two electrons meeting there are partners.
+An electron meets several others, at walls of both kinds. The rule is Lewis's electron pair (1916), which
+chemistry had before electron spin and the Pauli principle (1925) explained it. Spin labels on domains would
+not serve: an electron meeting several others cannot be of opposite spin to all of them, and the repulsion
+between two closed pairs belongs to the pairs, not to the spins of the two electrons that happen to touch. That
+RealQM needs no spin is a relief rather than a loss, since spin has no picture in three-dimensional space: it
+is called an angular momentum, yet nothing rotates (a charged sphere of the electron's size would have to
+turn with its surface faster than light). What spin adds beyond pairing --- magnetism, Hund's rule, the spin
+structure of spectra --- is left outside (Chapter~\ref{ch:magnetism-spin}).
+
+\paragraph{The pair, and the working construction.} Two partners meeting at a wall are the \emph{2split}
+construction: one electron per domain, the model's own. With a free wall their avoidance is complete; the
+wall cost of Section~\ref{sec:hydride-wallcost} is fitted for it, and it dissociates correctly. As a working
+construction two partners may instead share one domain and one density, \emph{2hom}: the restricted
+Hartree--Fock pair, with no avoidance beyond the mean field and no wall inside it. 2hom gives the closer bond
+lengths at equilibrium and is used for the force table below, until a wall law that transfers lets the split
+pair replace it (Section~\ref{sec:h2-bracket}).
 
 \paragraph{Inner shells.} Inner shells hold as domains with free walls when the wall is placed by the model's
 own rule, moved until the densities on both sides are equal: the one-dimensional atoms of
@@ -235,7 +246,7 @@ model imposes its walls; whether free walls under continuity give carbon its sha
 
 \section{Dipoles and the polar groups of proteins}\label{sec:hydride-dipoles}
 
-\paragraph{Dipoles, and the bracket.} At the observed geometry ($h = 0.1$, the constructions of the
+\paragraph{Dipoles, and the construction.} At the observed geometry ($h = 0.1$, the constructions of the
 geometry runs): LiH $6.54$\,D (experiment $5.88$); with lone pairs as domains, H$_2$O $4.09$ (O $+6$; $1.855$),
 NH$_3$ $3.71$ (N $+5$; $1.47$), HF $3.65$ ($1.83$), OH $3.63$ ($1.66$), BH $3.50$ ($1.27$), all with the right sign;
 with the lone pair frozen into the core, NH$_3$ inverts ($0.46$\,D, H negative) and H$_2$O (O $+3$) has half the
@@ -244,8 +255,8 @@ $1.90$\,D (experiment $3.73$) pointing within about $20^\circ$ of the O--NH$_2$ 
 axisymmetric reduction (free cone, core from the 1D atom) separate the parts: with the bonding pair over the bare
 proton, the pair and the proton are nearly neutral and the whole dipole is the lone pairs' displacement behind
 the heavy atom, $3.4$--$3.6$\,D for OH and $3.1$--$3.9$\,D for HF; with H keeping its own electron (2split, both
-walls by continuity) the dipole inverts, $-0.72$ and $-0.44$\,D, the H electron sitting beyond its proton. The two
-constructions bracket the observed dipole as they bracket the H$_2$ energy. Letting charge flow across the
+walls by continuity) the dipole inverts, $-0.72$ and $-0.44$\,D, the H electron sitting beyond its proton. The
+observed dipole lies between the two, which gives no rule for its size. Letting charge flow across the
 split wall until the chemical potentials agree does not select a state between them: the energy falls all the
 way toward O$^-\cdots$H$^+$. Polarity is therefore predicted in sign; its size depends on the construction.
 
@@ -312,13 +323,61 @@ regions of space holding a pair each, and the B3LYP density fits it closely wher
 reading of what standard quantum chemistry computes, a three-dimensional description in place of none, though not an
 observation and not the only possible partition.
 
+\section{The wall cost: one calibrated constant}\label{sec:hydride-wallcost}
+
+The model is fixed in two steps, each on the simplest system in which its ingredient first appears. For one
+electron the coefficient of the kinetic energy, Planck's constant, is fitted to the hydrogen spectrum, which
+the model then reproduces exactly. Where two partners meet at a free wall, the wall is charged a surface
+energy $\tfrac{\beta}{2}\int u^2\,dS$ per electron, whose natural condition is the Robin law
+$\partial_n u+\beta u=0$; the constant $\beta$ is fitted once, to the binding energy of H$_2$, in the same sense
+as Planck's constant to hydrogen: it states how electrons meet, which nothing in the one-electron equation
+fixes. Walls between non-partners carry no fitted constant: there $\beta=\sqrt{-2\varepsilon}$ from the domain's
+own eigenvalue, the decay of the tail the wall cuts. The surface energy belongs to the functional, so the
+density relaxes under it.
+
+Nothing requires H$_2$ to come out perfect with the fitted constant, and it does not. With $R$ rescanned at
+each $\beta$ (axisymmetric, $h = 0.1$):
+\begin{center}
+\small
+\begin{tabular}{rcccc}
+\toprule
+$\beta$ & $0$ & $0.1$ & $0.2$ & $0.3$ \\
+\midrule
+$R_e$ (observed $1.401$) & $-5.0\%$ & $+5.8\%$ & $+11.8\%$ & $+25.9\%$ \\
+$D_e$ (exact $0.1745$) & $+62\%$ & $+21\%$ & $-13\%$ & $-41\%$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+The binding is exact at $\beta\approx 0.16$, where the bond is $9$--$12\%$ long (the two meshes $h=0.1$, $0.05$);
+the wall cost removes the excess binding and in the same move pushes the nuclei apart.
+
+Carried to other bonds, the constant each bond needs for exact binding is H$_2$ $0.16$, BH $0.07$, OH $0.27$,
+NH $0.29$--$0.30$, HF $0.21$, Li$_2$ $0.055$, Na$_2$ $0.078$: a factor of five, smallest for the diffuse alkali
+pairs. Where it makes the binding exact the bond is $9$--$19\%$ long, except for BH and HF, whose bonds started
+very short. H$_2$'s constant alone keeps the bonds to H within about $4\%$ but leaves their binding $45\%$ too
+large; one constant per bond type, as force fields carry per-atom-type parameters, brings the binding of bonds
+not used in the fit within $11$--$25\%$, with bonds up to $14\%$ long. (LiH and NaH are left out: with a cost
+on the bond wall only, their wall slides onto the pseudo-core sphere, which costs nothing.) The constant follows
+how diffuse the densities meeting at the wall are, which suggests a wall law depending on the density at the
+wall in place of a table.
+
 \section{What is established}\label{sec:hydride-summary-text}
 
 \paragraph{A geometry model.} Every X--H bond of the selection is short, by $1.8$--$6.2\%$ (mean about $3.8\%$),
 with small inward forces at the observed geometry; X$_2$ from Li$_2$ to N$_2$ and linear molecules built from the
 same pseudo-atoms are within a few per cent; C$_2$, all-electron, holds at $-8\%$ once its cone wall is placed
-by continuity. Nothing is adjusted to molecular data; each atom contributes one core radius, set from its
-ionisation energies.
+by continuity. These are results of the basic model, with free walls, and of 2hom pairs: nothing is adjusted to
+molecular data, and each atom contributes one core radius, set from its ionisation energies.
+
+\paragraph{A calibrated model with one open slot.} With the wall cost fitted on H$_2$ the rules are complete
+and each is fixed at most once on the simplest system where it appears. The over-binding of the free wall, by a
+factor $1.4$--$2.7$, falls to $11$--$25\%$ with one constant per bond type; the open slot is that energy and
+geometry do not yet come together with one constant, and a wall law depending on the density at the wall is the
+next form to test. This opens the covalent geometry of large molecules at low cost, energy differences within
+one composition, and reaction paths, since one electron per domain dissociates correctly; it is not yet a
+predictive model of chemistry, since electrostatics is too strong, non-partners whose domains do not touch are
+not kept apart, shape is imposed, and the calibrated model has so far been carried through diatomic molecules
+only.
 
 \paragraph{Polarity in sign.} Dipoles have the right sign wherever lone pairs are domains of their own; their
 size lies between the two constructions of the bonding pair, from about half to twice the reference.
